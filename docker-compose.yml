@@ -1,0 +1,211 @@
+version: "3.9"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: hub-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hub}
+      POSTGRES_DB: ${POSTGRES_DB:-hub}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub-net
+
+  # Redis for Job Queue
+  redis:
+    image: redis:7-alpine
+    container_name: hub-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-net
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: hub-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - hub-net
+
+  # Apache Jena Fuseki (Triple Store)
+  fuseki:
+    image: apache/jena-fuseki:latest
+    container_name: hub-fuseki
+    environment:
+      FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
+      ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
+    ports:
+      - "${FUSEKI_PORT:-3030}:3030"
+    volumes:
+      - fuseki-data:/fuseki
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/$/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - hub-net
+
+  # Semantic Service
+  semantic-service:
+    build:
+      context: .
+      dockerfile: services/semantic-service/Dockerfile
+    container_name: hub-semantic
+    ports:
+      - "${SEMANTIC_PORT:-8081}:8081"
+    environment:
+      FUSEKI_URL: http://fuseki:3030
+      FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
+      FUSEKI_ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
+      HUB_DOMAIN: ${HUB_DOMAIN:-hub.example.com}
+    depends_on:
+      fuseki:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Service (Django)
+  api-service:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: hub-api
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Worker Service
+  worker-service:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    container_name: hub-worker
+    command: python manage.py rqworker default
+    volumes:
+      - .:/app
+    env_file:
+      - .env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - hub-net
+
+  # DataContract CLI Service
+  datacontract-service:
+    build:
+      context: .
+      dockerfile: services/datacontract-service/Dockerfile
+    container_name: hub-datacontract
+    ports:
+      - "${DATACONTRACT_PORT:-8080}:8080"
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Compliance Service
+  compliance-service:
+    build:
+      context: .
+      dockerfile: services/compliance-service/Dockerfile
+    container_name: hub-compliance
+    ports:
+      - "${COMPLIANCE_PORT:-8082}:8082"
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # DQ Service
+  dq-service:
+    build:
+      context: .
+      dockerfile: services/dq-service/Dockerfile
+    container_name: hub-dq
+    ports:
+      - "${DQ_PORT:-8083}:8083"
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  hub-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redis-data:
+  minio-data:
+  fuseki-data:
+

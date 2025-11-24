@@ -1,0 +1,4 @@
+"""
+Asset Tests
+"""
+
