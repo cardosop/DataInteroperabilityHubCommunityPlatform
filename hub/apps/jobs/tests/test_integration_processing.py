@@ -3,6 +3,7 @@ Integration tests for job processing (T.9).
 
 Tests job creation, processing, status updates, and completion.
 """
+import pytest
 import uuid
 from unittest.mock import patch, Mock
 from django.test import TestCase
@@ -16,6 +17,8 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.files.models import File, FileStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

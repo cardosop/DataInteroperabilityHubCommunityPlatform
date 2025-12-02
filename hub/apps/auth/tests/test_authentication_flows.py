@@ -1,6 +1,7 @@
 """
 Unit tests for authentication flows (login, logout, password reset, invitation).
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -12,6 +13,8 @@ from hub.apps.auth.models import RefreshToken
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

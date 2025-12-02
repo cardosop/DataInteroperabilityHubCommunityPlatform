@@ -1,11 +1,14 @@
 """
 Unit tests for User model.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

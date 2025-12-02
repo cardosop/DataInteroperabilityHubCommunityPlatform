@@ -2,8 +2,9 @@
 End-to-End tests for marketplace purchase flow (T.14).
 
 Tests complete user journey from browsing listings to accessing purchased data.
+Uses REAL services.
 """
-from unittest.mock import patch
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -18,6 +19,8 @@ from hub.apps.marketplace.models import (
 )
 from hub.apps.marketplace.access_utils import check_entitlement
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -115,7 +118,9 @@ class MarketplacePurchaseE2ETest(TestCase):
             format='json'
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
-        order_id = order_response.data['id']
+        # For auto-approved orders, response may have 'order' key
+        order_data = order_response.data.get('order', order_response.data)
+        order_id = order_data['id']
         
         # Step 6: Order is auto-approved (FREE listing)
         order = Order.objects.get(id=order_id)
@@ -140,9 +145,10 @@ class MarketplacePurchaseE2ETest(TestCase):
         
         # Step 8: Consumer can access asset via entitlement
         if entitlement:
-            has_access = check_entitlement(
-                tenant=self.consumer_tenant,
-                asset=self.asset
+            has_access, error_code, _ = check_entitlement(
+                consumer_tenant_id=str(self.consumer_tenant.id),
+                asset_id=str(self.asset.id),
+                provider_tenant_id=str(self.provider_tenant.id)
             )
             self.assertTrue(has_access)
         

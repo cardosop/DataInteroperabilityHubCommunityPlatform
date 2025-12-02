@@ -14,7 +14,7 @@ from .models import AuditEvent
 User = get_user_model()
 
 
-def redact_pii(data: Dict[str, Any]) -> Dict[str, Any]:
+def redact_pii(data: Dict[str, Any], visited: Optional[set] = None) -> Dict[str, Any]:
     """
     Redact PII from a dictionary recursively.
     
@@ -25,41 +25,82 @@ def redact_pii(data: Dict[str, Any]) -> Dict[str, Any]:
     - SSN
     - Passwords
     
-    Returns a new dictionary with PII redacted.
+    Args:
+        data: Dictionary to redact
+        visited: Set of object IDs already visited (for cycle detection)
+    
+    Returns:
+        New dictionary with PII redacted.
     """
     if not isinstance(data, dict):
         return data
     
-    redacted = {}
+    # Initialize visited set for cycle detection
+    if visited is None:
+        visited = set()
     
-    # Patterns for PII detection
-    email_pattern = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
-    phone_pattern = re.compile(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b|\b\+?\d{10,15}\b')
-    card_pattern = re.compile(r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b')
-    ssn_pattern = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
+    # Check for circular reference
+    data_id = id(data)
+    if data_id in visited:
+        return '[CIRCULAR_REFERENCE]'
+    visited.add(data_id)
     
-    # Fields that should always be redacted
-    pii_fields = ['password', 'password_hash', 'api_key', 'token', 'secret', 'ssn', 'social_security_number']
-    
-    for key, value in data.items():
-        key_lower = key.lower()
+    try:
+        redacted = {}
         
-        # Always redact known PII fields
-        if any(pii_field in key_lower for pii_field in pii_fields):
-            redacted[key] = '[REDACTED]'
-            continue
+        # Patterns for PII detection
+        email_pattern = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+        phone_pattern = re.compile(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b|\b\+?\d{10,15}\b')
+        card_pattern = re.compile(r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b')
+        ssn_pattern = re.compile(r'\b\d{3}-\d{2}-\d{4}\b')
         
-        # Recursively process nested dictionaries
-        if isinstance(value, dict):
-            redacted[key] = redact_pii(value)
-        elif isinstance(value, list):
-            redacted[key] = [redact_pii(item) if isinstance(item, dict) else redact_string(str(item)) for item in value]
-        elif isinstance(value, str):
-            redacted[key] = redact_string(value)
-        else:
-            redacted[key] = value
-    
-    return redacted
+        # Fields that should always be redacted
+        pii_fields = ['password', 'password_hash', 'api_key', 'token', 'secret', 'ssn', 'social_security_number']
+        
+        for key, value in data.items():
+            key_lower = key.lower()
+            
+            # Always redact known PII fields
+            if any(pii_field in key_lower for pii_field in pii_fields):
+                redacted[key] = '[REDACTED]'
+                continue
+            
+            # Handle different value types
+            if isinstance(value, dict):
+                # Recursively process nested dictionaries with cycle detection
+                redacted[key] = redact_pii(value, visited)
+            elif isinstance(value, list):
+                # Process list items
+                redacted_list = []
+                for item in value:
+                    if isinstance(item, dict):
+                        redacted_list.append(redact_pii(item, visited))
+                    else:
+                        # Convert non-dict items to string safely
+                        try:
+                            redacted_list.append(redact_string(str(item)))
+                        except (RecursionError, ValueError, TypeError):
+                            redacted_list.append('[COMPLEX_OBJECT]')
+                redacted[key] = redacted_list
+            elif isinstance(value, str):
+                redacted[key] = redact_string(value)
+            else:
+                # For complex objects (models, etc.), convert to string representation
+                # but avoid recursion by not processing their internal structure
+                try:
+                    # Try to get a simple string representation
+                    if hasattr(value, '__dict__'):
+                        # For objects with __dict__, just use the type name
+                        redacted[key] = f'[{type(value).__name__}]'
+                    else:
+                        redacted[key] = str(value)
+                except (RecursionError, ValueError, TypeError):
+                    redacted[key] = '[COMPLEX_OBJECT]'
+        
+        return redacted
+    finally:
+        # Remove from visited set when done processing this level
+        visited.discard(data_id)
 
 
 def redact_string(value: str) -> str:
@@ -73,12 +114,12 @@ def redact_string(value: str) -> str:
     
     # Email addresses
     value = re.sub(
-        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',
         lambda m: f"{m.group(0).split('@')[0][:2]}***@{m.group(0).split('@')[1]}",
         value
     )
     
-    # Phone numbers
+    # Phone numbers (match various formats: 555-123-4567, 555.123.4567, 5551234567, +15551234567)
     value = re.sub(
         r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b|\b\+?\d{10,15}\b',
         '[REDACTED_PHONE]',

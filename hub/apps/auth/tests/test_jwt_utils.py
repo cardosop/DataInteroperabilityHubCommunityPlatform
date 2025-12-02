@@ -1,12 +1,15 @@
 """
 Unit tests for JWT utilities.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from hub.apps.tenants.models import Tenant
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

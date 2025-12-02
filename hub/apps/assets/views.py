@@ -346,6 +346,21 @@ class AssetViewSet(viewsets.ModelViewSet):
         
         contract.save(update_fields=['asset', 'version'])
         
+        # Remap contract to semantic store to include fields now that asset is linked
+        # Fields are only mapped when asset_uuid is available, so remapping is needed
+        if contract.hub_contract_json:
+            try:
+                from hub.apps.semantic.utils import remap_contract_if_needed
+                remap_contract_if_needed(contract, tenant=contract.tenant)
+            except Exception as e:
+                # Log error but don't fail the attachment
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to remap contract {contract.id} after asset attachment: {e}",
+                    exc_info=True
+                )
+        
         # Log audit event
         create_audit_event(
             resource_type="ASSET",

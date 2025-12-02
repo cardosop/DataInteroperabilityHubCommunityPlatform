@@ -1,6 +1,7 @@
 """
 Unit tests for audit event creation.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -17,6 +18,8 @@ from hub.apps.audit.utils import (
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

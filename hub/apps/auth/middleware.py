@@ -30,7 +30,25 @@ class TenantScopingMiddleware(MiddlewareMixin):
                 request.tenant = None
         elif hasattr(request, 'user') and request.user.is_authenticated:
             # Fallback: get tenant from user
-            if hasattr(request.user, 'tenant') and request.user.tenant:
+            # CRITICAL: Query database to get fresh tenant_id (avoid cached relationships)
+            from django.contrib.auth.models import AnonymousUser
+            if not isinstance(request.user, AnonymousUser) and hasattr(request.user, 'id') and request.user.id:
+                try:
+                    # Query user from database to get tenant_id (works in test client)
+                    db_user = User.objects.only('tenant_id').get(id=request.user.id)
+                    if db_user.tenant_id:
+                        request.tenant_id = str(db_user.tenant_id)
+                        # Also set tenant object if not already set
+                        if not hasattr(request, 'tenant') or not request.tenant:
+                            from hub.apps.tenants.models import Tenant
+                            try:
+                                request.tenant = Tenant.objects.get(id=db_user.tenant_id)
+                            except Tenant.DoesNotExist:
+                                request.tenant = None
+                except User.DoesNotExist:
+                    pass
+            # Legacy fallback: try to get from user object directly
+            elif hasattr(request.user, 'tenant') and request.user.tenant:
                 request.tenant_id = str(request.user.tenant.id)
                 request.tenant = request.user.tenant
         

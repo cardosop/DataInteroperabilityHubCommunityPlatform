@@ -1,6 +1,7 @@
 """
 Unit tests for job timeout handling.
 """
+import pytest
 from django.test import TestCase
 from django.utils import timezone
 from datetime import timedelta
@@ -12,6 +13,8 @@ from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 from django.contrib.auth import get_user_model
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

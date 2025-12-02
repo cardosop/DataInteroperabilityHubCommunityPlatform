@@ -1,10 +1,13 @@
 """
 Unit tests for error reporting format.
 """
+import pytest
 from django.test import TestCase
 from hub.apps.contracts.cli_client import interpret_validation_status, group_errors_by_category
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class ErrorReportingTest(TestCase):
     """Test error reporting format"""
     

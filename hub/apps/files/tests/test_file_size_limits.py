@@ -1,6 +1,7 @@
 """
 Unit tests for file size limits and validation.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -12,6 +13,8 @@ from hub.apps.files.validators import validate_file_size, validate_file_type
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

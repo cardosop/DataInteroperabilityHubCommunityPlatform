@@ -203,8 +203,10 @@ def normalize_datacontract_com_to_hubcontract(datacontract_contract: Dict[str, A
         dc_extensions = {}
         
         # Copy fields that don't map directly
+        # Exclude metadata fields that are not part of the contract data
+        excluded_fields = ['id', 'info', 'schema', 'dataContractSpecification']
         for key, value in datacontract_contract.items():
-            if key not in ['id', 'info', 'schema']:
+            if key not in excluded_fields:
                 dc_extensions[key] = value
         
         if dc_extensions:

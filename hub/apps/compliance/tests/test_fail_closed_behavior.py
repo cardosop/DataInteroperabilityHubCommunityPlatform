@@ -1,6 +1,7 @@
 """
 Unit tests for fail-closed behavior.
 """
+import pytest
 import uuid
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -10,10 +11,14 @@ from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.compliance.views import execute_compliance_run
 from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.files.models import File, FileStatus
-from hub.apps.assets.models import Asset
+from hub.apps.assets.models import Asset, ComplianceStatus
+from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, NormalizationStatus, OriginalSpecType, OriginalFormat
+from hub.apps.datasets.models import Dataset
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -170,6 +175,31 @@ class FailClosedBehaviorTest(TestCase):
             created_by=self.user
         )
         
+        # Create a contract for the asset (required for activation)
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            status=ContractStatus.ACTIVE,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test", "name": "Test Contract"}',
+            hub_contract_version="1.0.0",
+            hub_contract_json={"hub_contract_version": 1, "id": "test"},
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            created_by=self.user
+        )
+        
+        # Create a dataset for the asset (required for compliance check in can_activate)
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            file=self.file,
+            format="CSV",
+            created_by=self.user
+        )
+        
         # Create compliance run for asset
         compliance_run = ComplianceRun.objects.create(
             tenant=self.tenant,
@@ -187,10 +217,12 @@ class FailClosedBehaviorTest(TestCase):
         asset.refresh_from_db()
         
         self.assertFalse(compliance_run.allowed_to_store)
-        self.assertEqual(asset.compliance_status, AssetComplianceStatus.FAIL)
+        self.assertEqual(asset.compliance_status, ComplianceStatus.FAIL)
         
         # Asset activation should be blocked (enforced at asset.can_activate() level)
-        can_activate, reason = asset.can_activate()
+        can_activate, blockers = asset.can_activate()
         self.assertFalse(can_activate)
-        self.assertIn('compliance_status', reason.lower())
+        # Check that compliance_status is mentioned in blockers
+        blocker_text = ' '.join(blockers).lower()
+        self.assertIn('compliance_status', blocker_text)
 

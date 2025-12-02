@@ -1,6 +1,7 @@
 """
 Unit tests for chunked/multipart upload functionality.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -12,6 +13,8 @@ from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.files.validators import get_chunk_size, calculate_chunk_count
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

@@ -55,6 +55,39 @@ class AssetUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=AssetStatus.choices, required=False)
     visibility = serializers.ChoiceField(choices=AssetVisibility.choices, required=False)
     version = serializers.IntegerField(help_text="Current version for optimistic locking")
+    
+    def save(self, instance=None):
+        """
+        Update the asset instance with validated data.
+        
+        Args:
+            instance: Asset instance to update (uses self.instance if not provided)
+            
+        Returns:
+            Updated Asset instance
+        """
+        # Use instance from constructor if not provided
+        if not instance:
+            instance = self.instance
+        
+        if not instance:
+            raise ValueError("Instance is required for AssetUpdateSerializer.save()")
+        
+        # Update fields
+        if 'name' in self.validated_data:
+            instance.name = self.validated_data['name']
+        if 'description' in self.validated_data:
+            instance.description = self.validated_data['description']
+        if 'domain' in self.validated_data:
+            instance.domain = self.validated_data['domain']
+        if 'status' in self.validated_data:
+            instance.status = self.validated_data['status']
+        if 'visibility' in self.validated_data:
+            instance.visibility = self.validated_data['visibility']
+        
+        # Save and return
+        instance.save()
+        return instance
 
 
 class AttachDatasetSerializer(serializers.Serializer):

@@ -1,16 +1,21 @@
 """
 Unit tests for job utilities.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
 from hub.apps.jobs.models import Job, JobType
 from hub.apps.jobs.utils import (
+
+
     get_job_timeout,
     create_job,
     get_queue_for_job_type,
 )
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

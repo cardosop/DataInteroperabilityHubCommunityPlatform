@@ -10,7 +10,7 @@ class FileInitSerializer(serializers.Serializer):
     """Serializer for file upload initialization"""
     name = serializers.CharField(max_length=255, help_text="Original filename")
     content_type = serializers.CharField(max_length=100, help_text="MIME type")
-    size = serializers.IntegerField(min_value=1, help_text="File size in bytes")
+    size = serializers.IntegerField(min_value=0, help_text="File size in bytes (0 for empty files)")
     upload_method = serializers.ChoiceField(
         choices=["browser", "sdk"],
         default="browser",
@@ -93,7 +93,7 @@ class FileDownloadResponseSerializer(serializers.Serializer):
 
 class ChunkUploadInitSerializer(serializers.Serializer):
     """Serializer for chunked upload initialization"""
-    file_id = serializers.UUIDField()
+    # file_id is not required here - it's in the URL path
     chunk_number = serializers.IntegerField(min_value=1)
     chunk_size = serializers.IntegerField(min_value=1)
 

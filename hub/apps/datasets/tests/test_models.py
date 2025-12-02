@@ -1,6 +1,7 @@
 """
 Unit tests for Dataset model.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
@@ -8,6 +9,8 @@ from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

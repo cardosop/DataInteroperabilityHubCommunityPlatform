@@ -1,6 +1,7 @@
 """
 Unit tests for contract normalization.
 """
+import pytest
 from django.test import TestCase
 from hub.apps.contracts.normalization import (
     normalize_contract,
@@ -12,6 +13,8 @@ from hub.apps.contracts.normalization import (
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class NormalizationTest(TestCase):
     """Test contract normalization"""
     

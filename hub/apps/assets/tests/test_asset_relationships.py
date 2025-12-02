@@ -1,6 +1,8 @@
 """
 Unit tests for asset-dataset-contract relationships.
 """
+import pytest
+from unittest.mock import patch, MagicMock
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -14,6 +16,8 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -324,4 +328,73 @@ class AssetRelationshipsTest(TestCase):
         
         asset.refresh_from_db()
         self.assertEqual(asset.status, AssetStatus.DRAFT)  # Status unchanged
+    
+    @patch('hub.apps.semantic.utils.SemanticServiceClient')
+    def test_attach_contract_triggers_field_remapping(self, mock_client_class):
+        """Test that attaching contract to asset triggers field remapping"""
+        from hub.apps.semantic.models import SemanticResource, ResourceType
+        from hub.apps.semantic.utils import remap_contract_if_needed
+        
+        self.client.force_authenticate(user=self.user)
+        
+        # Setup mock semantic service
+        mock_client = MagicMock()
+        mock_client.map_contract.return_value = {
+            'contract_uri': 'https://hub.example.com/id/contract/test-uuid',
+            'triples_count': 20,
+            'semantic_status': 'OK'
+        }
+        mock_client_class.return_value = mock_client
+        
+        # Create asset
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset",
+            name="Test Asset",
+            created_by=self.user
+        )
+        
+        # Create contract with hub_contract_json and schema fields, but no asset
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.0",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test", "name": "Test", "schema": {"fields": [{"name": "id", "type": "string"}]}}',
+            hub_contract_json={
+                'id': 'test',
+                'name': 'Test Contract',
+                'schema': {
+                    'fields': [
+                        {'name': 'id', 'type': 'string'},
+                        {'name': 'name', 'type': 'string'}
+                    ]
+                }
+            },
+            validation_status=ValidationStatus.VALID,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            created_by=self.user
+        )
+        
+        # Attach contract to asset (should trigger remapping)
+        data = {"contract_id": str(contract.id)}
+        response = self.client.post(f"/api/v1/assets/assets/{asset.id}/contracts/", data, format="json")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify contract was attached
+        contract.refresh_from_db()
+        self.assertEqual(contract.asset, asset)
+        
+        # Verify remapping was called with asset_uuid
+        mock_client.map_contract.assert_called()
+        call_args = mock_client.map_contract.call_args
+        self.assertEqual(call_args[1]['asset_uuid'], str(asset.id))
+        
+        # Verify semantic resource was created/updated
+        semantic_resource = SemanticResource.objects.filter(
+            resource_type=ResourceType.CONTRACT,
+            resource_id=contract.id
+        ).first()
+        self.assertIsNotNone(semantic_resource)
 

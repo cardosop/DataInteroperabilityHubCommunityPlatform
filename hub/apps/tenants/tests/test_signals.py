@@ -1,10 +1,13 @@
 """
 Unit tests for tenant signals.
 """
+import pytest
 from django.test import TestCase
 from hub.apps.tenants.models import Tenant
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class TenantSignalsTest(TestCase):
     """Test tenant signals"""
     

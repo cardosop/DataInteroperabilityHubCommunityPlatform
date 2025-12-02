@@ -1,12 +1,15 @@
 """
 Unit tests for Job model.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from hub.apps.tenants.models import Tenant
 from hub.apps.jobs.models import Job, JobType, JobStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

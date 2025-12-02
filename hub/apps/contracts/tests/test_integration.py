@@ -21,6 +21,8 @@ from hub.apps.contracts.cli_client import DataContractCLIClient
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

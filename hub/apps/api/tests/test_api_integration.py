@@ -3,6 +3,7 @@ Integration tests for REST API endpoints.
 
 Tests cover all major API endpoints to ensure they work correctly.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -12,6 +13,10 @@ from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant, KYCStatus
 
 User = get_user_model()
+
+# Mark all tests in this class to use database with transactions
+# This ensures proper handling of Django's TestCase with pytest-django
+pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class APIIntegrationTest(TestCase):

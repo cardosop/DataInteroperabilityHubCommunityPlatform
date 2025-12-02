@@ -1,6 +1,7 @@
 """
 Unit tests for contract validation views (critical path).
 """
+import pytest
 from unittest.mock import patch, Mock
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -9,6 +10,8 @@ from rest_framework import status
 from hub.apps.tenants.models import Tenant
 from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, OriginalSpecType, OriginalFormat
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

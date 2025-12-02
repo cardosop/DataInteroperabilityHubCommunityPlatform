@@ -52,13 +52,19 @@ class UserViewSet(viewsets.ModelViewSet):
         
         # Platform admins can see all users
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return User.objects.all()
-        
+            queryset = User.objects.all()
         # Regular users can only see users in their tenant
-        if hasattr(user, "tenant") and user.tenant:
-            return User.objects.filter(tenant=user.tenant)
+        elif hasattr(user, "tenant") and user.tenant:
+            queryset = User.objects.filter(tenant=user.tenant)
+        else:
+            return User.objects.none()
         
-        return User.objects.none()
+        # Filter by status if provided
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        return queryset
     
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -67,7 +73,12 @@ class UserViewSet(viewsets.ModelViewSet):
         
         Creates user with optional role assignment and invitation.
         """
-        serializer = UserCreateSerializer(data=request.data)
+        # Set tenant from request user if not provided
+        data = request.data.copy()
+        if 'tenant' not in data and hasattr(request.user, 'tenant') and request.user.tenant:
+            data['tenant'] = str(request.user.tenant.id)
+        
+        serializer = UserCreateSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         
@@ -311,8 +322,26 @@ class UserViewSet(viewsets.ModelViewSet):
         
         Returns True if user has any resources that prevent hard deletion.
         """
-        # TODO: Check for assets, datasets, jobs, etc. when those models are implemented
-        # For now, return False (allow hard delete)
+        # Check for assets created by this user
+        from hub.apps.assets.models import Asset
+        if Asset.objects.filter(created_by=user).exists():
+            return True
+        
+        # Check for datasets created by this user
+        from hub.apps.datasets.models import Dataset
+        if Dataset.objects.filter(created_by=user).exists():
+            return True
+        
+        # Check for contracts created by this user
+        from hub.apps.contracts.models import Contract
+        if Contract.objects.filter(created_by=user).exists():
+            return True
+        
+        # Check for files created by this user
+        from hub.apps.files.models import File
+        if File.objects.filter(created_by=user).exists():
+            return True
+        
         return False
     
     def _send_invitation_email(self, user):

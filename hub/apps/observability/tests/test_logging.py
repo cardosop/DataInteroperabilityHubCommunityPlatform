@@ -1,11 +1,14 @@
 """
 Tests for structured logging and PII redaction
 """
+import pytest
 from django.test import TestCase
 from hub.apps.observability.logging import redact_pii, redact_pii_processor
 import structlog
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class LoggingTest(TestCase):
     """Test logging functionality"""
     

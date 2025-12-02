@@ -171,22 +171,42 @@ def logout(request):
     
     Revokes refresh token(s).
     """
+    revoked_count = 0
+    
     # If refresh token provided, revoke it
     if 'refresh_token' in request.data:
         refresh_token_str = request.data['refresh_token']
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
         
-        try:
-            refresh_token_obj = RefreshToken.objects.get(
-                token_hash=refresh_token_hash,
-                user=request.user
-            )
-            refresh_token_obj.revoke()
-        except RefreshToken.DoesNotExist:
-            pass  # Token doesn't exist, already revoked or invalid
+        # Try to find and revoke the token
+        # Use user_id instead of user to handle object instance differences
+        refresh_token_obj = RefreshToken.objects.filter(
+            token_hash=refresh_token_hash,
+            user_id=request.user.id
+        ).first()
+        
+        if refresh_token_obj:
+            # Token found - revoke it
+            if not refresh_token_obj.revoked_at:
+                refresh_token_obj.revoked_at = timezone.now()
+                refresh_token_obj.save(update_fields=["revoked_at", "updated_at"])
+                revoked_count = 1
+        else:
+            # If not found with user match, try without user match (fallback)
+            # This handles edge cases but should not normally be needed
+            refresh_token_obj = RefreshToken.objects.filter(
+                token_hash=refresh_token_hash
+            ).first()
+            
+            if refresh_token_obj and refresh_token_obj.user_id == request.user.id:
+                # Only revoke if the token's user ID matches request.user ID
+                if not refresh_token_obj.revoked_at:
+                    refresh_token_obj.revoked_at = timezone.now()
+                    refresh_token_obj.save(update_fields=["revoked_at", "updated_at"])
+                    revoked_count = 1
     else:
         # Revoke all refresh tokens for this user
-        RefreshToken.objects.filter(
+        revoked_count = RefreshToken.objects.filter(
             user=request.user,
             revoked_at__isnull=True
         ).update(revoked_at=timezone.now())
@@ -195,11 +215,14 @@ def logout(request):
     log_auth_operation(
         action="LOGOUT",
         user=request.user,
-        details={},
+        details={"revoked_tokens": revoked_count},
         request=request
     )
     
-    return Response({'message': 'Logged out successfully'}, status=status.HTTP_200_OK)
+    return Response({
+        'message': 'Logged out successfully',
+        'revoked_sessions': revoked_count
+    }, status=status.HTTP_200_OK)
 
 
 @extend_schema(

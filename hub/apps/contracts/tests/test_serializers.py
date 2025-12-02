@@ -1,16 +1,21 @@
 """
 Unit tests for contract serializers.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
 from hub.apps.contracts.serializers import (
+
+
     ContractSerializer,
     ContractCreateSerializer,
     ContractUpdateSerializer,
 )
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

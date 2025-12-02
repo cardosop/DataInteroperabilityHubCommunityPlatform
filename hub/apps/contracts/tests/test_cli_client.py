@@ -1,10 +1,13 @@
 """
 Unit tests for DataContract CLI client (critical path).
 """
+import pytest
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
 from django.core.cache import cache
 from hub.apps.contracts.cli_client import (
+
+
     DataContractCLIClient,
     interpret_validation_status,
     group_errors_by_category,
@@ -12,6 +15,8 @@ from hub.apps.contracts.cli_client import (
 )
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class DataContractCLIClientTest(TestCase):
     """Test DataContract CLI client (critical path for contract validation)"""
     

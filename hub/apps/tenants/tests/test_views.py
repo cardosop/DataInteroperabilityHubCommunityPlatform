@@ -1,6 +1,7 @@
 """
 Unit tests for Tenant API views.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -9,6 +10,8 @@ from unittest.mock import Mock
 
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 # For now, use a mock user model until User model is implemented
 try:
     User = get_user_model()

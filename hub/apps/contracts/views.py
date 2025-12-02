@@ -581,7 +581,8 @@ class ContractViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     'converted_contract': convert_result.get('converted_contract', ''),
-                    'format': target_format,
+                    'target_format': convert_result.get('target_format', target_format),
+                    'format': target_format,  # Keep for backward compatibility
                     'cli_version': convert_result.get('cli_version', 'unknown')
                 },
                 status=status.HTTP_200_OK
@@ -647,10 +648,29 @@ class ContractViewSet(viewsets.ModelViewSet):
             migrated, migrated_hub_contract, warnings = ContractMigrationManager.migrate_on_write(contract)
             
             if not migrated:
-                return Response(
-                    {'error': 'Migration failed or not supported'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                # Migration not needed (already at target version) or failed
+                # Check if it's because migration isn't needed
+                from .migration import needs_migration
+                if not needs_migration(contract.hub_contract_version):
+                    # Already at target version - return success
+                    return Response(
+                        {
+                            'contract': ContractSerializer(contract).data,
+                            'migration_applied': False,
+                            'migration_details': {
+                                'source_version': contract.hub_contract_version,
+                                'target_version': target_version,
+                                'message': 'Contract is already at target version'
+                            }
+                        },
+                        status=status.HTTP_200_OK
+                    )
+                else:
+                    # Migration failed
+                    return Response(
+                        {'error': 'Migration failed or not supported'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
             # Refresh contract from DB
             contract.refresh_from_db()
@@ -696,10 +716,28 @@ class ContractViewSet(viewsets.ModelViewSet):
             job = ContractMigrationManager.migrate_background(contract, user=request.user)
             
             if not job:
-                return Response(
-                    {'error': 'Migration failed or not needed'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                # Check if migration isn't needed (already at target version)
+                from .migration import needs_migration
+                if not needs_migration(contract.hub_contract_version):
+                    # Already at target version - return success
+                    return Response(
+                        {
+                            'contract': ContractSerializer(contract).data,
+                            'migration_applied': False,
+                            'migration_details': {
+                                'source_version': contract.hub_contract_version,
+                                'target_version': target_version,
+                                'message': 'Contract is already at target version'
+                            }
+                        },
+                        status=status.HTTP_200_OK
+                    )
+                else:
+                    # Migration failed
+                    return Response(
+                        {'error': 'Migration failed or not needed'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
             return Response(
                 {

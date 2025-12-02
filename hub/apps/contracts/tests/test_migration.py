@@ -1,6 +1,7 @@
 """
 Contract Migration Tests
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
@@ -16,6 +17,8 @@ from hub.apps.contracts.migration import (
 from hub.apps.contracts.migration_manager import ContractMigrationManager
 from hub.apps.jobs.models import Job, JobType, JobStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -73,20 +76,19 @@ class MigrationTest(TestCase):
         self.assertFalse(needs_migration("1.0.0"))
         
         # Contract at older version needs migration
-        # (when v2.0.0 is introduced, this will be True)
-        # For now, v1 is current, so no migration needed
-        self.assertFalse(needs_migration("0.9.0"))  # Hypothetical older version
+        # needs_migration returns True if version differs from current
+        self.assertTrue(needs_migration("0.9.0"))  # Different from current version
     
     def test_can_migrate(self):
         """Test can_migrate check"""
-        # Can migrate v1 -> v2 (when v2 is introduced)
-        # For now, v1 is current, so migration not supported yet
-        self.assertFalse(can_migrate("1.0.0", "2.0.0"))  # v2 not implemented yet
+        # Can migrate v1 -> v2 (v2 migration is implemented)
+        self.assertTrue(can_migrate("1.0.0", "2.0.0"))
         
         # Cannot downgrade
         self.assertFalse(can_migrate("2.0.0", "1.0.0"))
         
-        # Same version doesn't need migration
+        # Same version doesn't need migration (but can_migrate checks if path exists)
+        # Same version returns False (no migration path needed)
         self.assertFalse(can_migrate("1.0.0", "1.0.0"))
     
     def test_migrate_hubcontract_v1_to_v2(self):

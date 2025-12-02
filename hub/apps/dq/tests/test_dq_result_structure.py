@@ -1,6 +1,7 @@
 """
 Unit tests for DQ result structure.
 """
+import pytest
 import uuid
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -15,6 +16,8 @@ from hub.apps.assets.models import Asset
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

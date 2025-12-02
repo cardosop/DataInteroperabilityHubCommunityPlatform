@@ -1,11 +1,14 @@
 """
 Unit tests for AuditEvent model.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
 from hub.apps.audit.models import AuditEvent
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

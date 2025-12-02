@@ -3,6 +3,7 @@ Integration tests for multi-tenant isolation (T.8).
 
 Tests that tenants cannot access each other's data.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -13,6 +14,8 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.files.models import File, FileStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

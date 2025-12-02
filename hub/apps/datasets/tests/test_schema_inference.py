@@ -1,8 +1,11 @@
 """
 Unit tests for schema inference functionality.
 """
+import pytest
 from django.test import TestCase
 from hub.apps.datasets.schema_inference import (
+
+
     infer_schema_from_csv,
     infer_schema_from_json,
     infer_schema_from_parquet,
@@ -12,6 +15,8 @@ from hub.apps.datasets.schema_inference import (
 )
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class SchemaInferenceTest(TestCase):
     """Test schema inference for different file formats"""
     

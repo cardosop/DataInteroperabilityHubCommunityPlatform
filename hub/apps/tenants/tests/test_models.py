@@ -9,6 +9,8 @@ from django.utils import timezone
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class TenantModelTest(TestCase):
     """Test Tenant model"""
     

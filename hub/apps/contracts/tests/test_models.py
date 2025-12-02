@@ -1,11 +1,14 @@
 """
 Unit tests for Contract model.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from hub.apps.tenants.models import Tenant
 from hub.apps.contracts.models import (
+
+
     Contract,
     ContractStatus,
     ValidationStatus,
@@ -14,6 +17,8 @@ from hub.apps.contracts.models import (
     OriginalFormat,
 )
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

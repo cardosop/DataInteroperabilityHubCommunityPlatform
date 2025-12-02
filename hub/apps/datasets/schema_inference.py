@@ -13,9 +13,11 @@ import re
 try:
     import pandas as pd
     import pyarrow.parquet as pq
+    import numpy as np
     PANDAS_AVAILABLE = True
 except ImportError:
     PANDAS_AVAILABLE = False
+    np = None
 
 
 # Default sample size for schema inference
@@ -249,7 +251,12 @@ def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPL
         
         try:
             obj = json.loads(line)
-            objects.append(obj)
+            # Only accept dict objects in JSON Lines format
+            # If it's a list, expand it
+            if isinstance(obj, list):
+                objects.extend([item for item in obj if isinstance(item, dict)][:sample_size])
+            elif isinstance(obj, dict):
+                objects.append(obj)
         except json.JSONDecodeError:
             continue
     
@@ -258,7 +265,8 @@ def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPL
         try:
             data = json.loads(text_content)
             if isinstance(data, list):
-                objects = data[:sample_size]
+                # Extract dict objects from list
+                objects = [item for item in data if isinstance(item, dict)][:sample_size]
             elif isinstance(data, dict):
                 objects = [data]
         except json.JSONDecodeError:
@@ -270,6 +278,8 @@ def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPL
     # Flatten nested objects (using dot notation)
     def flatten_dict(d: dict, parent_key: str = '', sep: str = '.') -> dict:
         """Flatten nested dictionary"""
+        if not isinstance(d, dict):
+            return {}
         items = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -282,8 +292,8 @@ def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPL
                 items.append((new_key, v))
         return dict(items)
     
-    # Flatten all objects
-    flattened_objects = [flatten_dict(obj) for obj in objects]
+    # Flatten all objects (ensure all are dicts)
+    flattened_objects = [flatten_dict(obj) for obj in objects if isinstance(obj, dict)]
     
     # Get all field names
     all_fields = set()
@@ -358,13 +368,32 @@ def infer_schema_from_parquet(file_content: bytes) -> Dict[str, Any]:
             else:
                 data_type = 'string'
             
-            # Check nullable
-            nullable = df[column].isna().any()
+            # Check nullable - convert numpy bool to Python bool
+            nullable = bool(df[column].isna().any())
             
             # Get sample values
             sample_values = sample_df[column].head(10).tolist()
-            # Convert NaN to None
-            sample_values = [None if pd.isna(v) else v for v in sample_values]
+            # Convert NaN to None and numpy types to Python native types for JSON serialization
+            def convert_to_json_serializable(v):
+                if pd.isna(v):
+                    return None
+                # Convert numpy types to Python native types
+                if np is not None:
+                    # Convert numpy bool to Python bool
+                    if isinstance(v, np.bool_):
+                        return bool(v)
+                    # Convert numpy int/float to Python int/float
+                    if isinstance(v, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+                        return int(v)
+                    if isinstance(v, (np.floating, np.float64, np.float32, np.float16)):
+                        return float(v)
+                    # For other numpy scalars, use item() method
+                    if hasattr(v, 'item'):
+                        return v.item()
+                # Python native bool is already JSON serializable
+                return v
+            
+            sample_values = [convert_to_json_serializable(v) for v in sample_values]
             
             field_schema = {
                 'name': column,
@@ -432,7 +461,12 @@ def extract_sample_data(file_content: bytes, format: str, sample_size: int = DEF
                 continue
             try:
                 obj = json.loads(line)
-                objects.append(obj)
+                # Handle both dicts and lists in JSON Lines
+                if isinstance(obj, list):
+                    # Expand list items (only dicts)
+                    objects.extend([item for item in obj if isinstance(item, dict)][:sample_size])
+                elif isinstance(obj, dict):
+                    objects.append(obj)
             except json.JSONDecodeError:
                 continue
         
@@ -441,7 +475,8 @@ def extract_sample_data(file_content: bytes, format: str, sample_size: int = DEF
             try:
                 data = json.loads(text_content)
                 if isinstance(data, list):
-                    return data[:sample_size]
+                    # Extract dict objects from list, limit to sample_size
+                    return [item for item in data if isinstance(item, dict)][:sample_size]
                 elif isinstance(data, dict):
                     return [data]
             except json.JSONDecodeError:

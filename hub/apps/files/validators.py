@@ -13,12 +13,16 @@ def validate_file_size(size: int, upload_method: str = "browser") -> None:
     Validate file size against limits.
     
     Args:
-        size: File size in bytes
+        size: File size in bytes (0 is allowed for empty files)
         upload_method: "browser" or "sdk"
     
     Raises:
         ValidationError if file size exceeds limits
     """
+    # Allow empty files (size=0)
+    if size < 0:
+        raise ValidationError("File size cannot be negative")
+    
     if upload_method == "browser":
         max_size = settings.MAX_BROWSER_UPLOAD_SIZE
         limit_name = "browser upload limit"
@@ -29,13 +33,13 @@ def validate_file_size(size: int, upload_method: str = "browser") -> None:
         max_size = settings.MAX_FILE_SIZE
         limit_name = "global file size limit"
     
-    # Also check global max
-    if size > settings.MAX_FILE_SIZE:
+    # Also check global max (skip for empty files)
+    if size > 0 and size > settings.MAX_FILE_SIZE:
         raise ValidationError(
             f"File size ({size} bytes) exceeds global maximum ({settings.MAX_FILE_SIZE} bytes)"
         )
     
-    if size > max_size:
+    if size > 0 and size > max_size:
         raise ValidationError(
             f"File size ({size} bytes) exceeds {limit_name} ({max_size} bytes)"
         )

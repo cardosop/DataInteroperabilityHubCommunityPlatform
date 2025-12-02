@@ -1,10 +1,13 @@
 """
 Unit tests for sample data extraction.
 """
+import pytest
 from django.test import TestCase
 from hub.apps.datasets.schema_inference import extract_sample_data
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class SampleDataExtractionTest(TestCase):
     """Test sample data extraction for different file formats"""
     

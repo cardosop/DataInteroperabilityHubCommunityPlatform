@@ -1,11 +1,14 @@
 """
 Unit tests for DQ service client (critical path).
 """
+import pytest
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
 from hub.apps.dq.service_client import DQServiceClient
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class DQServiceClientTest(TestCase):
     """Test DQ service client (critical path for data quality)"""
     
@@ -59,12 +62,16 @@ class DQServiceClientTest(TestCase):
         }
         mock_response.raise_for_status = Mock()
         
+        # Use unique file content to avoid cache interference from other tests
+        unique_content = b'id,name\n1,TestFailure\n2,AnotherFailure'
+        
         # Mock the client's _request_with_retry method
         with patch.object(self.client, '_request_with_retry', return_value=mock_response):
             result = self.client.run_dq(
-                file_content=b'id,name\n1,Test',
+                file_content=unique_content,
                 file_format='csv',
-                profile_key='intake_basic_gx'
+                profile_key='intake_basic_gx',
+                use_cache=False  # Disable cache to avoid interference
             )
         
         self.assertEqual(result['overall_status'], 'FAIL')

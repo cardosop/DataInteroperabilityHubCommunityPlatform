@@ -1,12 +1,15 @@
 """
 Unit tests for tenant middleware.
 """
+import pytest
 from django.test import TestCase, RequestFactory
 from django.http import HttpResponse, JsonResponse
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.tenants.middleware import TenantSuspensionMiddleware
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class TenantSuspensionMiddlewareTest(TestCase):
     """Test TenantSuspensionMiddleware"""
     

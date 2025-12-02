@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # PostgreSQL Database
   postgres:
@@ -63,7 +61,7 @@ services:
 
   # Apache Jena Fuseki (Triple Store)
   fuseki:
-    image: apache/jena-fuseki:latest
+    image: stain/jena-fuseki:latest
     container_name: hub-fuseki
     environment:
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
@@ -93,6 +91,11 @@ services:
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
       FUSEKI_ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
       HUB_DOMAIN: ${HUB_DOMAIN:-hub.example.com}
+    volumes:
+      - ./services/semantic-service:/app:ro
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       fuseki:
         condition: service_healthy

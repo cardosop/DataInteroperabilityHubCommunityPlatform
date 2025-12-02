@@ -1,11 +1,14 @@
 """
 Unit tests for tenant permissions.
 """
+import pytest
 from django.test import TestCase, RequestFactory
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant, KYCStatus, TenantStatus
 from hub.apps.tenants.permissions import IsPlatformAdmin, CanPublishToMarketplace
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 try:
     User = get_user_model()
     HAS_USER_MODEL = True

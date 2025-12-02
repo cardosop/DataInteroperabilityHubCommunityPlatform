@@ -1,6 +1,7 @@
 """
 Unit tests for ComplianceRun model.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
@@ -8,6 +9,8 @@ from hub.apps.assets.models import Asset
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
 from hub.apps.jobs.models import Job, JobType, JobStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

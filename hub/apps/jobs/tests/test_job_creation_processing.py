@@ -1,6 +1,7 @@
 """
 Unit tests for job creation and processing.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -13,6 +14,8 @@ from hub.apps.jobs.utils import create_job, get_job_timeout, get_queue_for_job_t
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

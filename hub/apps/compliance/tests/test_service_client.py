@@ -1,11 +1,14 @@
 """
 Unit tests for compliance service client (critical path).
 """
+import pytest
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
 from hub.apps.compliance.service_client import ComplianceServiceClient
 
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 class ComplianceServiceClientTest(TestCase):
     """Test compliance service client (critical path for compliance)"""
     

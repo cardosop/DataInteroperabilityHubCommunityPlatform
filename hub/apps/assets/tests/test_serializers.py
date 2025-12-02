@@ -1,6 +1,7 @@
 """
 Unit tests for asset serializers.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
@@ -10,6 +11,8 @@ from hub.apps.assets.serializers import (
     AssetCreateSerializer,
     AssetUpdateSerializer,
 )
+
+pytestmark = pytest.mark.django_db(transaction=True)
 
 User = get_user_model()
 

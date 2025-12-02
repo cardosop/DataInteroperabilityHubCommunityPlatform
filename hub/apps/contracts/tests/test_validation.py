@@ -1,6 +1,7 @@
 """
 Unit tests for contract validation.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -22,6 +23,8 @@ from hub.apps.contracts.cli_client import (
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

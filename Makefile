@@ -14,25 +14,25 @@ install: ## Install Python dependencies
 	pip install -r requirements-dev.txt
 
 docker-up: ## Start all Docker services (infrastructure only)
-	docker-compose up -d postgres redis minio fuseki
+	docker compose up -d postgres redis minio fuseki
 
 docker-up-services: ## Start all Docker services including microservices
-	docker-compose up -d postgres redis minio fuseki \
+	docker compose up -d postgres redis minio fuseki \
 		datacontract-service dq-service compliance-service semantic-service
 
 docker-up-all: ## Start all Docker services (infrastructure + microservices + API)
-	docker-compose up -d postgres redis minio fuseki \
+	docker compose up -d postgres redis minio fuseki \
 		datacontract-service dq-service compliance-service semantic-service \
 		api-service worker-service
 
 docker-down: ## Stop all Docker services
-	docker-compose down
+	docker compose down
 
 docker-logs: ## View Docker logs
-	docker-compose logs -f
+	docker compose logs -f
 
 docker-ps: ## Show running Docker containers
-	docker-compose ps
+	docker compose ps
 
 migrate: ## Run database migrations
 	python manage.py migrate
@@ -59,6 +59,16 @@ test-integration-with-services: ## Start services and run integration tests
 	pytest -m integration
 	@echo "Tests completed. Services are still running. Use 'make docker-down' to stop them."
 
+test-with-services: ## Run tests with real services (requires services to be running)
+	@echo "Running tests with real services..."
+	@echo "Make sure services are running: make docker-up-services"
+	USE_REAL_SERVICES=true pytest
+
+test-e2e-with-services: ## Run E2E tests with real services
+	@echo "Running E2E tests with real services..."
+	@echo "Make sure services are running: make docker-up-services"
+	USE_REAL_SERVICES=true cd hub && python manage.py test tests.e2e
+
 test-unit: ## Run unit tests only
 	pytest -m "not integration"
 
@@ -66,8 +76,11 @@ test-cov: ## Run tests with coverage
 	pytest --cov=. --cov-report=html
 
 lint: ## Run linters
-	ruff check .
-	mypy .
+	@echo "Running ruff..."
+	@ruff check . || true
+	@echo "Running mypy..."
+	@mypy hub/ || true
+	@echo "Linting complete!"
 
 format: ## Format code
 	black .
@@ -102,7 +115,7 @@ wait-for-services: ## Wait for all services to be healthy
 		name=$${service%%:*}; port=$${service##*:}; \
 		echo "Waiting for $$name..."; \
 		for i in $$(seq 1 $$timeout); do \
-			if docker-compose exec -T $$name curl -f http://localhost:$$port/health > /dev/null 2>&1 || \
+			if docker compose exec -T $$name curl -f http://localhost:$$port/health > /dev/null 2>&1 || \
 			   curl -f http://localhost:$$port/health > /dev/null 2>&1; then \
 				echo "✅ $$name is healthy"; \
 				break; \

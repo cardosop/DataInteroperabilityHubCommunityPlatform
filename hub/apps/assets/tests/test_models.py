@@ -1,6 +1,7 @@
 """
 Unit tests for Asset model.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -14,6 +15,8 @@ from hub.apps.assets.models import (
 )
 from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, NormalizationStatus
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

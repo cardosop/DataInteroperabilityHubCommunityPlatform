@@ -1,6 +1,7 @@
 """
 Unit tests for file upload and download.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -13,6 +14,8 @@ from hub.apps.files.models import File, FileStatus
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

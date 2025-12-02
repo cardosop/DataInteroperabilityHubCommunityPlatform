@@ -1,6 +1,7 @@
 """
 Unit tests for audit event querying and filtering.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -13,6 +14,8 @@ from hub.apps.audit.utils import create_audit_event
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+
+pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
@@ -155,16 +158,22 @@ class AuditEventQueryingTest(TestCase):
         """Test filtering by time range"""
         self.client.force_authenticate(user=self.user1)
         
-        # Create an old event
+        # Create an old event with timestamp in the past (20 days ago to ensure it's outside the range)
+        # Since audit events are immutable and have auto_now_add, we need to use update() to bypass save()
+        from hub.apps.audit.models import AuditEvent
+        old_timestamp = timezone.now() - timedelta(days=20)
         old_event = create_audit_event(
             resource_type="TEST",
             action="OLD_ACTION",
             actor_user=self.user1,
             tenant=self.tenant1
         )
-        # Manually set timestamp to past
-        old_event.timestamp = timezone.now() - timedelta(days=10)
-        old_event.save(update_fields=['timestamp'])
+        # Use update() to bypass the immutable save() method
+        AuditEvent.objects.filter(pk=old_event.pk).update(timestamp=old_timestamp)
+        old_event.refresh_from_db()
+        
+        # Verify the timestamp was set correctly
+        self.assertLess(old_event.timestamp, timezone.now() - timedelta(days=15))
         
         # Filter for recent events (last 7 days)
         start_date = (timezone.now() - timedelta(days=7)).isoformat()
@@ -173,8 +182,9 @@ class AuditEventQueryingTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         event_ids = [event["id"] for event in response.data["results"]]
         
-        # Should not see old event
-        self.assertNotIn(str(old_event.id), event_ids)
+        # Should not see old event (it's 20 days old, filter is for last 7 days)
+        self.assertNotIn(str(old_event.id), event_ids, 
+                        f"Old event {old_event.id} with timestamp {old_event.timestamp} should not appear in results filtered from {start_date}")
     
     def test_export_json(self):
         """Test exporting audit events as JSON"""

@@ -1,6 +1,7 @@
 """
 Unit tests for audit utilities.
 """
+import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
@@ -12,6 +13,8 @@ from hub.apps.audit.utils import (
     log_user_operation,
     log_auth_operation,
 )
+
+pytestmark = pytest.mark.django_db(transaction=True)
 
 User = get_user_model()
 
