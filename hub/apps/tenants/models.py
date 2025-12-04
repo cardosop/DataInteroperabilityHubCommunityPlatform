@@ -1,12 +1,13 @@
 """
 Tenant Management Models
 
-Defines Tenant model with status and KYC status enums.
+Defines Tenant model with status and KYC status enums, and TenantConfig model for per-tenant configuration.
 """
 import uuid
 from django.db import models
 from django.utils import timezone
-from django.core.validators import RegexValidator
+from django.core.validators import RegexValidator, MinValueValidator, MaxValueValidator
+from django.core.exceptions import ValidationError
 
 
 class TenantStatus(models.TextChoices):
@@ -116,3 +117,110 @@ class Tenant(models.Model):
         self.deleted_at = timezone.now()
         self.save(update_fields=["status", "deleted_at", "updated_at"])
 
+
+class TenantConfig(models.Model):
+    """
+    Tenant Configuration model storing per-tenant configuration settings.
+    
+    Includes DQ profiles, compliance regimes, data retention, rate limits,
+    file size limits, and job concurrency limits.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.OneToOneField(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="config",
+        help_text="Tenant this configuration belongs to"
+    )
+    
+    # DQ Profile Configuration
+    default_dq_profile = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Default DQ profile key (e.g., intake_basic_gx, intake_basic_soda)"
+    )
+    
+    # Compliance Configuration
+    allowed_compliance_regimes = models.JSONField(
+        default=lambda: [],
+        blank=True,
+        help_text="List of compliance regimes available to this tenant (e.g., ['GDPR', 'LGPD', 'CCPA'])"
+    )
+    default_compliance_regimes = models.JSONField(
+        default=lambda: [],
+        blank=True,
+        help_text="Default compliance regimes applied to intake flows (subset of allowed_compliance_regimes)"
+    )
+    
+    # Data Retention
+    data_retention_days = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[
+            MinValueValidator(90, message="Data retention must be at least 90 days"),
+            MaxValueValidator(3650, message="Data retention cannot exceed 3650 days (10 years)")
+        ],
+        help_text="Data retention period in days (90-3650)"
+    )
+    
+    # Rate Limits (JSON structure)
+    rate_limits = models.JSONField(
+        default=lambda: {},
+        null=True,
+        blank=True,
+        help_text="Per-endpoint category rate limits (JSON structure)"
+    )
+    
+    # File Size Limits
+    max_file_size_bytes = models.BigIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        help_text="Maximum file size for uploads in bytes"
+    )
+    
+    # Job Concurrency Limits
+    max_job_concurrency = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        help_text="Maximum concurrent running jobs for this tenant"
+    )
+    max_queued_jobs = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        help_text="Maximum queued jobs for this tenant"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = "tenant_configs"
+        ordering = ["tenant"]
+        indexes = [
+            models.Index(fields=["tenant"]),
+        ]
+    
+    def __str__(self):
+        return f"Config for {self.tenant.name}"
+    
+    def clean(self):
+        """Validate model-level constraints"""
+        super().clean()
+        
+        # Validate default_compliance_regimes is subset of allowed_compliance_regimes
+        if self.default_compliance_regimes and self.allowed_compliance_regimes:
+            default_set = set(self.default_compliance_regimes)
+            allowed_set = set(self.allowed_compliance_regimes)
+            if not default_set.issubset(allowed_set):
+                raise ValidationError({
+                    'default_compliance_regimes': 'Default compliance regimes must be a subset of allowed compliance regimes.'
+                })
+    
+    def save(self, *args, **kwargs):
+        """Override save to run clean validation"""
+        self.full_clean()
+        super().save(*args, **kwargs)

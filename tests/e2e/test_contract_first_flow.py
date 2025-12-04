@@ -23,7 +23,7 @@ from hub.apps.testing.service_utils import check_service_health
 from django.test import override_settings
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 User = get_user_model()
 
 
@@ -35,25 +35,38 @@ class ContractFirstE2ETest(TestCase):
         """Verify services are available before running tests"""
         super().setUpClass()
         
-        # Override settings to use localhost for services during tests
+        # Use staging-aware service URLs
+        from .conftest import (
+            get_datacontract_service_url,
+            get_compliance_service_url,
+            get_dq_service_url,
+            get_s3_endpoint_url,
+            check_service_health
+        )
+        
+        datacontract_url = get_datacontract_service_url()
+        compliance_url = get_compliance_service_url()
+        dq_url = get_dq_service_url()
+        s3_url = get_s3_endpoint_url()
+        
+        # Override settings to use detected service URLs
         cls.override_settings = override_settings(
-            DATACONTRACT_SERVICE_URL='http://localhost:8080',
-            COMPLIANCE_SERVICE_URL='http://localhost:8082',
-            DQ_SERVICE_URL='http://localhost:8083',
-            AWS_S3_ENDPOINT_URL='http://localhost:9000'
+            DATACONTRACT_SERVICE_URL=datacontract_url,
+            COMPLIANCE_SERVICE_URL=compliance_url,
+            DQ_SERVICE_URL=dq_url,
+            AWS_S3_ENDPOINT_URL=s3_url
         )
         cls.override_settings.enable()
         
         # Check if services are available
         services = {
-            'COMPLIANCE_SERVICE_URL': 'http://localhost:8082',
-            'DQ_SERVICE_URL': 'http://localhost:8083',
-            'DATACONTRACT_SERVICE_URL': 'http://localhost:8080'
+            'COMPLIANCE_SERVICE_URL': compliance_url,
+            'DQ_SERVICE_URL': dq_url,
+            'DATACONTRACT_SERVICE_URL': datacontract_url
         }
         
         missing_services = []
-        for service_name, default_url in services.items():
-            service_url = os.getenv(service_name, default_url)
+        for service_name, service_url in services.items():
             if not check_service_health(service_url, timeout=5):
                 missing_services.append(f"{service_name} ({service_url})")
         
@@ -61,7 +74,7 @@ class ContractFirstE2ETest(TestCase):
             cls.override_settings.disable()
             pytest.skip(
                 f"Required services are not available: {', '.join(missing_services)}. "
-                f"Please start services with: docker-compose up -d compliance-service dq-service datacontract-service minio"
+                f"Please start services with: docker-compose -f docker-compose.staging.yml up -d"
             )
     
     @classmethod

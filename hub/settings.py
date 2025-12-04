@@ -65,6 +65,8 @@ INSTALLED_APPS = [
     'hub.apps.graphql',
     'hub.apps.health',
     'hub.apps.observability',
+    'hub.apps.notifications',
+    'hub.apps.rate_limiting',
 ]
 
 MIDDLEWARE = [
@@ -80,7 +82,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'hub.apps.auth.middleware.TenantScopingMiddleware',  # Tenant scoping after authentication
     'hub.apps.tenants.middleware.TenantSuspensionMiddleware',  # Tenant suspension enforcement
-    'hub.apps.api.middleware.RateLimitMiddleware',  # Rate limiting
+    'hub.apps.rate_limiting.middleware.RateLimitMiddleware',  # Advanced rate limiting (replaces basic middleware)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_prometheus.middleware.PrometheusAfterMiddleware',
@@ -114,6 +116,35 @@ WSGI_APPLICATION = 'hub.wsgi.application'
 # PostgreSQL is preferred for tests as it handles threading properly
 import sys
 
+# Helper function to detect staging environment for tests
+def _detect_staging_for_tests():
+    """
+    Detect if we're running tests against staging environment.
+    
+    This function should ONLY be called within test-specific blocks.
+    It defaults to False (non-staging) if detection fails to avoid
+    affecting production environments.
+    """
+    # Check environment variable first (most reliable)
+    test_env = os.getenv('TEST_ENVIRONMENT', '').lower()
+    if test_env == 'staging':
+        return True
+    if test_env == 'default':
+        return False
+    
+    # Auto-detect by checking staging API port
+    try:
+        import httpx
+        response = httpx.get("http://localhost:8001/health", timeout=1)
+        if response.status_code in [200, 503]:
+            return True
+    except Exception:
+        pass
+    
+    # Default to False (non-staging) if detection fails
+    # This prevents production from accidentally using staging ports
+    return False
+
 # Fix threading issue: Disable Django's thread validation for tests
 # Root cause: pytest-django creates database connections in one thread,
 # but Django's TestCase uses them in another thread.
@@ -132,12 +163,27 @@ if 'test' in sys.argv or 'pytest' in sys.modules:
     # Try to use PostgreSQL for tests (better for threading and transaction handling)
     try:
         import psycopg2
+        from psycopg2 import extensions as psycopg2_extensions
         import os
+        
+        # Detect staging environment for tests
+        # Check if staging API port is accessible (indicates staging environment)
+        staging_detected = False
+        try:
+            import httpx
+            response = httpx.get("http://localhost:8001/health", timeout=1)
+            if response.status_code in [200, 503]:  # 503 is OK - service might be unhealthy but exists
+                staging_detected = True
+        except Exception:
+            pass
+        
         postgres_host = os.getenv('POSTGRES_HOST', 'localhost')
-        postgres_db = os.getenv('POSTGRES_DB', 'hub')
-        postgres_user = os.getenv('POSTGRES_USER', 'hub')
-        postgres_password = os.getenv('POSTGRES_PASSWORD', 'hub')
-        postgres_port = os.getenv('POSTGRES_PORT', '5432')
+        postgres_db = os.getenv('POSTGRES_DB', 'hub_staging' if staging_detected else 'hub')
+        postgres_user = os.getenv('POSTGRES_USER', 'hub_staging' if staging_detected else 'hub')
+        postgres_password = os.getenv('POSTGRES_PASSWORD', 'hub_staging_secure' if staging_detected else 'hub')
+        # Use staging port if staging detected, otherwise default
+        default_port = '5433' if staging_detected else '5432'
+        postgres_port = os.getenv('POSTGRES_PORT', default_port)
         
         # Try to connect to verify PostgreSQL is available
         test_conn = psycopg2.connect(
@@ -169,6 +215,10 @@ if 'test' in sys.argv or 'pytest' in sys.modules:
                     # Disable thread validation for tests (pytest-django uses multiple threads)
                     # This is safe in test environment where we control thread usage
                     'connect_timeout': 10,
+                    # CRITICAL: Set transaction isolation level to READ COMMITTED for LiveServerTestCase
+                    # This ensures data committed in one thread is immediately visible to other threads
+                    # Without this, the server thread might not see data created in the test thread
+                    'isolation_level': psycopg2_extensions.ISOLATION_LEVEL_READ_COMMITTED,
                 },
             }
         }
@@ -217,30 +267,84 @@ else:
 # Redis Configuration (for django-rq)
 # When running locally (outside Docker), use 'localhost'
 # When running in Docker, use 'redis' (service name)
-REDIS_URL = env('REDIS_URL', default='redis://localhost:6379/0')
+# For staging, use port 6380 instead of 6379
+# Only detect staging in test mode to avoid affecting production
+is_test_env = 'test' in sys.argv or 'pytest' in sys.modules or os.getenv('PYTEST_CURRENT_TEST')
+if is_test_env:
+    staging_detected = _detect_staging_for_tests()
+    default_redis_port = '6380' if staging_detected else '6379'
+else:
+    # Production/default: use standard port
+    default_redis_port = '6379'
+REDIS_URL = env('REDIS_URL', default=f'redis://localhost:{default_redis_port}/0')
+# RQ Queue Configuration
+# Priority queues: job_critical (HIGH), job_default (NORMAL), job_low (LOW)
+# See design.md Decision 3 for priority queue implementation details
 RQ_QUEUES = {
+    'job_critical': {  # HIGH priority queue
+        'URL': REDIS_URL,
+        'DEFAULT_TIMEOUT': 1800,  # 30 minutes for DQ/compliance runs
+        'DEFAULT_RESULT_TTL': 500,
+    },
+    'job_default': {  # NORMAL priority queue
+        'URL': REDIS_URL,
+        'DEFAULT_TIMEOUT': 360,  # 6 minutes default
+        'DEFAULT_RESULT_TTL': 500,
+    },
+    'job_low': {  # LOW priority queue
+        'URL': REDIS_URL,
+        'DEFAULT_TIMEOUT': 60,  # 1 minute for quick jobs
+        'DEFAULT_RESULT_TTL': 500,
+    },
+    # Legacy 'default' queue for backward compatibility (maps to job_default)
     'default': {
         'URL': REDIS_URL,
         'DEFAULT_TIMEOUT': 360,
         'DEFAULT_RESULT_TTL': 500,
     },
-    'high': {
-        'URL': REDIS_URL,
-        'DEFAULT_TIMEOUT': 1800,  # 30 minutes for DQ/compliance runs
-    },
-    'low': {
-        'URL': REDIS_URL,
-        'DEFAULT_TIMEOUT': 60,
-    },
 }
+
+# Worker Configuration
+# Worker concurrency limits
+WORKER_MAX_CONCURRENCY = env.int('WORKER_MAX_CONCURRENCY', default=4)
+WORKER_MAX_CONCURRENCY_PER_TENANT = env.int('WORKER_MAX_CONCURRENCY_PER_TENANT', default=2)
+
+# Priority queue configuration
+# Reserved slots: Fraction of max concurrency reserved for HIGH priority jobs (default: 50%)
+WORKER_RESERVED_SLOTS_RATIO = env.float('WORKER_RESERVED_SLOTS_RATIO', default=0.5)
+WORKER_RESERVED_SLOTS = max(1, int(WORKER_MAX_CONCURRENCY * WORKER_RESERVED_SLOTS_RATIO))
+WORKER_SHARED_SLOTS = WORKER_MAX_CONCURRENCY - WORKER_RESERVED_SLOTS
+
+# Starvation prevention: Elevate NORMAL priority jobs after wait time threshold (default: 5 minutes)
+WORKER_STARVATION_THRESHOLD_SECONDS = env.int('WORKER_STARVATION_THRESHOLD_SECONDS', default=300)  # 5 minutes
 
 # S3/MinIO Configuration
 USE_S3 = env.bool('USE_S3', default=True)
 if USE_S3:
-    AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='minio')
-    AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='minio123')
+    # Only detect staging in test mode to avoid affecting production
+    is_test_env = 'test' in sys.argv or 'pytest' in sys.modules or os.getenv('PYTEST_CURRENT_TEST')
+    if is_test_env:
+        staging_detected = _detect_staging_for_tests()
+    else:
+        staging_detected = False  # Production defaults to non-staging
+    
+    if staging_detected:
+        AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='minio_staging')
+        AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='minio_staging_secure')
+        default_s3_endpoint = 'http://localhost:9010'
+    else:
+        AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='minio')
+        AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='minio123')
+        # Check if we're in Docker (can resolve 'minio' hostname)
+        try:
+            import socket
+            socket.gethostbyname('minio')
+            default_s3_endpoint = 'http://minio:9000'  # In Docker, use service name
+        except socket.gaierror:
+            default_s3_endpoint = 'http://localhost:9000'  # Outside Docker, use localhost
+    
     AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME', default='hub-files')
-    AWS_S3_ENDPOINT_URL = env('AWS_S3_ENDPOINT_URL', default='http://minio:9000')
+    AWS_S3_ENDPOINT_URL = env('AWS_S3_ENDPOINT_URL', default=default_s3_endpoint)
     AWS_S3_USE_SSL = env.bool('AWS_S3_USE_SSL', default=False)
     AWS_S3_VERIFY = env.bool('AWS_S3_VERIFY', default=False)
     AWS_DEFAULT_ACL = 'private'
@@ -266,6 +370,36 @@ ALLOWED_FILE_TYPES = env.list('ALLOWED_FILE_TYPES', default=['csv', 'json', 'par
 DATACONTRACT_SERVICE_URL = env('DATACONTRACT_SERVICE_URL', default='http://datacontract-service:8080')
 DATACONTRACT_SERVICE_TIMEOUT = env.int('DATACONTRACT_SERVICE_TIMEOUT', default=60)
 DATACONTRACT_VALIDATION_SYNC_SIZE_LIMIT = env.int('DATACONTRACT_VALIDATION_SYNC_SIZE_LIMIT', default=100 * 1024)  # 100KB
+
+# Email Service Configuration
+# EMAIL_BACKEND: 'sendgrid', 'ses', or 'smtp'
+EMAIL_BACKEND = env('EMAIL_BACKEND', default='smtp')
+
+# Base URL for email links
+EMAIL_BASE_URL = env('EMAIL_BASE_URL', default='http://localhost:8000')
+
+# SendGrid Configuration
+SENDGRID_API_KEY = env('SENDGRID_API_KEY', default=None)
+SENDGRID_FROM_EMAIL = env('SENDGRID_FROM_EMAIL', default=None)
+SENDGRID_FROM_NAME = env('SENDGRID_FROM_NAME', default='Data Interoperability Hub')
+
+# AWS SES Configuration
+AWS_SES_REGION = env('AWS_SES_REGION', default=None)
+AWS_SES_FROM_EMAIL = env('AWS_SES_FROM_EMAIL', default=None)
+AWS_SES_FROM_NAME = env('AWS_SES_FROM_NAME', default='Data Interoperability Hub')
+
+# SMTP Configuration
+SMTP_HOST = env('SMTP_HOST', default='localhost')
+SMTP_PORT = env.int('SMTP_PORT', default=587)
+SMTP_USERNAME = env('SMTP_USERNAME', default=None)
+SMTP_PASSWORD = env('SMTP_PASSWORD', default=None)
+SMTP_USE_TLS = env.bool('SMTP_USE_TLS', default=True)
+SMTP_USE_SSL = env.bool('SMTP_USE_SSL', default=False)
+SMTP_FROM_EMAIL = env('SMTP_FROM_EMAIL', default=None)
+SMTP_FROM_NAME = env('SMTP_FROM_NAME', default='Data Interoperability Hub')
+
+# Email Notification Settings
+EMAIL_JOB_NOTIFICATIONS_ENABLED = env.bool('EMAIL_JOB_NOTIFICATIONS_ENABLED', default=False)
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
@@ -334,7 +468,7 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'SCHEMA_PATH_PREFIX': '/api/v1',
-    'COMPONENT_SPLIT_REQUEST': True,
+    'COMPONENT_SPLIT_REQUEST': False,  # Disabled to avoid dict processing issues
     'COMPONENT_NO_READ_ONLY_REQUIRED': True,
     'TAGS': [
         {'name': 'Authentication', 'description': 'User authentication and authorization'},
@@ -351,29 +485,9 @@ SPECTACULAR_SETTINGS = {
         {'name': 'Marketplace', 'description': 'Marketplace listings, orders, and entitlements'},
         {'name': 'Audit', 'description': 'Audit logging'},
     ],
-    # Add custom Error schema component
-    'APPEND_COMPONENTS': {
-        'schemas': {
-            'Error': {
-                'type': 'object',
-                'properties': {
-                    'error': {
-                        'type': 'object',
-                        'properties': {
-                            'code': {'type': 'string', 'description': 'Error code'},
-                            'message': {'type': 'string', 'description': 'Human-readable error message'},
-                            'http_status': {'type': 'integer', 'description': 'HTTP status code'},
-                            'request_id': {'type': 'string', 'format': 'uuid', 'description': 'Request ID for tracing'},
-                            'timestamp': {'type': 'string', 'format': 'date-time', 'description': 'Error timestamp'},
-                            'details': {'type': 'object', 'description': 'Additional error details'},
-                        },
-                        'required': ['code', 'message', 'http_status', 'request_id', 'timestamp'],
-                    },
-                },
-                'required': ['error'],
-            },
-        },
-    },
+    # Note: Custom Error schema removed - using inline serializers in views instead
+    # APPEND_COMPONENTS with dict-based schemas causes 'dict' object has no attribute 'request_only' error
+    # Error schemas are now defined inline in views using inline_serializer
 }
 
 # CORS Configuration
@@ -495,7 +609,11 @@ ENCRYPTION_KEY = env('ENCRYPTION_KEY', default='dev-encryption-key-not-for-produ
 PII_REDACTION_ENABLED = env.bool('PII_REDACTION_ENABLED', default=True)
 
 # Rate Limiting
+# Advanced rate limiting with sliding window algorithm
+# See hub/apps/rate_limiting/config.py for platform defaults and maximums
 RATE_LIMIT_ENABLED = env.bool('RATE_LIMIT_ENABLED', default=True)
+
+# Legacy settings (kept for backward compatibility, but not used by new middleware)
 RATE_LIMIT_PER_TENANT = env.int('RATE_LIMIT_PER_TENANT', default=200)
 RATE_LIMIT_PER_USER = env.int('RATE_LIMIT_PER_USER', default=100)
 

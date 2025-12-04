@@ -9,6 +9,7 @@ Uses REAL services (no mocks).
 import pytest
 import asyncio
 import httpx
+from typing import TYPE_CHECKING
 from django.test import TestCase
 from asgiref.sync import sync_to_async
 from rest_framework import status
@@ -28,6 +29,11 @@ try:
     SDK_AVAILABLE = True
 except ImportError:
     SDK_AVAILABLE = False
+    # Define stub types for type checking when SDK is not available
+    if TYPE_CHECKING:
+        from typing import Any
+        DataHubClientConfig = Any
+        DataHubClient = Any
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus
@@ -39,7 +45,7 @@ from hub.apps.users.models import User, UserStatus
 from .conftest import E2ETestBase
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 
 
 # Helper to wrap Django ORM calls for async tests
@@ -67,7 +73,7 @@ async def get_file(id):
 class SDKPythonE2ETest(E2ETestBase):
     """E2E tests for Python SDK"""
     
-    def get_sdk_config(self) -> DataHubClientConfig:
+    def get_sdk_config(self) -> "DataHubClientConfig":
         """Get SDK config with authenticated token"""
         # Get JWT token via login
         login_response = self.client.post('/api/v1/auth/login/', {
@@ -81,8 +87,9 @@ class SDKPythonE2ETest(E2ETestBase):
         
         access_token = login_response.data['access_token']
         
+        from .conftest import get_api_base_url
         return DataHubClientConfig(
-            base_url="http://localhost:8000/api/v1",
+            base_url=f"{get_api_base_url()}/api/v1",
             api_token=access_token
         )
     
@@ -147,7 +154,7 @@ class SDKPythonE2ETest(E2ETestBase):
         
         # Use invalid token to trigger 401
         config = DataHubClientConfig(
-            base_url="http://localhost:8000/api/v1",
+            base_url=f"{self.api_base_url}/api/v1",
             api_token="invalid-token"
         )
         
@@ -163,7 +170,7 @@ class SDKPythonE2ETest(E2ETestBase):
     async def test_sdk_invalid_token_handling(self):
         """Test SDK handles invalid token correctly"""
         config = DataHubClientConfig(
-            base_url="http://localhost:8000/api/v1",
+            base_url=f"{self.api_base_url}/api/v1",
             api_token="invalid-token"
         )
         
@@ -179,7 +186,7 @@ class SDKPythonE2ETest(E2ETestBase):
     async def test_sdk_missing_token_handling(self):
         """Test SDK handles missing token correctly"""
         config = DataHubClientConfig(
-            base_url="http://localhost:8000/api/v1",
+            base_url=f"{self.api_base_url}/api/v1",
             api_token=None
         )
         
@@ -388,7 +395,7 @@ class SDKPythonE2ETest(E2ETestBase):
     async def test_sdk_unauthorized_error_handling(self):
         """Test SDK handles UnauthorizedError correctly"""
         config = DataHubClientConfig(
-            base_url="http://localhost:8000/api/v1",
+            base_url=f"{self.api_base_url}/api/v1",
             api_token="invalid-token"
         )
         
@@ -520,7 +527,7 @@ class SDKPythonE2ETest(E2ETestBase):
         # Get token first
         base_config = await sync_to_async(self.get_sdk_config)()
         config = DataHubClientConfig(
-            base_url="http://localhost:8000/api/v1",
+            base_url=f"{self.api_base_url}/api/v1",
             api_token=base_config.api_token,
             max_retries=2
         )
@@ -539,7 +546,7 @@ class SDKPythonE2ETest(E2ETestBase):
         # Get token first
         base_config = await sync_to_async(self.get_sdk_config)()
         config = DataHubClientConfig(
-            base_url="http://localhost:8000/api/v1",
+            base_url=f"{self.api_base_url}/api/v1",
             api_token=base_config.api_token,
             timeout=10.0
         )
