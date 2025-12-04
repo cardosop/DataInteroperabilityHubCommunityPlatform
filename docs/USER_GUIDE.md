@@ -118,6 +118,326 @@ The hub supports multiple contract formats:
 - **DataContract.com** format
 - **Hub Contract** format
 
+All contracts are automatically normalized to HubContract format, which includes all sections described below.
+
+### Contract Sections
+
+#### Owners
+
+**What are Owners?**
+
+Owners are individuals or teams responsible for the contract. They are the primary contacts for questions, updates, and maintenance of the contract.
+
+**How to Add Owners:**
+
+In your contract, include an `owners` array in the `info` section:
+
+```json
+{
+  "info": {
+    "owners": [
+      {
+        "name": "Data Platform Team",
+        "email": "dataplatform@example.com"
+      },
+      {
+        "name": "John Doe",
+        "email": "john.doe@example.com"
+      }
+    ]
+  }
+}
+```
+
+**Use Cases:**
+- Identify who to contact for contract questions
+- Track ownership for governance
+- Filter contracts by owner
+- Send notifications to owners
+
+#### Tags
+
+**What are Tags?**
+
+Tags are labels used to organize and categorize contracts. They help you find and filter contracts by topic, domain, or purpose.
+
+**How to Add Tags:**
+
+Include a `tags` array in the `info` section:
+
+```json
+{
+  "info": {
+    "tags": ["analytics", "sales", "orders", "customer-data"]
+  }
+}
+```
+
+**Use Cases:**
+- Organize contracts by business domain (e.g., "sales", "marketing")
+- Categorize by data type (e.g., "customer-data", "transaction-data")
+- Mark contracts by purpose (e.g., "analytics", "reporting")
+- Filter contracts in the UI and API
+
+#### Quality Rules
+
+**What are Quality Rules?**
+
+Quality rules define data quality checks and expectations. They specify what "good" data looks like and how to validate it.
+
+**How to Define Quality Rules:**
+
+Include a `quality` section with `rules` array:
+
+```json
+{
+  "quality": {
+    "default_profile_key": "intake_basic",
+    "rules": [
+      {
+        "rule_id": "not_null_order_id",
+        "dimension": "completeness",
+        "expression": "order_id IS NOT NULL",
+        "severity": "ERROR",
+        "field": "order_id"
+      },
+      {
+        "rule_id": "valid_email_format",
+        "dimension": "validity",
+        "expression": "customer_email LIKE '%@%.%'",
+        "severity": "WARNING",
+        "field": "customer_email"
+      }
+    ]
+  }
+}
+```
+
+**Dimensions:**
+- `completeness`: Check for missing values
+- `validity`: Check data format and constraints
+- `consistency`: Check data consistency across fields
+- `accuracy`: Check data accuracy against reference data
+- `timeliness`: Check data freshness and update frequency
+
+**Severity Levels:**
+- `ERROR`: Critical issue that must be fixed
+- `WARNING`: Issue that should be addressed
+- `INFO`: Informational note
+
+**Use Cases:**
+- Define data quality expectations
+- Automate quality checks during data ingestion
+- Track quality metrics over time
+- Filter contracts by quality profile
+
+#### Compliance Policy
+
+**What is Compliance Policy?**
+
+Compliance policy defines data privacy and regulatory compliance requirements. It specifies what personal data is present, which jurisdictions apply, and how data should be handled.
+
+**How to Define Compliance Policy:**
+
+Include a `privacy_compliance` section:
+
+```json
+{
+  "privacy_compliance": {
+    "contains_personal_data": true,
+    "personal_data_categories": ["EMAIL", "PHONE", "ADDRESS"],
+    "jurisdictions": ["GDPR", "LGPD", "CCPA"],
+    "legal_bases": ["CONSENT", "CONTRACT", "LEGAL_OBLIGATION"],
+    "retention_policy": {
+      "period": "P5Y",
+      "notes": "5 years retention after contract end"
+    }
+  }
+}
+```
+
+**Personal Data Categories:**
+- `EMAIL`: Email addresses
+- `PHONE`: Phone numbers
+- `ADDRESS`: Physical addresses
+- `HEALTH_DATA`: Health information
+- `FINANCIAL_DATA`: Financial information
+- `LOCATION`: Location data
+
+**Jurisdictions:**
+- `GDPR`: General Data Protection Regulation (EU)
+- `LGPD`: Lei Geral de Proteção de Dados (Brazil)
+- `CCPA`: California Consumer Privacy Act (US)
+- `HIPAA`: Health Insurance Portability and Accountability Act (US)
+- `SOX`: Sarbanes-Oxley Act (US)
+
+**Legal Bases:**
+- `CONSENT`: Data subject has given consent
+- `CONTRACT`: Processing necessary for contract performance
+- `LEGAL_OBLIGATION`: Processing required by law
+- `VITAL_INTERESTS`: Processing necessary to protect vital interests
+- `PUBLIC_TASK`: Processing necessary for public task
+- `LEGITIMATE_INTERESTS`: Processing necessary for legitimate interests
+
+**Use Cases:**
+- Document compliance requirements
+- Enable compliance scanning
+- Filter contracts by jurisdiction
+- Track data retention policies
+
+#### Lifecycle Policy
+
+**What is Lifecycle Policy?**
+
+Lifecycle policy defines data refresh cadence and service level agreements (SLAs). It specifies how often data is updated and what performance guarantees are provided.
+
+**How to Define Lifecycle Policy:**
+
+Include a `lifecycle` section:
+
+```json
+{
+  "lifecycle": {
+    "data_source": "OLTP.orders",
+    "refresh_cadence": "DAILY",
+    "slas": {
+      "availability": "99.0",
+      "latency_ms_p95": 5000
+    }
+  }
+}
+```
+
+**Refresh Cadence Options:**
+- `REAL_TIME`: Data updated in real-time
+- `HOURLY`: Data updated hourly
+- `DAILY`: Data updated daily
+- `WEEKLY`: Data updated weekly
+- `MONTHLY`: Data updated monthly
+- `ON_DEMAND`: Data updated on demand
+
+**SLA Metrics:**
+- `availability`: Availability percentage (e.g., "99.0" for 99%)
+- `latency_ms_p95`: 95th percentile latency in milliseconds
+
+**Use Cases:**
+- Document data freshness expectations
+- Set performance SLAs
+- Filter contracts by refresh cadence
+- Track data source information
+
+#### Marketplace Policy
+
+**What is Marketplace Policy?**
+
+Marketplace policy defines how the data can be shared and used in the marketplace. It specifies licensing, intended use cases, and restrictions.
+
+**How to Define Marketplace Policy:**
+
+Include a `marketplace` section:
+
+```json
+{
+  "marketplace": {
+    "license_summary": "MIT License",
+    "intended_use": ["analytics", "machine_learning", "reporting"],
+    "restricted_use": ["resale", "competitive_analysis"]
+  }
+}
+```
+
+**Intended Use Cases:**
+- `analytics`: Data analysis and insights
+- `machine_learning`: Training ML models
+- `reporting`: Business reporting
+- `research`: Academic or scientific research
+- `development`: Software development and testing
+
+**Restricted Use Cases:**
+- `resale`: Reselling the data
+- `competitive_analysis`: Using data to compete with the provider
+- `marketing`: Direct marketing to individuals
+- `surveillance`: Surveillance or tracking
+
+**Use Cases:**
+- Define data sharing terms
+- Enable marketplace listings
+- Control data usage
+- Document licensing
+
+#### Field Properties
+
+**What are Field Properties?**
+
+Field properties define the structure, constraints, and semantics of data fields. They specify data types, validation rules, and semantic meaning.
+
+**How to Define Field Properties:**
+
+Include fields in the `schema.fields` array:
+
+```json
+{
+  "schema": {
+    "fields": [
+      {
+        "name": "order_id",
+        "data_type": "string",
+        "nullable": false,
+        "description": "Unique identifier for the order",
+        "semantic_type": "ORDER_ID",
+        "format": null,
+        "pattern": "^ORD-[0-9]{8}$",
+        "enum": null,
+        "default": null,
+        "min_length": 10,
+        "max_length": 20,
+        "minimum": null,
+        "maximum": null,
+        "metadata": {
+          "source_system": "OLTP",
+          "business_key": true
+        }
+      }
+    ],
+    "primary_key": ["order_id"],
+    "unique_constraints": [],
+    "indexes": [["customer_email"]]
+  }
+}
+```
+
+**Field Properties:**
+- `name`: Field name
+- `data_type`: Data type (string, integer, number, boolean, date, datetime)
+- `nullable`: Whether field can be null
+- `description`: Field description
+- `semantic_type`: Semantic type (EMAIL, PHONE, ORDER_ID, CURRENCY, DATE, etc.)
+- `format`: Format specification (email, uri, date-time, uuid, etc.)
+- `pattern`: Regex pattern for validation
+- `enum`: Allowed enum values
+- `default`: Default value
+- `min_length`/`max_length`: String length constraints
+- `minimum`/`maximum`: Numeric value constraints
+- `metadata`: Additional metadata (key-value pairs)
+
+**Semantic Types:**
+- `EMAIL`: Email address
+- `PHONE`: Phone number
+- `ORDER_ID`: Order identifier
+- `CUSTOMER_ID`: Customer identifier
+- `CURRENCY`: Currency amount
+- `DATE`: Date value
+- `TIMESTAMP`: Timestamp value
+- `URL`: URL/URI
+- `IP_ADDRESS`: IP address
+
+**Use Cases:**
+- Define data structure
+- Enable schema validation
+- Support semantic mapping
+- Document field constraints
+- Enable field-level quality checks
+
 ### Validating a Contract
 
 1. Go to **Contracts** → Select your contract
@@ -125,12 +445,23 @@ The hub supports multiple contract formats:
 3. Review validation results
 4. Fix any errors and re-validate
 
+**Validation Status:**
+- `VALID`: Contract is valid
+- `INVALID`: Contract has errors
+- `WARNING_ONLY`: Contract has warnings but no errors
+- `ERROR`: Validation error occurred
+
 ### Activating a Contract
 
 1. Go to **Contracts** → Select your contract
 2. Ensure contract is validated
 3. Click **Activate**
 4. Contract will be linked to assets
+
+**Activation Requirements:**
+- Contract must be validated (`VALID` or `WARNING_ONLY`)
+- Contract must be normalized (`NORMALIZED_OK` or `NORMALIZED_WITH_WARNINGS`)
+- If asset has dataset, DQ and compliance status must be `PASS` or `WARN`
 
 ---
 

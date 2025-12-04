@@ -25,7 +25,11 @@ from .serializers import (
 from .storage import S3StorageClient
 from .validators import get_chunk_size, calculate_chunk_count, validate_file_size, validate_file_type
 from hub.apps.audit.utils import create_audit_event
+from hub.apps.tenants.services import get_tenant_file_size_limit
+import structlog
 from django.conf import settings
+
+logger = structlog.get_logger(__name__)
 
 
 class FileViewSet(viewsets.ModelViewSet):
@@ -47,9 +51,33 @@ class FileViewSet(viewsets.ModelViewSet):
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             return File.objects.all()
         
+        # Get tenant from request (set by middleware/authentication) or user
+        # Priority: request.tenant_id > request.tenant > user.tenant_id > user.tenant
+        tenant_id = None
+        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
+            tenant_id = self.request.tenant_id
+            if isinstance(tenant_id, str):
+                import uuid
+                try:
+                    tenant_id = uuid.UUID(tenant_id)
+                except (ValueError, TypeError):
+                    tenant_id = None
+        if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
+            tenant_id = self.request.tenant.id
+        if not tenant_id and hasattr(user, "tenant_id") and user.tenant_id:
+            tenant_id = user.tenant_id
+        if not tenant_id and hasattr(user, "tenant") and user.tenant:
+            tenant_id = user.tenant.id
+        
         # Regular users can only see files in their tenant
-        if hasattr(user, "tenant") and user.tenant:
-            return File.objects.filter(tenant=user.tenant)
+        if tenant_id:
+            if isinstance(tenant_id, str):
+                import uuid
+                try:
+                    tenant_id = uuid.UUID(tenant_id)
+                except (ValueError, TypeError):
+                    return File.objects.none()
+            return File.objects.filter(tenant_id=tenant_id)
         
         return File.objects.none()
     
@@ -84,6 +112,27 @@ class FileViewSet(viewsets.ModelViewSet):
                 {'error': 'User must belong to a tenant to upload files'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Validate file size with tenant-specific limit
+        try:
+            validate_file_size(size, upload_method, tenant_id=str(tenant.id))
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get tenant file size limit for logging
+        tenant_limit = get_tenant_file_size_limit(str(tenant.id))
+        logger.info(
+            "file_upload_initiated",
+            tenant_id=str(tenant.id),
+            file_name=name,
+            file_size=size,
+            tenant_limit=tenant_limit,
+            upload_method=upload_method,
+            message=f"File upload initiated: {name} ({size} bytes), tenant limit: {tenant_limit} bytes"
+        )
         
         # Generate storage path: tenant_id/file_id/filename
         file_id = uuid.uuid4()
@@ -254,6 +303,28 @@ class FileViewSet(viewsets.ModelViewSet):
                 {'error': f'File size mismatch: expected {file_obj.size}, got {stored_size}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Validate final file size against tenant limit (for chunked uploads, total size may exceed limit)
+        try:
+            tenant_limit = get_tenant_file_size_limit(str(file_obj.tenant.id))
+            if stored_size > tenant_limit:
+                # File already uploaded, but we should reject it
+                # In production, we might want to delete the file from storage
+                return Response(
+                    {
+                        'error': f'File size ({stored_size} bytes) exceeds tenant limit ({tenant_limit} bytes). '
+                                'File upload rejected.'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception as e:
+            logger.warning(
+                "file_size_validation_failed",
+                file_id=str(file_obj.id),
+                error=str(e),
+                message="Failed to validate file size against tenant limit"
+            )
+            # Continue with upload if validation fails (graceful degradation)
         
         # TODO: In production, download file and verify SHA-256 hash
         # For MVP, we trust the client-provided hash

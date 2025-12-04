@@ -8,13 +8,21 @@ from django.conf import settings
 from typing import Optional
 
 
-def validate_file_size(size: int, upload_method: str = "browser") -> None:
+def validate_file_size(size: int, upload_method: str = "browser", tenant_id: Optional[str] = None) -> None:
     """
-    Validate file size against limits.
+    Validate file size against limits (tenant config or platform defaults).
+    
+    Priority:
+    1. Tenant-specific max_file_size_bytes from TenantConfig
+    2. Platform default (10737418240 bytes = 10 GB)
+    
+    Also enforces method-specific limits (browser/SDK) which are typically lower
+    than the tenant limit.
     
     Args:
         size: File size in bytes (0 is allowed for empty files)
         upload_method: "browser" or "sdk"
+        tenant_id: Optional tenant UUID as string (for tenant-specific limits)
     
     Raises:
         ValidationError if file size exceeds limits
@@ -23,22 +31,45 @@ def validate_file_size(size: int, upload_method: str = "browser") -> None:
     if size < 0:
         raise ValidationError("File size cannot be negative")
     
+    # Get tenant-specific limit if tenant_id provided
+    tenant_limit = None
+    if tenant_id:
+        try:
+            from hub.apps.tenants.services import get_tenant_file_size_limit
+            tenant_limit = get_tenant_file_size_limit(tenant_id)
+        except Exception:
+            # If tenant lookup fails, fall back to platform defaults
+            pass
+    
+    # Determine effective limit (tenant limit or platform default)
+    if tenant_limit:
+        effective_limit = tenant_limit
+        limit_source = "tenant configuration"
+    else:
+        effective_limit = settings.MAX_FILE_SIZE
+        limit_source = "platform default"
+    
+    # Method-specific limits (browser/SDK) are typically lower than tenant limit
     if upload_method == "browser":
-        max_size = settings.MAX_BROWSER_UPLOAD_SIZE
+        method_limit = settings.MAX_BROWSER_UPLOAD_SIZE
         limit_name = "browser upload limit"
     elif upload_method == "sdk":
-        max_size = settings.MAX_SDK_UPLOAD_SIZE
+        method_limit = settings.MAX_SDK_UPLOAD_SIZE
         limit_name = "SDK upload limit"
     else:
-        max_size = settings.MAX_FILE_SIZE
-        limit_name = "global file size limit"
+        method_limit = effective_limit
+        limit_name = f"file size limit ({limit_source})"
     
-    # Also check global max (skip for empty files)
-    if size > 0 and size > settings.MAX_FILE_SIZE:
+    # Use the more restrictive limit (method limit or tenant limit)
+    max_size = min(method_limit, effective_limit)
+    
+    # Check tenant/platform limit (skip for empty files)
+    if size > 0 and size > effective_limit:
         raise ValidationError(
-            f"File size ({size} bytes) exceeds global maximum ({settings.MAX_FILE_SIZE} bytes)"
+            f"File size ({size} bytes) exceeds {limit_source} limit ({effective_limit} bytes)"
         )
     
+    # Check method-specific limit (skip for empty files)
     if size > 0 and size > max_size:
         raise ValidationError(
             f"File size ({size} bytes) exceeds {limit_name} ({max_size} bytes)"

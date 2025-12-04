@@ -45,7 +45,7 @@ The platform **MUST** support and enforce the following data contract standards 
 
 The platform **MUST** be able to receive, store, edit/manage, and export contracts while remaining compliant with the supported standards and versions.
 
-- **Canonical internal model (“HubContract”)**
+- **Canonical internal model ("HubContract")**
   - Define a canonical JSON model able to represent all required fields from:
     - ODCS v2.2.2–v3.x
     - DataContract.com specification
@@ -82,6 +82,38 @@ The platform **MUST** be able to receive, store, edit/manage, and export contrac
     - Original → canonical
     - Canonical → target spec/version
   - MUST rely on **DataContract CLI** (no custom spec-specific parsing/rewrites).
+
+### 1.4.1 Complete Normalization Requirements
+
+The platform **MUST** perform complete normalization of all contract sections to ensure full information preservation and comprehensive semantic mapping.
+
+- **Complete Section Coverage**
+  - Normalization MUST extract and preserve ALL sections from source contracts:
+    - **Info section**: name, description, version, owners (array with name/email), tags (array)
+    - **Schema section**: fields (with all properties: name, data_type, nullable, description, semantic_type, format, pattern, enum, default, min/max length/value, metadata), primary_key, unique_constraints, indexes
+    - **Quality section**: default_profile_key, rules (with rule_id, dimension, expression, severity)
+    - **Privacy/Compliance section**: contains_personal_data, personal_data_categories, jurisdictions, legal_bases, retention_policy (period, notes)
+    - **Lifecycle section**: data_source, refresh_cadence, slas (availability, latency_ms_p95)
+    - **Marketplace section**: license_summary, intended_use, restricted_use
+    - **Extensions section**: Unmappable fields preserved in extensions.odcs or extensions.datacontract_com
+
+- **Field-Level Property Extraction**
+  - Normalization MUST extract ALL field properties from source contracts:
+    - Required: name, data_type, nullable
+    - Optional: description, semantic_type, format, pattern, enum, default, min_length, max_length, minimum, maximum, metadata
+  - No field-level information MUST be lost (all properties either mapped or in extensions)
+
+- **Normalization Status Tracking**
+  - Normalization status MUST accurately reflect completeness:
+    - `NORMALIZED_OK`: All sections mapped successfully
+    - `NORMALIZED_WITH_WARNINGS`: Some sections preserved in extensions
+    - `NORMALIZATION_FAILED`: Critical sections missing or invalid
+
+- **Information Preservation**
+  - The original contract file (`original_raw`) MUST be preserved verbatim
+  - All mappable concepts MUST be normalized into HubContract canonical structure
+  - Unmappable fields MUST be preserved in `extensions.{source_spec}` section
+  - Normalization MUST never lose information (all source fields either mapped or preserved)
 
 ### 1.5 DataContract CLI Integration Model - The CLI is wrapped by an internal microservice (e.g. `datacontract-service`) exposing HTTP endpoints: - `POST /validate` → runs `datacontract validate` - `POST /lint` → runs `datacontract lint` - `POST /convert` → runs `datacontract convert ...` - **Invocation** - The hub backend calls this service synchronously for small/normal contracts. - For heavy operations, it may call asynchronously via a job queue with polling from the UI (see §13). - **Error severity & validation status** - The platform MUST interpret CLI output into a `validation_status`: - `VALID` - `INVALID` - `WARNING_ONLY` - `ERROR` (internal error, timeout, or unexpected failure) - Rules: - Only `VALID` contracts can become “active”. - `WARNING_ONLY` MAY be allowed as active but MUST be clearly marked in the UI. - `INVALID` and `ERROR` MUST block activation until resolved. - **Timeouts & failures** - Each CLI call has a configurable timeout (e.g. 30–60 seconds). - On timeout or non-zero exit: - Mark validation as `ERROR`. - Return a user-visible message (“validation service unavailable; please try again”). - Log the error in system logs and audit trail. - **Concurrency** - The service MUST handle concurrent validation requests. - Heavy or long-running validations SHOULD be processed via background jobs. - **CLI versioning** - CLI version is pinned by container/image tag and updated **manually**. - Each validation result SHOULD store: - `cli_version_used` for future audit and debugging.
 
@@ -2280,6 +2312,54 @@ All data contracts and internal components MUST be:
 - Represented as ontology entities:
   - Classes, properties, or individuals.
 - Accessible via semantic interfaces (JSON-LD, RDF, SPARQL, REST).
+
+### 5.2.1 Enhanced Ontology with Standard Vocabularies
+
+The platform **MUST** leverage standard vocabularies to maximize interoperability and reuse established patterns.
+
+- **Standard Vocabulary Integration**
+  - The platform MUST integrate and use the following standard vocabularies:
+    - **DQV (Data Quality Vocabulary)**: For quality rules and dimensions (completeness, accuracy, consistency, timeliness, validity, uniqueness)
+    - **DPV (Data Privacy Vocabulary)**: For compliance, jurisdictions, legal bases, personal data categories (GDPR, LGPD, CCPA, HIPAA, SOX)
+    - **PROV-O (Provenance Ontology)**: For data source and lifecycle relationships
+    - **ODRL (Open Digital Rights Language)**: For marketplace permissions and prohibitions
+    - **SHACL (Shapes Constraint Language)**: For field validation rules (pattern, min/max length/value)
+    - **FOAF (Friend of a Friend)**: For contract owners (agents with name/email)
+    - **Schema.org**: For field semantic types (EmailAddress, PostalAddress, PhoneNumber, etc.)
+  - The hub: ontology MUST extend and complement standard vocabularies (not duplicate)
+  - JSON-LD context MUST include all standard vocabulary prefixes
+
+- **Enhanced Ontology Classes**
+  - The platform MUST define additional ontology classes:
+    - `hub:QualityRule`: Individual quality rule with DQV links
+    - `hub:CompliancePolicy`: Compliance and privacy policy with DPV links
+    - `hub:LifecyclePolicy`: Data lifecycle and operational policies with PROV-O links
+    - `hub:MarketplacePolicy`: Marketplace licensing and usage policies with ODRL links
+    - `hub:Owner`: Contract owners (uses FOAF vocabulary)
+    - `hub:Tag`: Contract tags (also exposed via dcat:keyword)
+
+- **Enhanced Ontology Properties**
+  - The platform MUST define additional ontology properties:
+    - Field validation: `hub:fieldSemanticType`, `hub:fieldFormat`, `hub:fieldPattern`, `hub:fieldEnum`, `hub:fieldMinLength`, `hub:fieldMaxLength`, `hub:fieldMinimum`, `hub:fieldMaximum`, `hub:fieldDefault`
+    - Schema constraints: `hub:isPrimaryKey`, `hub:isUnique`, `hub:isIndexed`
+    - Contract metadata: `hub:hasOwner`, `hub:hasTag`, `hub:ownerName`, `hub:ownerEmail`
+    - Quality rules: `hub:hasQualityRule`, `hub:ruleId`, `hub:ruleDimension`, `hub:ruleExpression`, `hub:ruleSeverity`, `hub:defaultQualityProfile`
+    - Compliance policy: `hub:hasCompliancePolicy`, `hub:containsPersonalData`, `hub:hasPersonalDataCategory`, `hub:hasJurisdiction`, `hub:hasLegalBasis`, `hub:retentionPeriod`, `hub:retentionNotes`
+    - Lifecycle policy: `hub:hasLifecyclePolicy`, `hub:dataSource`, `hub:refreshCadence`, `hub:availabilitySLA`, `hub:latencySLA`
+    - Marketplace policy: `hub:hasMarketplacePolicy`, `hub:licenseSummary`, `hub:intendedUse`, `hub:restrictedUse`
+
+- **Complete RDF Mapping**
+  - The platform MUST map ALL HubContract sections to RDF:
+    - Contract metadata (spec type, version, format, title, description, identifier)
+    - Owners (FOAF agents, linked via `hub:hasOwner`)
+    - Tags (hub:Tag resources, linked via `hub:hasTag`, also `dcat:keyword`)
+    - Schema fields (all properties, constraints, validation rules)
+    - Quality rules (hub:QualityRule with DQV links)
+    - Compliance policy (hub:CompliancePolicy with DPV links)
+    - Lifecycle policy (hub:LifecyclePolicy with PROV-O links)
+    - Marketplace policy (hub:MarketplacePolicy with ODRL links)
+  - All triples MUST be stored in the triple store (Fuseki)
+  - Mapping MUST be complete (no sections skipped)
 
 ### 5.3 Contracts as Semantic Assets
 

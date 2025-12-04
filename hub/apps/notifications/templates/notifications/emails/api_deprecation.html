@@ -1,0 +1,23 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}API Deprecation Notice{% endblock %}
+
+{% block content %}
+<h2>API Deprecation Notice</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>This is a notice that an API endpoint you are using will be deprecated.</p>
+<p><strong>Deprecated Endpoint:</strong> {{ deprecated_endpoint }}</p>
+<p><strong>Deprecation Date:</strong> {{ deprecation_date }}</p>
+<p><strong>Removal Date:</strong> {{ removal_date }}</p>
+{% if replacement_endpoint %}
+<p><strong>Replacement Endpoint:</strong> {{ replacement_endpoint }}</p>
+{% endif %}
+{% if migration_guide_url %}
+<p>For migration instructions, please visit:</p>
+<p style="text-align: center;">
+    <a href="{{ migration_guide_url }}" class="button">Migration Guide</a>
+</p>
+{% endif %}
+<p>Please update your integration before the removal date to avoid service disruption.</p>
+{% endblock %}
+

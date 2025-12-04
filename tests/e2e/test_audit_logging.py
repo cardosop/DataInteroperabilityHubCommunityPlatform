@@ -26,7 +26,7 @@ from .conftest import E2ETestBase
 User = get_user_model()
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e2]
 
 
 class AuditLoggingE2ETest(E2ETestBase):

@@ -24,7 +24,7 @@ from hub.apps.marketplace.models import Entitlement, EntitlementStatus, Listing,
 from .conftest import E2ETestBase
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 
 
 class MultiTenantIsolationE2ETest(E2ETestBase):

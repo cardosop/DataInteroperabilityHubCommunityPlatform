@@ -14,6 +14,9 @@ from .models import Job, JobStatus
 from .serializers import JobSerializer, JobCreateSerializer, JobCancelSerializer
 from .utils import create_job, get_queue_for_job_type
 from hub.apps.audit.utils import create_audit_event
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class JobViewSet(viewsets.ModelViewSet):
@@ -39,9 +42,33 @@ class JobViewSet(viewsets.ModelViewSet):
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             return Job.objects.all()
         
+        # Get tenant from request (set by middleware/authentication) or user
+        # Priority: request.tenant_id > request.tenant > user.tenant_id > user.tenant
+        tenant_id = None
+        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
+            tenant_id = self.request.tenant_id
+            if isinstance(tenant_id, str):
+                import uuid
+                try:
+                    tenant_id = uuid.UUID(tenant_id)
+                except (ValueError, TypeError):
+                    tenant_id = None
+        if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
+            tenant_id = self.request.tenant.id
+        if not tenant_id and hasattr(user, "tenant_id") and user.tenant_id:
+            tenant_id = user.tenant_id
+        if not tenant_id and hasattr(user, "tenant") and user.tenant:
+            tenant_id = user.tenant.id
+        
         # Regular users can only see jobs in their tenant
-        if hasattr(user, "tenant") and user.tenant:
-            return Job.objects.filter(tenant=user.tenant)
+        if tenant_id:
+            if isinstance(tenant_id, str):
+                import uuid
+                try:
+                    tenant_id = uuid.UUID(tenant_id)
+                except (ValueError, TypeError):
+                    return Job.objects.none()
+            return Job.objects.filter(tenant_id=tenant_id)
         
         return Job.objects.none()
     
@@ -77,16 +104,33 @@ class JobViewSet(viewsets.ModelViewSet):
         # Determine queue based on job type
         queue_name = get_queue_for_job_type(job_type)
         
-        # Create and enqueue job
-        job = create_job(
-            job_type=job_type,
-            resource_type=resource_type,
-            resource_id=str(resource_id),
-            tenant=tenant,
-            user=request.user,
-            details_json=details_json,
-            queue_name=queue_name
-        )
+        # Create and enqueue job (checks tenant limits before creating)
+        try:
+            job = create_job(
+                job_type=job_type,
+                resource_type=resource_type,
+                resource_id=str(resource_id),
+                tenant=tenant,
+                user=request.user,
+                details_json=details_json,
+                queue_name=queue_name
+            )
+        except ValidationError as e:
+            # Job creation rejected due to tenant limits
+            return Response(
+                {
+                    'error': {
+                        'code': 'JOB_RATE_LIMITED',
+                        'message': str(e),
+                        'http_status': status.HTTP_429_TOO_MANY_REQUESTS,
+                        'details': {
+                            'reason': 'tenant_job_limits_exceeded',
+                            'tenant_id': str(tenant.id)
+                        }
+                    }
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
         
         # Log audit event
         create_audit_event(
@@ -117,6 +161,7 @@ class JobViewSet(viewsets.ModelViewSet):
         POST /jobs/{id}/cancel
         
         Only PENDING or RUNNING jobs can be cancelled.
+        If job is RUNNING, releases tenant concurrency slot.
         """
         job = self.get_object()
         
@@ -126,8 +171,16 @@ class JobViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Store previous status for audit logging
+        previous_status = job.status
+        
         # Mark job as cancelled
         job.mark_cancelled()
+        
+        # If job was running, release tenant concurrency slot
+        if previous_status == JobStatus.RUNNING and job.tenant:
+            from hub.apps.jobs.utils import decrement_tenant_job_counter
+            decrement_tenant_job_counter(str(job.tenant.id), "running")
         
         # Log audit event
         create_audit_event(
@@ -138,7 +191,7 @@ class JobViewSet(viewsets.ModelViewSet):
             resource_id=str(job.id),
             details={
                 'job_type': job.type,
-                'previous_status': job.status
+                'previous_status': previous_status
             },
             request=request
         )

@@ -83,14 +83,14 @@ class JobProcessingTest(TestCase):
         
         # Update job status to COMPLETED
         job.status = JobStatus.COMPLETED
-        job.finished_at = timezone.now()
+        job.completed_at = timezone.now()
         job.save()
         
         # Verify final state
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.COMPLETED)
         self.assertIsNotNone(job.started_at)
-        self.assertIsNotNone(job.finished_at)
+        self.assertIsNotNone(job.completed_at)
     
     def test_job_listing_filtered_by_tenant(self):
         """Test job listing is filtered by tenant"""

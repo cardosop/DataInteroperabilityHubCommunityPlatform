@@ -28,7 +28,7 @@ from hub.apps.contracts.models import Contract
 from .conftest import E2ETestBase
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e2]
 
 
 class JobOrchestrationE2ETest(E2ETestBase):

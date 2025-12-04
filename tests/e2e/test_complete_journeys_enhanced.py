@@ -37,7 +37,7 @@ from hub.apps.tenants.models import Tenant, KYCStatus
 from .conftest import E2ETestBase
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 
 
 class CompleteDataFirstJourneyE2ETest(E2ETestBase):

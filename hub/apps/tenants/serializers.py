@@ -4,7 +4,13 @@ Tenant Serializers
 DRF serializers for Tenant API.
 """
 from rest_framework import serializers
-from .models import Tenant, TenantStatus, KYCStatus
+from .models import Tenant, TenantStatus, KYCStatus, TenantConfig
+from .validators import (
+    validate_dq_profile,
+    validate_compliance_regimes,
+    validate_rate_limits,
+    get_platform_defaults,
+)
 
 
 class TenantSerializer(serializers.ModelSerializer):
@@ -92,4 +98,159 @@ class TenantSuspendSerializer(serializers.Serializer):
 class TenantReactivateSerializer(serializers.Serializer):
     """Serializer for tenant reactivation"""
     pass
+
+
+class RateLimitsSerializer(serializers.Serializer):
+    """Serializer for rate limits structure"""
+    
+    burst_per_10s = serializers.IntegerField(required=False, min_value=1)
+    sustained_per_min = serializers.IntegerField(required=False, min_value=1)
+    daily_cap = serializers.IntegerField(required=False, min_value=1)
+    
+    def validate(self, data):
+        """Validate rate limits structure"""
+        # At least one limit must be specified
+        if not any(key in data for key in ['burst_per_10s', 'sustained_per_min', 'daily_cap']):
+            raise serializers.ValidationError(
+                "At least one rate limit (burst_per_10s, sustained_per_min, or daily_cap) must be specified"
+            )
+        return data
+
+
+class TenantConfigSerializer(serializers.ModelSerializer):
+    """Serializer for TenantConfig model"""
+    
+    tenant_id = serializers.UUIDField(source='tenant.id', read_only=True)
+    rate_limits = serializers.DictField(
+        child=RateLimitsSerializer(),
+        required=False,
+        allow_null=True,
+        help_text="Per-endpoint category rate limits"
+    )
+    
+    class Meta:
+        model = TenantConfig
+        fields = [
+            "tenant_id",
+            "default_dq_profile",
+            "allowed_compliance_regimes",
+            "default_compliance_regimes",
+            "data_retention_days",
+            "rate_limits",
+            "max_file_size_bytes",
+            "max_job_concurrency",
+            "max_queued_jobs",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["tenant_id", "created_at", "updated_at"]
+    
+    def validate_default_dq_profile(self, value):
+        """Validate DQ profile"""
+        if value:
+            validate_dq_profile(value)
+        return value
+    
+    def validate_allowed_compliance_regimes(self, value):
+        """Validate allowed compliance regimes"""
+        if value:
+            validate_compliance_regimes(value)
+        return value
+    
+    def validate_default_compliance_regimes(self, value):
+        """Validate default compliance regimes"""
+        if value:
+            validate_compliance_regimes(value)
+        return value
+    
+    def validate_rate_limits(self, value):
+        """Validate rate limits"""
+        if value:
+            validate_rate_limits(value)
+        return value
+    
+    def validate(self, data):
+        """Validate cross-field constraints"""
+        # Validate default_compliance_regimes is subset of allowed_compliance_regimes
+        allowed = data.get('allowed_compliance_regimes') or []
+        default = data.get('default_compliance_regimes') or []
+        
+        # If updating, get existing values from instance
+        if self.instance:
+            allowed = data.get('allowed_compliance_regimes', self.instance.allowed_compliance_regimes or [])
+            default = data.get('default_compliance_regimes', self.instance.default_compliance_regimes or [])
+        
+        if default and allowed:
+            default_set = set(default)
+            allowed_set = set(allowed)
+            if not default_set.issubset(allowed_set):
+                raise serializers.ValidationError({
+                    'default_compliance_regimes': 'Default compliance regimes must be a subset of allowed compliance regimes.'
+                })
+        
+        return data
+
+
+class TenantConfigUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for partial TenantConfig updates"""
+    
+    rate_limits = serializers.DictField(
+        child=RateLimitsSerializer(),
+        required=False,
+        allow_null=True,
+        help_text="Per-endpoint category rate limits"
+    )
+    
+    class Meta:
+        model = TenantConfig
+        fields = [
+            "default_dq_profile",
+            "allowed_compliance_regimes",
+            "default_compliance_regimes",
+            "data_retention_days",
+            "rate_limits",
+            "max_file_size_bytes",
+            "max_job_concurrency",
+            "max_queued_jobs",
+        ]
+    
+    def validate_default_dq_profile(self, value):
+        """Validate DQ profile"""
+        if value:
+            validate_dq_profile(value)
+        return value
+    
+    def validate_allowed_compliance_regimes(self, value):
+        """Validate allowed compliance regimes"""
+        if value:
+            validate_compliance_regimes(value)
+        return value
+    
+    def validate_default_compliance_regimes(self, value):
+        """Validate default compliance regimes"""
+        if value:
+            validate_compliance_regimes(value)
+        return value
+    
+    def validate_rate_limits(self, value):
+        """Validate rate limits"""
+        if value:
+            validate_rate_limits(value)
+        return value
+    
+    def validate(self, data):
+        """Validate cross-field constraints"""
+        # Get existing values from instance
+        allowed = data.get('allowed_compliance_regimes', self.instance.allowed_compliance_regimes if self.instance else [])
+        default = data.get('default_compliance_regimes', self.instance.default_compliance_regimes if self.instance else [])
+        
+        if default and allowed:
+            default_set = set(default)
+            allowed_set = set(allowed)
+            if not default_set.issubset(allowed_set):
+                raise serializers.ValidationError({
+                    'default_compliance_regimes': 'Default compliance regimes must be a subset of allowed compliance regimes.'
+                })
+        
+        return data
 

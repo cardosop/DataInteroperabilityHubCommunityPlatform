@@ -17,6 +17,11 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.jobs.utils import create_job, get_job_timeout
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.assets.models import Asset, ComplianceStatus as AssetComplianceStatus
+from hub.apps.tenants.services import get_tenant_compliance_regimes, get_tenant_config
+from hub.apps.tenants.validators import VALID_COMPLIANCE_REGIMES
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class ComplianceRunViewSet(viewsets.ModelViewSet):
@@ -75,6 +80,45 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         file_id = serializer.validated_data.get('file_id')
         scan_mode = serializer.validated_data.get('scan_mode', 'internal')
         applicable_regulations = serializer.validated_data.get('applicable_regulations')
+        
+        # Determine applicable regulations (explicit request > tenant default > platform default)
+        regimes_source = None
+        if not applicable_regulations:
+            # Get tenant default from TenantConfig (with platform default fallback)
+            applicable_regulations = get_tenant_compliance_regimes(str(tenant.id))
+            regimes_source = "tenant_config" if applicable_regulations != ["GDPR", "LGPD"] else "platform_default"
+            logger.info(
+                "compliance_regimes_selected",
+                tenant_id=str(tenant.id),
+                regimes=applicable_regulations,
+                source=regimes_source,
+                message=f"Using {regimes_source} regimes: {applicable_regulations}"
+            )
+        else:
+            # Explicit regimes in request (user override)
+            regimes_source = "request_override"
+            
+            # Validate that provided regimes are subset of allowed_compliance_regimes
+            tenant_config = get_tenant_config(tenant)
+            allowed_regimes = tenant_config.get("allowed_compliance_regimes", VALID_COMPLIANCE_REGIMES)
+            
+            invalid_regimes = [r for r in applicable_regulations if r not in allowed_regimes]
+            if invalid_regimes:
+                return Response(
+                    {
+                        'error': f'Invalid compliance regimes: {invalid_regimes}. '
+                                f'Allowed regimes for this tenant: {allowed_regimes}'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            logger.info(
+                "compliance_regimes_selected",
+                tenant_id=str(tenant.id),
+                regimes=applicable_regulations,
+                source=regimes_source,
+                message=f"Using explicit regimes from request: {applicable_regulations}"
+            )
         
         # Resolve resources
         asset = None

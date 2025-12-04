@@ -323,7 +323,7 @@ Stores refresh tokens for JWT token rotation and session management.
 - `client_id` text, **NULL**, **DEFAULT NULL`
   - **Client identifier**: Optional device/browser identifier for per-device session management.
 - `created_at` timestamp (UTC), **NOT NULL**, **DEFAULT CURRENT_TIMESTAMP**
-
+ 
 **Indexes & Constraints**
 
 - Index on `(user_id, revoked_at)` for active token lookups.

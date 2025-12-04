@@ -18,6 +18,10 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.jobs.utils import create_job, get_job_timeout
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.assets.models import Asset, DQStatus as AssetDQStatus
+from hub.apps.tenants.services import get_tenant_dq_profile
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class DQRunViewSet(viewsets.ModelViewSet):
@@ -115,11 +119,31 @@ class DQRunViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
         
-        # Determine profile key (tenant default or platform default)
+        # Determine profile key (explicit request > tenant default > platform default)
         profile_key = serializer.validated_data.get('profile_key')
+        profile_source = None
+        
         if not profile_key:
-            # Get tenant default or use platform default
-            profile_key = getattr(tenant, 'default_dq_profile', None) or 'intake_basic_gx'
+            # Get tenant default from TenantConfig (with platform default fallback)
+            profile_key = get_tenant_dq_profile(str(tenant.id))
+            profile_source = "tenant_config" if profile_key != "intake_basic_gx" else "platform_default"
+            logger.info(
+                "dq_profile_selected",
+                tenant_id=str(tenant.id),
+                profile_key=profile_key,
+                source=profile_source,
+                message=f"Using {profile_source} profile: {profile_key}"
+            )
+        else:
+            # Explicit profile_key in request (user override)
+            profile_source = "request_override"
+            logger.info(
+                "dq_profile_selected",
+                tenant_id=str(tenant.id),
+                profile_key=profile_key,
+                source=profile_source,
+                message=f"Using explicit profile from request: {profile_key}"
+            )
         
         # Determine engine from profile key
         if profile_key.endswith('_gx') or 'gx' in profile_key.lower():

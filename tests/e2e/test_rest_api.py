@@ -18,7 +18,7 @@ from rest_framework import status
 from .conftest import E2ETestBase
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 
 
 class RESTAPIE2ETest(E2ETestBase):

@@ -120,6 +120,28 @@ services:
       - "${API_PORT:-8000}:8000"
     env_file:
       - .env.dev
+    environment:
+      # Email Service Configuration (can be overridden in .env.dev)
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-smtp}
+      - EMAIL_BASE_URL=${EMAIL_BASE_URL:-http://localhost:8000}
+      - EMAIL_JOB_NOTIFICATIONS_ENABLED=${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
+      # SendGrid (if EMAIL_BACKEND=sendgrid)
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-Data Interoperability Hub}
+      # AWS SES (if EMAIL_BACKEND=ses)
+      - AWS_SES_REGION=${AWS_SES_REGION:-}
+      - AWS_SES_FROM_EMAIL=${AWS_SES_FROM_EMAIL:-}
+      - AWS_SES_FROM_NAME=${AWS_SES_FROM_NAME:-Data Interoperability Hub}
+      # SMTP (if EMAIL_BACKEND=smtp)
+      - SMTP_HOST=${SMTP_HOST:-localhost}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Data Interoperability Hub}
     depends_on:
       postgres:
         condition: service_healthy
@@ -139,13 +161,45 @@ services:
   worker-service:
     build:
       context: .
+    environment:
+      # Email Service Configuration (inherited from api-service)
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-smtp}
+      - EMAIL_BASE_URL=${EMAIL_BASE_URL:-http://localhost:8000}
+      - EMAIL_JOB_NOTIFICATIONS_ENABLED=${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
+      # SendGrid (if EMAIL_BACKEND=sendgrid)
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-}
+      - SENDGRID_FROM_NAME=${SENDGRID_FROM_NAME:-Data Interoperability Hub}
+      # AWS SES (if EMAIL_BACKEND=ses)
+      - AWS_SES_REGION=${AWS_SES_REGION:-}
+      - AWS_SES_FROM_EMAIL=${AWS_SES_FROM_EMAIL:-}
+      - AWS_SES_FROM_NAME=${AWS_SES_FROM_NAME:-Data Interoperability Hub}
+      # SMTP (if EMAIL_BACKEND=smtp)
+      - SMTP_HOST=${SMTP_HOST:-localhost}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Data Interoperability Hub}
       dockerfile: services/worker/Dockerfile
     container_name: hub-worker
-    command: python manage.py rqworker default
+    # Process all priority queues: job_critical (HIGH) → job_default (NORMAL) → job_low (LOW)
+    # Worker polls queues in priority order with reserved slots for HIGH priority
+    # Uses services/worker/main.py which includes health check HTTP server on port 8080
+    command: python services/worker/main.py job_critical job_default job_low
+    ports:
+      - "${WORKER_HEALTH_PORT:-8080}:8080"  # Health check endpoints (/healthz, /ready, /metrics)
     volumes:
       - .:/app
     env_file:
       - .env.dev
+    environment:
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-8080}
+      WORKER_MAX_CONCURRENCY: ${WORKER_MAX_CONCURRENCY:-4}
+      WORKER_RESERVED_SLOTS_RATIO: ${WORKER_RESERVED_SLOTS_RATIO:-0.5}
+      WORKER_STARVATION_THRESHOLD_SECONDS: ${WORKER_STARVATION_THRESHOLD_SECONDS:-300}
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,6 +207,12 @@ services:
         condition: service_healthy
     networks:
       - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # DataContract CLI Service
   datacontract-service:
@@ -202,6 +262,105 @@ services:
       timeout: 10s
       retries: 3
 
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: hub-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - hub-net
+    depends_on:
+      - api-service
+      - worker-service
+      - semantic-service
+      - dq-service
+      - compliance-service
+      - datacontract-service
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: hub-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - hub-net
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Jaeger (all-in-one)
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: hub-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"  # UI
+      - "${JAEGER_HTTP_PORT:-14268}:14268"  # HTTP collector
+      - "${JAEGER_UDP_PORT:-6831}:6831/udp"  # UDP collector
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16686/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Alertmanager
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: hub-alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - hub-net
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 networks:
   hub-net:
     driver: bridge
@@ -211,4 +370,7 @@ volumes:
   redis-data:
   minio-data:
   fuseki-data:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
 

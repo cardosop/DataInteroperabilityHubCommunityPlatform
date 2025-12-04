@@ -4,14 +4,17 @@ Unit tests for schema inference functionality.
 import pytest
 from django.test import TestCase
 from hub.apps.datasets.schema_inference import (
-
-
     infer_schema_from_csv,
     infer_schema_from_json,
     infer_schema_from_parquet,
     detect_delimiter,
     detect_encoding,
-    infer_type_from_values
+    infer_type_from_values,
+    infer_format_from_values,
+    infer_pattern_from_values,
+    infer_enum_from_values,
+    infer_semantic_type_from_field,
+    infer_field_properties
 )
 
 
@@ -98,6 +101,254 @@ Bob,35,Chicago"""
         # Check inference metadata
         self.assertIn('inference_metadata', schema)
         self.assertEqual(schema['inference_metadata']['format'], 'CSV')
+
+
+class EnhancedSchemaInferenceTest(TestCase):
+    """Test enhanced schema inference with format, pattern, enum, semantic_type (GAP-8.2.4)"""
+    
+    def test_infer_format_email(self):
+        """Test format inference for email addresses (GAP-8.2.4)"""
+        values = [
+            'user@example.com',
+            'test@domain.org',
+            'admin@company.co.uk'
+        ]
+        
+        format_value = infer_format_from_values(values, 'email')
+        
+        self.assertEqual(format_value, 'email')
+    
+    def test_infer_format_uri(self):
+        """Test format inference for URIs (GAP-8.2.4)"""
+        values = [
+            'https://example.com',
+            'http://test.org',
+            'ftp://files.example.com'
+        ]
+        
+        format_value = infer_format_from_values(values, 'url')
+        
+        self.assertEqual(format_value, 'uri')
+    
+    def test_infer_format_date_time(self):
+        """Test format inference for date-time values (GAP-8.2.4)"""
+        values = [
+            '2024-01-01T12:00:00',
+            '2024-02-15T18:30:00',
+            '2024-03-20T09:15:00'
+        ]
+        
+        format_value = infer_format_from_values(values, 'timestamp')
+        
+        self.assertEqual(format_value, 'date-time')
+    
+    def test_infer_format_date(self):
+        """Test format inference for date values (GAP-8.2.4)"""
+        values = [
+            '2024-01-01',
+            '2024-02-15',
+            '2024-03-20'
+        ]
+        
+        format_value = infer_format_from_values(values, 'date')
+        
+        self.assertEqual(format_value, 'date')
+    
+    def test_infer_pattern_phone(self):
+        """Test pattern inference for phone numbers (GAP-8.2.4)"""
+        values = [
+            '+1-555-123-4567',
+            '+44 20 7946 0958',
+            '555-123-4567'
+        ]
+        
+        pattern = infer_pattern_from_values(values)
+        
+        self.assertIsNotNone(pattern)
+        self.assertIn('\\d', pattern)
+    
+    def test_infer_pattern_uuid(self):
+        """Test pattern inference for UUIDs (GAP-8.2.4)"""
+        values = [
+            '550e8400-e29b-41d4-a716-446655440000',
+            '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+            '6ba7b811-9dad-11d1-80b4-00c04fd430c8'
+        ]
+        
+        pattern = infer_pattern_from_values(values)
+        
+        self.assertIsNotNone(pattern)
+        self.assertIn('8', pattern)
+        self.assertIn('4', pattern)
+    
+    def test_infer_enum_from_values(self):
+        """Test enum inference from limited unique values (GAP-8.2.4)"""
+        values = ['active', 'pending', 'active', 'pending', 'active', 'pending', 'active']
+        
+        enum = infer_enum_from_values(values)
+        
+        self.assertIsNotNone(enum)
+        self.assertEqual(len(enum), 2)
+        self.assertIn('active', enum)
+        self.assertIn('pending', enum)
+    
+    def test_infer_enum_not_enum(self):
+        """Test that enum is not inferred for too many unique values"""
+        values = [f'value_{i}' for i in range(50)]
+        
+        enum = infer_enum_from_values(values)
+        
+        self.assertIsNone(enum)
+    
+    def test_infer_semantic_type_from_field_name(self):
+        """Test semantic type inference from field name (GAP-8.2.4)"""
+        # Test order_id
+        semantic_type = infer_semantic_type_from_field('order_id', ['1', '2', '3'])
+        self.assertEqual(semantic_type, 'ORDER_ID')
+        
+        # Test email
+        semantic_type = infer_semantic_type_from_field('email', ['test@example.com'])
+        self.assertEqual(semantic_type, 'EMAIL')
+        
+        # Test phone_number
+        semantic_type = infer_semantic_type_from_field('phone_number', ['555-1234'])
+        self.assertEqual(semantic_type, 'PHONE_NUMBER')
+        
+        # Test customer_id
+        semantic_type = infer_semantic_type_from_field('customer_id', ['123'])
+        self.assertEqual(semantic_type, 'CUSTOMER_ID')
+        
+        # Test timestamp
+        semantic_type = infer_semantic_type_from_field('created_at', ['2024-01-01'])
+        self.assertEqual(semantic_type, 'TIMESTAMP')
+    
+    def test_infer_semantic_type_from_data_pattern(self):
+        """Test semantic type inference from data patterns (GAP-8.2.4)"""
+        # Test email from data
+        values = ['user@example.com', 'test@domain.org']
+        semantic_type = infer_semantic_type_from_field('contact', values)
+        self.assertEqual(semantic_type, 'EMAIL')
+        
+        # Test phone from data
+        values = ['+1-555-123-4567', '+44 20 7946 0958']
+        semantic_type = infer_semantic_type_from_field('contact', values)
+        self.assertEqual(semantic_type, 'PHONE_NUMBER')
+        
+        # Test URI from data
+        values = ['https://example.com', 'http://test.org']
+        semantic_type = infer_semantic_type_from_field('link', values)
+        self.assertEqual(semantic_type, 'URI')
+    
+    def test_infer_field_properties_complete(self):
+        """Test complete field property inference (GAP-8.2.4)"""
+        values = [
+            'user@example.com',
+            'test@domain.org',
+            'admin@company.co.uk'
+        ]
+        
+        properties = infer_field_properties(values, 'email')
+        
+        # Verify all properties are inferred
+        self.assertIn('format', properties)
+        self.assertEqual(properties['format'], 'email')
+        self.assertIn('semantic_type', properties)
+        self.assertEqual(properties['semantic_type'], 'EMAIL')
+        self.assertIn('min_length', properties)
+        self.assertIn('max_length', properties)
+    
+    def test_infer_field_properties_with_enum(self):
+        """Test field property inference with enum (GAP-8.2.4)"""
+        values = ['active', 'pending', 'active', 'pending', 'active']
+        
+        properties = infer_field_properties(values, 'status')
+        
+        self.assertIn('enum', properties)
+        self.assertEqual(len(properties['enum']), 2)
+        self.assertIn('active', properties['enum'])
+        self.assertIn('pending', properties['enum'])
+    
+    def test_infer_field_properties_with_pattern(self):
+        """Test field property inference with pattern (GAP-8.2.4)"""
+        values = [
+            '+1-555-123-4567',
+            '+44 20 7946 0958',
+            '555-123-4567'
+        ]
+        
+        properties = infer_field_properties(values, 'phone')
+        
+        self.assertIn('pattern', properties)
+        self.assertIsNotNone(properties['pattern'])
+        self.assertIn('semantic_type', properties)
+        self.assertEqual(properties['semantic_type'], 'PHONE_NUMBER')
+    
+    def test_schema_inference_includes_enhanced_properties(self):
+        """Test that schema inference includes enhanced properties (GAP-8.2.4)"""
+        csv_content = b"""email,status,phone
+user@example.com,active,+1-555-123-4567
+test@domain.org,pending,+44 20 7946 0958
+admin@company.co.uk,active,555-123-4567"""
+        
+        schema = infer_schema_from_csv(csv_content, sample_size=10)
+        
+        # Verify enhanced properties are included
+        email_field = next(f for f in schema['fields'] if f['name'] == 'email')
+        self.assertIn('format', email_field)
+        self.assertEqual(email_field['format'], 'email')
+        self.assertIn('semantic_type', email_field)
+        self.assertEqual(email_field['semantic_type'], 'EMAIL')
+        
+        status_field = next(f for f in schema['fields'] if f['name'] == 'status')
+        self.assertIn('enum', status_field)
+        self.assertIsNotNone(status_field['enum'])
+        
+        phone_field = next(f for f in schema['fields'] if f['name'] == 'phone')
+        self.assertIn('pattern', phone_field)
+        self.assertIsNotNone(phone_field['pattern'])
+        self.assertIn('semantic_type', phone_field)
+        self.assertEqual(phone_field['semantic_type'], 'PHONE_NUMBER')
+    
+    def test_schema_inference_primary_key_candidates(self):
+        """Test that primary key candidates are identified (GAP-8.2.4)"""
+        csv_content = b"""id,name,email
+1,John,john@example.com
+2,Jane,jane@example.com
+3,Bob,bob@example.com"""
+        
+        schema = infer_schema_from_csv(csv_content, sample_size=10)
+        
+        self.assertIn('primary_key_candidates', schema)
+        self.assertIn('id', schema['primary_key_candidates'])
+    
+    def test_schema_inference_unique_constraint_candidates(self):
+        """Test that unique constraint candidates are identified (GAP-8.2.4)"""
+        csv_content = b"""id,name,email
+1,John,john@example.com
+2,Jane,jane@example.com
+3,Bob,bob@example.com"""
+        
+        schema = infer_schema_from_csv(csv_content, sample_size=10)
+        
+        self.assertIn('unique_constraint_candidates', schema)
+        # id should be in unique candidates
+        self.assertIn('id', schema['unique_constraint_candidates'])
+    
+    def test_schema_inference_index_recommendations(self):
+        """Test that index recommendations are provided (GAP-8.2.4)"""
+        csv_content = b"""order_id,customer_id,created_at,amount
+ORD-001,CUST-001,2024-01-01T12:00:00,100.50
+ORD-002,CUST-002,2024-01-02T13:00:00,200.75
+ORD-003,CUST-001,2024-01-03T14:00:00,150.25"""
+        
+        schema = infer_schema_from_csv(csv_content, sample_size=10)
+        
+        self.assertIn('index_recommendations', schema)
+        self.assertGreater(len(schema['index_recommendations']), 0)
+        
+        # Verify ID fields are recommended for indexing
+        id_fields = [rec['field'] for rec in schema['index_recommendations'] if 'id' in rec['field'].lower()]
+        self.assertGreater(len(id_fields), 0)
     
     def test_infer_schema_from_csv_with_nulls(self):
         """Test schema inference from CSV with null values"""

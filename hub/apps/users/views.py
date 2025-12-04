@@ -345,10 +345,9 @@ class UserViewSet(viewsets.ModelViewSet):
         return False
     
     def _send_invitation_email(self, user):
-        """Send invitation email to user (placeholder)"""
-        # TODO: Implement email sending when notification service is ready
-        # from hub.apps.notifications.tasks import send_invitation_email
-        # send_invitation_email.delay(user.id)
+        """Send invitation email to user"""
+        from hub.apps.notifications.tasks import send_invitation_email
+        send_invitation_email.delay(str(user.id))
         pass
     
 

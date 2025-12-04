@@ -12,6 +12,8 @@ from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract
 from hub.apps.jobs.models import Job, JobStatus
 from hub.apps.files.models import File
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e_batch5]
+
 
 
 class CustomActionsErrorHandlingE2ETest(E2ETestBase):

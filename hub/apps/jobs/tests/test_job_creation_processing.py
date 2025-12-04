@@ -53,18 +53,24 @@ class JobCreationProcessingTest(TestCase):
     
     def test_get_queue_for_job_type(self):
         """Test queue selection for different job types"""
-        self.assertEqual(get_queue_for_job_type(JobType.DQ_RUN), 'high')
-        self.assertEqual(get_queue_for_job_type(JobType.COMPLIANCE_RUN), 'high')
-        self.assertEqual(get_queue_for_job_type(JobType.CONTRACT_VALIDATION), 'low')
-        self.assertEqual(get_queue_for_job_type(JobType.SEMANTIC_MAPPING), 'default')
+        # HIGH priority jobs go to job_critical queue
+        self.assertEqual(get_queue_for_job_type(JobType.DQ_RUN), 'job_critical')
+        self.assertEqual(get_queue_for_job_type(JobType.COMPLIANCE_RUN), 'job_critical')
+        # LOW priority jobs go to job_low queue
+        self.assertEqual(get_queue_for_job_type(JobType.CONTRACT_VALIDATION), 'job_low')
+        # NORMAL priority jobs go to job_default queue
+        self.assertEqual(get_queue_for_job_type(JobType.SEMANTIC_MAPPING), 'job_default')
+        self.assertEqual(get_queue_for_job_type(JobType.CONTRACT_MIGRATION), 'job_default')
     
-    @patch('hub.apps.jobs.utils.get_queue')
-    def test_create_job(self, mock_get_queue):
-        """Test job creation"""
-        mock_queue = MagicMock()
-        mock_get_queue.return_value = mock_queue
+    def test_create_job(self):
+        """Test job creation with real Redis queue"""
+        from django_rq import get_queue
         
         resource_id = uuid.uuid4()
+        
+        # Clear queue before test
+        queue = get_queue('job_critical')
+        queue.empty()
         
         job = create_job(
             job_type=JobType.DQ_RUN,
@@ -83,11 +89,19 @@ class JobCreationProcessingTest(TestCase):
         self.assertEqual(job.created_by, self.user)
         self.assertEqual(job.timeout_seconds, 1800)
         
-        # Verify job was enqueued
-        mock_queue.enqueue.assert_called_once()
+        # Verify job was actually enqueued to Redis
+        queue = get_queue('job_critical')
+        self.assertEqual(queue.count, 1)
+        
+        # Verify job details in queue
+        rq_job = queue.jobs[0]
+        self.assertEqual(rq_job.args[0], str(job.id))
+        self.assertEqual(rq_job.kwargs['job_type'], JobType.DQ_RUN)
     
     def test_create_job_api(self):
-        """Test job creation via API"""
+        """Test job creation via API with real Redis queue"""
+        from django_rq import get_queue
+        
         self.client.force_authenticate(user=self.user)
         
         resource_id = uuid.uuid4()
@@ -99,21 +113,30 @@ class JobCreationProcessingTest(TestCase):
             "details_json": {"test": "data"}
         }
         
-        with patch('hub.apps.jobs.utils.get_queue') as mock_get_queue:
-            mock_queue = MagicMock()
-            mock_get_queue.return_value = mock_queue
-            
-            response = self.client.post("/api/v1/jobs/jobs/", data, format="json")
-            
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-            self.assertIn("id", response.data)
-            self.assertEqual(response.data["type"], JobType.DQ_RUN)
-            self.assertEqual(response.data["status"], JobStatus.PENDING)
-            
-            # Verify job was created
-            job_id = response.data["id"]
-            job = Job.objects.get(id=job_id)
-            self.assertEqual(job.resource_id, resource_id)
+        # Clear queue before test
+        queue = get_queue('job_critical')
+        queue.empty()
+        
+        response = self.client.post("/api/v1/jobs/jobs/", data, format="json")
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("id", response.data)
+        self.assertEqual(response.data["type"], JobType.DQ_RUN)
+        self.assertEqual(response.data["status"], JobStatus.PENDING)
+        
+        # Verify job was created
+        job_id = response.data["id"]
+        job = Job.objects.get(id=job_id)
+        self.assertEqual(job.resource_id, resource_id)
+        
+        # Verify job was actually enqueued to Redis
+        queue = get_queue('job_critical')
+        self.assertEqual(queue.count, 1)
+        
+        # Verify job details in queue
+        rq_job = queue.jobs[0]
+        self.assertEqual(rq_job.args[0], str(job_id))
+        self.assertEqual(rq_job.kwargs['job_type'], JobType.DQ_RUN)
     
     def test_job_mark_started(self):
         """Test marking job as started"""

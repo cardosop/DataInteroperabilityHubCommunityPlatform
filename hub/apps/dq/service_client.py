@@ -69,7 +69,8 @@ class DQServiceClient:
         file_content: bytes,
         file_format: str,
         profile_key: str = "intake_basic_gx",
-        use_cache: bool = True
+        use_cache: bool = True,
+        contract: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Run DQ checks on file content.
@@ -79,6 +80,7 @@ class DQServiceClient:
             file_format: File format (csv, json, parquet)
             profile_key: DQ profile key (default: intake_basic_gx)
             use_cache: Whether to use cached results
+            contract: Optional Contract instance to extract quality rules from
             
         Returns:
             DQ result dictionary
@@ -93,13 +95,47 @@ class DQServiceClient:
                 return cached_result
         
         try:
+            # Extract quality rules from contract if provided (GAP-8.2.1)
+            custom_checks = None
+            effective_profile_key = profile_key
+            if contract:
+                from hub.apps.dq.contract_integration import (
+                    ContractQualityRulesExtractor
+                )
+                # Get contract profile key if specified
+                effective_profile_key = ContractQualityRulesExtractor.get_contract_profile_key(
+                    contract, fallback=profile_key
+                )
+                # Get contract quality checks
+                custom_checks = ContractQualityRulesExtractor.get_contract_quality_checks(contract)
+            
             # Prepare file for upload
             files = {
                 'file': (f'data.{file_format}', file_content, f'application/{file_format}')
             }
             data = {
-                'profile_key': profile_key
+                'profile_key': effective_profile_key
             }
+            
+            # Add custom checks if available (will be passed to DQ service as JSON string)
+            if custom_checks:
+                # Convert DQCheck objects to serializable format
+                custom_checks_list = [
+                    {
+                        'check_id': check.check_id,
+                        'name': check.name,
+                        'category': check.category.value,
+                        'severity': check.severity.value,
+                        'expectation_type': check.expectation_type,
+                        'params': check.params,
+                        'target_level': check.target_level,
+                        'target_column': check.target_column,
+                        'target_pattern': check.target_pattern
+                    }
+                    for check in custom_checks
+                ]
+                import json
+                data['custom_checks'] = json.dumps(custom_checks_list)
             
             response = self._request_with_retry(
                 "POST",

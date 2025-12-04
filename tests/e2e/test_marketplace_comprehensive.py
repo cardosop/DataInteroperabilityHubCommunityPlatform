@@ -1,5 +1,7 @@
 """
 Comprehensive E2E tests for marketplace flows.
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e_batch5]
+
 
 Covers:
 - Success paths (publish, browse, purchase, access)

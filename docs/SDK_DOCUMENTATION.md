@@ -235,6 +235,194 @@ async def get_all_assets(client: DataHubClient):
     return all_assets
 ```
 
+#### Contract Management
+
+**Create Contract with All Sections:**
+
+```python
+# Create a contract with all HubContract sections
+contract_data = {
+    "asset_id": "123e4567-e89b-12d3-a456-426614174002",
+    "original_raw": json.dumps({
+        "id": "orders",
+        "info": {
+            "name": "Customer Orders",
+            "description": "Orders data product for analytics",
+            "version": "1.0.0",
+            "owners": [
+                {"name": "Data Platform Team", "email": "dataplatform@example.com"}
+            ],
+            "tags": ["analytics", "sales", "orders"]
+        },
+        "schema": {
+            "fields": [
+                {
+                    "name": "order_id",
+                    "data_type": "string",
+                    "nullable": False,
+                    "description": "Unique identifier for the order",
+                    "semantic_type": "ORDER_ID",
+                    "pattern": "^ORD-[0-9]{8}$",
+                    "min_length": 10,
+                    "max_length": 20,
+                    "metadata": {"source_system": "OLTP", "business_key": True}
+                },
+                {
+                    "name": "customer_email",
+                    "data_type": "string",
+                    "nullable": False,
+                    "description": "Customer email address",
+                    "semantic_type": "EMAIL",
+                    "format": "email"
+                }
+            ],
+            "primary_key": ["order_id"],
+            "unique_constraints": [],
+            "indexes": [["customer_email"]]
+        },
+        "quality": {
+            "default_profile_key": "intake_basic",
+            "rules": [
+                {
+                    "rule_id": "not_null_order_id",
+                    "dimension": "completeness",
+                    "expression": "order_id IS NOT NULL",
+                    "severity": "ERROR",
+                    "field": "order_id"
+                },
+                {
+                    "rule_id": "valid_email_format",
+                    "dimension": "validity",
+                    "expression": "customer_email LIKE '%@%.%'",
+                    "severity": "WARNING",
+                    "field": "customer_email"
+                }
+            ]
+        },
+        "privacy_compliance": {
+            "contains_personal_data": True,
+            "personal_data_categories": ["EMAIL"],
+            "jurisdictions": ["GDPR", "LGPD"],
+            "legal_bases": ["CONSENT", "CONTRACT"],
+            "retention_policy": {
+                "period": "P5Y",
+                "notes": "5 years retention after contract end"
+            }
+        },
+        "lifecycle": {
+            "data_source": "OLTP.orders",
+            "refresh_cadence": "DAILY",
+            "slas": {
+                "availability": "99.0",
+                "latency_ms_p95": 5000
+            }
+        },
+        "marketplace": {
+            "license_summary": "MIT License",
+            "intended_use": ["analytics", "machine_learning"],
+            "restricted_use": ["resale"]
+        }
+    }),
+    "original_format": "JSON",
+    "original_spec_type": "ODCS"
+}
+
+contract = await client.post("/contracts/", contract_data)
+print(f"Created contract: {contract['id']}")
+print(f"Owners: {contract['owners']}")
+print(f"Tags: {contract['tags']}")
+print(f"Quality rules: {len(contract['quality_rules'])}")
+print(f"Schema fields: {len(contract['schema_fields'])}")
+```
+
+**List Contracts with Filtering:**
+
+```python
+# Filter by owner email
+contracts = await client.get("/contracts/", params={
+    "owner_email": "dataplatform@example.com"
+})
+
+# Filter by tags
+contracts = await client.get("/contracts/", params={
+    "tag": "analytics",
+    "tag": "sales"
+})
+
+# Filter by quality profile
+contracts = await client.get("/contracts/", params={
+    "quality_profile": "intake_basic"
+})
+
+# Filter by compliance regime
+contracts = await client.get("/contracts/", params={
+    "compliance_regime": "GDPR"
+})
+
+# Sort by quality score
+contracts = await client.get("/contracts/", params={
+    "ordering": "-quality_score"
+})
+```
+
+**Validate Contract:**
+
+```python
+# Synchronous validation
+validation_result = await client.post(f"/contracts/{contract_id}/validate/", {
+    "async": False
+})
+print(f"Validation status: {validation_result['validation_status']}")
+print(f"Errors: {len(validation_result['errors'])}")
+print(f"Warnings: {len(validation_result['warnings'])}")
+
+# Asynchronous validation (for large contracts)
+job = await client.post(f"/contracts/{contract_id}/validate/", {
+    "async": True
+})
+print(f"Validation job ID: {job['job_id']}")
+
+# Poll for job completion
+while True:
+    job_status = await client.get(f"/jobs/{job['job_id']}/")
+    if job_status['status'] in ['completed', 'failed']:
+        break
+    await asyncio.sleep(1)
+```
+
+**Access Computed Fields:**
+
+```python
+contract = await client.get(f"/contracts/{contract_id}/")
+
+# Access owners
+for owner in contract['owners']:
+    print(f"Owner: {owner['name']} ({owner['email']})")
+
+# Access tags
+print(f"Tags: {', '.join(contract['tags'])}")
+
+# Access quality rules
+for rule in contract['quality_rules']:
+    print(f"Rule: {rule['rule_id']} - {rule['dimension']} ({rule['severity']})")
+
+# Access compliance policy
+if contract['compliance_policy']:
+    policy = contract['compliance_policy']
+    print(f"Contains personal data: {policy['contains_personal_data']}")
+    print(f"Jurisdictions: {', '.join(policy['jurisdictions'])}")
+
+# Access schema fields with properties
+for field in contract['schema_fields']:
+    print(f"Field: {field['name']} ({field['data_type']})")
+    if field.get('semantic_type'):
+        print(f"  Semantic type: {field['semantic_type']}")
+    if field.get('pattern'):
+        print(f"  Pattern: {field['pattern']}")
+    if field['is_primary_key']:
+        print(f"  Primary key: Yes")
+```
+
 ---
 
 ## JavaScript/TypeScript SDK
@@ -350,6 +538,202 @@ await fetch(file.upload_url, {
 
 // Complete upload
 await client.files.completeUpload(file.id);
+```
+
+#### Contracts
+
+**Create Contract with All Sections:**
+
+```typescript
+// Create a contract with all HubContract sections
+const contractData = {
+  asset_id: '123e4567-e89b-12d3-a456-426614174002',
+  original_raw: JSON.stringify({
+    id: 'orders',
+    info: {
+      name: 'Customer Orders',
+      description: 'Orders data product for analytics',
+      version: '1.0.0',
+      owners: [
+        { name: 'Data Platform Team', email: 'dataplatform@example.com' }
+      ],
+      tags: ['analytics', 'sales', 'orders']
+    },
+    schema: {
+      fields: [
+        {
+          name: 'order_id',
+          data_type: 'string',
+          nullable: false,
+          description: 'Unique identifier for the order',
+          semantic_type: 'ORDER_ID',
+          pattern: '^ORD-[0-9]{8}$',
+          min_length: 10,
+          max_length: 20,
+          metadata: { source_system: 'OLTP', business_key: true }
+        },
+        {
+          name: 'customer_email',
+          data_type: 'string',
+          nullable: false,
+          description: 'Customer email address',
+          semantic_type: 'EMAIL',
+          format: 'email'
+        }
+      ],
+      primary_key: ['order_id'],
+      unique_constraints: [],
+      indexes: [['customer_email']]
+    },
+    quality: {
+      default_profile_key: 'intake_basic',
+      rules: [
+        {
+          rule_id: 'not_null_order_id',
+          dimension: 'completeness',
+          expression: 'order_id IS NOT NULL',
+          severity: 'ERROR',
+          field: 'order_id'
+        },
+        {
+          rule_id: 'valid_email_format',
+          dimension: 'validity',
+          expression: "customer_email LIKE '%@%.%'",
+          severity: 'WARNING',
+          field: 'customer_email'
+        }
+      ]
+    },
+    privacy_compliance: {
+      contains_personal_data: true,
+      personal_data_categories: ['EMAIL'],
+      jurisdictions: ['GDPR', 'LGPD'],
+      legal_bases: ['CONSENT', 'CONTRACT'],
+      retention_policy: {
+        period: 'P5Y',
+        notes: '5 years retention after contract end'
+      }
+    },
+    lifecycle: {
+      data_source: 'OLTP.orders',
+      refresh_cadence: 'DAILY',
+      slas: {
+        availability: '99.0',
+        latency_ms_p95: 5000
+      }
+    },
+    marketplace: {
+      license_summary: 'MIT License',
+      intended_use: ['analytics', 'machine_learning'],
+      restricted_use: ['resale']
+    }
+  }),
+  original_format: 'JSON',
+  original_spec_type: 'ODCS'
+};
+
+const contract = await client.contracts.create(contractData);
+console.log(`Created contract: ${contract.id}`);
+console.log(`Owners: ${JSON.stringify(contract.owners)}`);
+console.log(`Tags: ${contract.tags.join(', ')}`);
+console.log(`Quality rules: ${contract.quality_rules.length}`);
+console.log(`Schema fields: ${contract.schema_fields.length}`);
+```
+
+**List Contracts with Filtering:**
+
+```typescript
+// Filter by owner email
+const contracts = await client.contracts.list({
+  owner_email: 'dataplatform@example.com'
+});
+
+// Filter by tags
+const contracts = await client.contracts.list({
+  tag: ['analytics', 'sales']
+});
+
+// Filter by quality profile
+const contracts = await client.contracts.list({
+  quality_profile: 'intake_basic'
+});
+
+// Filter by compliance regime
+const contracts = await client.contracts.list({
+  compliance_regime: 'GDPR'
+});
+
+// Sort by quality score
+const contracts = await client.contracts.list({
+  ordering: '-quality_score'
+});
+```
+
+**Validate Contract:**
+
+```typescript
+// Synchronous validation
+const validationResult = await client.contracts.validate(contractId, {
+  async: false
+});
+console.log(`Validation status: ${validationResult.validation_status}`);
+console.log(`Errors: ${validationResult.errors.length}`);
+console.log(`Warnings: ${validationResult.warnings.length}`);
+
+// Asynchronous validation (for large contracts)
+const job = await client.contracts.validate(contractId, {
+  async: true
+});
+console.log(`Validation job ID: ${job.job_id}`);
+
+// Poll for job completion
+while (true) {
+  const jobStatus = await client.jobs.get(job.job_id);
+  if (['completed', 'failed'].includes(jobStatus.status)) {
+    break;
+  }
+  await new Promise(resolve => setTimeout(resolve, 1000));
+}
+```
+
+**Access Computed Fields:**
+
+```typescript
+const contract = await client.contracts.get(contractId);
+
+// Access owners
+contract.owners.forEach(owner => {
+  console.log(`Owner: ${owner.name} (${owner.email})`);
+});
+
+// Access tags
+console.log(`Tags: ${contract.tags.join(', ')}`);
+
+// Access quality rules
+contract.quality_rules.forEach(rule => {
+  console.log(`Rule: ${rule.rule_id} - ${rule.dimension} (${rule.severity})`);
+});
+
+// Access compliance policy
+if (contract.compliance_policy) {
+  const policy = contract.compliance_policy;
+  console.log(`Contains personal data: ${policy.contains_personal_data}`);
+  console.log(`Jurisdictions: ${policy.jurisdictions.join(', ')}`);
+}
+
+// Access schema fields with properties
+contract.schema_fields.forEach(field => {
+  console.log(`Field: ${field.name} (${field.data_type})`);
+  if (field.semantic_type) {
+    console.log(`  Semantic type: ${field.semantic_type}`);
+  }
+  if (field.pattern) {
+    console.log(`  Pattern: ${field.pattern}`);
+  }
+  if (field.is_primary_key) {
+    console.log(`  Primary key: Yes`);
+  }
+});
 ```
 
 ### Error Handling

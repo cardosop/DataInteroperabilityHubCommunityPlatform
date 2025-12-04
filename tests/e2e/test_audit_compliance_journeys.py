@@ -1,5 +1,7 @@
 """
 Comprehensive E2E tests for audit and compliance officer journeys.
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e_batch2]
+
 
 Covers:
 - Audit log viewing and filtering

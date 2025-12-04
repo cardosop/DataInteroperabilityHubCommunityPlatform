@@ -1,5 +1,7 @@
 """
 Comprehensive E2E tests for contract-first onboarding flow.
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e_batch1]
+
 
 Covers:
 - Success paths (happy path, schema reconciliation)

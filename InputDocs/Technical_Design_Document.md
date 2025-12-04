@@ -189,6 +189,14 @@ Columns:
 - `hub_contract_version` (text, NOT NULL: `1.0.0`, etc.)
 - `raw_contract` (JSONB or text, NOT NULL; original content)
 - `hub_contract` (JSONB, NULL; normalized internal model, set after normalization)
+  - **Enhanced HubContract Structure**: The `hub_contract` JSONB field MUST contain complete HubContract v1 with all sections:
+    - `info`: name, description, version, owners (array with name/email), tags (array)
+    - `schema`: fields (with all properties: semantic_type, format, pattern, enum, default, min/max, metadata), primary_key, unique_constraints, indexes
+    - `quality`: default_profile_key, rules (with rule_id, dimension, expression, severity)
+    - `privacy_compliance`: contains_personal_data, personal_data_categories, jurisdictions, legal_bases, retention_policy
+    - `lifecycle`: data_source, refresh_cadence, slas (availability, latency_ms_p95)
+    - `marketplace`: license_summary, intended_use, restricted_use
+    - `extensions`: Unmappable fields preserved in extensions.odcs or extensions.datacontract_com
 - `cli_validation_status` (enum: `VALID`, `INVALID`, `WARNING_ONLY`, `ERROR`, NULL, DEFAULT NULL - set after CLI validation)
 - `cli_output` (JSONB, NULL; sanitized lint/validation details)
 - `status` (enum: `DRAFT`, `VALID`, `INVALID`, `WARNING_ONLY`, NOT NULL, DEFAULT `DRAFT`)
@@ -447,6 +455,31 @@ Indexes:
 
 - `uri` unique.
 - `(tenant_id, resource_type, resource_id)` unique.
+
+**Enhanced Semantic Mapping Requirements**:
+
+- **Complete RDF Mapping**: The semantic service MUST map ALL HubContract sections to RDF:
+  - Contract metadata (spec type, version, format, title, description, identifier)
+  - Owners (FOAF agents, linked via `hub:hasOwner`)
+  - Tags (hub:Tag resources, linked via `hub:hasTag`, also `dcat:keyword`)
+  - Schema fields (all properties, constraints, validation rules with SHACL)
+  - Quality rules (hub:QualityRule with DQV vocabulary links)
+  - Compliance policy (hub:CompliancePolicy with DPV vocabulary links)
+  - Lifecycle policy (hub:LifecyclePolicy with PROV-O vocabulary links)
+  - Marketplace policy (hub:MarketplacePolicy with ODRL vocabulary links)
+
+- **Standard Vocabulary Integration**: The semantic service MUST integrate and use:
+  - DQV (Data Quality Vocabulary) for quality dimensions
+  - DPV (Data Privacy Vocabulary) for compliance, jurisdictions, legal bases
+  - PROV-O (Provenance Ontology) for data source relationships
+  - ODRL (Open Digital Rights Language) for marketplace permissions/prohibitions
+  - SHACL (Shapes Constraint Language) for field validation rules
+  - Schema.org for field semantic types
+  - FOAF (Friend of a Friend) for contract owners
+
+- **Enhanced Ontology**: The semantic service MUST define additional ontology classes and properties:
+  - Classes: `hub:QualityRule`, `hub:CompliancePolicy`, `hub:LifecyclePolicy`, `hub:MarketplacePolicy`, `hub:Owner`, `hub:Tag`
+  - Properties: Field validation (format, pattern, enum, min/max), schema constraints (isPrimaryKey, isUnique, isIndexed), quality/compliance/lifecycle/marketplace policy properties
 
 ---
 

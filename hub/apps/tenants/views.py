@@ -9,17 +9,23 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
+from rest_framework import serializers
 
-from .models import Tenant, TenantStatus
+from .models import Tenant, TenantStatus, TenantConfig
 from .permissions import IsPlatformAdmin
 from .serializers import (
     TenantSerializer,
     TenantCreateSerializer,
     TenantUpdateSerializer,
     TenantSuspendSerializer,
-    TenantReactivateSerializer
+    TenantReactivateSerializer,
+    TenantConfigSerializer,
+    TenantConfigUpdateSerializer,
 )
+from .services import get_tenant_config
 from hub.apps.audit.utils import log_tenant_operation
+from hub.apps.auth.permissions import HasRole
 
 
 class TenantViewSet(viewsets.ModelViewSet):
@@ -263,4 +269,111 @@ class TenantViewSet(viewsets.ModelViewSet):
         # for admin in admins:
         #     send_email(admin.email, "tenant_reactivated", {"tenant": tenant})
         pass
+
+
+class TenantConfigViewSet(viewsets.ViewSet):
+    """
+    ViewSet for tenant configuration management.
+    
+    Allows TENANT_ADMIN (for own tenant) or Platform Admin (for any tenant)
+    to get and update tenant configuration.
+    """
+    permission_classes = [IsAuthenticated]
+    lookup_field = "tenant_id"
+    
+    def get_tenant(self, tenant_id: str) -> Tenant:
+        """Get tenant by ID with permission check"""
+        try:
+            tenant = Tenant.objects.get(id=tenant_id)
+        except Tenant.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+            not_found = NotFound("Tenant not found")
+            not_found.code = "TENANT_NOT_FOUND"  # Set specific error code per API spec
+            raise not_found
+        
+        # Check permissions: Platform Admin can access any tenant,
+        # TENANT_ADMIN can only access own tenant
+        user = self.request.user
+        
+        # Platform admins have access to all tenants
+        if hasattr(user, "is_platform_admin") and user.is_platform_admin:
+            return tenant
+        
+        # TENANT_ADMIN can only access own tenant
+        if hasattr(user, "tenant") and user.tenant.id == tenant.id:
+            # Check if user has TENANT_ADMIN role
+            if hasattr(user, "user_roles"):
+                role_names = [ur.role.name for ur in user.user_roles.all()]
+                if "TENANT_ADMIN" in role_names:
+                    return tenant
+        
+        # No permission
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("You do not have permission to access this tenant configuration.")
+    
+    @extend_schema(
+        operation_id="get_tenant_config",
+        summary="Get tenant configuration",
+        description="Get tenant configuration with platform defaults for any unset values. Returns configuration matching API spec §13.1.",
+        responses={
+            200: TenantConfigSerializer,
+            401: OpenApiResponse(description="Unauthorized - missing or invalid bearer token"),
+            403: OpenApiResponse(description="Forbidden - user lacks TENANT_ADMIN role or Platform Admin privileges"),
+            404: OpenApiResponse(description="Tenant not found"),
+        },
+        tags=["Tenants"]
+    )
+    def retrieve(self, request, tenant_id=None):
+        """
+        Get tenant configuration.
+        
+        Returns tenant configuration with platform defaults for any unset values.
+        """
+        tenant = self.get_tenant(tenant_id)
+        config_dict = get_tenant_config(tenant)
+        
+        return Response(config_dict, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        operation_id="update_tenant_config",
+        summary="Update tenant configuration",
+        description="Update tenant configuration (partial update). Updates only the provided fields, leaving others unchanged. Returns updated configuration matching API spec §13.2.",
+        request=TenantConfigUpdateSerializer,
+        responses={
+            200: TenantConfigSerializer,
+            400: OpenApiResponse(description="Validation error - invalid configuration values"),
+            401: OpenApiResponse(description="Unauthorized - missing or invalid bearer token"),
+            403: OpenApiResponse(description="Forbidden - user lacks TENANT_ADMIN role or Platform Admin privileges"),
+            404: OpenApiResponse(description="Tenant not found"),
+        },
+        tags=["Tenants"]
+    )
+    @transaction.atomic
+    def partial_update(self, request, tenant_id=None):
+        """
+        Update tenant configuration (partial update).
+        
+        Updates only the provided fields, leaving others unchanged.
+        """
+        tenant = self.get_tenant(tenant_id)
+        
+        # Get or create tenant config
+        config, created = TenantConfig.objects.get_or_create(tenant=tenant)
+        
+        serializer = TenantConfigUpdateSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        config = serializer.save()
+        
+        # Log audit event
+        log_tenant_operation(
+            action="TENANT_CONFIG_UPDATED",
+            tenant=tenant,
+            actor_user=request.user,
+            details=serializer.validated_data,
+            request=request
+        )
+        
+        # Return complete config with defaults
+        config_dict = get_tenant_config(tenant)
+        return Response(config_dict, status=status.HTTP_200_OK)
 

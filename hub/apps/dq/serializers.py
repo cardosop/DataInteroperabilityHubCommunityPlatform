@@ -56,6 +56,16 @@ class DQRunCreateSerializer(serializers.Serializer):
         help_text="DQ profile key (e.g., intake_basic_gx, intake_basic_soda). Defaults to tenant default or platform default."
     )
     
+    def validate_profile_key(self, value):
+        """Validate that profile_key is a valid DQ profile if provided"""
+        if value:
+            from hub.apps.tenants.validators import VALID_DQ_PROFILES
+            if value not in VALID_DQ_PROFILES:
+                raise serializers.ValidationError(
+                    f"Invalid DQ profile key: {value}. Valid profiles are: {', '.join(VALID_DQ_PROFILES)}"
+                )
+        return value
+    
     def validate(self, data):
         """Validate that at least one of asset_id, dataset_id, or file_id is provided"""
         if not data.get('asset_id') and not data.get('dataset_id') and not data.get('file_id'):

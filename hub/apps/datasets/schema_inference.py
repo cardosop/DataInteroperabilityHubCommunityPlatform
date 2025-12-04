@@ -74,6 +74,274 @@ def detect_encoding(content: bytes) -> str:
     return 'utf-8'  # Default
 
 
+def infer_format_from_values(values: List[Any], field_name: str = '') -> Optional[str]:
+    """
+    Infer format from data patterns (GAP-8.2.4).
+    
+    Args:
+        values: List of sample values
+        field_name: Field name for context
+    
+    Returns:
+        Format string (email, uri, date-time, etc.) or None
+    """
+    non_null_values = [str(v) for v in values if v is not None and v != '']
+    if not non_null_values:
+        return None
+    
+    # Email format
+    email_pattern = re.compile(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+    if all(email_pattern.match(v) for v in non_null_values[:10]):
+        return 'email'
+    
+    # URI format
+    uri_pattern = re.compile(r'^https?://|^ftp://|^file://|^[a-z][a-z0-9+.-]*://')
+    if all(uri_pattern.match(v) for v in non_null_values[:10]):
+        return 'uri'
+    
+    # Date-time format (ISO 8601)
+    datetime_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}')
+    if all(datetime_pattern.match(v) for v in non_null_values[:10]):
+        return 'date-time'
+    
+    # Date format
+    date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+    if all(date_pattern.match(v) for v in non_null_values[:10]):
+        return 'date'
+    
+    return None
+
+
+def infer_pattern_from_values(values: List[Any]) -> Optional[str]:
+    """
+    Infer regex pattern from data patterns (GAP-8.2.4).
+    
+    Args:
+        values: List of sample values
+    
+    Returns:
+        Regex pattern string or None
+    """
+    non_null_values = [str(v) for v in values if v is not None and v != '']
+    if len(non_null_values) < 3:
+        return None
+    
+    # Try to find common patterns
+    # Phone number pattern
+    phone_pattern = re.compile(r'^\+?\d[\d\- ]{7,}$')
+    if all(phone_pattern.match(v) for v in non_null_values[:10]):
+        return r'^\+?\d[\d\- ]{7,}$'
+    
+    # UUID pattern
+    uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+    if all(uuid_pattern.match(v) for v in non_null_values[:10]):
+        return r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    
+    # Credit card pattern
+    card_pattern = re.compile(r'^\d{13,19}$')
+    if all(card_pattern.match(re.sub(r'\D', '', v)) for v in non_null_values[:10]):
+        return r'^\d{13,19}$'
+    
+    # Alphanumeric code pattern (e.g., ORDER-12345)
+    code_pattern = re.compile(r'^[A-Z]+-\d+$')
+    if all(code_pattern.match(v) for v in non_null_values[:10]):
+        return r'^[A-Z]+-\d+$'
+    
+    return None
+
+
+def infer_enum_from_values(values: List[Any], max_enum_size: int = 20) -> Optional[List[Any]]:
+    """
+    Infer enum from limited unique values (GAP-8.2.4).
+    
+    Args:
+        values: List of sample values
+        max_enum_size: Maximum number of unique values to consider as enum
+    
+    Returns:
+        List of enum values or None
+    """
+    non_null_values = [v for v in values if v is not None and v != '']
+    if not non_null_values:
+        return None
+    
+    unique_values = list(set(non_null_values))
+    
+    # If unique values are limited and represent a reasonable enum
+    if len(unique_values) <= max_enum_size and len(unique_values) >= 2:
+        # Check if enum makes sense:
+        # - If we have few unique values relative to total (high repetition), it's likely an enum
+        # - For small datasets (<= 10 samples), if we have 2-5 unique values, it's likely an enum
+        # - For larger datasets, we want at least 2 samples per unique value on average, or unique values should be <= 50% of total
+        unique_ratio = len(unique_values) / len(non_null_values) if non_null_values else 1.0
+        avg_samples_per_value = len(non_null_values) / len(unique_values) if unique_values else 0
+        
+        # Consider it an enum if:
+        # 1. Small dataset (<= 10 samples) with 2-5 unique values (likely categorical)
+        # 2. Unique values are a small fraction of total (high repetition), OR
+        # 3. We have at least 2 samples per unique value on average
+        if len(non_null_values) <= 10 and 2 <= len(unique_values) <= 5:
+            return sorted(unique_values)
+        elif unique_ratio <= 0.5 or avg_samples_per_value >= 2.0:
+            return sorted(unique_values)
+    
+    return None
+
+
+def infer_semantic_type_from_field(field_name: str, values: List[Any]) -> Optional[str]:
+    """
+    Infer semantic type from column names and data patterns (GAP-8.2.4).
+    
+    Args:
+        field_name: Field name
+        values: List of sample values
+    
+    Returns:
+        Semantic type identifier (ORDER_ID, EMAIL, PHONE_NUMBER, etc.) or None
+    """
+    field_name_lower = field_name.lower()
+    
+    # Map common field name patterns to semantic types
+    semantic_type_map = {
+        'order_id': 'ORDER_ID',
+        'orderid': 'ORDER_ID',
+        'order_number': 'ORDER_ID',
+        'ordernumber': 'ORDER_ID',
+        'email': 'EMAIL',
+        'email_address': 'EMAIL',
+        'emailaddress': 'EMAIL',
+        'phone': 'PHONE_NUMBER',
+        'phone_number': 'PHONE_NUMBER',
+        'phonenumber': 'PHONE_NUMBER',
+        'mobile': 'PHONE_NUMBER',
+        'customer_id': 'CUSTOMER_ID',
+        'customerid': 'CUSTOMER_ID',
+        'user_id': 'USER_ID',
+        'userid': 'USER_ID',
+        'product_id': 'PRODUCT_ID',
+        'productid': 'PRODUCT_ID',
+        'transaction_id': 'TRANSACTION_ID',
+        'transactionid': 'TRANSACTION_ID',
+        'address': 'ADDRESS',
+        'street_address': 'ADDRESS',
+        'streetaddress': 'ADDRESS',
+        'postal_code': 'POSTAL_CODE',
+        'postalcode': 'POSTAL_CODE',
+        'zip_code': 'POSTAL_CODE',
+        'zipcode': 'POSTAL_CODE',
+        'country': 'COUNTRY_CODE',
+        'country_code': 'COUNTRY_CODE',
+        'countrycode': 'COUNTRY_CODE',
+        'currency': 'CURRENCY_CODE',
+        'currency_code': 'CURRENCY_CODE',
+        'currencycode': 'CURRENCY_CODE',
+        'price': 'MONETARY_AMOUNT',
+        'amount': 'MONETARY_AMOUNT',
+        'total': 'MONETARY_AMOUNT',
+        'url': 'URI',
+        'uri': 'URI',
+        'website': 'URI',
+        'timestamp': 'TIMESTAMP',
+        'created_at': 'TIMESTAMP',
+        'createdat': 'TIMESTAMP',
+        'updated_at': 'TIMESTAMP',
+        'updatedat': 'TIMESTAMP',
+    }
+    
+    # Check field name mapping
+    for pattern, semantic_type in semantic_type_map.items():
+        if pattern in field_name_lower:
+            return semantic_type
+    
+    # Check data patterns if field name doesn't match
+    non_null_values = [str(v) for v in values if v is not None and v != '']
+    if non_null_values:
+        # Email pattern
+        email_pattern = re.compile(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+        if all(email_pattern.match(v) for v in non_null_values[:10]):
+            return 'EMAIL'
+        
+        # Phone pattern
+        phone_pattern = re.compile(r'^\+?\d[\d\- ]{7,}$')
+        if all(phone_pattern.match(v) for v in non_null_values[:10]):
+            return 'PHONE_NUMBER'
+        
+        # URI pattern
+        uri_pattern = re.compile(r'^https?://|^ftp://|^file://')
+        if all(uri_pattern.match(v) for v in non_null_values[:10]):
+            return 'URI'
+    
+    return None
+
+
+def infer_field_properties(values: List[Any], field_name: str = '') -> Dict[str, Any]:
+    """
+    Infer enhanced field properties from values (GAP-8.2.4).
+    
+    Args:
+        values: List of sample values
+        field_name: Field name for context
+    
+    Returns:
+        Dictionary with enhanced field properties
+    """
+    non_null_values = [v for v in values if v is not None and v != '']
+    
+    properties = {}
+    
+    # Infer format
+    format_value = infer_format_from_values(values, field_name)
+    if format_value:
+        properties['format'] = format_value
+    
+    # Infer pattern
+    pattern_value = infer_pattern_from_values(values)
+    if pattern_value:
+        properties['pattern'] = pattern_value
+    
+    # Infer enum
+    enum_value = infer_enum_from_values(values)
+    if enum_value:
+        properties['enum'] = enum_value
+    
+    # Infer semantic type
+    semantic_type = infer_semantic_type_from_field(field_name, values)
+    if semantic_type:
+        properties['semantic_type'] = semantic_type
+    
+    # Infer min/max length for strings
+    if non_null_values:
+        string_values = [str(v) for v in non_null_values]
+        lengths = [len(v) for v in string_values]
+        if lengths:
+            properties['min_length'] = min(lengths)
+            properties['max_length'] = max(lengths)
+            # Only include if there's variation
+            if min(lengths) == max(lengths):
+                properties['min_length'] = min(lengths)
+                properties['max_length'] = max(lengths)
+    
+    # Infer min/max value for numbers
+    try:
+        numeric_values = [float(v) for v in non_null_values]
+        if numeric_values:
+            properties['minimum'] = min(numeric_values)
+            properties['maximum'] = max(numeric_values)
+    except (ValueError, TypeError):
+        pass
+    
+    # Infer default (most common value)
+    if non_null_values:
+        from collections import Counter
+        value_counts = Counter(non_null_values)
+        most_common = value_counts.most_common(1)[0]
+        # Only set as default if it appears in at least 50% of values
+        if most_common[1] >= len(non_null_values) * 0.5:
+            properties['default'] = most_common[0]
+    
+    return properties
+
+
 def infer_type_from_values(values: List[Any]) -> Dict[str, Any]:
     """
     Infer data type from a list of values.
@@ -191,13 +459,18 @@ def infer_schema_from_csv(file_content: bytes, sample_size: int = DEFAULT_SAMPLE
     if not field_names or not rows:
         raise ValueError("CSV file is empty or has no headers")
     
-    # Infer schema for each field
+    # Infer schema for each field with enhanced properties (GAP-8.2.4)
     fields = []
     primary_key_candidates = []
+    unique_constraint_candidates = []
+    index_recommendations = []
     
     for field_name in field_names:
         values = [row.get(field_name) for row in rows]
         type_info = infer_type_from_values(values)
+        
+        # Infer enhanced field properties (GAP-8.2.4)
+        enhanced_properties = infer_field_properties(values, field_name)
         
         field_schema = {
             'name': field_name,
@@ -206,16 +479,42 @@ def infer_schema_from_csv(file_content: bytes, sample_size: int = DEFAULT_SAMPLE
             'sample_values': values[:10]  # First 10 sample values
         }
         
+        # Add enhanced properties
+        field_schema.update(enhanced_properties)
+        
         fields.append(field_schema)
         
         # Check for potential primary key (all unique, non-null values)
         non_null_values = [v for v in values if v is not None and v != '']
         if len(non_null_values) == len(set(non_null_values)) and len(non_null_values) == len(values):
             primary_key_candidates.append(field_name)
+        
+        # Check for unique constraint (all unique values, but may have nulls)
+        if len(non_null_values) == len(set(non_null_values)) and len(non_null_values) > 0:
+            unique_constraint_candidates.append(field_name)
+        
+        # Recommend index for frequently queried patterns (GAP-8.2.4)
+        # - ID fields (ends with _id)
+        # - Foreign key patterns
+        # - Timestamp fields
+        if field_name.lower().endswith('_id') or field_name.lower().endswith('id'):
+            index_recommendations.append({
+                'field': field_name,
+                'reason': 'ID field pattern',
+                'priority': 'high'
+            })
+        elif 'timestamp' in field_name.lower() or 'created_at' in field_name.lower() or 'updated_at' in field_name.lower():
+            index_recommendations.append({
+                'field': field_name,
+                'reason': 'Timestamp field',
+                'priority': 'medium'
+            })
     
     return {
         'fields': fields,
         'primary_key_candidates': primary_key_candidates,
+        'unique_constraint_candidates': unique_constraint_candidates,
+        'index_recommendations': index_recommendations,
         'row_count_estimated': len(rows),
         'inference_metadata': {
             'sample_size': len(rows),
@@ -300,11 +599,18 @@ def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPL
     for obj in flattened_objects:
         all_fields.update(obj.keys())
     
-    # Infer schema for each field
+    # Infer schema for each field with enhanced properties (GAP-8.2.4)
     fields = []
+    primary_key_candidates = []
+    unique_constraint_candidates = []
+    index_recommendations = []
+    
     for field_name in sorted(all_fields):
         values = [obj.get(field_name) for obj in flattened_objects]
         type_info = infer_type_from_values(values)
+        
+        # Infer enhanced field properties (GAP-8.2.4)
+        enhanced_properties = infer_field_properties(values, field_name)
         
         field_schema = {
             'name': field_name,
@@ -313,11 +619,37 @@ def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPL
             'sample_values': values[:10]
         }
         
+        # Add enhanced properties
+        field_schema.update(enhanced_properties)
+        
         fields.append(field_schema)
+        
+        # Check for potential primary key and unique constraints
+        non_null_values = [v for v in values if v is not None and v != '']
+        if len(non_null_values) == len(set(non_null_values)) and len(non_null_values) == len(values):
+            primary_key_candidates.append(field_name)
+        elif len(non_null_values) == len(set(non_null_values)) and len(non_null_values) > 0:
+            unique_constraint_candidates.append(field_name)
+        
+        # Recommend index for ID and timestamp fields
+        if field_name.lower().endswith('_id') or field_name.lower().endswith('id'):
+            index_recommendations.append({
+                'field': field_name,
+                'reason': 'ID field pattern',
+                'priority': 'high'
+            })
+        elif 'timestamp' in field_name.lower() or 'created_at' in field_name.lower() or 'updated_at' in field_name.lower():
+            index_recommendations.append({
+                'field': field_name,
+                'reason': 'Timestamp field',
+                'priority': 'medium'
+            })
     
     return {
         'fields': fields,
-        'primary_key_candidates': [],
+        'primary_key_candidates': primary_key_candidates,
+        'unique_constraint_candidates': unique_constraint_candidates,
+        'index_recommendations': index_recommendations,
         'row_count_estimated': len(objects),
         'inference_metadata': {
             'sample_size': len(objects),
@@ -352,6 +684,8 @@ def infer_schema_from_parquet(file_content: bytes) -> Dict[str, Any]:
         
         fields = []
         primary_key_candidates = []
+        unique_constraint_candidates = []
+        index_recommendations = []
         
         for column in df.columns:
             dtype = str(df[column].dtype)
@@ -395,6 +729,9 @@ def infer_schema_from_parquet(file_content: bytes) -> Dict[str, Any]:
             
             sample_values = [convert_to_json_serializable(v) for v in sample_values]
             
+            # Infer enhanced field properties (GAP-8.2.4)
+            enhanced_properties = infer_field_properties(sample_values, column)
+            
             field_schema = {
                 'name': column,
                 'data_type': data_type,
@@ -402,15 +739,38 @@ def infer_schema_from_parquet(file_content: bytes) -> Dict[str, Any]:
                 'sample_values': sample_values
             }
             
+            # Add enhanced properties
+            field_schema.update(enhanced_properties)
+            
             fields.append(field_schema)
             
             # Check for potential primary key
             if not nullable and df[column].nunique() == len(df):
                 primary_key_candidates.append(column)
+            
+            # Check for unique constraint
+            if df[column].nunique() == len(df[column].dropna()):
+                unique_constraint_candidates.append(column)
+            
+            # Recommend index for ID and timestamp fields (GAP-8.2.4)
+            if column.lower().endswith('_id') or column.lower().endswith('id'):
+                index_recommendations.append({
+                    'field': column,
+                    'reason': 'ID field pattern',
+                    'priority': 'high'
+                })
+            elif 'timestamp' in column.lower() or 'created_at' in column.lower() or 'updated_at' in column.lower():
+                index_recommendations.append({
+                    'field': column,
+                    'reason': 'Timestamp field',
+                    'priority': 'medium'
+                })
         
         return {
             'fields': fields,
             'primary_key_candidates': primary_key_candidates,
+            'unique_constraint_candidates': unique_constraint_candidates,
+            'index_recommendations': index_recommendations,
             'row_count_estimated': len(df),
             'inference_metadata': {
                 'sample_size': len(sample_df),

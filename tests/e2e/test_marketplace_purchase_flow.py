@@ -20,7 +20,7 @@ from hub.apps.marketplace.models import (
 from hub.apps.marketplace.access_utils import check_entitlement
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
 
 

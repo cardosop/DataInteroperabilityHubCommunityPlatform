@@ -1,0 +1,18 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Invitation to Data Interoperability Hub{% endblock %}
+
+{% block content %}
+<h2>You've been invited!</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>You have been invited to join <strong>{{ tenant.name }}</strong> on Data Interoperability Hub.</p>
+<p>To accept this invitation and activate your account, please click the button below:</p>
+<p style="text-align: center;">
+    <a href="{{ invitation_url }}" class="button">Accept Invitation</a>
+</p>
+<p>Or copy and paste this link into your browser:</p>
+<div class="code">{{ invitation_url }}</div>
+<p>This invitation will expire in 7 days.</p>
+<p>If you did not expect this invitation, you can safely ignore this email.</p>
+{% endblock %}
+

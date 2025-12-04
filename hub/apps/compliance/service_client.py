@@ -68,7 +68,8 @@ class ComplianceServiceClient:
         file_content: bytes,
         file_format: str,
         scan_mode: str = "internal",
-        applicable_regulations: Optional[list] = None
+        applicable_regulations: Optional[list] = None,
+        contract: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Scan file for PII and compliance issues.
@@ -78,11 +79,28 @@ class ComplianceServiceClient:
             file_format: File format (csv, json, parquet)
             scan_mode: Scan mode ('internal' or 'external' for scan-only)
             applicable_regulations: Optional list of regulations to check (e.g., ['GDPR', 'HIPAA'])
+            contract: Optional Contract instance to extract compliance policy from (GAP-8.2.2)
             
         Returns:
             Compliance scan result dictionary
         """
         try:
+            # Extract compliance policy from contract if provided (GAP-8.2.2)
+            effective_regulations = applicable_regulations or []
+            targeted_categories = None
+            if contract:
+                from hub.apps.compliance.contract_integration import (
+                    ContractCompliancePolicyExtractor
+                )
+                # Get jurisdictions from contract for regulatory mapping
+                contract_jurisdictions = ContractCompliancePolicyExtractor.get_regulatory_mapping(contract)
+                if contract_jurisdictions:
+                    # Merge with provided regulations (contract takes precedence)
+                    effective_regulations = list(set(contract_jurisdictions + (applicable_regulations or [])))
+                
+                # Get targeted PII categories for focused detection
+                targeted_categories = ContractCompliancePolicyExtractor.get_targeted_pii_categories(contract)
+            
             # Prepare file for upload
             files = {
                 'file': (f'data.{file_format}', file_content, f'application/{file_format}')
@@ -90,8 +108,12 @@ class ComplianceServiceClient:
             data = {
                 'scan_mode': scan_mode
             }
-            if applicable_regulations:
-                data['applicable_regulations'] = applicable_regulations
+            if effective_regulations:
+                import json
+                data['applicable_regulations'] = json.dumps(effective_regulations) if isinstance(effective_regulations, list) else effective_regulations
+            if targeted_categories:
+                import json
+                data['targeted_categories'] = json.dumps(targeted_categories) if isinstance(targeted_categories, list) else targeted_categories
             
             response = self._request_with_retry(
                 "POST",

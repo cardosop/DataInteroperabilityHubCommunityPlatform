@@ -7,7 +7,8 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError, NotFound
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
+from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.utils import timezone
@@ -156,7 +157,12 @@ def refresh_token(request):
 
 
 @extend_schema(
-    request={'application/json': {'type': 'object', 'properties': {'refresh_token': {'type': 'string'}}}},
+    request=inline_serializer(
+        name='TokenRefreshRequest',
+        fields={
+            'refresh_token': serializers.CharField(required=True)
+        }
+    ),
     responses={200: OpenApiResponse(description='Logged out successfully')},
     tags=['Authentication']
 )
@@ -257,9 +263,9 @@ def password_reset_request(request):
     user.password_reset_token_expires_at = timezone.now() + timedelta(hours=1)
     user.save(update_fields=['password_reset_token', 'password_reset_token_expires_at'])
     
-    # Send password reset email (placeholder)
-    # TODO: Implement email sending
-    # send_password_reset_email(user)
+    # Send password reset email
+    from hub.apps.notifications.tasks import send_password_reset_email
+    send_password_reset_email.delay(str(user.id))
     
     # Log audit event
     log_auth_operation(

@@ -25,7 +25,7 @@ from hub.apps.contracts.models import Contract
 from .conftest import E2ETestBase
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 
 
 class MarketplaceListingsE2ETest(E2ETestBase):

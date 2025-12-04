@@ -8,8 +8,10 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView
 )
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiResponse, inline_serializer
+from drf_spectacular.types import OpenApiTypes
 import drf_spectacular.renderers
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -48,17 +50,17 @@ class ReDocView(SpectacularRedocView):
     pass
 
 
+class APIInfoSerializer(serializers.Serializer):
+    """Serializer for API info endpoint"""
+    name = serializers.CharField()
+    version = serializers.CharField()
+    base_url = serializers.CharField()
+    documentation = serializers.DictField()
+    endpoints = serializers.DictField()
+
+
 @extend_schema(
-    responses={200: {
-        'type': 'object',
-        'properties': {
-            'name': {'type': 'string'},
-            'version': {'type': 'string'},
-            'base_url': {'type': 'string'},
-            'documentation': {'type': 'object'},
-            'endpoints': {'type': 'object'}
-        }
-    }},
+    responses={200: APIInfoSerializer},
     tags=['API']
 )
 @api_view(['GET'])
@@ -98,7 +100,7 @@ def api_info(request):
 
 
 @extend_schema(
-    responses={404: OpenApiResponse(description='Resource not found')},
+    exclude=True,  # Exclude from OpenAPI schema
     tags=['API']
 )
 @api_view(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])

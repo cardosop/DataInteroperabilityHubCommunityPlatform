@@ -109,6 +109,9 @@ class APIKeyAuthentication(BaseAuthentication):
             user = api_key_obj.user
             if not user.is_active():
                 raise AuthenticationFailed('User is not active')
+            # Refresh user from DB to get fresh tenant_id (critical for thread safety with LiveServerTestCase)
+            # This ensures we have the latest tenant_id from the database, not from a cached object
+            user.refresh_from_db(fields=['tenant_id', 'tenant'])
         else:
             # Tenant-scoped API key without user - create a system user representation
             # For now, we'll use the tenant's first admin or create a system user
@@ -116,9 +119,23 @@ class APIKeyAuthentication(BaseAuthentication):
             raise AuthenticationFailed('User-scoped API keys are required')
         
         # Store tenant_id and scopes in request
-        request.tenant_id = str(api_key_obj.tenant.id)
+        # CRITICAL: Use tenant_id from API key object (fresh from DB) to ensure thread safety
+        # Also ensure user.tenant_id is set for fallback scenarios
+        # Convert to string for consistency (some code expects string UUIDs)
+        tenant_id_str = str(api_key_obj.tenant.id)
+        request.tenant_id = tenant_id_str
         request.api_key_scopes = api_key_obj.scopes
         request.api_key_obj = api_key_obj
+        # Also set tenant object for views that use request.tenant
+        # Refresh tenant from DB to ensure it's fresh (important for thread safety)
+        api_key_obj.tenant.refresh_from_db()
+        request.tenant = api_key_obj.tenant
+        
+        # CRITICAL: Ensure user.tenant_id is also set for views that check user.tenant_id
+        # This is a fallback in case request.tenant_id isn't accessible
+        if not hasattr(user, 'tenant_id') or user.tenant_id != api_key_obj.tenant.id:
+            # Refresh user to ensure tenant_id matches
+            user.refresh_from_db(fields=['tenant_id'])
         
         return (user, api_key)
     

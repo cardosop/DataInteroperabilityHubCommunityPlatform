@@ -64,18 +64,21 @@ class JobUtilsTest(TestCase):
     
     def test_get_queue_for_job_type(self):
         """Test get_queue_for_job_type"""
-        # High priority queue for long-running jobs
+        # HIGH priority jobs go to job_critical queue
         queue = get_queue_for_job_type(JobType.DQ_RUN)
-        self.assertEqual(queue, "high")
+        self.assertEqual(queue, "job_critical")
         
         queue = get_queue_for_job_type(JobType.COMPLIANCE_RUN)
-        self.assertEqual(queue, "high")
+        self.assertEqual(queue, "job_critical")
         
-        # Low priority queue for quick jobs
+        # LOW priority jobs go to job_low queue
         queue = get_queue_for_job_type(JobType.CONTRACT_VALIDATION)
-        self.assertEqual(queue, "low")
+        self.assertEqual(queue, "job_low")
         
-        # Default queue for others
+        # NORMAL priority jobs go to job_default queue
         queue = get_queue_for_job_type(JobType.SEMANTIC_MAPPING)
-        self.assertEqual(queue, "default")
+        self.assertEqual(queue, "job_default")
+        
+        queue = get_queue_for_job_type(JobType.CONTRACT_MIGRATION)
+        self.assertEqual(queue, "job_default")
 

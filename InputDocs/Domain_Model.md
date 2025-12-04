@@ -299,6 +299,17 @@ HubContract JSON MUST conform to the following validation rules:
   - `name` (string, required): Field name (non-empty, max 255 characters).
   - `data_type` (string, required): One of `string`, `integer`, `float`, `boolean`, `date`, `datetime`, `timestamp`.
   - `nullable` (boolean, required): Whether field can be null.
+  - `description` (string, optional): Human-readable description of the field.
+  - `semantic_type` (string, optional): Semantic type identifier (e.g., `ORDER_ID`, `EMAIL`, `PHONE_NUMBER`). May reference external ontologies (e.g., Schema.org types).
+  - `format` (string, optional): Format specification (e.g., `email`, `uri`, `date-time`).
+  - `pattern` (string, optional): Regular expression pattern for validation.
+  - `enum` (array, optional): Array of allowed values (strings, numbers, or booleans).
+  - `default` (string|number|boolean, optional): Default value for the field.
+  - `min_length` (integer, optional): Minimum string length.
+  - `max_length` (integer, optional): Maximum string length.
+  - `minimum` (number, optional): Minimum numeric value.
+  - `maximum` (number, optional): Maximum numeric value.
+  - `metadata` (object, optional): Additional field-level metadata (key-value pairs).
 - `quality.rules`: If present, must be array. Each rule must have:
   - `rule_id` (string, required): Unique rule identifier.
   - `dimension` (string, required): One of `completeness`, `accuracy`, `consistency`, `timeliness`, `validity`, `uniqueness`.
@@ -339,7 +350,7 @@ A formal JSON Schema definition for HubContract v1 is maintained at:
       {
         "name": "Data Platform Team",
         "email": "dataplatform@example.com"
-      }
+      } 
     ],
     "tags": ["sales", "orders", "analytics"]
   },
@@ -351,7 +362,18 @@ A formal JSON Schema definition for HubContract v1 is maintained at:
         "nullable": false,
         "description": "Unique identifier for the order.",
         "semantic_type": "ORDER_ID",
-        "metadata": {}
+        "format": null,
+        "pattern": "^ORD-[0-9]{8}$",
+        "enum": null,
+        "default": null,
+        "min_length": 10,
+        "max_length": 20,
+        "minimum": null,
+        "maximum": null,
+        "metadata": {
+          "source_system": "OLTP",
+          "business_key": true
+        }
       }
     ],
     "primary_key": ["order_id"],

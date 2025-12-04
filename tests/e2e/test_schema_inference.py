@@ -26,7 +26,7 @@ from hub.apps.files.models import File, FileStatus
 from .conftest import E2ETestBase
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 
 
 class SchemaInferenceE2ETest(E2ETestBase):

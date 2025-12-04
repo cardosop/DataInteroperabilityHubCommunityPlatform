@@ -80,15 +80,38 @@ The hub uses a lightweight ontology that **extends DCAT** and related vocabulari
 
 We use the following prefixes:
 
+**Core RDF Namespaces:**
 - `rdf:`  `http://www.w3.org/1999/02/22-rdf-syntax-ns#`
 - `rdfs:` `http://www.w3.org/2000/01/rdf-schema#`
 - `xsd:`  `http://www.w3.org/2001/XMLSchema#`
-- `dct:`  `http://purl.org/dc/terms/`
-- `dcat:` `http://www.w3.org/ns/dcat#`
-- `odcs:` `https://bitol.io/odcs#`               (ODCS-related terms; URI TBD)
-- `hub:`  `https://hub.example.com/ont#`        (platform-specific ontology)
+- `owl:`  `http://www.w3.org/2002/07/owl#`
 
-> `hub:` is the main custom ontology namespace for the platform.
+**Standard Catalog & Metadata Vocabularies:**
+- `dct:`  `http://purl.org/dc/terms/`              (Dublin Core Terms)
+- `dcat:` `http://www.w3.org/ns/dcat#`             (Data Catalog Vocabulary)
+- `foaf:` `http://xmlns.com/foaf/0.1/`            (Friend of a Friend - for owners/agents)
+
+**Data Quality & Compliance Vocabularies:**
+- `dqv:`  `https://www.w3.org/ns/dqv#`            (Data Quality Vocabulary)
+- `dpv:`  `https://www.w3.org/ns/dpv#`            (Data Privacy Vocabulary)
+
+**Provenance & Lifecycle:**
+- `prov:` `http://www.w3.org/ns/prov#`            (PROV-O - Provenance Ontology)
+
+**Rights & Licensing:**
+- `odrl:` `https://www.w3.org/ns/odrl/2/`         (Open Digital Rights Language)
+
+**Schema Validation:**
+- `shacl:` `http://www.w3.org/ns/shacl#`          (Shapes Constraint Language)
+
+**Structured Data:**
+- `schema:` `https://schema.org/`                 (Schema.org vocabulary)
+
+**Platform-Specific:**
+- `odcs:` `https://bitol.io/odcs#`                (ODCS-related terms; URI TBD)
+- `hub:`  `https://hub.example.com/ontology#`     (platform-specific ontology)
+
+> `hub:` is the main custom ontology namespace for the platform. Standard vocabularies (DQV, DPV, PROV-O, ODRL, SHACL, Schema.org) are used where applicable to maximize interoperability and reuse of established patterns.
 
 ### 2.2 Core Classes
 
@@ -118,6 +141,38 @@ The ontology defines the following core classes:
 
 - `hub:MarketplaceListing`
   - Represents a marketplace listing for an asset (maps from **Marketplace Listing**).
+
+**Extended Classes (for comprehensive contract representation):**
+
+- `hub:QualityRule`
+  - Represents an individual data quality rule (maps from HubContract `quality.rules[]`).
+  - Linked to `hub:DataContract` via `hub:hasQualityRule`.
+  - Uses DQV vocabulary for quality dimensions.
+
+- `hub:CompliancePolicy`
+  - Represents compliance and privacy policy configuration (maps from HubContract `privacy_compliance`).
+  - Linked to `hub:DataContract` via `hub:hasCompliancePolicy`.
+  - Uses DPV vocabulary for jurisdictions, legal bases, and personal data categories.
+
+- `hub:LifecyclePolicy`
+  - Represents data lifecycle and operational policies (maps from HubContract `lifecycle`).
+  - Linked to `hub:DataContract` via `hub:hasLifecyclePolicy`.
+  - Uses PROV-O for data source provenance.
+
+- `hub:MarketplacePolicy`
+  - Represents marketplace licensing and usage policies (maps from HubContract `marketplace`).
+  - Linked to `hub:DataContract` via `hub:hasMarketplacePolicy`.
+  - Uses ODRL for permissions and prohibitions.
+
+- `hub:Owner`
+  - Represents contract owners (maps from HubContract `info.owners[]`).
+  - Uses FOAF vocabulary (`foaf:Agent`).
+  - Linked to `hub:DataContract` via `hub:hasOwner`.
+
+- `hub:Tag`
+  - Represents contract tags (maps from HubContract `info.tags[]`).
+  - Also exposed via `dcat:keyword` for DCAT compatibility.
+  - Linked to `hub:DataContract` via `hub:hasTag`.
 
 (Additional classes like `hub:AuditEvent` may be introduced later if audit semanticization is needed.)
 
@@ -165,6 +220,18 @@ The ontology introduces several `hub:` properties. Key ones:
 - `hub:fieldNullable`          (literal boolean)
 - `hub:fieldDescription`       (alias to `dct:description` where appropriate)
 - `hub:fieldPIICategory`       (literal; derived from compliance classifications, e.g. `"PII_EMAIL"`)
+- `hub:fieldSemanticType`      (literal; semantic type identifier, may link to Schema.org types)
+- `hub:fieldFormat`            (literal; format specification, e.g. `"email"`, `"uri"`, `"date-time"`)
+- `hub:fieldPattern`           (literal; regex pattern for validation, also uses `shacl:pattern`)
+- `hub:fieldEnum`              (literal; repeated for each enum value)
+- `hub:fieldMinLength`         (integer; also uses `shacl:minLength`)
+- `hub:fieldMaxLength`         (integer; also uses `shacl:maxLength`)
+- `hub:fieldMinimum`           (decimal; also uses `shacl:minInclusive`)
+- `hub:fieldMaximum`           (decimal; also uses `shacl:maxInclusive`)
+- `hub:fieldDefault`           (literal; default value)
+- `hub:isPrimaryKey`           (boolean; indicates field is part of primary key)
+- `hub:isUnique`               (boolean; indicates field has unique constraint)
+- `hub:isIndexed`              (boolean; indicates field is indexed)
 
 **DQ & Compliance properties**
 
@@ -183,9 +250,99 @@ The ontology introduces several `hub:` properties. Key ones:
 - `hub:priceAmount`            (numeric)
 - `hub:currency`               (e.g. `"USD"`)
 
+**Contract metadata properties**
+
+- `hub:hasOwner`               (contract → owner; uses `foaf:Agent`)
+- `hub:hasTag`                 (contract → tag; also uses `dcat:keyword`)
+- `hub:ownerName`              (literal; owner name)
+- `hub:ownerEmail`             (literal; owner email, uses `foaf:mbox`)
+
+**Quality rule properties**
+
+- `hub:hasQualityRule`         (contract → quality rule)
+- `hub:ruleId`                 (literal; unique rule identifier)
+- `hub:ruleDimension`          (literal; links to DQV dimensions: `completeness`, `accuracy`, `consistency`, `timeliness`, `validity`, `uniqueness`)
+- `hub:ruleExpression`         (literal; rule expression/query)
+- `hub:ruleSeverity`           (literal; `ERROR`, `WARNING`, `INFO`)
+- `hub:defaultQualityProfile`  (literal; default DQ profile key)
+
+**Compliance policy properties**
+
+- `hub:hasCompliancePolicy`    (contract → compliance policy)
+- `hub:containsPersonalData`  (boolean; indicates if contract contains personal data)
+- `hub:hasPersonalDataCategory` (literal; repeated, links to DPV categories)
+- `hub:hasJurisdiction`        (literal; repeated, links to DPV jurisdictions: `GDPR`, `LGPD`, `CCPA`, `HIPAA`, `SOX`)
+- `hub:hasLegalBasis`          (literal; repeated, links to DPV legal bases: `CONSENT`, `CONTRACT`, `LEGAL_OBLIGATION`, `VITAL_INTERESTS`, `PUBLIC_TASK`, `LEGITIMATE_INTERESTS`)
+- `hub:retentionPeriod`        (literal; ISO 8601 duration, e.g. `"P5Y"`)
+- `hub:retentionNotes`         (literal; retention policy notes)
+
+**Lifecycle policy properties**
+
+- `hub:hasLifecyclePolicy`     (contract → lifecycle policy)
+- `hub:dataSource`             (URI or literal; data source identifier, uses PROV-O `prov:wasDerivedFrom`)
+- `hub:refreshCadence`          (literal; refresh frequency, e.g. `"DAILY"`, `"HOURLY"`, `"WEEKLY"`)
+- `hub:availabilitySLA`       (literal; availability percentage, e.g. `"99.0"`)
+- `hub:latencySLA`             (integer; P95 latency in milliseconds)
+
+**Marketplace policy properties**
+
+- `hub:hasMarketplacePolicy`   (contract → marketplace policy)
+- `hub:licenseSummary`         (literal; license description)
+- `hub:intendedUse`            (literal; repeated, links to ODRL actions: `analytics`, `machine_learning`, etc.)
+- `hub:restrictedUse`          (literal; repeated, links to ODRL prohibitions: `credit_scoring`, `individual-level_marketing`, etc.)
+
 The full ontology MUST be documented separately (e.g. `Ontology_Spec_v0.1.md`) with RDFS/OWL definitions.
 
-### 2.4 JSON-LD Context
+### 2.4 Standard Vocabulary Integration
+
+The hub ontology **maximizes reuse** of established vocabularies to ensure interoperability and alignment with industry standards:
+
+**Data Quality Vocabulary (DQV)**
+- Quality rules use DQV dimensions: `dqv:completeness`, `dqv:accuracy`, `dqv:consistency`, `dqv:timeliness`, `dqv:validity`, `dqv:uniqueness`
+- Quality measurements use `dqv:QualityMeasurement` and `dqv:isMeasurementOf`
+- Example: `hub:QualityRule` links to DQV via `dqv:isMeasurementOf dqv:completeness`
+
+**Data Privacy Vocabulary (DPV)**
+- Personal data categories use DPV: `dpv:EmailAddress`, `dpv:PhoneNumber`, `dpv:FinancialCard`, etc.
+- Jurisdictions use DPV: `dpv:EU-GDPR`, `dpv:BR-LGPD`, `dpv:US-CCPA`, etc.
+- Legal bases use DPV: `dpv:Consent`, `dpv:Contract`, `dpv:LegalObligation`, etc.
+- Example: `hub:CompliancePolicy` links to DPV via `dpv:hasPersonalDataCategory dpv:EmailAddress`
+
+**PROV-O (Provenance Ontology)**
+- Data source relationships use `prov:wasDerivedFrom`
+- Lifecycle events use `prov:wasGeneratedAtTime`, `prov:wasAttributedTo`
+- Example: `hub:DataAsset prov:wasDerivedFrom <data-source-uri>`
+
+**Open Digital Rights Language (ODRL)**
+- Marketplace permissions use `odrl:Permission` with `odrl:action`
+- Marketplace prohibitions use `odrl:Prohibition` with `odrl:action`
+- Example: `hub:MarketplacePolicy odrl:permission [ odrl:action odrl:use ]`
+
+**Shapes Constraint Language (SHACL)**
+- Field validation rules use SHACL: `shacl:pattern`, `shacl:minLength`, `shacl:maxLength`, `shacl:minInclusive`, `shacl:maxInclusive`
+- Example: `hub:Field shacl:pattern "^[A-Z0-9]+$"`
+
+**Schema.org**
+- Field semantic types may link to Schema.org types: `schema:EmailAddress`, `schema:PostalAddress`, `schema:PhoneNumber`, etc.
+- Example: `hub:Field rdf:type schema:EmailAddress` when `semantic_type = "EMAIL"`
+
+**FOAF (Friend of a Friend)**
+- Contract owners use `foaf:Agent` with `foaf:name` and `foaf:mbox`
+- Example: `hub:Owner rdf:type foaf:Agent ; foaf:name "Data Team" ; foaf:mbox "mailto:data@example.com"`
+
+**DCAT (Data Catalog Vocabulary)**
+- Assets extend `dcat:Dataset`
+- Datasets extend `dcat:Distribution`
+- Tags use `dcat:keyword`
+- Example: `hub:DataAsset rdfs:subClassOf dcat:Dataset`
+
+This vocabulary reuse ensures:
+- **Interoperability**: Other systems can understand hub data using standard vocabularies
+- **Discoverability**: Hub data appears in standard catalog searches and knowledge graphs
+- **Compliance**: Alignment with data governance and privacy standards (GDPR, etc.)
+- **Future-proofing**: Easier integration with external tools and platforms
+
+### 2.5 JSON-LD Context
 
 The platform MUST provide a JSON-LD context, e.g.:
 
@@ -193,9 +350,88 @@ The platform MUST provide a JSON-LD context, e.g.:
 
 which maps compact JSON keys (e.g. `"title"`, `"description"`, `"theme"`, `"hasContract"`) to the corresponding RDF properties (`dct:title`, `dct:description`, `dcat:theme`, `hub:hasContract`, etc.).
 
+The context MUST include all standard vocabulary prefixes:
+- `dqv:` (Data Quality Vocabulary)
+- `dpv:` (Data Privacy Vocabulary)
+- `prov:` (PROV-O)
+- `odrl:` (ODRL)
+- `shacl:` (SHACL)
+- `schema:` (Schema.org)
+- `foaf:` (FOAF)
+- `dcat:` (DCAT)
+- `dct:` (Dublin Core Terms)
+
 All `/id/...` endpoints return JSON-LD with this context attached.
 
-### 2.5 Ontology Versioning
+### 2.6 Normalization Requirements
+
+**Complete HubContract Normalization**
+
+The normalization process MUST extract and preserve **all** sections from source contracts (ODCS, DataContract.com) into the canonical HubContract format:
+
+**Required Normalization Coverage:**
+
+1. **Info Section** (complete):
+   - `info.name` (required)
+   - `info.description` (optional)
+   - `info.version` (optional)
+   - `info.owners[]` (optional) - Array of owner objects with `name` and `email`
+   - `info.tags[]` (optional) - Array of tag strings
+
+2. **Schema Section** (complete):
+   - `schema.fields[]` (required) - Array of field definitions with **all** properties:
+     - `name`, `data_type`, `nullable` (required)
+     - `description`, `semantic_type`, `format`, `pattern`, `enum`, `default` (optional)
+     - `min_length`, `max_length`, `minimum`, `maximum` (optional)
+     - `metadata` (optional) - Additional field-level metadata
+   - `schema.primary_key[]` (optional) - Array of field names
+   - `schema.unique_constraints[]` (optional) - Array of constraint arrays
+   - `schema.indexes[]` (optional) - Array of index definitions
+
+3. **Quality Section** (complete):
+   - `quality.default_profile_key` (optional) - Default DQ profile identifier
+   - `quality.rules[]` (optional) - Array of quality rules with:
+     - `rule_id`, `dimension`, `expression`, `severity` (required)
+
+4. **Privacy/Compliance Section** (complete):
+   - `privacy_compliance.contains_personal_data` (optional) - Boolean
+   - `privacy_compliance.personal_data_categories[]` (optional) - Array of PII category strings
+   - `privacy_compliance.jurisdictions[]` (optional) - Array of jurisdiction strings
+   - `privacy_compliance.legal_bases[]` (optional) - Array of legal basis strings
+   - `privacy_compliance.retention_policy` (optional) - Object with:
+     - `period` (ISO 8601 duration)
+     - `notes` (string)
+
+5. **Lifecycle Section** (complete):
+   - `lifecycle.data_source` (optional) - Data source identifier
+   - `lifecycle.refresh_cadence` (optional) - Refresh frequency string
+   - `lifecycle.slas` (optional) - Object with:
+     - `availability` (string, percentage)
+     - `latency_ms_p95` (integer, milliseconds)
+
+6. **Marketplace Section** (complete):
+   - `marketplace.license_summary` (optional) - License description
+   - `marketplace.intended_use[]` (optional) - Array of use case strings
+   - `marketplace.restricted_use[]` (optional) - Array of prohibited use case strings
+
+7. **Extensions Section**:
+   - `extensions.odcs` (optional) - Unmappable ODCS fields
+   - `extensions.datacontract_com` (optional) - Unmappable DataContract.com fields
+
+**Normalization Status:**
+
+- `NORMALIZED_OK`: All mappable sections successfully extracted
+- `NORMALIZED_WITH_WARNINGS`: Some sections extracted, unmappable fields preserved in `extensions`
+- `NORMALIZATION_FAILED`: Critical sections missing or invalid, cannot produce valid HubContract
+
+**Information Preservation:**
+
+- **Never lose information**: All fields from source contracts MUST be either:
+  - Mapped to HubContract canonical structure, OR
+  - Preserved in `extensions.{source_spec}` section
+- **No data loss**: Original contract file (`original_raw`) is always preserved verbatim
+
+### 2.7 Ontology Versioning
 
 The `hub:` ontology is versioned independently from the application code and the HubContract schema.
 
@@ -318,11 +554,19 @@ We generate:
 ```turtle
 <contract-uri> a hub:DataContract ;
   dct:title              "Customer Orders Contract" ;
+  dct:description        "Orders data product for analytics." ;
   hub:contractSpecType   "ODCS" ;
   hub:contractSpecVersion "3.0.2" ;
   hub:hubContractVersion  1 ;
   hub:originalFormat     "YAML" ;
-  dct:identifier         "contract-uuid-or-human-readable-key" .
+  dct:identifier         "contract-uuid-or-human-readable-key" ;
+  hub:hasOwner           <owner-uri> ;
+  hub:hasTag             <tag-uri-1>, <tag-uri-2> ;
+  dcat:keyword           "sales", "orders", "analytics" ;
+  hub:hasQualityRule     <quality-rule-uri> ;
+  hub:hasCompliancePolicy <compliance-policy-uri> ;
+  hub:hasLifecyclePolicy  <lifecycle-policy-uri> ;
+  hub:hasMarketplacePolicy <marketplace-policy-uri> .
 ```
 
 **Field mappings:**
@@ -332,7 +576,63 @@ We generate:
 - `contract.hub_contract_version`  → `hub:hubContractVersion`
 - `contract.original_format`       → `hub:originalFormat`
 - `hub_contract_json.info.name` (if present) → `dct:title`
+- `hub_contract_json.info.description` (if present) → `dct:description`
+- `hub_contract_json.info.version` (if present) → `dct:hasVersion`
 - `contract.id` or an external key → `dct:identifier`
+
+**Info section mappings:**
+
+- `hub_contract_json.info.owners[]` → For each owner:
+  - Create `hub:Owner` (or `foaf:Agent`) resource
+  - Set `hub:ownerName` and `hub:ownerEmail` (or `foaf:name` and `foaf:mbox`)
+  - Link via `hub:hasOwner`
+- `hub_contract_json.info.tags[]` → For each tag:
+  - Create `hub:Tag` resource
+  - Set `rdfs:label` to tag value
+  - Link via `hub:hasTag`
+  - Also add as `dcat:keyword` for DCAT compatibility
+
+**Quality section mappings:**
+
+- `hub_contract_json.quality.default_profile_key` → `hub:defaultQualityProfile`
+- `hub_contract_json.quality.rules[]` → For each rule:
+  - Create `hub:QualityRule` resource
+  - Set `hub:ruleId`, `hub:ruleDimension`, `hub:ruleExpression`, `hub:ruleSeverity`
+  - Link dimension to DQV vocabulary (e.g., `dqv:completeness`, `dqv:accuracy`)
+  - Link via `hub:hasQualityRule`
+
+**Privacy/Compliance section mappings:**
+
+- `hub_contract_json.privacy_compliance.contains_personal_data` → `hub:containsPersonalData`
+- `hub_contract_json.privacy_compliance.personal_data_categories[]` → For each category:
+  - Add `hub:hasPersonalDataCategory` (literal)
+  - Link to DPV vocabulary where applicable (e.g., `dpv:EmailAddress`, `dpv:PhoneNumber`)
+- `hub_contract_json.privacy_compliance.jurisdictions[]` → For each jurisdiction:
+  - Add `hub:hasJurisdiction` (literal)
+  - Link to DPV vocabulary where applicable (e.g., `dpv:EU-GDPR`, `dpv:BR-LGPD`)
+- `hub_contract_json.privacy_compliance.legal_bases[]` → For each legal basis:
+  - Add `hub:hasLegalBasis` (literal)
+  - Link to DPV vocabulary where applicable (e.g., `dpv:Consent`, `dpv:Contract`)
+- `hub_contract_json.privacy_compliance.retention_policy.period` → `hub:retentionPeriod`
+- `hub_contract_json.privacy_compliance.retention_policy.notes` → `hub:retentionNotes`
+
+**Lifecycle section mappings:**
+
+- `hub_contract_json.lifecycle.data_source` → `hub:dataSource` (URI or literal)
+  - Also create PROV-O relationship: `prov:wasDerivedFrom <source-uri>`
+- `hub_contract_json.lifecycle.refresh_cadence` → `hub:refreshCadence`
+- `hub_contract_json.lifecycle.slas.availability` → `hub:availabilitySLA`
+- `hub_contract_json.lifecycle.slas.latency_ms_p95` → `hub:latencySLA`
+
+**Marketplace section mappings:**
+
+- `hub_contract_json.marketplace.license_summary` → `hub:licenseSummary`
+- `hub_contract_json.marketplace.intended_use[]` → For each use:
+  - Add `hub:intendedUse` (literal)
+  - Create ODRL permission: `odrl:Permission` with `odrl:action` mapped from use case
+- `hub_contract_json.marketplace.restricted_use[]` → For each restricted use:
+  - Add `hub:restrictedUse` (literal)
+  - Create ODRL prohibition: `odrl:Prohibition` with `odrl:action` mapped from use case
 
 ### 4.3 Schema & Fields (HubContract.schema → hub:Field)
 
@@ -346,9 +646,22 @@ Assuming `hub_contract_json` includes a schema section like:
         "name": "order_id",
         "data_type": "string",
         "nullable": false,
-        "description": "Order identifier"
+        "description": "Order identifier",
+        "semantic_type": "ORDER_ID",
+        "format": null,
+        "pattern": "^ORD-[0-9]{8}$",
+        "enum": null,
+        "default": null,
+        "min_length": 10,
+        "max_length": 20,
+        "minimum": null,
+        "maximum": null,
+        "metadata": {}
       }
-    ]
+    ],
+    "primary_key": ["order_id"],
+    "unique_constraints": [],
+    "indexes": []
   }
 }
 ```
@@ -361,7 +674,15 @@ For each field:
   hub:fieldDataType    "string" ;
   hub:fieldNullable    false ;
   dct:description      "Order identifier" ;
-  hub:fieldPIICategory "NONE" .
+  hub:fieldPIICategory "NONE" ;
+  hub:fieldSemanticType "ORDER_ID" ;
+  hub:fieldPattern     "^ORD-[0-9]{8}$" ;
+  shacl:pattern        "^ORD-[0-9]{8}$" ;
+  hub:fieldMinLength   10 ;
+  shacl:minLength      10 ;
+  hub:fieldMaxLength   20 ;
+  shacl:maxLength      20 ;
+  hub:isPrimaryKey     true .
 ```
 
 And link back:
@@ -376,8 +697,26 @@ And link back:
 - `fields[i].data_type`     → `hub:fieldDataType`
 - `fields[i].nullable`      → `hub:fieldNullable`
 - `fields[i].description`   → `dct:description`
+- `fields[i].semantic_type` → `hub:fieldSemanticType` (may also link to Schema.org types via `rdf:type`)
+- `fields[i].format`         → `hub:fieldFormat`
+- `fields[i].pattern`        → `hub:fieldPattern` and `shacl:pattern`
+- `fields[i].enum`           → repeated `hub:fieldEnum` (one per enum value)
+- `fields[i].default`        → `hub:fieldDefault`
+- `fields[i].min_length`     → `hub:fieldMinLength` and `shacl:minLength`
+- `fields[i].max_length`     → `hub:fieldMaxLength` and `shacl:maxLength`
+- `fields[i].minimum`        → `hub:fieldMinimum` and `shacl:minInclusive`
+- `fields[i].maximum`        → `hub:fieldMaximum` and `shacl:maxInclusive`
 - PII category, if known from compliance runs:
   - e.g. `column_findings["customer_email"].categories = ["PII_EMAIL"]` → `hub:fieldPIICategory "PII_EMAIL"`.
+- Primary key: If field name in `schema.primary_key[]` → `hub:isPrimaryKey true`
+- Unique constraint: If field name in `schema.unique_constraints[]` → `hub:isUnique true`
+- Index: If field name in `schema.indexes[]` → `hub:isIndexed true`
+
+**Schema constraint mappings:**
+
+- `schema.primary_key[]` → For each field in primary key, set `hub:isPrimaryKey true`
+- `schema.unique_constraints[]` → For each field in unique constraints, set `hub:isUnique true`
+- `schema.indexes[]` → For each field in indexes, set `hub:isIndexed true`
 
 If multiple PII categories apply, additional properties or a list may be used.
 
@@ -467,7 +806,7 @@ We generate:
   hub:targetAsset             <asset-uri> ;
   hub:targetDataset           <dataset-uri> .
 ```
-
+ 
 We may also link categories:
 
 ```turtle
@@ -1006,7 +1345,201 @@ Example JSON-LD for an asset (simplified):
 
 ---
 
-## 9. Open Issues & Future Extensions
+## 9. Complete Mapping Example
+
+### 9.1 Full HubContract to RDF Example
+
+Given a complete HubContract with all sections populated:
+
+```json
+{
+  "hub_contract_version": 1,
+  "id": "orders-contract-v1",
+  "info": {
+    "name": "Customer Orders",
+    "description": "Orders data product for analytics.",
+    "version": "1.0.0",
+    "owners": [
+      {"name": "Data Platform Team", "email": "dataplatform@example.com"}
+    ],
+    "tags": ["sales", "orders", "analytics"]
+  },
+  "schema": {
+    "fields": [
+      {
+        "name": "order_id",
+        "data_type": "string",
+        "nullable": false,
+        "description": "Unique identifier",
+        "semantic_type": "ORDER_ID",
+        "pattern": "^ORD-[0-9]{8}$",
+        "min_length": 10,
+        "max_length": 20
+      },
+      {
+        "name": "customer_email",
+        "data_type": "string",
+        "nullable": false,
+        "description": "Customer email address",
+        "semantic_type": "EMAIL",
+        "format": "email"
+      }
+    ],
+    "primary_key": ["order_id"],
+    "unique_constraints": [],
+    "indexes": []
+  },
+  "quality": {
+    "default_profile_key": "intake_basic",
+    "rules": [
+      {
+        "rule_id": "not_null_order_id",
+        "dimension": "completeness",
+        "expression": "order_id IS NOT NULL",
+        "severity": "ERROR"
+      }
+    ]
+  },
+  "privacy_compliance": {
+    "contains_personal_data": true,
+    "personal_data_categories": ["PII_DIRECT_EMAIL"],
+    "jurisdictions": ["GDPR", "LGPD"],
+    "legal_bases": ["CONSENT", "CONTRACT"],
+    "retention_policy": {
+      "period": "P5Y",
+      "notes": "5 years retention"
+    }
+  },
+  "lifecycle": {
+    "data_source": "OLTP.orders",
+    "refresh_cadence": "DAILY",
+    "slas": {
+      "availability": "99.0",
+      "latency_ms_p95": 5000
+    }
+  },
+  "marketplace": {
+    "license_summary": "Internal only",
+    "intended_use": ["analytics", "machine_learning"],
+    "restricted_use": ["credit_scoring"]
+  }
+}
+```
+
+The complete RDF representation:
+
+```turtle
+@prefix hub: <https://hub.example.com/ontology#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dqv: <https://www.w3.org/ns/dqv#> .
+@prefix dpv: <https://www.w3.org/ns/dpv#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix odrl: <https://www.w3.org/ns/odrl/2/> .
+@prefix shacl: <http://www.w3.org/ns/shacl#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix schema: <https://schema.org/> .
+
+# Contract
+<https://hub.example.com/id/contract/uuid-123> a hub:DataContract ;
+  dct:title "Customer Orders" ;
+  dct:description "Orders data product for analytics." ;
+  dct:hasVersion "1.0.0" ;
+  hub:contractSpecType "ODCS" ;
+  hub:contractSpecVersion "3.0.2" ;
+  hub:hubContractVersion 1 ;
+  hub:originalFormat "YAML" ;
+  dct:identifier "orders-contract-v1" ;
+  hub:hasOwner <https://hub.example.com/id/owner/hash-email> ;
+  hub:hasTag <https://hub.example.com/id/tag/hash-sales>, <https://hub.example.com/id/tag/hash-orders> ;
+  dcat:keyword "sales", "orders", "analytics" ;
+  hub:hasQualityRule <https://hub.example.com/id/contract/uuid-123/quality-rule/not_null_order_id> ;
+  hub:hasCompliancePolicy <https://hub.example.com/id/contract/uuid-123/compliance-policy> ;
+  hub:hasLifecyclePolicy <https://hub.example.com/id/contract/uuid-123/lifecycle-policy> ;
+  hub:hasMarketplacePolicy <https://hub.example.com/id/contract/uuid-123/marketplace-policy> .
+
+# Owner
+<https://hub.example.com/id/owner/hash-email> a foaf:Agent ;
+  foaf:name "Data Platform Team" ;
+  foaf:mbox "mailto:dataplatform@example.com" .
+
+# Tags
+<https://hub.example.com/id/tag/hash-sales> a hub:Tag ;
+  rdfs:label "sales" .
+
+<https://hub.example.com/id/tag/hash-orders> a hub:Tag ;
+  rdfs:label "orders" .
+
+# Quality Rule
+<https://hub.example.com/id/contract/uuid-123/quality-rule/not_null_order_id> a hub:QualityRule ;
+  hub:ruleId "not_null_order_id" ;
+  hub:ruleDimension "completeness" ;
+  dqv:isMeasurementOf dqv:completeness ;
+  hub:ruleExpression "order_id IS NOT NULL" ;
+  hub:ruleSeverity "ERROR" .
+
+# Compliance Policy
+<https://hub.example.com/id/contract/uuid-123/compliance-policy> a hub:CompliancePolicy ;
+  hub:containsPersonalData true ;
+  hub:hasPersonalDataCategory "PII_DIRECT_EMAIL" ;
+  dpv:hasPersonalDataCategory dpv:EmailAddress ;
+  hub:hasJurisdiction "GDPR", "LGPD" ;
+  dpv:hasJurisdiction dpv:EU-GDPR, dpv:BR-LGPD ;
+  hub:hasLegalBasis "CONSENT", "CONTRACT" ;
+  dpv:hasLegalBasis dpv:Consent, dpv:Contract ;
+  hub:retentionPeriod "P5Y" ;
+  hub:retentionNotes "5 years retention" .
+
+# Lifecycle Policy
+<https://hub.example.com/id/contract/uuid-123/lifecycle-policy> a hub:LifecyclePolicy ;
+  hub:dataSource <https://hub.example.com/id/source/hash-oltp-orders> ;
+  hub:refreshCadence "DAILY" ;
+  hub:availabilitySLA "99.0" ;
+  hub:latencySLA 5000 .
+
+<https://hub.example.com/id/source/hash-oltp-orders> a prov:Entity ;
+  rdfs:label "OLTP.orders" .
+
+# Marketplace Policy
+<https://hub.example.com/id/contract/uuid-123/marketplace-policy> a hub:MarketplacePolicy ;
+  hub:licenseSummary "Internal only" ;
+  hub:intendedUse "analytics", "machine_learning" ;
+  hub:restrictedUse "credit_scoring" ;
+  odrl:permission [
+    a odrl:Permission ;
+    odrl:action odrl:use
+  ] ;
+  odrl:prohibition [
+    a odrl:Prohibition ;
+    odrl:action odrl:use
+  ] .
+
+# Fields
+<https://hub.example.com/id/field/asset-uuid/order_id> a hub:Field ;
+  hub:fieldName "order_id" ;
+  hub:fieldDataType "string" ;
+  hub:fieldNullable false ;
+  dct:description "Unique identifier" ;
+  hub:fieldSemanticType "ORDER_ID" ;
+  hub:fieldPattern "^ORD-[0-9]{8}$" ;
+  shacl:pattern "^ORD-[0-9]{8}$" ;
+  hub:fieldMinLength 10 ;
+  shacl:minLength 10 ;
+  hub:fieldMaxLength 20 ;
+  shacl:maxLength 20 ;
+  hub:isPrimaryKey true .
+
+<https://hub.example.com/id/field/asset-uuid/customer_email> a hub:Field, schema:EmailAddress ;
+  hub:fieldName "customer_email" ;
+  hub:fieldDataType "string" ;
+  hub:fieldNullable false ;
+  dct:description "Customer email address" ;
+  hub:fieldSemanticType "EMAIL" ;
+  hub:fieldFormat "email" ;
+  hub:fieldPIICategory "PII_EMAIL" .
+```
+
+## 10. Open Issues & Future Extensions
 
 - **Ontology refinement**  
   Further alignment with DCAT-AP, schema.org, and sector-specific ontologies (e.g. FIBO for finance, HL7 for health).
@@ -1020,4 +1553,10 @@ Example JSON-LD for an asset (simplified):
 - **Cross-hub federation**  
   Expose public DCAT catalogs for federation with external catalogs and data portals.
 
-This design provides enough specificity to implement the first version of the semantic mapping pipeline and to treat semantic failures cleanly as a `DEGRADED` mode without breaking core hub functionality.
+- **Semantic type mapping**  
+  Automatic mapping of `semantic_type` values to Schema.org types and other standard vocabularies.
+
+- **Vocabulary alignment**  
+  Regular updates to align with latest versions of DQV, DPV, PROV-O, ODRL, and other standard vocabularies.
+
+This design provides comprehensive coverage of contract normalization and ontology representation, ensuring full information preservation and maximum interoperability through standard vocabulary reuse.

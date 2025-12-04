@@ -21,7 +21,7 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 from .conftest import E2ETestBase
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e1]
 
 
 class ContractMigrationE2ETest(E2ETestBase):

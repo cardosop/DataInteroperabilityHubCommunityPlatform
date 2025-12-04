@@ -110,6 +110,36 @@ def add_request_context(logger, method_name, event_dict):
     return event_dict
 
 
+def add_trace_context(logger, method_name, event_dict):
+    """
+    Add trace context (trace_id, span_id) to log entries for correlation.
+    
+    Args:
+        logger: Logger instance
+        method_name: Log method name
+        event_dict: Event dictionary
+        
+    Returns:
+        Event dictionary with trace context
+    """
+    try:
+        from opentelemetry import trace
+        
+        span = trace.get_current_span()
+        if span and span.get_span_context().is_valid:
+            span_context = span.get_span_context()
+            # Convert trace_id and span_id to hex strings
+            trace_id = format(span_context.trace_id, '032x')
+            span_id = format(span_context.span_id, '016x')
+            event_dict['trace_id'] = trace_id
+            event_dict['span_id'] = span_id
+    except Exception:
+        # If OpenTelemetry is not available, skip trace context
+        pass
+    
+    return event_dict
+
+
 def configure_structlog():
     """
     Configure structlog with required processors and JSON output.
@@ -133,6 +163,7 @@ def configure_structlog():
         structlog.processors.format_exc_info,  # Exception formatting
         add_service_name,  # Add service name
         add_request_context,  # Add request context
+        add_trace_context,  # Add trace context (trace_id, span_id)
         redact_pii_processor,  # Redact PII
     ]
     

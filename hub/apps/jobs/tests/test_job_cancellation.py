@@ -143,4 +143,57 @@ class JobCancellationTest(TestCase):
         
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.CANCELLED)  # Status unchanged
+    
+    def test_cancel_running_job_releases_tenant_slot(self):
+        """Test that cancelling a running job releases tenant concurrency slot"""
+        self.client.force_authenticate(user=self.user)
+        
+        from hub.apps.jobs.utils import increment_tenant_job_counter, get_tenant_job_counter
+        
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.RUNNING,
+            resource_type="DATASET",
+            resource_id=uuid.uuid4(),
+            created_by=self.user
+        )
+        
+        # Increment running counter to simulate job running
+        increment_tenant_job_counter(str(self.tenant.id), "running")
+        self.assertEqual(get_tenant_job_counter(str(self.tenant.id), "running"), 1)
+        
+        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], JobStatus.CANCELLED)
+        
+        # Verify tenant slot was released
+        self.assertEqual(get_tenant_job_counter(str(self.tenant.id), "running"), 0)
+    
+    def test_cancel_pending_job_does_not_release_slot(self):
+        """Test that cancelling a pending job does not release tenant slot (wasn't running)"""
+        self.client.force_authenticate(user=self.user)
+        
+        from hub.apps.jobs.utils import get_tenant_job_counter
+        
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.PENDING,
+            resource_type="DATASET",
+            resource_id=uuid.uuid4(),
+            created_by=self.user
+        )
+        
+        # No running counter should exist
+        self.assertEqual(get_tenant_job_counter(str(self.tenant.id), "running"), 0)
+        
+        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], JobStatus.CANCELLED)
+        
+        # Still no running counter (wasn't running)
+        self.assertEqual(get_tenant_job_counter(str(self.tenant.id), "running"), 0)
 

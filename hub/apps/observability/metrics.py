@@ -61,6 +61,19 @@ job_queue_length = Gauge(
     ['job_type', 'queue_name']
 )
 
+# Per-tenant job count metrics
+tenant_running_jobs = Gauge(
+    'tenant_running_jobs',
+    'Current number of running jobs per tenant',
+    ['tenant_id']
+)
+
+tenant_queued_jobs = Gauge(
+    'tenant_queued_jobs',
+    'Current number of queued jobs per tenant',
+    ['tenant_id']
+)
+
 # DQ & Compliance Metrics
 dq_runs_total = Counter(
     'dq_runs_total',
