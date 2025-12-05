@@ -68,15 +68,21 @@ class DataConsumerPersonaTest(E2ETestBase):
     
     def test_data_consumer_subject_to_rate_limits(self):
         """Test DATA_CONSUMER is subject to rate limits"""
-        result = check_rate_limit(
+        from django.http import HttpRequest
+        request = HttpRequest()
+        request.path = "/api/v1/contracts/contracts/"
+        request.method = "GET"
+        request.tenant_id = str(self.tenant.id)
+        request.user = self.consumer_user
+        
+        allowed, results = check_rate_limit(
+            request=request,
             tenant_id=str(self.tenant.id),
             user_id=str(self.consumer_user.id),
-            api_key_id=None,
-            endpoint_category="catalog_reads",
-            path="/api/v1/contracts/contracts/",
-            method="GET"
+            api_key_id=None
         )
         
+        result = {"allowed": allowed, "results": results}
         self.assertIn("allowed", result)
     
     def test_data_consumer_rate_limit_headers(self):
@@ -114,14 +120,21 @@ class DataConsumerPersonaTest(E2ETestBase):
             tenant=self.tenant
         )
         
-        result = check_rate_limit(
+        from django.http import HttpRequest
+        request = HttpRequest()
+        request.path = "/api/v1/contracts/contracts/"
+        request.method = "GET"
+        request.tenant_id = str(self.tenant.id)
+        request.api_key_obj = api_key
+        
+        allowed, results = check_rate_limit(
+            request=request,
             tenant_id=str(self.tenant.id),
             user_id=None,
-            api_key_id=str(api_key.id),
-            endpoint_category="catalog_reads",
-            path="/api/v1/contracts/contracts/",
-            method="GET"
+            api_key_id=str(api_key.id)
         )
+        
+        result = {"allowed": allowed, "results": results}
         
         self.assertIn("allowed", result)
     
@@ -151,28 +164,35 @@ class DataConsumerPersonaTest(E2ETestBase):
         """Test tenant-specific rate limits apply to DATA_CONSUMER"""
         from hub.apps.tenants.models import TenantConfig
         
+        # TenantConfig uses rate_limits field directly, not config_json
         TenantConfig.objects.update_or_create(
             tenant=self.tenant,
             defaults={
-                "config_json": {
-                    "rate_limits": {
-                        "catalog_reads": {
-                            "burst_per_10s": 10,
-                            "sustained_per_min": 30
-                        }
+                "rate_limits": {
+                    "catalog_reads": {
+                        "burst_per_10s": 10,
+                        "sustained_per_min": 30
                     }
                 }
             }
         )
         
-        result = check_rate_limit(
+        # check_rate_limit requires a request object, not individual parameters
+        from django.http import HttpRequest
+        request = HttpRequest()
+        request.path = "/api/v1/contracts/contracts/"
+        request.method = "GET"
+        request.tenant_id = str(self.tenant.id)
+        request.user = self.consumer_user
+        
+        allowed, results = check_rate_limit(
+            request=request,
             tenant_id=str(self.tenant.id),
             user_id=str(self.consumer_user.id),
-            api_key_id=None,
-            endpoint_category="catalog_reads",
-            path="/api/v1/contracts/contracts/",
-            method="GET"
+            api_key_id=None
         )
+        
+        result = {"allowed": allowed, "results": results}
         
         self.assertIn("allowed", result)
     
@@ -182,15 +202,22 @@ class DataConsumerPersonaTest(E2ETestBase):
         
         TenantConfig.objects.filter(tenant=self.tenant).delete()
         
-        result = check_rate_limit(
+        # check_rate_limit requires a request object
+        from django.http import HttpRequest
+        request = HttpRequest()
+        request.path = "/api/v1/contracts/contracts/"
+        request.method = "GET"
+        request.tenant_id = str(self.tenant.id)
+        request.user = self.consumer_user
+        
+        allowed, results = check_rate_limit(
+            request=request,
             tenant_id=str(self.tenant.id),
             user_id=str(self.consumer_user.id),
-            api_key_id=None,
-            endpoint_category="catalog_reads",
-            path="/api/v1/contracts/contracts/",
-            method="GET"
+            api_key_id=None
         )
         
+        result = {"allowed": allowed, "results": results}
         self.assertIn("allowed", result)
     
     def test_data_consumer_cannot_modify_tenant_config_via_cli(self):
@@ -249,23 +276,35 @@ class DataConsumerPersonaTest(E2ETestBase):
         )
         UserRole.objects.create(user=other_consumer, role=self.consumer_role)
         
-        result1 = check_rate_limit(
+        from django.http import HttpRequest
+        
+        request1 = HttpRequest()
+        request1.path = "/api/v1/contracts/contracts/"
+        request1.method = "GET"
+        request1.tenant_id = str(self.tenant.id)
+        request1.user = self.consumer_user
+        
+        allowed1, results1 = check_rate_limit(
+            request=request1,
             tenant_id=str(self.tenant.id),
             user_id=str(self.consumer_user.id),
-            api_key_id=None,
-            endpoint_category="catalog_reads",
-            path="/api/v1/contracts/contracts/",
-            method="GET"
+            api_key_id=None
         )
+        result1 = {"allowed": allowed1, "results": results1}
         
-        result2 = check_rate_limit(
+        request2 = HttpRequest()
+        request2.path = "/api/v1/contracts/contracts/"
+        request2.method = "GET"
+        request2.tenant_id = str(self.tenant.id)
+        request2.user = other_consumer
+        
+        allowed2, results2 = check_rate_limit(
+            request=request2,
             tenant_id=str(self.tenant.id),
             user_id=str(other_consumer.id),
-            api_key_id=None,
-            endpoint_category="catalog_reads",
-            path="/api/v1/contracts/contracts/",
-            method="GET"
+            api_key_id=None
         )
+        result2 = {"allowed": allowed2, "results": results2}
         
         self.assertIn("allowed", result1)
         self.assertIn("allowed", result2)

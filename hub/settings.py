@@ -135,11 +135,26 @@ def _detect_staging_for_tests():
     # Auto-detect by checking staging API port
     try:
         import httpx
-        response = httpx.get("http://localhost:8001/health", timeout=1)
-        if response.status_code in [200, 503]:
+        response = httpx.get("http://localhost:8001/health", timeout=1, follow_redirects=False)
+        # Accept 200 (OK), 301/302 (redirects), 503 (unhealthy but service exists)
+        if response.status_code in [200, 301, 302, 503]:
             return True
     except Exception:
-        pass
+        # Also check if staging PostgreSQL port is accessible as fallback
+        try:
+            import psycopg2
+            test_conn = psycopg2.connect(
+                host='localhost',
+                port=5433,
+                database='hub_staging',
+                user='hub_staging',
+                password='hub_staging_secure',
+                connect_timeout=1
+            )
+            test_conn.close()
+            return True
+        except Exception:
+            pass
     
     # Default to False (non-staging) if detection fails
     # This prevents production from accidentally using staging ports
@@ -160,95 +175,87 @@ if 'test' in sys.argv or 'pytest' in sys.modules:
     django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing = _noop_validate_thread_sharing
 
 if 'test' in sys.argv or 'pytest' in sys.modules:
-    # Try to use PostgreSQL for tests (better for threading and transaction handling)
+    # REQUIRED: Use PostgreSQL for tests (no SQLite fallback)
+    # PostgreSQL is required for proper threading, transaction handling, and consistency with production
+    import psycopg2
+    from psycopg2 import extensions as psycopg2_extensions
+    import os
+    
+    # Detect staging environment for tests using centralized function
+    staging_detected = _detect_staging_for_tests()
+    
+    # Get PostgreSQL connection parameters
+    postgres_host = os.getenv('POSTGRES_HOST', 'localhost')
+    postgres_db = os.getenv('POSTGRES_DB', 'hub_staging' if staging_detected else 'hub')
+    postgres_user = os.getenv('POSTGRES_USER', 'hub_staging' if staging_detected else 'hub')
+    postgres_password = os.getenv('POSTGRES_PASSWORD', 'hub_staging_secure' if staging_detected else 'hub')
+    # Use staging port if staging detected, otherwise default
+    default_port = '5433' if staging_detected else '5432'
+    postgres_port = os.getenv('POSTGRES_PORT', default_port)
+    
+    # Verify PostgreSQL is available - raise clear error if not
     try:
-        import psycopg2
-        from psycopg2 import extensions as psycopg2_extensions
-        import os
-        
-        # Detect staging environment for tests
-        # Check if staging API port is accessible (indicates staging environment)
-        staging_detected = False
-        try:
-            import httpx
-            response = httpx.get("http://localhost:8001/health", timeout=1)
-            if response.status_code in [200, 503]:  # 503 is OK - service might be unhealthy but exists
-                staging_detected = True
-        except Exception:
-            pass
-        
-        postgres_host = os.getenv('POSTGRES_HOST', 'localhost')
-        postgres_db = os.getenv('POSTGRES_DB', 'hub_staging' if staging_detected else 'hub')
-        postgres_user = os.getenv('POSTGRES_USER', 'hub_staging' if staging_detected else 'hub')
-        postgres_password = os.getenv('POSTGRES_PASSWORD', 'hub_staging_secure' if staging_detected else 'hub')
-        # Use staging port if staging detected, otherwise default
-        default_port = '5433' if staging_detected else '5432'
-        postgres_port = os.getenv('POSTGRES_PORT', default_port)
-        
-        # Try to connect to verify PostgreSQL is available
         test_conn = psycopg2.connect(
             host=postgres_host,
             port=postgres_port,
             database=postgres_db,
             user=postgres_user,
             password=postgres_password,
-            connect_timeout=2
+            connect_timeout=5
         )
         test_conn.close()
-        
-        # Use PostgreSQL for tests - supports proper transaction handling
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
+    except psycopg2.OperationalError as e:
+        raise RuntimeError(
+            f"PostgreSQL connection failed for tests. "
+            f"Host: {postgres_host}:{postgres_port}, DB: {postgres_db}, User: {postgres_user}. "
+            f"Error: {e}. "
+            f"Please ensure PostgreSQL is running and accessible. "
+            f"SQLite is not supported for e2e tests."
+        ) from e
+    except ImportError:
+        raise RuntimeError(
+            "psycopg2 is required for tests but not installed. "
+            "Install it with: pip install psycopg2-binary"
+        )
+    
+    # Use PostgreSQL for tests - supports proper transaction handling
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': postgres_db + '_test',
+            'USER': postgres_user,
+            'PASSWORD': postgres_password,
+            'HOST': postgres_host,
+            'PORT': postgres_port,
+            'TEST': {
                 'NAME': postgres_db + '_test',
-                'USER': postgres_user,
-                'PASSWORD': postgres_password,
-                'HOST': postgres_host,
-                'PORT': postgres_port,
-                'TEST': {
-                    'NAME': postgres_db + '_test',
-                    'SERIALIZE': False,  # Allow parallel test execution
-                    'MIGRATE': False,  # Disable automatic migrations - we'll run them manually via pytest hook
-                },
-                'CONN_MAX_AGE': 0,  # Don't reuse connections in tests
-                'OPTIONS': {
-                    # Disable thread validation for tests (pytest-django uses multiple threads)
-                    # This is safe in test environment where we control thread usage
-                    'connect_timeout': 10,
-                    # CRITICAL: Set transaction isolation level to READ COMMITTED for LiveServerTestCase
-                    # This ensures data committed in one thread is immediately visible to other threads
-                    # Without this, the server thread might not see data created in the test thread
-                    'isolation_level': psycopg2_extensions.ISOLATION_LEVEL_READ_COMMITTED,
-                },
-            }
+                'SERIALIZE': False,  # Allow parallel test execution
+                'MIGRATE': False,  # Disable automatic migrations - we'll run them manually via pytest hook
+            },
+            'CONN_MAX_AGE': 0,  # Don't reuse connections in tests
+            'OPTIONS': {
+                # Disable thread validation for tests (pytest-django uses multiple threads)
+                # This is safe in test environment where we control thread usage
+                'connect_timeout': 10,
+                # CRITICAL: Set transaction isolation level to READ COMMITTED for LiveServerTestCase
+                # This ensures data committed in one thread is immediately visible to other threads
+                # Without this, the server thread might not see data created in the test thread
+                'isolation_level': psycopg2_extensions.ISOLATION_LEVEL_READ_COMMITTED,
+            },
         }
-        
-        # Disable database connection thread validation for tests
-        # pytest-django creates connections in one thread but TestCase uses them in another
-        # This is safe because pytest-django manages the connection lifecycle properly
-        import django.db.backends.base.base
-        original_validate_thread_sharing = django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing
-        
-        def noop_validate_thread_sharing(self):
-            """Disable thread validation for tests"""
-            pass
-        
-        django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing = noop_validate_thread_sharing
-    except Exception:
-        # Fallback to SQLite - use file-based (not in-memory) for proper threading
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.sqlite3',
-                'NAME': BASE_DIR / 'db_test.sqlite3',
-                'OPTIONS': {
-                    'timeout': 20,
-                },
-                'TEST': {
-                    'NAME': BASE_DIR / 'db_test.sqlite3',
-                    'SERIALIZE': False,
-                },
-            }
-        }
+    }
+    
+    # Disable database connection thread validation for tests
+    # pytest-django creates connections in one thread but TestCase uses them in another
+    # This is safe because pytest-django manages the connection lifecycle properly
+    import django.db.backends.base.base
+    original_validate_thread_sharing = django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing
+    
+    def noop_validate_thread_sharing(self):
+        """Disable thread validation for tests"""
+        pass
+    
+    django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing = noop_validate_thread_sharing
 else:
     DATABASES = {
         'default': {

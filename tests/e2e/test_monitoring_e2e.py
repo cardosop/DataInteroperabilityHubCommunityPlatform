@@ -94,7 +94,7 @@ class PrometheusMetricsExposureE2ETest(TestCase):
         job = JobFactory.create_job(
             tenant=self.tenant,
             created_by=self.user,
-            job_type=JobType.DQ_RUN,
+            type=JobType.DQ_RUN,
             status=JobStatus.PENDING
         )
         
@@ -546,7 +546,12 @@ class MonitoringEdgeCasesE2ETest(TestCase):
     
     def test_metrics_middleware_normalizes_routes(self):
         """Test that metrics middleware normalizes routes"""
-        middleware = MetricsMiddleware()
+        # MiddlewareMixin requires get_response parameter
+        def get_response(request):
+            from django.http import HttpResponse
+            return HttpResponse()
+        
+        middleware = MetricsMiddleware(get_response)
         
         # Test route normalization
         normalized = middleware._normalize_route('/api/v1/contracts/123e4567-e89b-12d3-a456-426614174000/')
@@ -560,10 +565,17 @@ class MonitoringEdgeCasesE2ETest(TestCase):
         from django.http import HttpResponse
         from unittest.mock import Mock
         
-        middleware = MetricsMiddleware()
+        # MiddlewareMixin requires get_response parameter
+        def get_response(request):
+            return HttpResponse()
+        
+        middleware = MetricsMiddleware(get_response)
         request = Mock()
         request.path = '/test/'
         request.method = 'GET'
+        # Ensure _metrics_start_time is not set (not even as a Mock attribute)
+        if hasattr(request, '_metrics_start_time'):
+            delattr(request, '_metrics_start_time')
         response = HttpResponse()
         response.status_code = 200
         

@@ -36,6 +36,9 @@ class AuthenticationE2ETest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        # Ensure test user is active for API key tests
+        self.user.status = UserStatus.ACTIVE
+        self.user.save()
         # Don't authenticate by default - tests will authenticate as needed
     
     def test_login_success(self):
@@ -70,10 +73,11 @@ class AuthenticationE2ETest(E2ETestBase):
         self.assertGreaterEqual(refresh_token_count, 1)
         
         # Verify audit log created
+        # log_auth_operation sets resource_id to user.id (see hub/apps/audit/utils.py:273)
         self.verify_audit_log(
             action='LOGIN',
             resource_type='AUTH',
-            resource_id=None,  # Login doesn't have a resource_id
+            resource_id=str(test_user.id),
             result='SUCCESS'
         )
     

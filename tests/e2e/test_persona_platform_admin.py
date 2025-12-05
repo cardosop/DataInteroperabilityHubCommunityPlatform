@@ -207,6 +207,13 @@ class PlatformAdminPersonaTest(E2ETestBase):
     
     def test_platform_admin_can_reactivate_tenant(self):
         """Test Platform Admin can reactivate tenants"""
+        from hub.apps.tenants.models import TenantStatus
+        
+        # Suspend tenant first (required for reactivation)
+        self.tenant.suspend()
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.status, TenantStatus.SUSPENDED)
+        
         response = self.client.post(
             f"/api/v1/tenants/tenants/{self.tenant.id}/reactivate/",
             {},

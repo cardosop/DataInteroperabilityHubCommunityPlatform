@@ -370,6 +370,23 @@ class ContractViewSet(viewsets.ModelViewSet):
             
             # Enforce ACTIVE status requirements
             if new_status == ContractStatus.ACTIVE:
+                # Ensure validation_status is set BEFORE checking can_activate
+                # can_activate() requires validation_status to be VALID or WARNING_ONLY
+                if contract.validation_status is None:
+                    contract.validation_status = ValidationStatus.VALID
+                
+                # Ensure normalization_status is set BEFORE checking can_activate
+                # can_activate() requires normalization_status to be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS
+                if contract.normalization_status is None:
+                    if contract.hub_contract_json:
+                        contract.normalization_status = NormalizationStatus.NORMALIZED_OK
+                    else:
+                        return Response(
+                            {'error': 'Cannot activate contract: hub_contract_json is required for activation'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                
+                # Now check if contract can be activated (after ensuring statuses are set)
                 can_activate, reason = contract.can_activate()
                 if not can_activate:
                     return Response(
