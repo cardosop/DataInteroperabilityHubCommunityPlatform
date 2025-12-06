@@ -165,7 +165,20 @@ def infer_enum_from_values(values: List[Any], max_enum_size: int = 20) -> Option
     if not non_null_values:
         return None
     
-    unique_values = list(set(non_null_values))
+    # Filter out unhashable types (lists, dicts) before creating sets
+    def is_hashable(v):
+        """Check if value is hashable (can be used in set)"""
+        try:
+            hash(v)
+            return True
+        except TypeError:
+            return False
+    
+    hashable_values = [v for v in non_null_values if is_hashable(v)]
+    if not hashable_values:
+        return None
+    
+    unique_values = list(set(hashable_values))
     
     # If unique values are limited and represent a reasonable enum
     if len(unique_values) <= max_enum_size and len(unique_values) >= 2:
@@ -331,13 +344,24 @@ def infer_field_properties(values: List[Any], field_name: str = '') -> Dict[str,
         pass
     
     # Infer default (most common value)
+    # Filter out unhashable types (lists, dicts) before using Counter
     if non_null_values:
-        from collections import Counter
-        value_counts = Counter(non_null_values)
-        most_common = value_counts.most_common(1)[0]
-        # Only set as default if it appears in at least 50% of values
-        if most_common[1] >= len(non_null_values) * 0.5:
-            properties['default'] = most_common[0]
+        def is_hashable(v):
+            """Check if value is hashable (can be used in Counter/dict)"""
+            try:
+                hash(v)
+                return True
+            except TypeError:
+                return False
+        
+        hashable_values = [v for v in non_null_values if is_hashable(v)]
+        if hashable_values:
+            from collections import Counter
+            value_counts = Counter(hashable_values)
+            most_common = value_counts.most_common(1)[0]
+            # Only set as default if it appears in at least 50% of values
+            if most_common[1] >= len(hashable_values) * 0.5:
+                properties['default'] = most_common[0]
     
     return properties
 
@@ -485,13 +509,24 @@ def infer_schema_from_csv(file_content: bytes, sample_size: int = DEFAULT_SAMPLE
         fields.append(field_schema)
         
         # Check for potential primary key (all unique, non-null values)
-        non_null_values = [v for v in values if v is not None and v != '']
-        if len(non_null_values) == len(set(non_null_values)) and len(non_null_values) == len(values):
-            primary_key_candidates.append(field_name)
+        # Filter out unhashable types (lists, dicts) before creating sets
+        def is_hashable(v):
+            """Check if value is hashable (can be used in set)"""
+            try:
+                hash(v)
+                return True
+            except TypeError:
+                return False
         
-        # Check for unique constraint (all unique values, but may have nulls)
-        if len(non_null_values) == len(set(non_null_values)) and len(non_null_values) > 0:
-            unique_constraint_candidates.append(field_name)
+        non_null_values = [v for v in values if v is not None and v != '']
+        hashable_values = [v for v in non_null_values if is_hashable(v)]
+        
+        # Only check uniqueness constraints for hashable values
+        if hashable_values:
+            if len(hashable_values) == len(set(hashable_values)) and len(hashable_values) == len(non_null_values) == len(values):
+                primary_key_candidates.append(field_name)
+            elif len(hashable_values) == len(set(hashable_values)) and len(hashable_values) > 0:
+                unique_constraint_candidates.append(field_name)
         
         # Recommend index for frequently queried patterns (GAP-8.2.4)
         # - ID fields (ends with _id)
@@ -625,11 +660,24 @@ def infer_schema_from_json(file_content: bytes, sample_size: int = DEFAULT_SAMPL
         fields.append(field_schema)
         
         # Check for potential primary key and unique constraints
+        # Filter out unhashable types (lists, dicts) before creating sets
+        def is_hashable(v):
+            """Check if value is hashable (can be used in set)"""
+            try:
+                hash(v)
+                return True
+            except TypeError:
+                return False
+        
         non_null_values = [v for v in values if v is not None and v != '']
-        if len(non_null_values) == len(set(non_null_values)) and len(non_null_values) == len(values):
-            primary_key_candidates.append(field_name)
-        elif len(non_null_values) == len(set(non_null_values)) and len(non_null_values) > 0:
-            unique_constraint_candidates.append(field_name)
+        hashable_values = [v for v in non_null_values if is_hashable(v)]
+        
+        # Only check uniqueness constraints for hashable values
+        if hashable_values:
+            if len(hashable_values) == len(set(hashable_values)) and len(hashable_values) == len(non_null_values) == len(values):
+                primary_key_candidates.append(field_name)
+            elif len(hashable_values) == len(set(hashable_values)) and len(hashable_values) > 0:
+                unique_constraint_candidates.append(field_name)
         
         # Recommend index for ID and timestamp fields
         if field_name.lower().endswith('_id') or field_name.lower().endswith('id'):

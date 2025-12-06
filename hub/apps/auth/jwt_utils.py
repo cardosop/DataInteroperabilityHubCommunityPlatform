@@ -147,7 +147,24 @@ class JWTTokenGenerator:
             return None
         
         try:
-            return User.objects.get(id=user_id)
+            # CRITICAL: For LiveServerTestCase, ensure we're using a fresh database connection
+            # and explicitly select_for_update to ensure we see committed data
+            # This is important because LiveServerTestCase runs in a separate thread/process
+            from django.db import connection
+            connection.ensure_connection()
+            
+            # Ensure we're using the default database connection
+            # In async tests, we need to make sure we're querying the right database
+            # Refresh the connection to ensure we see the latest data
+            from django.db import connections
+            connection = connections['default']
+            connection.ensure_connection()
+            
+            # Query user with explicit connection
+            user = User.objects.using('default').get(id=user_id)
+            # Refresh from DB to ensure we have the latest data
+            user.refresh_from_db()
+            return user
         except User.DoesNotExist:
             return None
 

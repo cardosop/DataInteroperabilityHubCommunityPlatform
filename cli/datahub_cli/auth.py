@@ -146,7 +146,8 @@ class AuthManager:
         access_token = self.config.get_access_token()
         api_key = self.config.get_api_key()
         
-        if api_key:
+        # Check if API key is set (not None and not empty string)
+        if api_key and api_key.strip():
             return True  # API key doesn't expire
         
         if not access_token:

@@ -34,7 +34,7 @@ setup(
         'requests>=2.31.0',
         'pyyaml>=6.0.1',
     ],
-    python_requires='>=3.8',
+    python_requires='>=3.12',
     entry_points={
         'console_scripts': [
             'datahub=datahub_cli.main:main',
@@ -45,11 +45,9 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
-        'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
+        'Programming Language :: Python :: 3.14',
     ],
 )
 

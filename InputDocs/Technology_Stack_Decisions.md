@@ -131,11 +131,12 @@ This document defines the **specific technology choices** for the Interoperable 
 
 ### 3.1 Python Version
 
-**Version**: Python 3.11  
+**Version**: Python 3.12  
 **Rationale**:
 - Latest stable Python version with performance improvements
 - Excellent type hinting support (required for Strawberry GraphQL)
 - Good security and maintenance support
+- Prerequisite for Django 6 upgrade
 
 **Documentation**: https://www.python.org/downloads/
 
@@ -153,7 +154,7 @@ This document defines the **specific technology choices** for the Interoperable 
 
 **Python Services**:
 ```dockerfile
-FROM python:3.11-slim
+FROM python:3.12-slim
 ```
 - Official Python image
 - `slim` variant for smaller image size
@@ -377,7 +378,7 @@ FROM apache/jena-fuseki:latest
 
 | Component | Version | Notes |
 |-----------|---------|-------|
-| Python | 3.11.x | Minimum 3.11.0 |
+| Python | 3.12.x | Minimum 3.12.0 |
 | Django | 4.2+ | Latest stable |
 | PostgreSQL | 16.x | Minimum 16.0 |
 | Redis | 7.x | Minimum 7.0 |

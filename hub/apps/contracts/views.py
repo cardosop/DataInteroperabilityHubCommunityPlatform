@@ -197,6 +197,22 @@ class ContractViewSet(viewsets.ModelViewSet):
     queryset = Contract.objects.all()
     serializer_class = ContractSerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    def check_auditor_permissions(self, request, view_action):
+        """Check if AUDITOR role can perform the action (read-only)"""
+        if not request.user or not request.user.is_authenticated:
+            return True  # Let IsAuthenticated handle this
+        
+        # Check if user has AUDITOR role
+        if hasattr(request.user, 'user_roles'):
+            role_names = [ur.role.name for ur in request.user.user_roles.all()]
+            if 'AUDITOR' in role_names:
+                # AUDITOR can only read, not write
+                if view_action in ['create', 'update', 'partial_update', 'destroy']:
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("AUDITOR role has read-only access. Cannot perform write operations.")
+        
+        return True
     lookup_field = "id"
     
     @transaction.atomic
@@ -212,6 +228,7 @@ class ContractViewSet(viewsets.ModelViewSet):
             "original_spec_type": "ODCS" or "DATACONTRACT_COM" (optional)
         }
         """
+        self.check_auditor_permissions(request, 'create')
         serializer = ContractCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -320,6 +337,7 @@ class ContractViewSet(viewsets.ModelViewSet):
             "status": "DRAFT" | "ACTIVE" | "RETIRED" (optional)
         }
         """
+        self.check_auditor_permissions(request, 'update')
         contract = self.get_object()
         serializer = ContractUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -359,6 +377,11 @@ class ContractViewSet(viewsets.ModelViewSet):
             contract.normalization_warnings = norm_warnings
             
             # Reset validation status (requires re-validation)
+            # If contract is ACTIVE, set to DRAFT since it needs re-validation
+            # This prevents validation errors when saving ACTIVE contract with validation_status=None
+            if contract.status == ContractStatus.ACTIVE:
+                contract.status = ContractStatus.DRAFT
+            
             contract.validation_status = None
             contract.validation_errors = []
             contract.validation_warnings = []
@@ -443,6 +466,7 @@ class ContractViewSet(viewsets.ModelViewSet):
         
         DELETE /contracts/{id}
         """
+        self.check_auditor_permissions(request, 'destroy')
         contract = self.get_object()
         
         # Soft delete: set status to RETIRED

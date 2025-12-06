@@ -54,6 +54,10 @@ class Config:
         try:
             with open(config_file, 'w') as f:
                 yaml.dump(self._config, f, default_flow_style=False)
+                # Ensure file is flushed to disk
+                f.flush()
+                import os
+                os.fsync(f.fileno())
         except Exception as e:
             click.echo(f"Error: Failed to save config file: {e}", err=True)
             raise

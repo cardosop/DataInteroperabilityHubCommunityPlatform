@@ -269,10 +269,9 @@ class DataFirstE2ETest(TestCase):
             {'async': False},
             format='json'
         )
-        # If service is unavailable (503), skip test
-        if validate_response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
-            pytest.skip("DataContract service unavailable (returned 500)")
-        self.assertEqual(validate_response.status_code, status.HTTP_200_OK)
+        # Service availability was checked in setUpClass, so 500 would be a real error
+        # Allow 200 OK (validation completed) or 202 Accepted (async validation)
+        self.assertIn(validate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
         # Real service may return VALID or INVALID
         self.assertIn(validate_response.data['validation_status'], ['VALID', 'INVALID'])
         

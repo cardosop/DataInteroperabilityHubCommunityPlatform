@@ -177,9 +177,17 @@ if 'test' in sys.argv or 'pytest' in sys.modules:
 if 'test' in sys.argv or 'pytest' in sys.modules:
     # REQUIRED: Use PostgreSQL for tests (no SQLite fallback)
     # PostgreSQL is required for proper threading, transaction handling, and consistency with production
-    import psycopg2
-    from psycopg2 import extensions as psycopg2_extensions
     import os
+    
+    # Import psycopg2 with proper error handling
+    try:
+        import psycopg2
+        from psycopg2 import extensions as psycopg2_extensions
+    except ImportError:
+        raise RuntimeError(
+            "psycopg2 is required for tests but not installed. "
+            "Install it with: pip install psycopg2-binary"
+        )
     
     # Detect staging environment for tests using centralized function
     staging_detected = _detect_staging_for_tests()
@@ -212,11 +220,6 @@ if 'test' in sys.argv or 'pytest' in sys.modules:
             f"Please ensure PostgreSQL is running and accessible. "
             f"SQLite is not supported for e2e tests."
         ) from e
-    except ImportError:
-        raise RuntimeError(
-            "psycopg2 is required for tests but not installed. "
-            "Install it with: pip install psycopg2-binary"
-        )
     
     # Use PostgreSQL for tests - supports proper transaction handling
     DATABASES = {

@@ -161,6 +161,10 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         asset.status = AssetStatus.ACTIVE
         asset.save(update_fields=['status'])
         
+        # Ensure tenant has VERIFIED KYC status for listing creation
+        self.tenant.kyc_status = KYCStatus.VERIFIED
+        self.tenant.save(update_fields=['kyc_status'])
+        
         # Create listing for entitlement
         listing = Listing.objects.create(
             tenant=self.tenant,

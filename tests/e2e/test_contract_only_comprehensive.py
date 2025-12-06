@@ -40,10 +40,11 @@ class ContractOnlyFlowSuccessTests(E2ETestBase):
         )
         
         # Step 3: Validate contract
+        # Check DataContract service availability upfront
+        self.require_service('DataContract', self.datacontract_service_url, health_path='/health')
+        
         validate_response = self.validate_contract(contract_id, async_mode=False)
-        # If validation fails due to service error (500), skip test
-        if isinstance(validate_response, dict) and validate_response.get('status_code') == status.HTTP_500_INTERNAL_SERVER_ERROR:
-            pytest.skip("DataContract service unavailable (returned 500)")
+        # Service is available, validation should have completed
         if isinstance(validate_response, dict) and 'validation_status' in validate_response:
             self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID'])
         
@@ -217,11 +218,12 @@ class ContractOnlyFlowEdgeCasesTests(E2ETestBase):
             original_raw='{"id": "test", "name": "Test Contract"}'
         )
         
+        # Check DataContract service availability upfront
+        self.require_service('DataContract', self.datacontract_service_url, health_path='/health')
+        
         # Contract should still be valid (schema is optional)
         validate_response = self.validate_contract(contract_id)
-        # If validation fails due to service error (500), skip test
-        if isinstance(validate_response, dict) and validate_response.get('status_code') == status.HTTP_500_INTERNAL_SERVER_ERROR:
-            pytest.skip("DataContract service unavailable (returned 500)")
+        # Service is available, validation should have completed
         # May be valid or invalid depending on spec requirements
         if isinstance(validate_response, dict) and 'validation_status' in validate_response:
             self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID', 'WARNING_ONLY'])

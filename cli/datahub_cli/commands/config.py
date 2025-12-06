@@ -3,6 +3,8 @@ Configuration management commands.
 """
 import click
 import json
+# Import config here to get the global instance
+# Note: In tests, this will use the patched CONFIG_FILE after monkeypatch
 from ..config import config
 
 
@@ -46,6 +48,9 @@ def get_config(key: str, output_format: str):
 @click.argument('value')
 def set_config(key: str, value: str):
     """Set configuration value"""
+    # Reload config to ensure we're using the correct file path (important for tests with monkeypatch)
+    config._load()
+    
     if key == 'api_base_url':
         config.set_api_base_url(value)
     elif key == 'api_key':

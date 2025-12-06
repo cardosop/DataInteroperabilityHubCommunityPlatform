@@ -1,6 +1,6 @@
 [tool.black]
 line-length = 100
-target-version = ['py311']
+target-version = ['py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -23,7 +23,7 @@ extend-exclude = '''
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 exclude = [
     ".git",
     ".venv",
@@ -72,7 +72,7 @@ known-first-party = ["hub"]
 "hub/apps/**/migrations/*.py" = ["ALL"]  # ignore migrations
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

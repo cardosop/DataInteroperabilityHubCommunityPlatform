@@ -35,6 +35,22 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
     
+    def check_auditor_permissions(self, request, view_action):
+        """Check if AUDITOR role can perform the action (read-only)"""
+        if not request.user or not request.user.is_authenticated:
+            return True  # Let IsAuthenticated handle this
+        
+        # Check if user has AUDITOR role
+        if hasattr(request.user, 'user_roles'):
+            role_names = [ur.role.name for ur in request.user.user_roles.all()]
+            if 'AUDITOR' in role_names:
+                # AUDITOR can only read, not write
+                if view_action in ['create', 'update', 'partial_update', 'destroy']:
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied("AUDITOR role has read-only access. Cannot perform write operations.")
+        
+        return True
+    
     def get_queryset(self):
         """Filter queryset based on user permissions"""
         user = self.request.user
@@ -63,6 +79,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
             "applicable_regulations": ["GDPR", "HIPAA"] (optional)
         }
         """
+        self.check_auditor_permissions(request, 'create')
         serializer = ComplianceRunCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         

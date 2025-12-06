@@ -97,7 +97,7 @@ clean: ## Clean temporary files
 
 verify-deps: ## Verify all external dependencies
 	@echo "Verifying dependencies..."
-	@python3 --version | grep -q "3.11" && echo "✅ Python 3.11+" || echo "❌ Python 3.11+ required"
+	@python3 --version | grep -q "3.1[2-9]" && echo "✅ Python 3.12+" || echo "❌ Python 3.12+ required"
 	@docker --version > /dev/null 2>&1 && echo "✅ Docker" || echo "❌ Docker required"
 	@docker ps | grep -q postgres && echo "✅ PostgreSQL running" || echo "⚠️  PostgreSQL not running"
 	@docker ps | grep -q redis && echo "✅ Redis running" || echo "⚠️  Redis not running"

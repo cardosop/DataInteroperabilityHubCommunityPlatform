@@ -136,7 +136,19 @@ class DataHubClient:
         if error.response.status_code == 401 and self.token_refresh_callback:
             try:
                 new_token = await self.token_refresh_callback()
+                if not new_token:
+                    logger.error("Token refresh callback returned None or empty token")
+                    return False
+                
+                # Update token in config
                 self.set_api_token(new_token)
+                
+                # Verify token was set correctly
+                if self.config.api_token != new_token:
+                    logger.error(f"Token was not set correctly. Expected: {new_token[:20]}..., Got: {self.config.api_token[:20] if self.config.api_token else None}...")
+                    return False
+                
+                logger.debug(f"Token refreshed successfully. New token: {new_token[:20]}...")
                 return True
             except Exception as e:
                 logger.error(f"Token refresh failed: {e}")
@@ -166,15 +178,23 @@ class DataHubClient:
         """
         max_retries = self.config.max_retries
         last_error: Optional[Exception] = None
-        
-        # Get headers
-        headers = await self._get_headers()
-        if "headers" in kwargs:
-            headers.update(kwargs["headers"])
-        kwargs["headers"] = headers
+        token_refresh_attempted = False  # Track if token refresh was attempted to prevent infinite loops
         
         for attempt in range(max_retries + 1):
             try:
+                # Get headers fresh each attempt (token may have been refreshed)
+                headers = await self._get_headers()
+                # Preserve any headers passed in kwargs, but update with auth headers
+                if "headers" in kwargs:
+                    # Merge: kwargs headers take precedence, but we need auth
+                    original_headers = kwargs.get("headers", {})
+                    headers.update(original_headers)
+                kwargs["headers"] = headers
+                
+                # Debug: Log token being used (first 20 chars only for security)
+                if self.config.enable_logging and self.config.api_token:
+                    logger.debug(f"Using token: {self.config.api_token[:20]}...")
+                
                 if self.config.enable_logging:
                     logger.info(f"[DataHub SDK] {method} {url} (attempt {attempt + 1})")
                 
@@ -182,16 +202,21 @@ class DataHubClient:
                 
                 # Check for error responses
                 if response.is_error:
-                    # Try token refresh for 401
-                    if response.status_code == 401:
+                    # Try token refresh for 401 (before parsing error)
+                    if response.status_code == 401 and not token_refresh_attempted:
                         error = httpx.HTTPStatusError(
                             f"401 Unauthorized", request=response.request, response=response
                         )
                         if await self._handle_token_refresh(error):
-                            # Retry with new token
+                            # Token was refreshed - retry with new token
+                            token_refresh_attempted = True  # Prevent multiple refresh attempts
+                            # Headers will be regenerated on next iteration with new token
                             continue
+                        else:
+                            # Token refresh failed or not available - parse error normally
+                            token_refresh_attempted = True
                     
-                    # Parse and raise error
+                    # Parse and raise error (only if token refresh didn't happen or failed)
                     try:
                         error_data = response.json()
                         raise parse_error(error_data)
@@ -207,11 +232,14 @@ class DataHubClient:
                 
             except httpx.HTTPStatusError as e:
                 last_error = e
-                # Try token refresh for 401
-                if e.response.status_code == 401:
+                # Try token refresh for 401 (only if not already attempted)
+                if e.response.status_code == 401 and not token_refresh_attempted:
                     if await self._handle_token_refresh(e):
                         # Retry with new token
+                        token_refresh_attempted = True  # Prevent multiple refresh attempts
                         continue
+                    else:
+                        token_refresh_attempted = True
                 
                 # Parse error response
                 try:

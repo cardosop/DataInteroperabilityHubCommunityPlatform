@@ -159,6 +159,21 @@ def get_s3_endpoint_url() -> str:
     return get_service_url('AWS_S3_ENDPOINT_URL', 'MINIO')
 
 
+def get_prometheus_service_url() -> str:
+    """Get Prometheus service URL"""
+    return get_service_url('PROMETHEUS_URL', 'PROMETHEUS')
+
+
+def get_grafana_service_url() -> str:
+    """Get Grafana service URL"""
+    return get_service_url('GRAFANA_URL', 'GRAFANA')
+
+
+def get_jaeger_service_url() -> str:
+    """Get Jaeger service URL"""
+    return get_service_url('JAEGER_URL', 'JAEGER')
+
+
 def check_service_health(service_url: str, timeout: int = 5) -> bool:
     """
     Check if a service is healthy by hitting its health endpoint.
@@ -227,7 +242,7 @@ class E2ETestBase(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
         
-        # Store service URLs for easy access
+        # Store service URLs for easy access (staging-aware)
         self.api_base_url = get_api_base_url()
         self.datacontract_service_url = get_datacontract_service_url()
         self.compliance_service_url = get_compliance_service_url()
@@ -235,6 +250,139 @@ class E2ETestBase(TestCase):
         self.semantic_service_url = get_semantic_service_url()
         self.worker_service_url = get_worker_service_url()
         self.s3_endpoint_url = get_s3_endpoint_url()
+        self.prometheus_service_url = get_prometheus_service_url()
+        self.grafana_service_url = get_grafana_service_url()
+        self.jaeger_service_url = get_jaeger_service_url()
+    
+    def check_service_available(self, service_name: str, service_url: str, health_path: str = '/health', timeout: int = 5) -> bool:
+        """
+        Check if a service is available and healthy.
+        
+        Args:
+            service_name: Name of the service (for error messages)
+            service_url: Base URL of the service
+            health_path: Health check endpoint path
+            timeout: Timeout in seconds
+            
+        Returns:
+            True if service is available and healthy, False otherwise
+        """
+        return check_service_health(service_url, timeout=timeout)
+    
+    def require_service(self, service_name: str, service_url: str, health_path: str = '/health', max_wait: int = 5):
+        """
+        Require a service to be available before proceeding.
+        
+        Args:
+            service_name: Name of the service (for error messages)
+            service_url: Base URL of the service
+            health_path: Health check endpoint path
+            max_wait: Maximum wait time in seconds (reduced default for faster tests)
+        """
+        import time
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait:
+            try:
+                response = httpx.get(
+                    f"{service_url.rstrip('/')}{health_path}",
+                    timeout=2.0  # Reduced timeout for faster checks
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('status') in ['healthy', 'ok']:
+                        return  # Service is healthy
+            except Exception:
+                pass
+            
+            time.sleep(0.5)  # Reduced wait time for faster checks
+        
+        pytest.skip(
+            f"{service_name} not available at {service_url} after {max_wait}s. "
+            f"Please start services with: docker-compose -f docker-compose.staging.yml up -d"
+        )
+    
+    def wait_for_semantic_mapping(
+        self,
+        resource_type,
+        resource_id: str,
+        max_wait: int = 10,  # Reduced default for faster tests
+        verify_in_fuseki: bool = False  # Disabled by default for speed
+    ):
+        """
+        Wait for semantic mapping to complete with Fuseki verification.
+        
+        Args:
+            resource_type: Resource type (ASSET, CONTRACT, DATASET, FIELD)
+            resource_id: Resource UUID
+            max_wait: Maximum wait time in seconds
+            verify_in_fuseki: If True, verify triples exist in Fuseki
+            
+        Returns:
+            SemanticResource instance
+            
+        Raises:
+            AssertionError: If mapping not completed within max_wait
+        """
+        import time
+        from hub.apps.semantic.models import SemanticResource, ResourceType
+        
+        start_time = time.time()
+        
+        # Wait for SemanticResource to be created
+        while time.time() - start_time < max_wait:
+            semantic_resource = SemanticResource.objects.filter(
+                resource_type=resource_type,
+                resource_id=resource_id
+            ).first()
+            
+            if semantic_resource:
+                # If verification requested, check Fuseki
+                if verify_in_fuseki:
+                    uri = semantic_resource.uri
+                    if self._verify_uri_in_fuseki(uri):
+                        return semantic_resource
+                else:
+                    return semantic_resource
+            
+            time.sleep(1)
+        
+        raise AssertionError(
+            f"Semantic mapping not completed for {resource_type} {resource_id} after {max_wait}s"
+        )
+    
+    def _verify_uri_in_fuseki(self, uri: str, max_retries: int = 5) -> bool:
+        """Verify URI exists in Fuseki with retries."""
+        from hub.apps.semantic.service_client import SemanticServiceClient
+        import time
+        
+        client = SemanticServiceClient()
+        
+        for attempt in range(max_retries):
+            try:
+                query = f"""
+                PREFIX hub: <https://hub.example.com/ontology#>
+                ASK {{
+                    <{uri}> ?p ?o .
+                }}
+                """
+                result = client.query_sparql(query, output_format='json')
+                
+                if result and isinstance(result, dict):
+                    if 'boolean' in result:
+                        return result['boolean']
+                    elif 'results' in result:
+                        bindings = result['results'].get('bindings', [])
+                        return len(bindings) > 0
+                
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                    
+            except Exception:
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+        
+        return False
     
     def get_service_urls(self) -> Dict[str, str]:
         """Get all service URLs as a dictionary"""
@@ -562,7 +710,10 @@ class E2ETestBase(TestCase):
         # Handle None normalization_status explicitly
         if contract.normalization_status is None or contract.normalization_status not in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]:
             if not contract.hub_contract_json:
-                contract.hub_contract_json = {"hub_contract_version": "1.0.0", "id": "test", "schema": {}}
+                contract.hub_contract_json = {"hub_contract_version": 1, "id": "test", "schema": {}}
+            # Set hub_contract_version field (separate from the JSON key)
+            if not contract.hub_contract_version:
+                contract.hub_contract_version = "1.0.0"
             contract.normalization_status = NormalizationStatus.NORMALIZED_OK
         
         # Set status to ACTIVE only after ensuring validation_status and normalization_status are set
@@ -816,14 +967,21 @@ class E2ETestBase(TestCase):
     def verify_entitlement_created(self, order_id, asset_id):
         """Verify that an entitlement was created for an order"""
         from hub.apps.marketplace.models import Entitlement, Order
+        from django.db import transaction
         
-        order = Order.objects.get(id=order_id)
-        entitlements = Entitlement.objects.filter(order=order, asset_id=asset_id)
-        
-        self.assertGreater(entitlements.count(), 0, 
-                          f"Expected entitlement not found for order {order_id} and asset {asset_id}")
-        
-        return entitlements.first()
+        # Use transaction to ensure order is visible (handles transaction isolation)
+        with transaction.atomic():
+            try:
+                order = Order.objects.get(id=order_id)
+            except Order.DoesNotExist:
+                self.fail(f"Order {order_id} not found when verifying entitlement")
+            
+            entitlements = Entitlement.objects.filter(order=order, asset_id=asset_id)
+            
+            self.assertGreater(entitlements.count(), 0, 
+                              f"Expected entitlement not found for order {order_id} and asset {asset_id}")
+            
+            return entitlements.first()
     
     def verify_rdf_triples(self, resource_id, resource_type: str, expected_triples: list = None, expected_triples_count: int = None):
         """Verify RDF triples exist for a resource (optional - semantic service may not be available)"""
@@ -870,22 +1028,26 @@ class E2ETestBase(TestCase):
         # Check args - handle both orders: (resource_type, resource_id) and (resource_id, resource_type)
         if len(args) >= 1:
             arg1 = args[0]
-            if isinstance(arg1, str):
-                # Check if it looks like a ResourceType enum value (uppercase with underscores)
-                if arg1.isupper() and '_' in arg1:
-                    resource_type = arg1
-                    if len(args) >= 2:
-                        resource_id = args[1]
-                else:
-                    # First arg is resource_id (UUID string)
-                    resource_id = arg1
-                    if len(args) >= 2:
-                        resource_type = args[1]
-            else:
-                # First arg is resource_id (UUID object)
-                resource_id = str(arg1)
+            # Convert to string for comparison
+            arg1_str = str(arg1)
+            
+            # Check if it's a ResourceType enum value (uppercase with underscores, or matches ResourceType values)
+            from hub.apps.semantic.models import ResourceType
+            is_resource_type = (
+                (isinstance(arg1, str) and arg1.isupper() and '_' in arg1) or
+                arg1_str in [rt[0] for rt in ResourceType.choices] or
+                arg1 in ResourceType.values if hasattr(ResourceType, 'values') else False
+            )
+            
+            if is_resource_type:
+                resource_type = arg1_str
                 if len(args) >= 2:
-                    resource_type = args[1]
+                    resource_id = args[1]
+            else:
+                # First arg is resource_id (UUID string or object)
+                resource_id = arg1_str
+                if len(args) >= 2:
+                    resource_type = str(args[1])
         
         if not resource_id or not resource_type:
             return None  # Can't wait without both

@@ -68,7 +68,14 @@
 
 ### 1. Install System Package
 ```bash
-sudo apt install -y python3.12-venv python3-full
+# For Ubuntu/Debian
+sudo apt install -y python3.12 python3.12-venv python3.12-dev python3-full
+
+# For macOS (using Homebrew)
+brew install python@3.12
+
+# Verify installation
+python3.12 --version  # Should show Python 3.12.x
 ```
 
 ### 2. Create Virtual Environment

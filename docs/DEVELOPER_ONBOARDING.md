@@ -33,8 +33,8 @@ The Interoperable Data Hub is a platform for managing data assets, contracts, co
 
 **Tech Stack:**
 
-- **Backend**: Django (Python 3.11+)
-- **Microservices**: FastAPI (Python 3.11+)
+- **Backend**: Django (Python 3.12+)
+- **Microservices**: FastAPI (Python 3.12+)
 - **Database**: PostgreSQL 16
 - **Cache/Queue**: Redis 7
 - **Storage**: MinIO/S3
@@ -47,7 +47,7 @@ The Interoperable Data Hub is a platform for managing data assets, contracts, co
 
 ### Required Software
 
-- **Python 3.11+**: [Download](https://www.python.org/downloads/)
+- **Python 3.12+**: [Download](https://www.python.org/downloads/)
 - **Docker & Docker Compose**: [Install Docker](https://docs.docker.com/get-docker/)
 - **Git**: [Install Git](https://git-scm.com/downloads)
 - **Code Editor**: VS Code, PyCharm, or your preferred editor
@@ -62,7 +62,7 @@ The Interoperable Data Hub is a platform for managing data assets, contracts, co
 ### Verify Installation
 
 ```bash
-python3 --version  # Should be 3.11+
+python3 --version  # Should be 3.12+
 docker --version
 docker compose version
 git --version
@@ -412,7 +412,7 @@ class AssetTestCase(TestCase):
 3. **Add Dockerfile**:
    ```dockerfile
    # services/my-service/Dockerfile
-   FROM python:3.11-slim
+   FROM python:3.12-slim
    # ...
    ```
 

@@ -39,8 +39,23 @@ class JWTAuthentication(BaseAuthentication):
             raise AuthenticationFailed('Invalid or expired token')
         
         # Get user
+        # CRITICAL: For LiveServerTestCase, ensure we see committed data
+        # The user lookup may fail if the user was created in a different transaction
         user = JWTTokenGenerator.get_user_from_token(payload)
         if not user:
+            # Log for debugging - this helps identify transaction isolation issues
+            import logging
+            logger = logging.getLogger(__name__)
+            user_id = payload.get('sub')
+            logger.warning(f"User not found for token. User ID from token: {user_id}")
+            # Try to check if user exists at all (for debugging)
+            try:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                user_exists = User.objects.filter(id=user_id).exists()
+                logger.warning(f"User exists in database: {user_exists}")
+            except Exception:
+                pass
             raise AuthenticationFailed('User not found')
         
         # Check if user is active

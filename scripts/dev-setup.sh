@@ -50,8 +50,8 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 python_version=$(python3 --version 2>&1 | awk '{print $2}')
-if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 11) else 1)"; then
-    print_error "Python 3.11+ required. Found: $python_version"
+if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 12) else 1)"; then
+    print_error "Python 3.12+ required. Found: $python_version"
     exit 1
 fi
 print_status "Python $python_version detected"

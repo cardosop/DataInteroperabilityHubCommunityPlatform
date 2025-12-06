@@ -68,11 +68,18 @@ def test_user_and_tenant():
 def api_key_for_cli(test_user_and_tenant):
     """Create API key for CLI testing"""
     user, tenant = test_user_and_tenant
+    # Generate plaintext key and hash it (as done in production)
+    plaintext_key = APIKey.generate_key()
+    key_hash = APIKey.hash_key(plaintext_key)
+    
     api_key = APIKey.objects.create(
         user=user,
         name="CLI E2E Test Key",
-        tenant=tenant
+        tenant=tenant,
+        key_hash=key_hash
     )
+    # Store plaintext key for use in tests (normally only shown once at creation)
+    api_key._plaintext_key = plaintext_key
     return api_key
 
 
@@ -101,21 +108,73 @@ class CLIJourneyTest:
     
     def test_cli_authentication_with_api_key(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI authentication with API key"""
-        # Set API key
-        result = runner.invoke(cli, ['config', 'set', 'api_key', api_key_for_cli.key_hash])
-        assert result.exit_code == 0
+        config_dir, config_file = temp_config_dir
         
-        # Verify API key is set
+        # Reload global config to ensure it uses the patched file path
+        # This is critical because the global config instance is created at import time
+        from datahub_cli.config import config as global_config
+        global_config._load()  # Reload to pick up patched CONFIG_FILE
+        
+        # Verify global config is using the correct file path
+        global_config_file = global_config._get_config_file()
+        assert str(global_config_file) == str(config_file), f"Global config using wrong file. Expected {config_file}, got {global_config_file}"
+        
+        # Set API key via CLI command (uses global config instance)
+        # Use plaintext key (not hash) - this is what users would use
+        # Get plaintext key from fixture (stored as _plaintext_key attribute)
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', None)
+        if not plaintext_key:
+            # Generate a test key if not available (should not happen with fixed fixture)
+            from hub.apps.auth.models import APIKey
+            plaintext_key = APIKey.generate_key()
+            # Update the fixture's key_hash to match
+            api_key_for_cli.key_hash = APIKey.hash_key(plaintext_key)
+            api_key_for_cli.save()
+            api_key_for_cli._plaintext_key = plaintext_key
+        result = runner.invoke(cli, ['config', 'set', 'api_key', plaintext_key])
+        assert result.exit_code == 0, f"CLI command failed: {result.output}"
+        
+        # Verify the file was written by checking it directly
+        assert config_file.exists(), f"Config file should exist at {config_file}"
+        
+        # Read file directly to verify content
+        import yaml
+        with open(config_file, 'r') as f:
+            file_content = yaml.safe_load(f) or {}
+        file_api_key = file_content.get('api_key')
+        assert file_api_key == plaintext_key, f"API key not in file. Expected {plaintext_key}, got {file_api_key}. File content: {file_content}"
+        
+        # Reload global config to ensure it reads from the patched file
+        global_config._load()
+        global_api_key = global_config.get_api_key()
+        assert global_api_key == plaintext_key, f"Global config API key not set. Expected {plaintext_key}, got {global_api_key}. Config file path: {global_config._get_config_file()}"
+        
+        # Create a new config instance to verify it was saved to file
         config = Config()
-        assert config.get_api_key() == api_key_for_cli.key_hash
+        # Verify the config instance is using the correct file path
+        config_file_path = config._get_config_file()
+        assert str(config_file_path) == str(config_file), f"Config instance using wrong file path. Expected {config_file}, got {config_file_path}"
         
-        # Verify authentication works
+        # Verify file still exists and has content
+        assert config_file.exists(), f"Config file should still exist at {config_file}"
+        with open(config_file, 'r') as f:
+            file_content_after = yaml.safe_load(f) or {}
+        assert file_content_after.get('api_key') == plaintext_key, f"API key not in file after reload. Expected {plaintext_key}, got {file_content_after.get('api_key')}. File content: {file_content_after}"
+        
+        # Reload to ensure we get the latest data
+        config._load()
+        api_key = config.get_api_key()
+        assert api_key == plaintext_key, f"API key not set correctly in file. Expected {plaintext_key}, got {api_key}. Config file: {config_file}, File exists: {config_file.exists()}, Config file path used: {config_file_path}, Config dict: {config._config}, File content: {file_content_after}"
+        
+        # Verify authentication works - use the config instance that has the API key
         auth_manager = AuthManager(config_instance=config)
-        assert auth_manager.ensure_authenticated() is True
+        # ensure_authenticated should return True if API key is set
+        is_authenticated = auth_manager.ensure_authenticated()
+        assert is_authenticated is True, f"ensure_authenticated returned False. API key from config: {config.get_api_key()}, API key from auth_manager: {auth_manager.config.get_api_key()}, Config file: {config_file}, Config dict: {config._config}"
         
         headers = auth_manager.get_auth_headers()
         assert 'Authorization' in headers
-        assert headers['Authorization'] == f'ApiKey {api_key_for_cli.key_hash}'
+        assert headers['Authorization'] == f'ApiKey {plaintext_key}'
     
     def test_cli_authentication_with_login(self, runner, temp_config_dir, test_user_and_tenant):
         """Test CLI authentication with login (requires running server)"""
@@ -138,7 +197,9 @@ class CLIJourneyTest:
         # Configure CLI
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test asset creation command structure
         result = runner.invoke(cli, [
@@ -169,7 +230,9 @@ class CLIJourneyTest:
         # Configure CLI
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Create temporary contract file
         contract_data = {
@@ -213,7 +276,9 @@ class CLIJourneyTest:
         # Configure CLI
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Create temporary file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
@@ -248,7 +313,9 @@ class CLIJourneyTest:
         # Configure CLI
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test job list
         result = runner.invoke(cli, [
@@ -272,7 +339,9 @@ class CLIJourneyTest:
         """Test CLI output formats (table and JSON)"""
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test table format (default)
         result = runner.invoke(cli, ['assets', 'list', '--format', 'table'])
@@ -309,25 +378,37 @@ class CLIJourneyTest:
     
     def test_cli_logout_clears_tokens(self, runner, temp_config_dir):
         """Test that CLI logout clears authentication tokens"""
+        # Set API key via CLI to ensure it's saved to file
+        result = runner.invoke(cli, ['config', 'set', 'api_key', 'api-key'])
+        assert result.exit_code == 0
+        
+        # Set tokens via CLI or directly
         config = Config()
         config.set_access_token('test-token')
         config.set_refresh_token('refresh-token')
-        config.set_api_key('api-key')
+        
+        # Verify API key is set before logout
+        assert config.get_api_key() == 'api-key'
         
         result = runner.invoke(cli, ['logout'])
         assert result.exit_code == 0
         
+        # Create a new config instance to verify file was updated
+        config = Config()
+        
         # Tokens should be cleared, but API key should remain
         assert config.get_access_token() is None
         assert config.get_refresh_token() is None
-        # API key is not cleared by logout
-        assert config.get_api_key() == 'api-key'
+        # API key is not cleared by logout (clear_auth only clears access_token and refresh_token)
+        assert config.get_api_key() == 'api-key', f"API key should remain after logout. Got: {config.get_api_key()}"
     
     def test_cli_contract_create_yaml_file(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI contract create with YAML file"""
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Create YAML contract file
         yaml_content = """
@@ -366,7 +447,9 @@ schema:
         
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test contract validate
         result = runner.invoke(cli, [
@@ -389,7 +472,9 @@ schema:
         
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test contract lint
         result = runner.invoke(cli, [
@@ -404,7 +489,9 @@ schema:
         """Test CLI jobs watch journey"""
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test job watch command structure
         result = runner.invoke(cli, [
@@ -431,7 +518,9 @@ schema:
         
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test asset update
         result = runner.invoke(cli, [
@@ -458,7 +547,9 @@ schema:
         
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test asset activate
         result = runner.invoke(cli, [
@@ -473,7 +564,9 @@ schema:
         """Test CLI files download journey"""
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test file download command structure
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -490,7 +583,9 @@ schema:
         """Test CLI handling of empty results"""
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test list commands with empty results
         result = runner.invoke(cli, ['assets', 'list', '--format', 'table'])
@@ -501,7 +596,9 @@ schema:
         """Test CLI handling of large output"""
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test with large limit
         result = runner.invoke(cli, [
@@ -516,7 +613,9 @@ schema:
         """Test CLI handling of special characters in arguments"""
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test with special characters in asset name
         result = runner.invoke(cli, [
@@ -532,7 +631,9 @@ schema:
         """Test CLI handling of unicode characters"""
         config = Config()
         config.set_api_base_url('http://testserver/api/v1')
-        config.set_api_key(api_key_for_cli.key_hash)
+        # Use plaintext key (not hash) for authentication
+        plaintext_key = getattr(api_key_for_cli, '_plaintext_key', api_key_for_cli.key_hash)
+        config.set_api_key(plaintext_key)
         
         # Test with unicode in asset name
         result = runner.invoke(cli, [
