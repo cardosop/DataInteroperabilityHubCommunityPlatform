@@ -70,7 +70,7 @@ class PerformanceTestHelper:
     
     def login(self, email: str, password: str) -> Optional[Dict]:
         """Login and get access token"""
-        url = f"{self.api_base}/auth/login"
+        url = f"{self.api_base}/auth/login/"
         try:
             response = requests.post(url, json={
                 'email': email,

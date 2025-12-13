@@ -1,10 +1,13 @@
 """
 Contract Normalization
 
-Normalizes contracts from ODCS and DataContract.com to HubContract format.
+Normalizes contracts from ODCS to HubContract format.
 """
 import json
-from typing import Dict, Any, Tuple, Optional
+import textwrap
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+from typing import Protocol, runtime_checkable
 
 try:
     import yaml
@@ -12,7 +15,75 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
 
+from .coverage import calculate_coverage
 from .models import NormalizationStatus, OriginalSpecType
+from .typed_models import validate_hub_contract_dict
+from .versioning import ensure_version, get_default_version
+from .spec_detection import detect_spec_type as detect_spec_type_new, store_original_spec_metadata
+from .context_fields import promote_context_fields
+from .source_paths import SourcePathTracker, add_source_paths_to_extensions, track_field_mapping
+from .validation import (
+    validate_and_enrich_contacts,
+    validate_and_enrich_servicelevels,
+    validate_and_enrich_roles,
+    validate_and_enrich_team,
+    validate_and_enrich_pricing,
+    validate_and_enrich_lineage,
+    validate_and_enrich_advanced_schema_attributes,
+)
+
+
+@dataclass
+class NormalizationResult:
+    """Normalized HubContract output."""
+
+    hub_contract: Optional[Dict[str, Any]]
+    status: NormalizationStatus
+    errors: List[str]
+    warnings: List[str]
+    spec_type: str
+    spec_version: str
+    coverage: Optional[Dict[str, Any]] = None
+
+
+@runtime_checkable
+class SpecNormalizer(Protocol):
+    """Protocol for pluggable normalizers."""
+
+    spec_type: str
+
+    def supports(self, spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> bool:
+        """Return True if this normalizer supports the given spec/version."""
+        ...
+
+    def normalize(self, contract_data: Dict[str, Any], spec_version: Optional[str] = None) -> NormalizationResult:
+        """Normalize raw contract data to HubContract."""
+        ...
+
+
+_NORMALIZER_REGISTRY: Dict[str, List[SpecNormalizer]] = {}
+
+
+def register_normalizer(normalizer: SpecNormalizer) -> None:
+    """Register a spec normalizer implementation."""
+    _NORMALIZER_REGISTRY.setdefault(normalizer.spec_type, []).append(normalizer)
+
+
+def get_normalizer(spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> Optional[SpecNormalizer]:
+    """Retrieve a normalizer that supports the given spec type/version."""
+    for normalizer in _NORMALIZER_REGISTRY.get(spec_type, []):
+        if normalizer.supports(spec_type, spec_version, contract_data):
+            return normalizer
+    return None
+
+
+def _reset_normalizer_registry(registry: Optional[Dict[str, List[SpecNormalizer]]] = None) -> None:
+    """
+    Test helper: reset the normalizer registry to a provided snapshot.
+    """
+    _NORMALIZER_REGISTRY.clear()
+    if registry:
+        _NORMALIZER_REGISTRY.update(registry)
 
 
 def _determine_normalization_status(hub_contract: Optional[Dict[str, Any]], errors: list, warnings: list) -> NormalizationStatus:
@@ -31,8 +102,9 @@ def _determine_normalization_status(hub_contract: Optional[Dict[str, Any]], erro
     if errors or hub_contract is None:
         return NormalizationStatus.NORMALIZATION_FAILED
     
-    # Check if critical sections are present
+            # Check if critical sections are present
     info = hub_contract.get('info', {})
+    # Empty string name should cause FAILED status (test expects this)
     if 'info' not in hub_contract or 'name' not in info or not info.get('name'):
         return NormalizationStatus.NORMALIZATION_FAILED
     
@@ -43,7 +115,8 @@ def _determine_normalization_status(hub_contract: Optional[Dict[str, Any]], erro
     if not schema.get('fields'):
         return NormalizationStatus.NORMALIZATION_FAILED
     
-    # If warnings or extensions present, status is WITH_WARNINGS
+    # If warnings present, status is WITH_WARNINGS
+    # Extensions also indicate WITH_WARNINGS (they represent unmappable fields)
     if warnings or hub_contract.get('extensions'):
         return NormalizationStatus.NORMALIZED_WITH_WARNINGS
     
@@ -61,49 +134,628 @@ def _calculate_normalization_coverage(hub_contract: Dict[str, Any]) -> float:
     Returns:
         Coverage percentage (0.0 to 1.0)
     """
-    # Define all possible sections
-    all_sections = {
-        'info': ['name', 'description', 'version', 'owners', 'tags'],
-        'schema': ['fields', 'primary_key', 'unique_constraints', 'indexes'],
-        'quality': ['default_profile_key', 'rules'],
-        'privacy_compliance': ['contains_personal_data', 'personal_data_categories', 'jurisdictions', 'legal_bases', 'retention_policy'],
-        'lifecycle': ['data_source', 'refresh_cadence', 'slas'],
-        'marketplace': ['license_summary', 'intended_use', 'restricted_use']
+    coverage = calculate_coverage(hub_contract)
+    return coverage.overall
+
+
+def _map_quality_rules(quality_data: Dict[str, Any]) -> Optional[list]:
+    """Map ODCS quality rules into canonical structure."""
+    if not isinstance(quality_data, dict):
+        return None
+
+    rules = quality_data.get('rules') or []
+    if not isinstance(rules, list):
+        return None
+
+    mapped_rules = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        mapped = {}
+        field_map = {
+            'id': ['id'],
+            'name': ['name'],
+            'dimension': ['dimension'],
+            'type': ['type'],
+            'rule': ['rule', 'expression'],
+            'unit': ['unit'],
+            'operator': ['operator'],
+            'threshold': ['threshold', 'thresholdValue'],
+            'valid_values': ['valid_values', 'validValues'],
+            'sql_query': ['sql_query', 'sqlQuery'],
+            'target': ['target'],
+            'engine': ['engine'],
+            'implementation': ['implementation'],
+            'method': ['method'],
+            'severity': ['severity'],
+            'business_impact': ['business_impact', 'businessImpact'],
+            'scheduler': ['scheduler'],
+            'schedule': ['schedule'],
+            'tags': ['tags'],
+        }
+        for target, aliases in field_map.items():
+            for alias in aliases:
+                if alias in rule and rule.get(alias) is not None:
+                    mapped[target] = rule[alias]
+                    break
+        if mapped:
+            mapped_rules.append(mapped)
+    return mapped_rules or None
+
+
+def _map_quality_contract_level(quality_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract contract-level quality attributes (type/specification)."""
+    if not isinstance(quality_data, dict):
+        return {}
+    mapped: Dict[str, Any] = {}
+    if quality_data.get('type'):
+        mapped['type'] = quality_data['type']
+    if quality_data.get('specification'):
+        mapped['specification'] = quality_data['specification']
+    return mapped
+
+
+def _map_service_levels(contract_data: Dict[str, Any]) -> Optional[list]:
+    """Map ODCS slaProperties into canonical servicelevels[] structure."""
+    if not isinstance(contract_data, dict):
+        return None
+
+    sources = []
+    lifecycle = contract_data.get('lifecycle')
+    if lifecycle and isinstance(lifecycle, dict) and lifecycle.get('slaProperties'):
+        sources.append(lifecycle.get('slaProperties'))
+    if contract_data.get('slaProperties'):
+        sources.append(contract_data.get('slaProperties'))
+
+    servicelevels = []
+    for source in sources:
+        if not isinstance(source, list):
+            continue
+        for entry in source:
+            if not isinstance(entry, dict):
+                continue
+            mapped = {}
+            field_map = {
+                'id': ['id'],
+                'name': ['name'],
+                'description': ['description'],
+                'property': ['property', 'propertyName'],
+                'metric': ['metric'],
+                'objective': ['objective'],
+                'target': ['target'],
+                'unit': ['unit'],
+                'operator': ['operator'],
+                'threshold': ['threshold'],
+                'window': ['window', 'measurementWindow'],
+                'schedule': ['schedule'],
+                'tags': ['tags'],
+                'priority': ['priority'],
+                'element': ['element', 'slaDefaultElement'],
+                'applies_to': ['appliesTo', 'applies_to'],
+            }
+            for target, aliases in field_map.items():
+                for alias in aliases:
+                    if alias in entry and entry.get(alias) is not None:
+                        mapped[target] = entry[alias]
+                        break
+            extra = {k: v for k, v in entry.items() if k not in mapped}
+            if extra:
+                mapped['extensions'] = extra
+            if mapped:
+                servicelevels.append(mapped)
+    return servicelevels or None
+
+
+def _map_contacts(contract_data: Dict[str, Any]) -> Optional[list]:
+    """
+    Map ODCS support[] channels into canonical contact list.
+    
+    Separates contact info (name, email) from support channels (tool, url, scope).
+    Entries with name/email are treated as contacts, others as support channels.
+    """
+    support = contract_data.get('support')
+    contacts = []
+    if isinstance(support, list):
+        for entry in support:
+            if not isinstance(entry, dict):
+                continue
+            mapped = {}
+            # Check if this is a contact (has name or email) or support channel
+            has_contact_info = 'name' in entry or 'email' in entry or 'address' in entry
+            
+            if has_contact_info:
+                # Map as contact
+                for target, aliases in {
+                    'name': ['name'],
+                    'email': ['email', 'address'],
+                    'url': ['url'],
+                    'description': ['description'],
+                    'tool': ['tool'],
+                    'scope': ['scope'],
+                }.items():
+                    for alias in aliases:
+                        if alias in entry and entry.get(alias) is not None:
+                            mapped[target] = entry[alias]
+                            break
+                if mapped:
+                    contacts.append(mapped)
+                else:
+                    # Preserve raw entry if nothing mapped
+                    contacts.append({'extensions': entry})
+            # If no contact info, it's a support channel (handled separately)
+    return contacts or None
+
+
+def _map_support_channels(contract_data: Dict[str, Any]) -> Optional[list]:
+    """
+    Map ODCS support[] channels into canonical support channel list.
+    
+    Preserves unmappable fields in extensions.
+    
+    Extracts support channels (tool, url, description, scope) separate from contacts.
+    """
+    support = contract_data.get('support')
+    channels = []
+    if isinstance(support, list):
+        for entry in support:
+            if not isinstance(entry, dict):
+                continue
+            # Only include if it's NOT a contact (no name/email)
+            has_contact_info = 'name' in entry or 'email' in entry or 'address' in entry
+            if has_contact_info:
+                continue  # Skip contacts, they're handled by _map_contacts
+            
+            mapped = {}
+            for target, aliases in {
+                'tool': ['tool'],
+                'url': ['url'],
+                'description': ['description'],
+                'scope': ['scope'],
+            }.items():
+                for alias in aliases:
+                    if alias in entry and entry.get(alias) is not None:
+                        mapped[target] = entry[alias]
+                        break
+            
+            # Preserve unmappable fields in extensions
+            known_fields = {'tool', 'url', 'description', 'scope', 'name', 'email', 'address'}
+            unmappable_fields = {}
+            for key, value in entry.items():
+                if key not in known_fields and not key.startswith('_'):
+                    unmappable_fields[key] = value
+            
+            if unmappable_fields:
+                mapped.setdefault('extensions', {})
+                mapped['extensions'].update(unmappable_fields)
+            
+            if mapped:
+                channels.append(mapped)
+            else:
+                # Preserve raw entry if nothing mapped
+                channels.append({'extensions': entry})
+    return channels or None
+
+
+def _map_servers(contract_data: Dict[str, Any]) -> Optional[list]:
+    """Map ODCS servers[] into canonical structure."""
+    servers = contract_data.get('servers')
+    mapped_servers = []
+    if isinstance(servers, list):
+        for entry in servers:
+            if not isinstance(entry, dict):
+                continue
+            mapped = {}
+            server_type = (entry.get('type') or entry.get('serverType') or 'custom').lower()
+            mapped['type'] = server_type
+
+            base_field_aliases = {
+                'url': ['url', 'endpoint', 'endpointUrl'],
+                'description': ['description'],
+                'variables': ['variables'],
+                'host': ['host'],
+                'port': ['port'],
+                'database': ['database', 'db', 'dbname'],
+                'catalog': ['catalog'],
+                'schema': ['schema'],
+                'warehouse': ['warehouse'],
+                'account': ['account'],
+                'region': ['region'],
+                'bucket': ['bucket'],
+                'path': ['path'],
+                'topic': ['topic'],
+                'queue': ['queue'],
+            }
+
+            # Type-specific aliases
+            type_specific = {
+                'snowflake': {
+                    'account': ['account', 'snowflakeAccount'],
+                    'warehouse': ['warehouse'],
+                    'database': ['database'],
+                    'schema': ['schema'],
+                    'role': ['role'],
+                    'region': ['region'],
+                },
+                's3': {
+                    'bucket': ['bucket'],
+                    'path': ['path', 'prefix'],
+                    'region': ['region'],
+                },
+                'kafka': {
+                    'topic': ['topic'],
+                    'bootstrap_servers': ['bootstrapServers', 'bootstrap'],
+                    'security_protocol': ['securityProtocol'],
+                },
+                'postgresql': {
+                    'host': ['host'],
+                    'port': ['port'],
+                    'database': ['database', 'db', 'dbname'],
+                    'schema': ['schema'],
+                    'user': ['user', 'username'],
+                },
+            }
+
+            alias_map = base_field_aliases.copy()
+            if server_type in type_specific:
+                alias_map.update(type_specific[server_type])
+
+            for target, aliases in alias_map.items():
+                for alias in aliases:
+                    if alias in entry and entry.get(alias) is not None:
+                        mapped[target] = entry[alias]
+                        break
+
+            # Preserve any extra properties
+            extra = {k: v for k, v in entry.items() if k not in mapped}
+            if extra:
+                mapped.setdefault('extensions', extra)
+            if mapped:
+                mapped_servers.append(mapped)
+    return mapped_servers or None
+
+
+def _map_definitions(contract_data: Dict[str, Any]) -> Optional[list]:
+    """
+    Map ODCS authoritativeDefinitions into canonical definitions array.
+    
+    ODCS authoritativeDefinitions can be:
+    - A dictionary mapping definition names to field definitions
+    - A list of definition objects with 'name' property
+    - Nested in description.authoritativeDefinitions
+    
+    Returns:
+        List of definition entries, or None if no definitions found
+    """
+    definitions = []
+    
+    # Check top-level authoritativeDefinitions
+    auth_defs = contract_data.get('authoritativeDefinitions')
+    
+    # Also check description.authoritativeDefinitions
+    description = contract_data.get('description', {})
+    if isinstance(description, dict):
+        desc_auth_defs = description.get('authoritativeDefinitions')
+        if desc_auth_defs:
+            auth_defs = auth_defs or desc_auth_defs
+    
+    if not auth_defs:
+        return None
+    
+    # Handle dictionary format: { "Address": { "type": "object", ... }, ... }
+    if isinstance(auth_defs, dict):
+        for def_name, def_data in auth_defs.items():
+            if not isinstance(def_data, dict):
+                continue
+            
+            definition = {
+                'name': def_name,
+            }
+            
+            # Map field definition properties
+            field_property_map = {
+                'type': 'type',
+                'description': 'description',
+                'nullable': 'nullable',
+                'format': 'format',
+                'pattern': 'pattern',
+                'enum': 'enum',
+                'default': 'default',
+                'minLength': 'min_length',
+                'maxLength': 'max_length',
+                'minimum': 'minimum',
+                'maximum': 'maximum',
+            }
+            
+            for odcs_key, hub_key in field_property_map.items():
+                if odcs_key in def_data and def_data[odcs_key] is not None:
+                    definition[hub_key] = def_data[odcs_key]
+            
+            # Handle nested properties (for object types)
+            if 'properties' in def_data:
+                definition['properties'] = def_data['properties']
+            
+            # Preserve any unmappable fields
+            extra = {k: v for k, v in def_data.items() 
+                    if k not in field_property_map and k != 'properties'}
+            if extra:
+                definition.setdefault('extensions', extra)
+            
+            definitions.append(definition)
+    
+    # Handle list format: [ { "name": "Address", "type": "object", ... }, ... ]
+    elif isinstance(auth_defs, list):
+        for def_entry in auth_defs:
+            if not isinstance(def_entry, dict):
+                continue
+            
+            # Extract name (required)
+            def_name = def_entry.get('name') or def_entry.get('$id', '').split('/')[-1]
+            if not def_name:
+                continue
+            
+            definition = {
+                'name': def_name,
+            }
+            
+            # Map field definition properties
+            field_property_map = {
+                'type': 'type',
+                'description': 'description',
+                'nullable': 'nullable',
+                'format': 'format',
+                'pattern': 'pattern',
+                'enum': 'enum',
+                'default': 'default',
+                'minLength': 'min_length',
+                'maxLength': 'max_length',
+                'minimum': 'minimum',
+                'maximum': 'maximum',
+            }
+            
+            for odcs_key, hub_key in field_property_map.items():
+                if odcs_key in def_entry and def_entry[odcs_key] is not None:
+                    definition[hub_key] = def_entry[odcs_key]
+            
+            # Handle nested properties
+            if 'properties' in def_entry:
+                definition['properties'] = def_entry['properties']
+            
+            # Preserve any unmappable fields
+            extra = {k: v for k, v in def_entry.items() 
+                    if k not in field_property_map and k != 'properties' and k != 'name' and k != '$id'}
+            if extra:
+                definition.setdefault('extensions', extra)
+            
+            definitions.append(definition)
+    
+    return definitions if definitions else None
+
+
+def _map_terms(contract_data: Dict[str, Any]) -> Optional[dict]:
+    """Map ODCS description usage/limitations into canonical terms."""
+    description = contract_data.get('description')
+    if not isinstance(description, dict):
+        return None
+    terms = {}
+    for target, alias in {
+        'usage': 'usage',
+        'limitations': 'limitations',
+        'billing': 'billing',
+        'support': 'support',
+        'sla': 'sla',
+    }.items():
+        if alias in description and description.get(alias) is not None:
+            terms[target] = description.get(alias)
+    # Pricing can come from price object
+    price = contract_data.get('price')
+    if isinstance(price, dict):
+        pricing = {}
+        for target, alias in {
+            'priceAmount': 'priceAmount',
+            'priceCurrency': 'priceCurrency',
+            'priceUnit': 'priceUnit',
+        }.items():
+            if alias in price and price.get(alias) is not None:
+                pricing[target] = price.get(alias)
+        if pricing:
+            terms['pricing'] = pricing
+    return terms or None
+
+
+def _map_fields(odcs_schema: Dict[str, Any], primary_key_fields: list, unique_constraint_fields: list,
+                indexed_fields: list) -> list:
+    """Map schema fields into canonical field definitions."""
+    mapped_fields = []
+    for field in odcs_schema.get('fields', []) or []:
+        if not isinstance(field, dict):
+            continue
+        field_name = field.get('name', '')
+        hub_field = {
+            'name': field_name,
+            'data_type': field.get('type', 'string'),
+            'nullable': field.get('nullable', True),
+        }
+        if 'description' in field:
+            hub_field['description'] = field['description']
+        if 'semantic_type' in field:
+            hub_field['semantic_type'] = field['semantic_type']
+        elif 'semanticType' in field:
+            hub_field['semantic_type'] = field['semanticType']
+        if 'format' in field:
+            hub_field['format'] = field['format']
+        if 'pattern' in field:
+            hub_field['pattern'] = field['pattern']
+        if 'enum' in field:
+            hub_field['enum'] = field['enum']
+        if 'default' in field:
+            hub_field['default'] = field['default']
+        if 'min_length' in field or 'minLength' in field:
+            hub_field['min_length'] = field.get('min_length') or field.get('minLength')
+        if 'max_length' in field or 'maxLength' in field:
+            hub_field['max_length'] = field.get('max_length') or field.get('maxLength')
+        if 'minimum' in field:
+            hub_field['minimum'] = field['minimum']
+            hub_field['min'] = field['minimum']
+        if 'maximum' in field:
+            hub_field['maximum'] = field['maximum']
+            hub_field['max'] = field['maximum']
+        if 'min' in field and 'minimum' not in field:
+            hub_field['min'] = field['min']
+            hub_field['minimum'] = field['min']
+        if 'max' in field and 'maximum' not in field:
+            hub_field['max'] = field['max']
+            hub_field['maximum'] = field['max']
+        if 'metadata' in field:
+            hub_field['metadata'] = field['metadata']
+
+        if field_name in primary_key_fields or field.get('is_primary_key'):
+            hub_field['is_primary_key'] = True
+        if field_name in unique_constraint_fields or field.get('is_unique'):
+            hub_field['is_unique'] = True
+        if field_name in indexed_fields or field.get('is_indexed'):
+            hub_field['is_indexed'] = True
+
+        # Extract field-level lineage
+        from hub.apps.contracts.lineage import extract_field_level_lineage
+        field_lineage = extract_field_level_lineage(field)
+        if field_lineage:
+            hub_field['lineage'] = field_lineage
+
+        mapped_fields.append(hub_field)
+    return mapped_fields
+
+
+def _build_model_from_schema(schema_data: Dict[str, Any], fallback_name: str = "default") -> Dict[str, Any]:
+    """Build canonical model entry from ODCS schema object."""
+    if not isinstance(schema_data, dict):
+        return {}
+
+    primary_key_fields = []
+    if 'primary_key' in schema_data:
+        primary_key_fields = schema_data['primary_key'] if isinstance(schema_data['primary_key'], list) else [schema_data['primary_key']]
+
+    unique_constraint_fields = []
+    unique_constraints = None
+    if 'unique_constraints' in schema_data:
+        unique_constraints = schema_data['unique_constraints']
+    elif 'uniqueConstraints' in schema_data:
+        unique_constraints = schema_data['uniqueConstraints']
+
+    if unique_constraints:
+        for constraint in unique_constraints:
+            if isinstance(constraint, dict) and 'fields' in constraint:
+                unique_constraint_fields.extend(constraint['fields'] if isinstance(constraint['fields'], list) else [constraint['fields']])
+            elif isinstance(constraint, list):
+                unique_constraint_fields.extend(constraint)
+            else:
+                unique_constraint_fields.append(constraint)
+
+    indexed_fields = []
+    if 'indexes' in schema_data:
+        for index in schema_data['indexes']:
+            if isinstance(index, dict) and 'fields' in index:
+                indexed_fields.extend(index['fields'] if isinstance(index['fields'], list) else [index['fields']])
+            elif isinstance(index, list):
+                indexed_fields.extend(index)
+            elif isinstance(index, str):
+                indexed_fields.append(index)
+
+    # Field-level flags
+    if 'fields' in schema_data:
+        for field in schema_data['fields']:
+            if not isinstance(field, dict):
+                continue
+            field_name = field.get('name', '')
+            if field.get('primaryKey') or field.get('primary_key') or field.get('is_primary_key'):
+                if field_name and field_name not in primary_key_fields:
+                    primary_key_fields.append(field_name)
+            if field.get('unique') or field.get('is_unique'):
+                if field_name and field_name not in unique_constraint_fields:
+                    unique_constraint_fields.append(field_name)
+            if field.get('is_indexed'):
+                if field_name and field_name not in indexed_fields:
+                    indexed_fields.append(field_name)
+        if unique_constraint_fields and not unique_constraints:
+            unique_constraints = [[field] for field in unique_constraint_fields]
+
+    fields = _map_fields(schema_data, primary_key_fields, unique_constraint_fields, indexed_fields)
+    model_name = schema_data.get('name') or fallback_name
+    model_entry: Dict[str, Any] = {
+        'name': model_name,
+        'fields': fields
     }
+    if schema_data.get('description'):
+        model_entry['description'] = schema_data.get('description')
+    if primary_key_fields:
+        model_entry['primary_key'] = primary_key_fields
+    if unique_constraints:
+        model_entry['unique_constraints'] = unique_constraints
+    if indexed_fields:
+        model_entry['indexes'] = indexed_fields
+    if schema_data.get('logicalType'):
+        model_entry['logical_type'] = schema_data.get('logicalType')
+    if schema_data.get('physicalType'):
+        model_entry['physical_type'] = schema_data.get('physicalType')
+    if schema_data.get('physicalName'):
+        model_entry['physical_name'] = schema_data.get('physicalName')
+    if schema_data.get('dataGranularityDescription'):
+        model_entry['data_granularity_description'] = schema_data.get('dataGranularityDescription')
+    if schema_data.get('tags'):
+        model_entry['tags'] = schema_data.get('tags')
     
-    total_sub_sections = sum(len(subsections) for subsections in all_sections.values())
-    mapped_sub_sections = 0
+    # Extract model-level lineage
+    from hub.apps.contracts.lineage import extract_model_level_lineage
+    model_lineage = extract_model_level_lineage(schema_data)
+    if model_lineage:
+        model_entry['lineage'] = model_lineage
     
-    # Count mapped sections
-    for section_name, subsections in all_sections.items():
-        section_data = hub_contract.get(section_name, {})
-        if section_name == 'info':
-            # Info section is required, count name as mapped
-            if 'name' in section_data:
-                mapped_sub_sections += 1
-            for sub in subsections:
-                if sub != 'name' and sub in section_data:
-                    mapped_sub_sections += 1
-        elif section_name == 'schema':
-            # Schema.fields is required
-            if 'fields' in section_data and section_data['fields']:
-                mapped_sub_sections += 1
-            for sub in subsections:
-                if sub != 'fields' and sub in section_data:
-                    mapped_sub_sections += 1
-        else:
-            # Optional sections
-            if section_name in hub_contract:
-                for sub in subsections:
-                    if sub in section_data:
-                        mapped_sub_sections += 1
+    # Preserve unmappable fields in extensions
+    known_fields = {
+        'name', 'description', 'fields', 'primary_key', 'unique_constraints', 'indexes',
+        'logicalType', 'physicalType', 'physicalName', 'dataGranularityDescription', 'tags',
+        'uniqueConstraints', 'transformSourceObjects', 'transformLogic', 'transformDescription',
+        'lineage', 'schema', 'model'
+    }
+    unmappable_fields = {}
+    for key, value in schema_data.items():
+        if key not in known_fields and not key.startswith('_'):
+            unmappable_fields[key] = value
+    if unmappable_fields:
+        model_entry.setdefault('extensions', {})
+        model_entry['extensions'].update(unmappable_fields)
     
-    return mapped_sub_sections / total_sub_sections if total_sub_sections > 0 else 0.0
+    # Validate and enrich advanced schema attributes
+    enriched_model, model_errors = validate_and_enrich_advanced_schema_attributes(model_entry)
+    # Note: model_errors are warnings, not blocking errors
+    if model_errors:
+        # Store validation warnings in model extensions for traceability
+        enriched_model.setdefault('extensions', {})
+        enriched_model['extensions']['_validation_warnings'] = model_errors
+    
+    return enriched_model
+
+
+def _derive_schema_from_model(model_entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Create schema derived view from a canonical model."""
+    schema = {
+        'fields': model_entry.get('fields', [])
+    }
+    if model_entry.get('primary_key'):
+        schema['primary_key'] = model_entry.get('primary_key')
+    if model_entry.get('unique_constraints'):
+        schema['unique_constraints'] = model_entry.get('unique_constraints')
+    if model_entry.get('indexes'):
+        schema['indexes'] = model_entry.get('indexes')
+    if model_entry.get('tags'):
+        schema['tags'] = model_entry.get('tags')
+    return schema
 
 
 def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
     """
     Detect contract specification type and version from contract data.
+    
+    Uses enhanced detection logic from spec_detection module.
     
     Args:
         contract_data: Parsed contract data (dict)
@@ -111,29 +763,7 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
     Returns:
         Tuple of (spec_type, spec_version)
     """
-    # Check for ODCS indicators
-    if 'odcs' in contract_data or 'odcs_version' in contract_data:
-        version = contract_data.get('odcs_version', '1.0')
-        return (OriginalSpecType.ODCS, str(version))
-    
-    # Check for DataContract.com indicators
-    if 'dataContractSpecification' in contract_data:
-        version = contract_data.get('dataContractSpecification', '0.4.0')
-        return (OriginalSpecType.DATACONTRACT_COM, str(version))
-    
-    # Check for schema field (common in both)
-    if 'schema' in contract_data:
-        # Try to infer from structure
-        if 'fields' in contract_data.get('schema', {}):
-            # Likely ODCS
-            return (OriginalSpecType.ODCS, '3.0.0')
-        elif 'type' in contract_data.get('schema', {}):
-            # Likely DataContract.com
-            return (OriginalSpecType.DATACONTRACT_COM, '0.4.0')
-    
-    # Default to ODCS if we can't detect (better than UNKNOWN which is invalid)
-    # This allows the contract to be created and normalized, even if spec type is uncertain
-    return (OriginalSpecType.ODCS, '1.0.0')
+    return detect_spec_type_new(contract_data)
 
 
 def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
@@ -152,7 +782,48 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
     elif format.upper() == 'YAML':
         if not YAML_AVAILABLE:
             raise ValueError("PyYAML is required for YAML parsing. Install with: pip install pyyaml")
-        return yaml.safe_load(raw_contract)
+        # Strip leading/trailing whitespace
+        cleaned_contract = raw_contract.strip()
+        
+        # Handle YAML strings with leading indentation from multi-line strings
+        # Find the minimum indentation across all non-empty lines
+        lines = cleaned_contract.split('\n')
+        if lines:
+            # Calculate indentation for each non-empty line
+            non_empty_lines = [line for line in lines if line.strip()]
+            if non_empty_lines:
+                indent_lengths = [len(line) - len(line.lstrip()) for line in non_empty_lines]
+                min_indent = min(indent_lengths) if indent_lengths else 0
+                
+                # Special case: if first line has no indentation (min_indent = 0) but other lines do,
+                # find the minimum indentation of the other lines and remove that
+                if min_indent == 0 and len(non_empty_lines) > 1:
+                    # Check if any line (other than first) has indentation
+                    other_lines = non_empty_lines[1:]
+                    other_indent_lengths = [len(line) - len(line.lstrip()) for line in other_lines]
+                    if other_indent_lengths and min(other_indent_lengths) > 0:
+                        # Use the minimum indent from other lines
+                        min_indent = min(other_indent_lengths)
+                
+                # If there's common indentation, remove it while preserving relative indentation
+                if min_indent > 0:
+                    dedented_lines = []
+                    for line in lines:
+                        if line.strip():  # Non-empty line
+                            # Only remove min_indent if the line actually has that much indentation
+                            line_indent = len(line) - len(line.lstrip())
+                            if line_indent >= min_indent:
+                                # Remove min_indent spaces, preserving relative indentation
+                                dedented_lines.append(line[min_indent:])
+                            else:
+                                # Line has less indentation than min_indent, keep it as-is (or strip if needed)
+                                # This handles cases where first line has no indentation
+                                dedented_lines.append(line.lstrip() if line_indent == 0 else line)
+                        else:  # Empty line
+                            dedented_lines.append('')
+                    cleaned_contract = '\n'.join(dedented_lines)
+        
+        return yaml.safe_load(cleaned_contract)
     else:
         raise ValueError(f"Unsupported format: {format}")
 
@@ -171,17 +842,29 @@ def normalize_odcs_to_hubcontract(odcs_contract: Dict[str, Any]) -> Tuple[Option
     warnings = []
     
     try:
-        # Basic HubContract structure
+        # Initialize source path tracker
+        path_tracker = SourcePathTracker()
+        
+        # Basic HubContract structure with version
+        # Only set info.description if it's a string (not a dict, which maps to terms)
+        description = odcs_contract.get('description')
+        info_description = description if isinstance(description, str) else None
+        
         hub_contract = {
-            'hub_contract_version': 1,
+            'hub_contract_version': get_default_version(),
             'id': odcs_contract.get('id', ''),
             'info': {
                 'name': odcs_contract.get('name', ''),
-                'description': odcs_contract.get('description'),
+                'description': info_description,
                 'version': odcs_contract.get('version'),
             },
             'schema': {}
         }
+        
+        # Track basic field mappings (ODCS fields are at root level)
+        track_field_mapping(path_tracker, 'info', 'name', '', 'name')
+        track_field_mapping(path_tracker, 'info', 'description', '', 'description')
+        track_field_mapping(path_tracker, 'info', 'version', '', 'version')
         
         # Extract info section with owners and tags
         info = odcs_contract.get('info', {})
@@ -196,94 +879,51 @@ def normalize_odcs_to_hubcontract(odcs_contract: Dict[str, Any]) -> Tuple[Option
         if 'tags' in odcs_contract:
             hub_contract['info']['tags'] = odcs_contract['tags']
         
-        # Map schema
+        # Map schema into canonical models[] (complete extraction)
+        models = []
         if 'schema' in odcs_contract:
             odcs_schema = odcs_contract['schema']
-            hub_schema = {}
-            
-            # Map primary key, unique constraints, and indexes first (needed for field-level flags)
-            primary_key_fields = []
-            if 'primary_key' in odcs_schema:
-                primary_key_fields = odcs_schema['primary_key'] if isinstance(odcs_schema['primary_key'], list) else [odcs_schema['primary_key']]
-                hub_schema['primary_key'] = primary_key_fields
-            
-            unique_constraint_fields = []
-            if 'unique_constraints' in odcs_schema:
-                unique_constraints = odcs_schema['unique_constraints']
-                hub_schema['unique_constraints'] = unique_constraints
-                # Flatten unique constraints to get all unique fields
-                for constraint in unique_constraints:
-                    if isinstance(constraint, list):
-                        unique_constraint_fields.extend(constraint)
-                    else:
-                        unique_constraint_fields.append(constraint)
-            
-            indexed_fields = []
-            if 'indexes' in odcs_schema:
-                indexes = odcs_schema['indexes']
-                hub_schema['indexes'] = indexes
-                # Extract field names from indexes
-                for index in indexes:
-                    if isinstance(index, dict) and 'fields' in index:
-                        indexed_fields.extend(index['fields'] if isinstance(index['fields'], list) else [index['fields']])
-                    elif isinstance(index, list):
-                        indexed_fields.extend(index)
-                    elif isinstance(index, str):
-                        indexed_fields.append(index)
-            
-            # Map fields with all properties
-            if 'fields' in odcs_schema:
-                hub_schema['fields'] = []
-                for field in odcs_schema['fields']:
-                    field_name = field.get('name', '')
-                    hub_field = {
-                        'name': field_name,
-                        'data_type': field.get('type', 'string'),
-                        'nullable': field.get('nullable', True),
-                    }
-                    # Extract all optional field properties
-                    if 'description' in field:
-                        hub_field['description'] = field['description']
-                    if 'semantic_type' in field:
-                        hub_field['semantic_type'] = field['semantic_type']
-                    if 'format' in field:
-                        hub_field['format'] = field['format']
-                    if 'pattern' in field:
-                        hub_field['pattern'] = field['pattern']
-                    if 'enum' in field:
-                        hub_field['enum'] = field['enum']
-                    if 'default' in field:
-                        hub_field['default'] = field['default']
-                    if 'min_length' in field or 'minLength' in field:
-                        hub_field['min_length'] = field.get('min_length') or field.get('minLength')
-                    if 'max_length' in field or 'maxLength' in field:
-                        hub_field['max_length'] = field.get('max_length') or field.get('maxLength')
-                    if 'minimum' in field:
-                        hub_field['minimum'] = field['minimum']
-                    if 'maximum' in field:
-                        hub_field['maximum'] = field['maximum']
-                    if 'metadata' in field:
-                        hub_field['metadata'] = field['metadata']
-                    
-                    # Set schema constraint flags on fields
-                    if field_name in primary_key_fields:
-                        hub_field['is_primary_key'] = True
-                    if 'is_primary_key' in field:
-                        hub_field['is_primary_key'] = field['is_primary_key']
-                    
-                    if field_name in unique_constraint_fields:
-                        hub_field['is_unique'] = True
-                    if 'is_unique' in field:
-                        hub_field['is_unique'] = field['is_unique']
-                    
-                    if field_name in indexed_fields:
-                        hub_field['is_indexed'] = True
-                    if 'is_indexed' in field:
-                        hub_field['is_indexed'] = field['is_indexed']
-                    
-                    hub_schema['fields'].append(hub_field)
-            
-            hub_contract['schema'] = hub_schema
+            if isinstance(odcs_schema, list):
+                # ODCS schema[] array - map each to a model
+                for idx, schema_entry in enumerate(odcs_schema):
+                    if not isinstance(schema_entry, dict):
+                        continue
+                    model_entry = _build_model_from_schema(schema_entry, fallback_name=f"model_{idx+1}")
+                    if model_entry:
+                        models.append(model_entry)
+            elif isinstance(odcs_schema, dict):
+                # Single schema object - map to single model
+                model_entry = _build_model_from_schema(
+                    odcs_schema,
+                    fallback_name=odcs_schema.get('name') or odcs_contract.get('name') or "default"
+                )
+                if model_entry:
+                    models.append(model_entry)
+        elif isinstance(odcs_contract.get('models'), list):
+            # If models already present (rare), normalize them
+            for idx, model_entry in enumerate(odcs_contract.get('models', [])):
+                if isinstance(model_entry, dict):
+                    normalized = _build_model_from_schema(
+                        model_entry,
+                        fallback_name=model_entry.get('name') or f"model_{idx+1}"
+                    )
+                    if normalized:
+                        models.append(normalized)
+        
+        # Always set models[] if we have any
+        if models:
+            hub_contract['models'] = models
+            # Derived schema view for backward compatibility (from first model)
+            # Check if schema is empty or missing fields (not just falsy, since {} is truthy)
+            schema = hub_contract.get('schema', {})
+            if not schema or not schema.get('fields'):
+                derived_schema = _derive_schema_from_model(models[0])
+                hub_contract['schema'] = derived_schema
+        
+        # If no schema provided but models already present, derive schema
+        schema = hub_contract.get('schema', {})
+        if (not schema or not schema.get('fields')) and hub_contract.get('models'):
+            hub_contract['schema'] = _derive_schema_from_model(hub_contract['models'][0])
         
         # Extract quality section
         if 'quality' in odcs_contract:
@@ -291,12 +931,24 @@ def normalize_odcs_to_hubcontract(odcs_contract: Dict[str, Any]) -> Tuple[Option
             hub_contract['quality'] = {}
             if 'default_profile_key' in quality_data:
                 hub_contract['quality']['default_profile_key'] = quality_data['default_profile_key']
-            if 'rules' in quality_data:
-                hub_contract['quality']['rules'] = quality_data['rules']
+            mapped_rules = _map_quality_rules(quality_data)
+            if mapped_rules is not None:
+                hub_contract['quality']['rules'] = mapped_rules
+            contract_level_quality = _map_quality_contract_level(quality_data)
+            if contract_level_quality:
+                hub_contract['quality'].update(contract_level_quality)
         
         # Extract privacy_compliance section
-        if 'privacy_compliance' in odcs_contract or 'compliance' in odcs_contract:
-            compliance_data = odcs_contract.get('privacy_compliance') or odcs_contract.get('compliance', {})
+        # Check for privacy_compliance, compliance, or privacy at top level
+        compliance_data = None
+        if 'privacy_compliance' in odcs_contract:
+            compliance_data = odcs_contract.get('privacy_compliance', {})
+        elif 'compliance' in odcs_contract:
+            compliance_data = odcs_contract.get('compliance', {})
+        elif 'privacy' in odcs_contract:
+            compliance_data = odcs_contract.get('privacy', {})
+        
+        if compliance_data:
             hub_contract['privacy_compliance'] = {}
             if 'contains_personal_data' in compliance_data:
                 hub_contract['privacy_compliance']['contains_personal_data'] = compliance_data['contains_personal_data']
@@ -320,6 +972,87 @@ def normalize_odcs_to_hubcontract(odcs_contract: Dict[str, Any]) -> Tuple[Option
             if 'slas' in lifecycle_data:
                 hub_contract['lifecycle']['slas'] = lifecycle_data['slas']
         
+        # Extract servicelevels (canonical from ODCS slaProperties)
+        servicelevels = _map_service_levels(odcs_contract)
+        if servicelevels:
+            enriched_servicelevels, sl_errors = validate_and_enrich_servicelevels(servicelevels)
+            if sl_errors:
+                warnings.extend([f"ServiceLevel validation: {e}" for e in sl_errors])
+            hub_contract['servicelevels'] = enriched_servicelevels
+
+        # Extract contact (from support[] entries with name/email)
+        contacts = _map_contacts(odcs_contract)
+        if contacts:
+            enriched_contacts, contact_errors = validate_and_enrich_contacts(contacts)
+            if contact_errors:
+                warnings.extend([f"Contact validation: {e}" for e in contact_errors])
+            hub_contract['contact'] = enriched_contacts
+        
+        # Extract support channels (from support[] entries without name/email)
+        support_channels = _map_support_channels(odcs_contract)
+        if support_channels:
+            hub_contract['support'] = support_channels
+
+        # Extract servers
+        servers = _map_servers(odcs_contract)
+        if servers:
+            hub_contract['servers'] = servers
+
+        # Extract terms
+        terms = _map_terms(odcs_contract)
+        if terms:
+            # Validate/enrich pricing if present in terms
+            if 'pricing' in terms:
+                enriched_pricing, pricing_errors = validate_and_enrich_pricing(terms['pricing'])
+                if pricing_errors:
+                    warnings.extend([f"Pricing validation: {e}" for e in pricing_errors])
+                terms['pricing'] = enriched_pricing
+            hub_contract['terms'] = terms
+
+        # Map authoritativeDefinitions into definitions
+        definitions = _map_definitions(odcs_contract)
+        if definitions:
+            hub_contract['definitions'] = definitions
+
+        # Extract roles, team, and pricing
+        if isinstance(odcs_contract.get('roles'), list):
+            enriched_roles, role_errors = validate_and_enrich_roles(odcs_contract.get('roles'))
+            if role_errors:
+                warnings.extend([f"Role validation: {e}" for e in role_errors])
+            hub_contract['roles'] = enriched_roles
+        if isinstance(odcs_contract.get('team'), list):
+            enriched_team, team_errors = validate_and_enrich_team(odcs_contract.get('team'))
+            if team_errors:
+                warnings.extend([f"Team validation: {e}" for e in team_errors])
+            hub_contract['team'] = enriched_team
+        if isinstance(odcs_contract.get('price'), dict):
+            enriched_pricing, pricing_errors = validate_and_enrich_pricing(odcs_contract.get('price'))
+            if pricing_errors:
+                warnings.extend([f"Pricing validation: {e}" for e in pricing_errors])
+            hub_contract['pricing'] = enriched_pricing
+
+        # Extract multi-level lineage
+        from hub.apps.contracts.lineage import (
+            extract_contract_level_lineage,
+            extract_field_level_lineage,
+            extract_model_level_lineage,
+        )
+
+        # Contract-level lineage
+        contract_lineage = extract_contract_level_lineage(odcs_contract)
+        if contract_lineage:
+            entries = contract_lineage.get('entries', [])
+            enriched_lineage, lineage_errors = validate_and_enrich_lineage(entries)
+            if lineage_errors:
+                warnings.extend([f"Lineage validation: {e}" for e in lineage_errors])
+            # Set lineage as LineageSection structure (entries list + contracts if present)
+            if enriched_lineage:
+                lineage_section = {'entries': enriched_lineage}
+                # Add contract references if present
+                if contract_lineage.get('contracts'):
+                    lineage_section['contracts'] = contract_lineage['contracts']
+                hub_contract['lineage'] = lineage_section
+        
         # Extract marketplace section
         if 'marketplace' in odcs_contract:
             marketplace_data = odcs_contract['marketplace']
@@ -339,7 +1072,9 @@ def normalize_odcs_to_hubcontract(odcs_contract: Dict[str, Any]) -> Tuple[Option
         known_fields = {
             'id', 'name', 'description', 'version', 'schema', 'info',
             'quality', 'privacy_compliance', 'compliance', 'lifecycle', 'marketplace',
-            'owners', 'tags'  # May be at root level
+            'owners', 'tags', 'support', 'servers', 'slaProperties', 'terms',
+            'servicelevels', 'models', 'roles', 'team', 'price',
+            'transformSourceObjects', 'transformLogic'
         }
         
         # Copy fields that don't map directly
@@ -348,15 +1083,49 @@ def normalize_odcs_to_hubcontract(odcs_contract: Dict[str, Any]) -> Tuple[Option
                 odcs_extensions[key] = value
         
         if odcs_extensions:
+            # Store extensions directly at top level for easy access
+            extensions.update(odcs_extensions)
+            # Also store under 'odcs' for backward compatibility and namespacing
             extensions['odcs'] = odcs_extensions
-            warnings.append("Some ODCS fields preserved in extensions.odcs")
+            # Add informational warning about extensions (they're preserved but indicate unmappable fields)
+            warnings.append("Some ODCS fields preserved in extensions")
         
         if extensions:
             hub_contract['extensions'] = extensions
         
+        # Promote context fields into info
+        hub_contract = promote_context_fields(hub_contract, odcs_contract)
+        
+        # Check for required fields and add errors if missing
+        info = hub_contract.get('info', {})
+        if 'name' not in info or not info.get('name'):
+            errors.append("Contract must have a 'name' field")
+        
+        schema = hub_contract.get('schema', {})
+        if 'fields' not in schema:
+            errors.append("Contract must have a 'fields' array in schema")
+        elif not schema.get('fields'):
+            # Empty fields array is allowed but should be a warning, not an error
+            warnings.append("Schema has no fields")
+        
+        # Validate against typed HubContract models for structural safety
+        validated_contract, validation_errors = validate_hub_contract_dict(hub_contract)
+        if validation_errors:
+            errors.extend(validation_errors)
+        elif validated_contract:
+            hub_contract = validated_contract.model_dump(exclude_none=True)
+        
         # Determine status based on completeness
         status = _determine_normalization_status(hub_contract, errors, warnings)
         
+        # Attach coverage metrics for observability
+        if isinstance(hub_contract, dict):
+            coverage_result = calculate_coverage(hub_contract, spec_type=OriginalSpecType.ODCS)
+            hub_contract.setdefault('normalization', {})
+            hub_contract['normalization']['coverage'] = coverage_result.to_dict()
+        
+        # Always return hub_contract even with errors (for debugging/traceability)
+        # Status will be NORMALIZATION_FAILED if critical sections are missing
         return hub_contract, status, errors, warnings
     
     except Exception as e:
@@ -364,221 +1133,32 @@ def normalize_odcs_to_hubcontract(odcs_contract: Dict[str, Any]) -> Tuple[Option
         return None, NormalizationStatus.NORMALIZATION_FAILED, errors, warnings
 
 
-def normalize_datacontract_com_to_hubcontract(datacontract_contract: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], NormalizationStatus, list, list]:
-    """
-    Normalize DataContract.com contract to HubContract format.
-    
-    Args:
-        datacontract_contract: DataContract.com contract data
-    
-    Returns:
-        Tuple of (hub_contract_json, normalization_status, errors, warnings)
-    """
-    errors = []
-    warnings = []
-    
-    try:
-        # Extract info section
-        info = datacontract_contract.get('info', {})
-        
-        # Basic HubContract structure
-        hub_contract = {
-            'hub_contract_version': 1,
-            'id': datacontract_contract.get('id', ''),
-            'info': {
-                'name': info.get('title', ''),
-                'description': info.get('description'),
-                'version': info.get('version'),
-            },
-            'schema': {}
-        }
-        
-        # Extract owners and tags from info section
-        if 'owners' in info:
-            hub_contract['info']['owners'] = info['owners']
-        if 'tags' in info:
-            hub_contract['info']['tags'] = info['tags']
-        
-        # Map schema
-        if 'schema' in datacontract_contract:
-            dc_schema = datacontract_contract['schema']
-            hub_schema = {}
-            
-            # Map primary key, unique constraints, indexes from DataContract.com first (needed for field-level flags)
-            primary_key_fields = []
-            if 'primaryKey' in dc_schema:
-                primary_key_fields = dc_schema['primaryKey'] if isinstance(dc_schema['primaryKey'], list) else [dc_schema['primaryKey']]
-                hub_schema['primary_key'] = primary_key_fields
-            elif 'primary_key' in dc_schema:
-                primary_key_fields = dc_schema['primary_key'] if isinstance(dc_schema['primary_key'], list) else [dc_schema['primary_key']]
-                hub_schema['primary_key'] = primary_key_fields
-            
-            unique_constraint_fields = []
-            if 'uniqueConstraints' in dc_schema:
-                unique_constraints = dc_schema['uniqueConstraints']
-                hub_schema['unique_constraints'] = unique_constraints
-                for constraint in unique_constraints:
-                    if isinstance(constraint, list):
-                        unique_constraint_fields.extend(constraint)
-                    else:
-                        unique_constraint_fields.append(constraint)
-            elif 'unique_constraints' in dc_schema:
-                unique_constraints = dc_schema['unique_constraints']
-                hub_schema['unique_constraints'] = unique_constraints
-                for constraint in unique_constraints:
-                    if isinstance(constraint, list):
-                        unique_constraint_fields.extend(constraint)
-                    else:
-                        unique_constraint_fields.append(constraint)
-            
-            indexed_fields = []
-            if 'indexes' in dc_schema:
-                indexes = dc_schema['indexes']
-                hub_schema['indexes'] = indexes
-                for index in indexes:
-                    if isinstance(index, dict) and 'fields' in index:
-                        indexed_fields.extend(index['fields'] if isinstance(index['fields'], list) else [index['fields']])
-                    elif isinstance(index, list):
-                        indexed_fields.extend(index)
-                    elif isinstance(index, str):
-                        indexed_fields.append(index)
-            
-            # Map fields from DataContract.com schema with all properties
-            if 'type' in dc_schema and dc_schema['type'] == 'object' and 'properties' in dc_schema:
-                hub_schema['fields'] = []
-                required_fields = dc_schema.get('required', [])
-                for field_name, field_def in dc_schema['properties'].items():
-                    hub_field = {
-                        'name': field_name,
-                        'data_type': field_def.get('type', 'string'),
-                        'nullable': field_name not in required_fields,
-                    }
-                    # Extract all optional field properties from JSON Schema
-                    if 'description' in field_def:
-                        hub_field['description'] = field_def['description']
-                    if 'format' in field_def:
-                        hub_field['format'] = field_def['format']
-                    if 'pattern' in field_def:
-                        hub_field['pattern'] = field_def['pattern']
-                    if 'enum' in field_def:
-                        hub_field['enum'] = field_def['enum']
-                    if 'default' in field_def:
-                        hub_field['default'] = field_def['default']
-                    if 'minLength' in field_def:
-                        hub_field['min_length'] = field_def['minLength']
-                    if 'maxLength' in field_def:
-                        hub_field['max_length'] = field_def['maxLength']
-                    if 'minimum' in field_def:
-                        hub_field['minimum'] = field_def['minimum']
-                    if 'maximum' in field_def:
-                        hub_field['maximum'] = field_def['maximum']
-                    # Extract semantic_type from x-datahub extension or metadata
-                    if 'x-datahub' in field_def and 'semantic_type' in field_def['x-datahub']:
-                        hub_field['semantic_type'] = field_def['x-datahub']['semantic_type']
-                    elif 'semantic_type' in field_def:
-                        hub_field['semantic_type'] = field_def['semantic_type']
-                    # Extract metadata from x-datahub extension or metadata field
-                    if 'x-datahub' in field_def and 'metadata' in field_def['x-datahub']:
-                        hub_field['metadata'] = field_def['x-datahub']['metadata']
-                    elif 'metadata' in field_def:
-                        hub_field['metadata'] = field_def['metadata']
-                    
-                    # Set schema constraint flags on fields
-                    if field_name in primary_key_fields:
-                        hub_field['is_primary_key'] = True
-                    if 'is_primary_key' in field_def or 'isPrimaryKey' in field_def:
-                        hub_field['is_primary_key'] = field_def.get('is_primary_key') or field_def.get('isPrimaryKey')
-                    
-                    if field_name in unique_constraint_fields:
-                        hub_field['is_unique'] = True
-                    if 'is_unique' in field_def or 'isUnique' in field_def:
-                        hub_field['is_unique'] = field_def.get('is_unique') or field_def.get('isUnique')
-                    
-                    if field_name in indexed_fields:
-                        hub_field['is_indexed'] = True
-                    if 'is_indexed' in field_def or 'isIndexed' in field_def:
-                        hub_field['is_indexed'] = field_def.get('is_indexed') or field_def.get('isIndexed')
-                    
-                    hub_schema['fields'].append(hub_field)
-            
-            hub_contract['schema'] = hub_schema
-        
-        # Extract quality section
-        if 'quality' in datacontract_contract:
-            quality_data = datacontract_contract['quality']
-            hub_contract['quality'] = {}
-            if 'default_profile_key' in quality_data or 'defaultProfileKey' in quality_data:
-                hub_contract['quality']['default_profile_key'] = quality_data.get('default_profile_key') or quality_data.get('defaultProfileKey')
-            if 'rules' in quality_data:
-                hub_contract['quality']['rules'] = quality_data['rules']
-        
-        # Extract privacy_compliance section
-        if 'privacy' in datacontract_contract or 'privacy_compliance' in datacontract_contract:
-            compliance_data = datacontract_contract.get('privacy_compliance') or datacontract_contract.get('privacy', {})
-            hub_contract['privacy_compliance'] = {}
-            if 'containsPersonalData' in compliance_data or 'contains_personal_data' in compliance_data:
-                hub_contract['privacy_compliance']['contains_personal_data'] = compliance_data.get('contains_personal_data') or compliance_data.get('containsPersonalData')
-            if 'personalDataCategories' in compliance_data or 'personal_data_categories' in compliance_data:
-                hub_contract['privacy_compliance']['personal_data_categories'] = compliance_data.get('personal_data_categories') or compliance_data.get('personalDataCategories')
-            if 'jurisdictions' in compliance_data:
-                hub_contract['privacy_compliance']['jurisdictions'] = compliance_data['jurisdictions']
-            if 'legalBases' in compliance_data or 'legal_bases' in compliance_data:
-                hub_contract['privacy_compliance']['legal_bases'] = compliance_data.get('legal_bases') or compliance_data.get('legalBases')
-            if 'retentionPolicy' in compliance_data or 'retention_policy' in compliance_data:
-                hub_contract['privacy_compliance']['retention_policy'] = compliance_data.get('retention_policy') or compliance_data.get('retentionPolicy')
-        
-        # Extract lifecycle section
-        if 'lifecycle' in datacontract_contract:
-            lifecycle_data = datacontract_contract['lifecycle']
-            hub_contract['lifecycle'] = {}
-            if 'dataSource' in lifecycle_data or 'data_source' in lifecycle_data:
-                hub_contract['lifecycle']['data_source'] = lifecycle_data.get('data_source') or lifecycle_data.get('dataSource')
-            if 'refreshCadence' in lifecycle_data or 'refresh_cadence' in lifecycle_data:
-                hub_contract['lifecycle']['refresh_cadence'] = lifecycle_data.get('refresh_cadence') or lifecycle_data.get('refreshCadence')
-            if 'slas' in lifecycle_data:
-                hub_contract['lifecycle']['slas'] = lifecycle_data['slas']
-        
-        # Extract marketplace section
-        if 'marketplace' in datacontract_contract:
-            marketplace_data = datacontract_contract['marketplace']
-            hub_contract['marketplace'] = {}
-            if 'licenseSummary' in marketplace_data or 'license_summary' in marketplace_data:
-                hub_contract['marketplace']['license_summary'] = marketplace_data.get('license_summary') or marketplace_data.get('licenseSummary')
-            if 'intendedUse' in marketplace_data or 'intended_use' in marketplace_data:
-                hub_contract['marketplace']['intended_use'] = marketplace_data.get('intended_use') or marketplace_data.get('intendedUse')
-            if 'restrictedUse' in marketplace_data or 'restricted_use' in marketplace_data:
-                hub_contract['marketplace']['restricted_use'] = marketplace_data.get('restricted_use') or marketplace_data.get('restrictedUse')
-        
-        # Preserve unmappable fields in extensions
-        extensions = {}
-        dc_extensions = {}
-        
-        # Known mappable fields (already mapped above)
-        known_fields = {
-            'id', 'info', 'schema', 'dataContractSpecification',
-            'quality', 'privacy', 'privacy_compliance', 'lifecycle', 'marketplace'
-        }
-        
-        # Copy fields that don't map directly
-        for key, value in datacontract_contract.items():
-            if key not in known_fields:
-                dc_extensions[key] = value
-        
-        if dc_extensions:
-            extensions['datacontract_com'] = dc_extensions
-            warnings.append("Some DataContract.com fields preserved in extensions.datacontract_com")
-        
-        if extensions:
-            hub_contract['extensions'] = extensions
-        
-        # Determine status based on completeness
-        status = _determine_normalization_status(hub_contract, errors, warnings)
-        
-        return hub_contract, status, errors, warnings
-    
-    except Exception as e:
-        errors.append(f"Normalization failed: {str(e)}")
-        return None, NormalizationStatus.NORMALIZATION_FAILED, errors, warnings
+class ODCSNormalizer:
+    """SpecNormalizer implementation for ODCS contracts."""
+
+    spec_type = OriginalSpecType.ODCS
+
+    def supports(self, spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> bool:
+        return spec_type == self.spec_type
+
+    def normalize(self, contract_data: Dict[str, Any], spec_version: Optional[str] = None) -> NormalizationResult:
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(contract_data)
+        coverage = None
+        if isinstance(hub_contract, dict):
+            coverage = hub_contract.get('normalization', {}).get('coverage')
+        return NormalizationResult(
+            hub_contract=hub_contract,
+            status=status,
+            errors=errors,
+            warnings=warnings,
+            spec_type=self.spec_type,
+            spec_version=spec_version or contract_data.get('version') or "3.0.2",
+            coverage=coverage
+        )
+
+
+# Register default normalizer
+register_normalizer(ODCSNormalizer())
 
 
 def normalize_contract(
@@ -589,10 +1169,12 @@ def normalize_contract(
     """
     Normalize contract to HubContract format.
     
+    Only supports Open Data Contract Standard (ODCS) v3.0.2+ contracts.
+    
     Args:
         raw_contract: Raw contract content
         format: Format (JSON or YAML)
-        spec_type: Optional spec type (ODCS or DATACONTRACT_COM). If None, will be detected.
+        spec_type: Optional spec type (ODCS only). If None, will be detected.
     
     Returns:
         Tuple of (hub_contract_json, detected_spec_type, detected_spec_version, normalization_status, errors, warnings)
@@ -601,27 +1183,57 @@ def normalize_contract(
         # Parse contract
         contract_data = parse_contract(raw_contract, format)
         
+        # Check for DCS contracts FIRST (before spec detection)
+        # DCS contracts have 'dataContractSpecification' field
+        if isinstance(contract_data, dict) and 'dataContractSpecification' in contract_data:
+            errors = [
+                "The Data Contract Specification (DCS) is no longer supported. "
+                "Please migrate your contract to the Open Data Contract Standard (ODCS) v3.0.2+. "
+                "For migration guidance, see: https://bitol-io.github.io/open-data-contract-standard/v3.0.2/"
+            ]
+            # Return ODCS as spec_type (since enum no longer has DATACONTRACT_COM)
+            # but normalization will fail with clear error message
+            return None, OriginalSpecType.ODCS, "3.0.2", NormalizationStatus.NORMALIZATION_FAILED, errors, []
+        
         # Detect spec type if not provided
         if not spec_type:
             spec_type, spec_version = detect_spec_type(contract_data)
         else:
             spec_version = contract_data.get('version', '1.0')
         
-        # Normalize based on spec type
-        if spec_type == OriginalSpecType.ODCS:
-            hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(contract_data)
-        elif spec_type == OriginalSpecType.DATACONTRACT_COM:
-            hub_contract, status, errors, warnings = normalize_datacontract_com_to_hubcontract(contract_data)
-        else:
-            errors = [f"Unsupported spec type: {spec_type}"]
+        normalizer = get_normalizer(spec_type, spec_version, contract_data)
+        if not normalizer:
+            errors = [
+                f"No normalizer registered for spec type {spec_type} (version {spec_version}). "
+                "Ensure a SpecNormalizer is registered for this spec type."
+            ]
             return None, spec_type, spec_version, NormalizationStatus.NORMALIZATION_FAILED, errors, []
+        
+        result = normalizer.normalize(contract_data, spec_version=spec_version)
+        hub_contract, status, errors, warnings = (
+            result.hub_contract,
+            result.status,
+            result.errors,
+            result.warnings,
+        )
+        spec_version = result.spec_version or spec_version
+        
+        # Store original spec metadata in HubContract
+        if hub_contract:
+            hub_contract = store_original_spec_metadata(hub_contract, contract_data)
+        
+        # Ensure all contracts have version "1.0.0" during development
+        if hub_contract:
+            hub_contract = ensure_version(hub_contract)
+            if not hub_contract.get('hub_contract_version'):
+                hub_contract['hub_contract_version'] = get_default_version()
         
         return hub_contract, spec_type, spec_version, status, errors, warnings
     
     except Exception as e:
         errors = [f"Failed to normalize contract: {str(e)}"]
-        # Return ODCS as default spec type (UNKNOWN is not a valid choice)
-        return None, OriginalSpecType.ODCS, "1.0.0", NormalizationStatus.NORMALIZATION_FAILED, errors, []
+        # Return ODCS as default spec type
+        return None, OriginalSpecType.ODCS, "3.0.2", NormalizationStatus.NORMALIZATION_FAILED, errors, []
 
 
 def validate_hubcontract_schema(hub_contract: Dict[str, Any]) -> Tuple[bool, list]:
@@ -634,26 +1246,15 @@ def validate_hubcontract_schema(hub_contract: Dict[str, Any]) -> Tuple[bool, lis
     Returns:
         Tuple of (is_valid: bool, errors: list)
     """
+    validated_contract, validation_errors = validate_hub_contract_dict(hub_contract)
+    if validation_errors:
+        return False, validation_errors
+    
     errors = []
-    
-    # Check required fields
-    if 'hub_contract_version' not in hub_contract:
-        errors.append("Missing required field: hub_contract_version")
-    elif hub_contract['hub_contract_version'] != 1:
-        errors.append(f"Invalid hub_contract_version: {hub_contract['hub_contract_version']} (expected: 1)")
-    
-    if 'id' not in hub_contract or not hub_contract['id']:
-        errors.append("Missing or empty required field: id")
-    
-    if 'info' not in hub_contract:
-        errors.append("Missing required field: info")
-    elif 'name' not in hub_contract['info'] or not hub_contract['info']['name']:
-        errors.append("Missing or empty required field: info.name")
-    
-    if 'schema' not in hub_contract:
-        errors.append("Missing required field: schema")
-    elif 'fields' not in hub_contract['schema'] or not hub_contract['schema']['fields']:
-        errors.append("Missing or empty required field: schema.fields")
+    expected_version = get_default_version()
+    if validated_contract and validated_contract.hub_contract_version != expected_version:
+        errors.append(
+            f"Invalid hub_contract_version: {validated_contract.hub_contract_version} (expected: \"{expected_version}\")"
+        )
     
     return len(errors) == 0, errors
-

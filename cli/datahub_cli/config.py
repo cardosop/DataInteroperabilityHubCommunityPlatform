@@ -39,7 +39,14 @@ class Config:
         if config_file.exists():
             try:
                 with open(config_file, 'r') as f:
-                    self._config = yaml.safe_load(f) or {}
+                    loaded = yaml.safe_load(f)
+                    # Ensure loaded data is a dict (handle corrupted/invalid YAML)
+                    if isinstance(loaded, dict):
+                        self._config = loaded
+                    else:
+                        # Invalid YAML or non-dict data - reset to empty dict
+                        self._config = {}
+                        click.echo(f"Warning: Config file contains invalid data, resetting to defaults", err=True)
             except Exception as e:
                 click.echo(f"Warning: Failed to load config file: {e}", err=True)
                 self._config = {}

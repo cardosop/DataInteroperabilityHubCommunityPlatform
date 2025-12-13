@@ -1,0 +1,85 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 3.0279159545898438e-05
+  },
+  "journeys": [
+    {
+      "journey_id": "AUD-002-0f0fcc0e",
+      "journey_name": "Generate Audit Reports",
+      "persona": "Auditor",
+      "status": "completed",
+      "start_time": 1765588777.9705946,
+      "end_time": 1765588777.970625,
+      "duration": 3.0279159545898438e-05,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Report Type",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588777.9706006,
+          "end_time": 1765588777.9706051,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Report Parameters",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588777.9706073,
+          "end_time": 1765588777.9706094,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588777.970611,
+          "end_time": 1765588777.97062,
+          "duration": 8.821487426757812e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Review Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588777.9706213,
+          "end_time": 1765588777.9706237,
+          "duration": 2.384185791015625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "report_type": "COMPREHENSIVE",
+        "report_id": "c73424ff-672f-4272-a62d-2208aa730463"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T01:19:37.970694"
+}

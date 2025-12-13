@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-004-4acab9c3",
+      "journey_name": "Review Access Requests",
+      "persona": "Compliance & Privacy Officer",
+      "status": "failed",
+      "start_time": 1765578821.62137,
+      "end_time": 1765578821.6213746,
+      "duration": 4.5299530029296875e-06,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "'Persona3CompliancePrivacyOfficerJourneys' object has no attribute '_create_activated_asset'",
+      "error_type": "AttributeError",
+      "steps": [],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T22:33:41.621451"
+}

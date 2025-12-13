@@ -3,7 +3,7 @@ DataHub CLI main entry point.
 """
 import click
 import sys
-from .commands import assets, contracts, files, jobs, config as config_cmd
+from .commands import assets, contracts, files, jobs, config as config_cmd, lineage, dq, compliance, governance
 from .auth import auth_manager
 from .config import config
 
@@ -38,9 +38,13 @@ def logout():
 # Add command groups
 cli.add_command(assets.assets, name='assets')
 cli.add_command(contracts.contracts, name='contracts')
+cli.add_command(lineage.lineage, name='lineage')
 cli.add_command(files.files, name='files')
 cli.add_command(jobs.jobs, name='jobs')
 cli.add_command(config_cmd.config_cmd, name='config')
+cli.add_command(dq.dq, name='dq')
+cli.add_command(compliance.compliance, name='compliance')
+cli.add_command(governance.governance, name='governance')
 
 
 def main():

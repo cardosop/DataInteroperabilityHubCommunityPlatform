@@ -107,38 +107,6 @@ class ContractOperationsE2ETest(E2ETestBase):
             result='SUCCESS'
         )
     
-    def test_create_datacontract_com_contract(self):
-        """Test creating DataContract.com contract"""
-        asset_id = self.create_asset(key='datacontract-test', name='DataContract Test')
-        
-        datacontract_com = {
-            "dataContractSpecification": "0.9.0",
-            "id": "test-contract",
-            "info": {
-                "title": "Test Contract",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "integer"},
-                    "name": {"type": "string"}
-                }
-            }
-        }
-        
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=str(datacontract_com).replace("'", '"'),
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
-            original_format=OriginalFormat.JSON
-        )
-        
-        # Verify contract created
-        contract = Contract.objects.get(id=contract_id)
-        self.assertEqual(contract.original_spec_type, OriginalSpecType.DATACONTRACT_COM)
-        self.assertEqual(contract.status, ContractStatus.DRAFT)
-    
     def test_create_yaml_contract(self):
         """Test creating contract in YAML format"""
         asset_id = self.create_asset(key='yaml-contract-test', name='YAML Contract Test')

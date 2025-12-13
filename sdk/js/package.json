@@ -7,6 +7,11 @@
   "scripts": {
     "build": "tsc",
     "test": "jest",
+    "test:unit": "jest --testPathPattern=__tests__ --coverage --coveragePathIgnorePatterns=__tests__/e2e.test.ts",
+    "test:integration": "jest --testPathPattern=__tests__/integration.test.ts --coverage",
+    "test:e2e": "jest --testPathPattern=__tests__/e2e.test.ts",
+    "test:coverage": "jest --coverage --coverageThreshold='{\"global\":{\"branches\":100,\"functions\":100,\"lines\":100,\"statements\":100}}'",
+    "test:watch": "jest --watch",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "generate": "openapi-generator-cli generate -i ../../api/openapi-hub-v1.yaml -g typescript-axios -o ./generated --additional-properties=typescriptThreePlus=true,withInterfaces=true",

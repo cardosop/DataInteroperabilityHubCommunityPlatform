@@ -6,11 +6,11 @@ from django.test import TestCase
 from hub.apps.contracts.normalization import (
     normalize_contract,
     normalize_odcs_to_hubcontract,
-    normalize_datacontract_com_to_hubcontract,
     validate_hubcontract_schema,
     detect_spec_type,
     _calculate_normalization_coverage
 )
+from hub.apps.contracts.coverage import calculate_coverage
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 
 
@@ -35,25 +35,6 @@ class NormalizationTest(TestCase):
         spec_type, spec_version = detect_spec_type(contract_data)
         self.assertEqual(spec_type, OriginalSpecType.ODCS)
     
-    def test_detect_spec_type_datacontract_com(self):
-        """Test detecting DataContract.com spec type"""
-        contract_data = {
-            "id": "test",
-            "dataContractSpecification": "0.4.0",
-            "info": {
-                "title": "Test Contract"
-            },
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"}
-                }
-            }
-        }
-        
-        spec_type, spec_version = detect_spec_type(contract_data)
-        self.assertEqual(spec_type, OriginalSpecType.DATACONTRACT_COM)
-    
     def test_normalize_odcs_to_hubcontract(self):
         """Test normalizing ODCS contract to HubContract"""
         odcs_contract = {
@@ -74,37 +55,7 @@ class NormalizationTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        self.assertEqual(hub_contract["hub_contract_version"], 1)
-        self.assertEqual(hub_contract["id"], "test-contract")
-        self.assertEqual(hub_contract["info"]["name"], "Test Contract")
-        self.assertIn("fields", hub_contract["schema"])
-        self.assertEqual(len(hub_contract["schema"]["fields"]), 2)
-    
-    def test_normalize_datacontract_com_to_hubcontract(self):
-        """Test normalizing DataContract.com contract to HubContract"""
-        dc_contract = {
-            "id": "test-contract",
-            "dataContractSpecification": "0.4.0",
-            "info": {
-                "title": "Test Contract",
-                "description": "Test description",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "name": {"type": "string", "description": "Name field"}
-                },
-                "required": ["id"]
-            }
-        }
-        
-        hub_contract, status, errors, warnings = normalize_datacontract_com_to_hubcontract(dc_contract)
-        
-        self.assertIsNotNone(hub_contract)
-        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        self.assertEqual(hub_contract["hub_contract_version"], 1)
+        self.assertEqual(hub_contract["hub_contract_version"], "1.0.0")
         self.assertEqual(hub_contract["id"], "test-contract")
         self.assertEqual(hub_contract["info"]["name"], "Test Contract")
         self.assertIn("fields", hub_contract["schema"])
@@ -154,7 +105,7 @@ schema:
     def test_validate_hubcontract_schema_valid(self):
         """Test validating a valid HubContract"""
         hub_contract = {
-            "hub_contract_version": 1,
+            "hub_contract_version": "1.0.0",
             "id": "test-contract",
             "info": {
                 "name": "Test Contract"
@@ -289,84 +240,6 @@ class FieldPropertyExtractionTest(TestCase):
         # Check third field (status) has enum
         status_field = fields[2]
         self.assertEqual(status_field["name"], "status")
-        self.assertEqual(status_field["enum"], ["active", "inactive", "pending"])
-    
-    def test_datacontract_com_extract_all_field_properties(self):
-        """Test extracting all field properties from DataContract.com"""
-        dc_contract = {
-            "id": "test",
-            "dataContractSpecification": "0.4.0",
-            "info": {
-                "title": "Test Contract"
-            },
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "email": {
-                        "type": "string",
-                        "description": "User email address",
-                        "format": "email",
-                        "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
-                        "minLength": 5,
-                        "maxLength": 255,
-                        "x-datahub": {
-                            "semantic_type": "EMAIL",
-                            "metadata": {
-                                "source_system": "CRM"
-                            }
-                        }
-                    },
-                    "age": {
-                        "type": "integer",
-                        "description": "User age",
-                        "minimum": 0,
-                        "maximum": 150,
-                        "default": 0
-                    },
-                    "status": {
-                        "type": "string",
-                        "enum": ["active", "inactive", "pending"]
-                    }
-                },
-                "required": ["email", "status"]
-            }
-        }
-        
-        hub_contract, status, errors, warnings = normalize_datacontract_com_to_hubcontract(dc_contract)
-        
-        self.assertIsNotNone(hub_contract)
-        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        
-        fields = hub_contract["schema"]["fields"]
-        self.assertEqual(len(fields), 3)
-        
-        # Check first field (email) has all properties
-        email_field = fields[0]
-        self.assertEqual(email_field["name"], "email")
-        self.assertEqual(email_field["data_type"], "string")
-        self.assertEqual(email_field["nullable"], False)  # In required list
-        self.assertEqual(email_field["description"], "User email address")
-        self.assertEqual(email_field["semantic_type"], "EMAIL")
-        self.assertEqual(email_field["format"], "email")
-        self.assertEqual(email_field["pattern"], "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")
-        self.assertEqual(email_field["min_length"], 5)
-        self.assertEqual(email_field["max_length"], 255)
-        self.assertIn("metadata", email_field)
-        self.assertEqual(email_field["metadata"]["source_system"], "CRM")
-        
-        # Check second field (age) has numeric constraints
-        age_field = fields[1]
-        self.assertEqual(age_field["name"], "age")
-        self.assertEqual(age_field["data_type"], "integer")
-        self.assertEqual(age_field["nullable"], True)  # Not in required list
-        self.assertEqual(age_field["minimum"], 0)
-        self.assertEqual(age_field["maximum"], 150)
-        self.assertEqual(age_field["default"], 0)
-        
-        # Check third field (status) has enum and is not nullable
-        status_field = fields[2]
-        self.assertEqual(status_field["name"], "status")
-        self.assertEqual(status_field["nullable"], False)  # In required list
         self.assertEqual(status_field["enum"], ["active", "inactive", "pending"])
     
     def test_field_properties_preserved_in_hubcontract(self):
@@ -552,12 +425,170 @@ class NormalizationStatusTest(TestCase):
         self.assertIsNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
         self.assertGreater(len(errors), 0)
+
+    def test_models_normalization_and_schema_derivation(self):
+        """ODCS schema list is normalized into models[] with derived schema view."""
+        odcs_contract = {
+            "id": "models-test",
+            "name": "Contract with Models",
+            "schema": [
+                {
+                    "name": "users",
+                    "description": "Users model",
+                    "fields": [
+                        {"name": "id", "type": "string", "primaryKey": True},
+                        {"name": "email", "type": "string", "unique": True}
+                    ],
+                    "indexes": [{"fields": ["email"]}]
+                },
+                {
+                    "name": "orders",
+                    "fields": [{"name": "order_id", "type": "string"}]
+                }
+            ]
+        }
+
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+
+        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+        self.assertIn("models", hub_contract)
+        self.assertEqual(len(hub_contract["models"]), 2)
+        first_model = hub_contract["models"][0]
+        self.assertEqual(first_model["name"], "users")
+        self.assertEqual(first_model["fields"][0]["is_primary_key"], True)
+        self.assertTrue(first_model["fields"][1]["is_unique"])
+        self.assertIn("schema", hub_contract)
+        self.assertEqual(hub_contract["schema"]["fields"][0]["name"], "id")
+
+    def test_servicelevels_and_quality_rules_mapping(self):
+        """slaProperties and quality rules map into canonical structures."""
+        odcs_contract = {
+            "id": "sla-quality",
+            "name": "Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+            "slaProperties": [
+                {"id": "sla1", "property": "availability", "target": "99.9", "unit": "%", "priority": "P1"}
+            ],
+            "quality": {
+                "default_profile_key": "intake_basic",
+                "rules": [
+                    {"id": "q1", "name": "not_null", "dimension": "Completeness", "rule": "NOT NULL", "severity": "HIGH"}
+                ]
+            }
+        }
+
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+
+        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+        self.assertIn("servicelevels", hub_contract)
+        self.assertEqual(hub_contract["servicelevels"][0]["property"], "availability")
+        self.assertIn("quality", hub_contract)
+        self.assertEqual(hub_contract["quality"]["rules"][0]["name"], "not_null")
+
+    def test_contact_and_servers_and_terms_mapping(self):
+        """Support, servers, and description map into contact/servers/terms."""
+        odcs_contract = {
+            "id": "contact-servers",
+            "name": "Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+            "support": [
+                {"name": "Data Team", "email": "data@example.com", "url": "https://support.example.com", "tool": "jira"}
+            ],
+            "servers": [
+                {"type": "postgresql", "url": "postgres://db.example.com", "description": "Primary DB"}
+            ],
+            "description": {
+                "usage": "Internal analytics only",
+                "limitations": "No PII sharing"
+            }
+        }
+
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+
+        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+        self.assertEqual(hub_contract["contact"][0]["email"], "data@example.com")
+        self.assertEqual(hub_contract["servers"][0]["type"], "postgresql")
+        self.assertEqual(hub_contract["terms"]["usage"], "Internal analytics only")
+
+    def test_quality_type_and_specification_mapping(self):
+        """quality.type/specification should be captured."""
+        odcs_contract = {
+            "id": "quality-type",
+            "name": "Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+            "quality": {
+                "type": "GreatExpectations",
+                "specification": "ge://profiles/basic",
+                "rules": [{"name": "not_null", "rule": "NOT NULL"}]
+            }
+        }
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+        self.assertEqual(hub_contract["quality"]["type"], "GreatExpectations")
+        self.assertEqual(hub_contract["quality"]["specification"], "ge://profiles/basic")
+
+    def test_roles_team_pricing_and_lineage_mapping(self):
+        """Roles, team, price, and lineage fields should map into HubContract."""
+        odcs_contract = {
+            "id": "roles-team",
+            "name": "Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+            "roles": [{"roleName": "data-reader", "accessType": "read"}],
+            "team": [{"member": "alice", "role": "owner"}],
+            "price": {"priceAmount": 100, "priceCurrency": "USD", "priceUnit": "month"},
+            "transformSourceObjects": [{"namespace": "ns", "name": "src", "model_name": "m", "field": "f"}],
+            "transformLogic": "SELECT * FROM src"
+        }
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+        self.assertEqual(hub_contract["roles"][0]["roleName"], "data-reader")
+        self.assertEqual(hub_contract["team"][0]["member"], "alice")
+        self.assertEqual(hub_contract["pricing"]["priceAmount"], 100)
+        self.assertIn("lineage", hub_contract)
+        # Lineage is LineageSection with entries list
+        self.assertIn("entries", hub_contract["lineage"])
+        self.assertEqual(hub_contract["lineage"]["entries"][0]["input_fields"][0]["name"], "src")
+        self.assertEqual(hub_contract["lineage"]["entries"][0]["transformations"][0]["logic"], "SELECT * FROM src")
+
+    def test_server_type_specific_mapping_and_extensions(self):
+        """Servers should map type-specific fields and retain extensions."""
+        odcs_contract = {
+            "id": "servers-map",
+            "name": "Contract",
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+            "servers": [
+                {
+                    "type": "snowflake",
+                    "account": "acct",
+                    "warehouse": "wh",
+                    "database": "db",
+                    "schema": "public",
+                    "region": "us-west",
+                    "extra_field": "keep_me"
+                },
+                {
+                    "type": "kafka",
+                    "topic": "events",
+                    "bootstrapServers": "kafka:9092"
+                }
+            ]
+        }
+
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+
+        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+        servers = hub_contract.get("servers", [])
+        self.assertEqual(servers[0]["type"], "snowflake")
+        self.assertEqual(servers[0]["account"], "acct")
+        self.assertIn("extensions", servers[0])
+        self.assertEqual(servers[1]["topic"], "events")
+        self.assertEqual(servers[1]["type"], "kafka")
     
     def test_normalization_coverage_calculation(self):
         """Test normalization coverage metrics calculation"""
         # Contract with all sections
         full_contract = {
-            "hub_contract_version": 1,
+            "hub_contract_version": "1.0.0",
             "id": "test",
             "info": {
                 "name": "Test",
@@ -595,15 +626,19 @@ class NormalizationStatusTest(TestCase):
             }
         }
         
-        coverage = _calculate_normalization_coverage(full_contract)
+        coverage_result = calculate_coverage(full_contract)
+        legacy_overall = _calculate_normalization_coverage(full_contract)
         
         # Coverage should be high (most sections present)
-        self.assertGreater(coverage, 0.5)
-        self.assertLessEqual(coverage, 1.0)
+        self.assertGreater(coverage_result.overall, 0.5)
+        self.assertLessEqual(coverage_result.overall, 1.0)
+        self.assertAlmostEqual(coverage_result.overall, legacy_overall)
+        self.assertIn("info", coverage_result.sections)
+        self.assertFalse(coverage_result.sections["info"].missing_required)
         
         # Contract with minimal sections
         minimal_contract = {
-            "hub_contract_version": 1,
+            "hub_contract_version": "1.0.0",
             "id": "test",
             "info": {
                 "name": "Test"
@@ -613,9 +648,24 @@ class NormalizationStatusTest(TestCase):
             }
         }
         
-        minimal_coverage = _calculate_normalization_coverage(minimal_contract)
+        minimal_coverage = calculate_coverage(minimal_contract)
         
         # Minimal contract should have lower coverage
-        self.assertLess(minimal_coverage, coverage)
-        self.assertGreater(minimal_coverage, 0.0)
+        self.assertLess(minimal_coverage.overall, coverage_result.overall)
+        self.assertGreater(minimal_coverage.overall, 0.0)
 
+    def test_normalization_attaches_coverage_metadata(self):
+        """Normalization should persist coverage details for observability."""
+        odcs_contract = {
+            "id": "coverage-test",
+            "name": "Coverage Test",
+            "schema": {"fields": [{"name": "id", "type": "string"}]}
+        }
+
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+
+        self.assertIsNotNone(hub_contract)
+        self.assertIn("normalization", hub_contract)
+        coverage = hub_contract["normalization"].get("coverage")
+        self.assertIsInstance(coverage, dict)
+        self.assertIn("sections", coverage)

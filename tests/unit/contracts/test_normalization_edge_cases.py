@@ -11,7 +11,6 @@ from django.test import TestCase
 from hub.apps.contracts.normalization import (
     normalize_contract,
     normalize_odcs_to_hubcontract,
-    normalize_datacontract_com_to_hubcontract,
     NormalizationStatus
 )
 from hub.apps.contracts.models import Contract, NormalizationStatus as ModelNormalizationStatus
@@ -35,6 +34,16 @@ class NormalizationEdgeCaseTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+    
+    def _get_field_by_name(self, fields, field_name):
+        """Helper to get a field by name from a list of field dicts"""
+        if isinstance(fields, list):
+            for field in fields:
+                if field.get("name") == field_name:
+                    return field
+            return {}
+        # If it's a dict (old format), return the field directly
+        return fields.get(field_name, {})
     
     # Missing Optional Sections Tests
     
@@ -213,8 +222,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("email", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "email")
         self.assertEqual(field.get("format"), "email")
         # Other properties should not be present
         self.assertNotIn("enum", field)
@@ -241,8 +250,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("status", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "status")
         self.assertEqual(field.get("enum"), ["active", "inactive", "pending"])
         # Other properties should not be present
         self.assertNotIn("format", field)
@@ -269,8 +278,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("age", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "age")
         self.assertEqual(field.get("min"), 0)
         # Other properties should not be present
         self.assertNotIn("max", field)
@@ -297,8 +306,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("age", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "age")
         self.assertEqual(field.get("max"), 120)
         # Other properties should not be present
         self.assertNotIn("min", field)
@@ -326,8 +335,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("age", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "age")
         self.assertEqual(field.get("min"), 0)
         self.assertEqual(field.get("max"), 120)
     
@@ -351,8 +360,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("order_id", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "order_id")
         self.assertEqual(field.get("pattern"), "^ORD-[0-9]{8}$")
     
     # Invalid Field Properties Tests
@@ -378,8 +387,8 @@ class NormalizationEdgeCaseTest(TestCase):
         # Should still normalize, but may have warnings
         self.assertIsNotNone(hub_contract)
         # Invalid format should be preserved (information preservation)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("field1", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "field1")
         self.assertEqual(field.get("format"), "invalid_format_xyz")
     
     def test_normalize_contract_invalid_pattern_regex(self):
@@ -402,8 +411,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         # Should still normalize, invalid pattern preserved
         self.assertIsNotNone(hub_contract)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("field1", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "field1")
         self.assertEqual(field.get("pattern"), "[invalid(regex")
         # May have warnings about invalid regex
         if warnings:
@@ -429,8 +438,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         # Should normalize, enum values preserved (may have warnings)
         self.assertIsNotNone(hub_contract)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("field1", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "field1")
         enum = field.get("enum")
         self.assertIsNotNone(enum)
         # Enum should be preserved as-is (information preservation)
@@ -456,8 +465,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         # Should normalize, but may have warnings
         self.assertIsNotNone(hub_contract)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("field1", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "field1")
         self.assertEqual(field.get("min"), 100)
         self.assertEqual(field.get("max"), 50)
         # May have warnings about invalid range
@@ -484,8 +493,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         # Should normalize, invalid value preserved
         self.assertIsNotNone(hub_contract)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("field1", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "field1")
         # Invalid min should be preserved or converted
         min_value = field.get("min")
         self.assertIsNotNone(min_value)
@@ -510,8 +519,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         # Should normalize, invalid value preserved
         self.assertIsNotNone(hub_contract)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("field1", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "field1")
         max_value = field.get("max")
         self.assertIsNotNone(max_value)
     
@@ -538,7 +547,8 @@ class NormalizationEdgeCaseTest(TestCase):
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
         
         self.assertIsNotNone(hub_contract)
-        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+        # Extensions cause NORMALIZED_WITH_WARNINGS status (they indicate unmappable fields)
+        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
         # Extensions should be preserved
         self.assertIn("extensions", hub_contract)
         extensions = hub_contract.get("extensions", {})
@@ -620,7 +630,7 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        schema_fields = hub_contract.get("schema", {}).get("fields", {})
+        schema_fields = hub_contract.get("schema", {}).get("fields", [])
         # Should have all 1000 fields
         self.assertEqual(len(schema_fields), 1000)
     
@@ -764,7 +774,7 @@ class NormalizationEdgeCaseTest(TestCase):
         
         # Should normalize but may have warnings about empty schema
         self.assertIsNotNone(hub_contract)
-        fields = hub_contract.get("schema", {}).get("fields", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
         self.assertEqual(len(fields), 0)
     
     def test_normalize_contract_null_values(self):
@@ -867,11 +877,12 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        # All field names should be preserved
-        self.assertIn("field-with-dashes", fields)
-        self.assertIn("field_with_underscores", fields)
-        self.assertIn("field.with.dots", fields)
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        # All field names should be preserved - check in list of field dicts
+        field_names = [field.get("name") for field in fields]
+        self.assertIn("field-with-dashes", field_names)
+        self.assertIn("field_with_underscores", field_names)
+        self.assertIn("field.with.dots", field_names)
     
     def test_normalize_contract_unicode_characters(self):
         """Test normalization with unicode characters"""
@@ -896,8 +907,9 @@ class NormalizationEdgeCaseTest(TestCase):
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
         info = hub_contract.get("info", {})
         self.assertIn("测试", info.get("name", ""))
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        self.assertIn("field_测试", fields)
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field_names = [field.get("name") for field in fields]
+        self.assertIn("field_测试", field_names)
     
     def test_normalize_contract_nested_structures(self):
         """Test normalization with deeply nested structures"""
@@ -929,8 +941,8 @@ class NormalizationEdgeCaseTest(TestCase):
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
         # Nested structures should be preserved
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("field1", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "field1")
         self.assertEqual(field.get("data_type"), "object")
     
     def test_normalize_contract_array_fields(self):
@@ -962,9 +974,11 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        self.assertIn("tags", fields)
-        self.assertIn("numbers", fields)
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        # fields is a list of dicts, not a dict - check for field names in the list
+        field_names = [field.get("name") for field in fields]
+        self.assertIn("tags", field_names)
+        self.assertIn("numbers", field_names)
     
     def test_normalize_contract_boolean_fields(self):
         """Test normalization with boolean fields"""
@@ -990,8 +1004,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        is_active = fields.get("is_active", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        is_active = self._get_field_by_name(fields, "is_active")
         self.assertEqual(is_active.get("data_type"), "boolean")
     
     def test_normalize_contract_date_time_fields(self):
@@ -1024,8 +1038,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        created_at = fields.get("created_at", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        created_at = self._get_field_by_name(fields, "created_at")
         self.assertEqual(created_at.get("format"), "date-time")
     
     def test_normalize_contract_numeric_precision(self):
@@ -1055,8 +1069,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        price = fields.get("price", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        price = self._get_field_by_name(fields, "price")
         # Precision/scale should be preserved in metadata
         metadata = price.get("metadata", {})
         if metadata:
@@ -1093,10 +1107,10 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        required = fields.get("required_field", {})
-        optional = fields.get("optional_field", {})
-        nullable = fields.get("nullable_field", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        required = self._get_field_by_name(fields, "required_field")
+        optional = self._get_field_by_name(fields, "optional_field")
+        nullable = self._get_field_by_name(fields, "nullable_field")
         # Required/optional/nullable should be preserved
         self.assertIsNotNone(required)
         self.assertIsNotNone(optional)
@@ -1132,8 +1146,8 @@ class NormalizationEdgeCaseTest(TestCase):
         
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        status_field = fields.get("status", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        status_field = self._get_field_by_name(fields, "status")
         self.assertEqual(status_field.get("default"), "pending")
     
     def test_normalize_contract_primary_key_constraints(self):
@@ -1248,52 +1262,13 @@ class NormalizationEdgeCaseTest(TestCase):
         if "relationships" in extensions:
             self.assertGreater(len(extensions["relationships"]), 0)
     
-    def test_normalize_contract_data_contract_com_format(self):
-        """Test normalization with DataContract.com format"""
-        datacontract_contract = {
-            "id": "test-datacontract-1",
-            "info": {
-                "title": "Test DataContract",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
-        }
-        
-        hub_contract, status, errors, warnings = normalize_datacontract_com_to_hubcontract(datacontract_contract)
-        
-        self.assertIsNotNone(hub_contract)
-        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        info = hub_contract.get("info", {})
-        self.assertEqual(info.get("name"), "Test DataContract")
-    
-    def test_normalize_contract_data_contract_com_missing_sections(self):
-        """Test DataContract.com normalization with missing sections"""
-        datacontract_contract = {
-            "id": "test-datacontract-2",
-            "info": {
-                "title": "Test Contract"
-            }
-            # No schema
-        }
-        
-        hub_contract, status, errors, warnings = normalize_datacontract_com_to_hubcontract(datacontract_contract)
-        
-        # Should normalize but may have errors/warnings about missing schema
-        self.assertIsNotNone(hub_contract)
-        # Schema should be empty or missing
-        schema = hub_contract.get("schema", {})
-        if "fields" in schema:
-            self.assertEqual(len(schema["fields"]), 0)
-    
-    def test_normalize_contract_odcs_vs_datacontract_detection(self):
-        """Test automatic detection of ODCS vs DataContract.com"""
+    def test_normalize_contract_odcs_detection(self):
+        """Test automatic detection of ODCS format"""
         # ODCS format
         odcs_contract = {
             "id": "test-odcs",
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
             "name": "ODCS Contract",
             "schema": {
                 "fields": [
@@ -1302,31 +1277,13 @@ class NormalizationEdgeCaseTest(TestCase):
             }
         }
         
-        hub_contract1, status1, errors1, warnings1 = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
         
-        # DataContract.com format
-        datacontract_contract = {
-            "id": "test-datacontract",
-            "info": {
-                "title": "DataContract Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
-        }
-        
-        hub_contract2, status2, errors2, warnings2 = normalize_datacontract_com_to_hubcontract(datacontract_contract)
-        
-        # Both should normalize successfully
-        self.assertIsNotNone(hub_contract1)
-        self.assertIsNotNone(hub_contract2)
-        self.assertEqual(status1, NormalizationStatus.NORMALIZED_OK)
-        self.assertEqual(status2, NormalizationStatus.NORMALIZED_OK)
-        # Names should be extracted correctly
-        self.assertEqual(hub_contract1["info"]["name"], "ODCS Contract")
-        self.assertEqual(hub_contract2["info"]["name"], "DataContract Contract")
+        # Should normalize successfully
+        self.assertIsNotNone(hub_contract)
+        self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+        # Name should be extracted correctly
+        self.assertEqual(hub_contract["info"]["name"], "ODCS Contract")
     
     def test_normalize_contract_normalization_status_tracking(self):
         """Test that normalization status is tracked correctly"""
@@ -1433,8 +1390,8 @@ class NormalizationEdgeCaseTest(TestCase):
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
         
         self.assertIsNotNone(hub_contract)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        field = fields.get("field1", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        field = self._get_field_by_name(fields, "field1")
         # Metadata should be preserved
         metadata = field.get("metadata", {})
         if metadata:
@@ -1465,8 +1422,8 @@ class NormalizationEdgeCaseTest(TestCase):
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
         
         self.assertIsNotNone(hub_contract)
-        fields = hub_contract.get("schema", {}).get("fields", {})
-        email_field = fields.get("email", {})
+        fields = hub_contract.get("schema", {}).get("fields", [])
+        email_field = self._get_field_by_name(fields, "email")
         # Semantic type should be extracted
         self.assertEqual(email_field.get("semantic_type"), "EMAIL")
     
@@ -2046,7 +2003,7 @@ class NormalizationEdgeCaseTest(TestCase):
     
     def test_normalize_contract_very_long_field_names(self):
         """Test normalization with very long field names"""
-        long_name = "field_" + "x" * 200  # 205 characters
+        long_name = "field_" + "x" * 199  # 205 characters (6 + 199 = 205)
         
         odcs_contract = {
             "id": "test-long-names",

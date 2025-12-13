@@ -23,9 +23,16 @@ def check_semantic_service_available():
     """Check if semantic service is available"""
     try:
         client = SemanticServiceClient()
-        is_healthy, _ = client.health_check()
+        is_healthy, fuseki_status = client.health_check()
+        # Service is available only if health check returns healthy status
+        # fuseki_status can be "connected", "disconnected", "timeout", "unreachable", or "unknown"
+        # We only consider the service available if is_healthy is True
         return is_healthy
-    except Exception:
+    except Exception as e:
+        # Log the exception for debugging but don't fail
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Semantic service not available: {e}")
         return False
 
 
@@ -218,6 +225,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
     def test_sparql_query_schema_org_semantic_types(self):
         """Test SPARQL query for semantic types using Schema.org vocabulary"""
         query = """
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX schema: <https://schema.org/>
         PREFIX hub: <https://hub.example.com/ontology#>
         
@@ -239,6 +247,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
     def test_sparql_query_foaf_owners(self):
         """Test SPARQL query for owners using FOAF vocabulary"""
         query = """
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX foaf: <http://xmlns.com/foaf/0.1/>
         PREFIX hub: <https://hub.example.com/ontology#>
         
@@ -329,6 +338,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
     def test_sparql_query_fields_by_semantic_type(self):
         """Test SPARQL query filtering fields by semantic type"""
         query = """
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX schema: <https://schema.org/>
         PREFIX hub: <https://hub.example.com/ontology#>
         
@@ -350,6 +360,8 @@ class SPARQLStandardVocabulariesTest(TestCase):
     def test_sparql_query_output_formats(self):
         """Test SPARQL query with different output formats"""
         query = """
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        PREFIX dct: <http://purl.org/dc/terms/>
         PREFIX hub: <https://hub.example.com/ontology#>
         
         SELECT ?contract ?name

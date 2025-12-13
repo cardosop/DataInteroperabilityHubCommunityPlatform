@@ -1,0 +1,59 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.02120661735534668
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-004-a9d021fb",
+      "journey_name": "Monitor Ingestion Jobs",
+      "persona": "Data Engineer / Contract Author",
+      "status": "completed",
+      "start_time": 1765578811.7990587,
+      "end_time": 1765578811.8202653,
+      "duration": 0.02120661735534668,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Retrieve Ingestion Jobs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765578811.8186383,
+          "end_time": 1765578811.820251,
+          "duration": 0.0016126632690429688,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Analyze Job Performance",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765578811.820257,
+          "end_time": 1765578811.820262,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "ingestion_id": "777884e2-435c-45fc-b88d-72f9bf2528d0",
+        "jobs_count": 0
+      }
+    }
+  ],
+  "exported_at": "2025-12-12T22:33:31.820331"
+}

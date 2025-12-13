@@ -19,7 +19,21 @@ class DQServiceClient:
     """
     
     def __init__(self):
-        self.base_url = getattr(settings, 'DQ_SERVICE_URL', 'http://dq-service:8083')
+        # In test environment, use localhost instead of service name
+        default_url = 'http://dq-service:8083'
+        if hasattr(settings, 'TESTING') and settings.TESTING:
+            # Check if we're in a test environment
+            import os
+            if os.getenv('TEST_ENVIRONMENT') == 'staging':
+                default_url = 'http://localhost:8083'
+            elif os.getenv('TEST_ENVIRONMENT') == 'default':
+                default_url = 'http://localhost:8083'
+            # Also check if running pytest
+            import sys
+            if 'pytest' in sys.modules or 'unittest' in sys.modules:
+                default_url = 'http://localhost:8083'
+        
+        self.base_url = getattr(settings, 'DQ_SERVICE_URL', default_url)
         self.timeout = getattr(settings, 'DQ_SERVICE_TIMEOUT', 1800)  # 30 minutes default
         if not self.base_url.endswith('/'):
             self.base_url = self.base_url.rstrip('/')

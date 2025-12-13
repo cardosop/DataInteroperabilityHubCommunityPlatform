@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-002-35439faa",
+      "journey_name": "Publish Asset to Marketplace",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1765571179.8666775,
+      "end_time": 1765571181.5524528,
+      "duration": 1.6857752799987793,
+      "completion_rate": 66.66666666666666,
+      "success_rate": 66.66666666666666,
+      "error_message": "Listing() got unexpected keyword arguments: 'title', 'description'",
+      "error_type": "TypeError",
+      "steps": [
+        {
+          "step_name": "Create and Activate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765571179.8666897,
+          "end_time": 1765571181.551944,
+          "duration": 1.6852543354034424,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Check Marketplace Eligibility",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765571181.551956,
+          "end_time": 1765571181.552316,
+          "duration": 0.0003600120544433594,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Create Marketplace Listing",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765571181.5523195,
+          "end_time": 1765571181.5524492,
+          "duration": 0.00012969970703125,
+          "error_message": "Listing() got unexpected keyword arguments: 'title', 'description'",
+          "error_type": "TypeError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('748c63a8-0b26-45a7-ab65-a9fcde0646c9',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T20:26:21.552586"
+}

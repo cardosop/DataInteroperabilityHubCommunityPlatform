@@ -45,7 +45,7 @@ class ContractViewFilteringTest(TestCase):
         # Create contracts with different owners
         self.contract1 = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test1"}',
@@ -71,7 +71,7 @@ class ContractViewFilteringTest(TestCase):
         
         self.contract2 = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test2"}',
@@ -107,7 +107,7 @@ class ContractViewFilteringTest(TestCase):
         self.assertEqual(self.user.tenant_id, self.tenant.id, "User tenant_id should match tenant id")
         
         # Now test the API
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get('/api/v1/contracts/contracts/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.json().get('results', [])
@@ -225,7 +225,7 @@ class ContractViewSortingTest(TestCase):
         
         self.contract1 = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test1"}',
@@ -244,7 +244,7 @@ class ContractViewSortingTest(TestCase):
         
         self.contract2 = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test2"}',
@@ -263,7 +263,7 @@ class ContractViewSortingTest(TestCase):
         
         self.contract3 = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test3"}',
@@ -355,7 +355,7 @@ class ContractViewSortingTest(TestCase):
     
     def test_default_sorting(self):
         """Test default sorting (newest first) (GAP-9.2.2)"""
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get('/api/v1/contracts/contracts/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.json().get('results', [])

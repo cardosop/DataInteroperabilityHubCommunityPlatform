@@ -1,0 +1,179 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.0, pytest-9.0.1, pluggy-1.6.0 -- /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+cachedir: .pytest_cache
+django: version: 6.0, settings: hub.settings (from env)
+rootdir: /home/ph/Desktop/DataInteroperabilityHub
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: locust-2.42.6, django-4.11.1, xdist-3.8.0, Faker-38.2.0, mock-3.15.1, cov-7.0.0, typeguard-4.4.4, anyio-4.12.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+created: 4/4 workers
+4 workers [40 items]
+
+scheduling tests via WorkStealingScheduling
+
+hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_validate_retry_on_timeout 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_all_normalization_metrics 
+hub/apps/contracts/tests/test_performance.py::APIPerformanceTest::test_contract_retrieval_performance 
+hub/apps/contracts/tests/test_performance.py::NormalizationPerformanceTest::test_field_property_extraction_performance 
+[gw2] [  2%] PASSED hub/apps/contracts/tests/test_performance.py::NormalizationPerformanceTest::test_field_property_extraction_performance 
+hub/apps/contracts/tests/test_performance.py::NormalizationPerformanceTest::test_normalization_large_contract_performance 
+[gw2] [  5%] PASSED hub/apps/contracts/tests/test_performance.py::NormalizationPerformanceTest::test_normalization_large_contract_performance 
+hub/apps/contracts/tests/test_performance.py::NormalizationPerformanceTest::test_normalization_medium_contract_performance 
+[gw2] [  7%] PASSED hub/apps/contracts/tests/test_performance.py::NormalizationPerformanceTest::test_normalization_medium_contract_performance 
+hub/apps/contracts/tests/test_performance.py::NormalizationPerformanceTest::test_normalization_small_contract_performance 
+[gw2] [ 10%] PASSED hub/apps/contracts/tests/test_performance.py::NormalizationPerformanceTest::test_normalization_small_contract_performance 
+hub/apps/contracts/tests/test_performance.py::RDFMappingPerformanceTest::test_rdf_mapping_large_contract_performance 
+[gw2] [ 12%] PASSED hub/apps/contracts/tests/test_performance.py::RDFMappingPerformanceTest::test_rdf_mapping_large_contract_performance 
+hub/apps/contracts/tests/test_performance.py::RDFMappingPerformanceTest::test_rdf_mapping_medium_contract_performance 
+[gw2] [ 15%] PASSED hub/apps/contracts/tests/test_performance.py::RDFMappingPerformanceTest::test_rdf_mapping_medium_contract_performance 
+hub/apps/contracts/tests/test_performance.py::RDFMappingPerformanceTest::test_rdf_mapping_small_contract_performance 
+[gw2] [ 17%] PASSED hub/apps/contracts/tests/test_performance.py::RDFMappingPerformanceTest::test_rdf_mapping_small_contract_performance 
+hub/apps/contracts/tests/test_performance.py::APIPerformanceTest::test_contract_list_performance 
+[gw0] [ 20%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_all_normalization_metrics 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_broken_lineage_links 
+[gw0] [ 22%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_broken_lineage_links 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_broken_lineage_links_with_empty_list 
+[gw0] [ 25%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_broken_lineage_links_with_empty_list 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_broken_lineage_links_with_none 
+[gw0] [ 27%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_broken_lineage_links_with_none 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_contract_json_size 
+[gw0] [ 30%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_contract_json_size 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_metrics_with_empty_contract 
+[gw0] [ 32%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_metrics_with_empty_contract 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_metrics_with_none_contract 
+[gw0] [ 35%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_metrics_with_none_contract 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_metrics_without_tenant_id 
+[gw0] [ 37%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_metrics_without_tenant_id 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_missing_objects 
+[gw0] [ 40%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_missing_objects 
+hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_normalization_coverage 
+[gw0] [ 42%] PASSED hub/apps/contracts/tests/test_normalization_metrics.py::NormalizationMetricsTestCase::test_record_normalization_coverage 
+hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_multiple_severities 
+[gw0] [ 45%] PASSED hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_multiple_severities 
+hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_warning_structure 
+[gw0] [ 47%] PASSED hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_warning_structure 
+hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_convert 
+[gw0] [ 50%] PASSED hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_convert 
+hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_health_check 
+[gw0] [ 52%] PASSED hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_health_check 
+hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_lint 
+[gw0] [ 55%] PASSED hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_lint 
+hub/apps/contracts/tests/test_cli_client.py::InterpretValidationStatusTest::test_interpret_mixed_errors_and_warnings 
+[gw0] [ 57%] PASSED hub/apps/contracts/tests/test_cli_client.py::InterpretValidationStatusTest::test_interpret_mixed_errors_and_warnings 
+hub/apps/contracts/tests/test_cli_client.py::InterpretValidationStatusTest::test_interpret_valid_status 
+[gw0] [ 60%] PASSED hub/apps/contracts/tests/test_cli_client.py::InterpretValidationStatusTest::test_interpret_valid_status 
+hub/apps/contracts/tests/test_cli_client.py::InterpretValidationStatusTest::test_interpret_warning_only 
+[gw0] [ 62%] PASSED hub/apps/contracts/tests/test_cli_client.py::InterpretValidationStatusTest::test_interpret_warning_only 
+hub/apps/contracts/tests/test_cli_client.py::GroupErrorsByCategoryTest::test_group_errors_by_category 
+[gw0] [ 65%] PASSED hub/apps/contracts/tests/test_cli_client.py::GroupErrorsByCategoryTest::test_group_errors_by_category 
+hub/apps/contracts/tests/test_cli_client.py::GroupErrorsByCategoryTest::test_group_errors_with_unknown_category 
+[gw0] [ 67%] PASSED hub/apps/contracts/tests/test_cli_client.py::GroupErrorsByCategoryTest::test_group_errors_with_unknown_category 
+hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_error_structure 
+[gw0] [ 70%] PASSED hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_error_structure 
+hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_missing_fields_in_issue 
+[gw0] [ 72%] PASSED hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_missing_fields_in_issue 
+hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_validate_with_errors 
+[gw0] [ 75%] PASSED hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_validate_with_errors 
+hub/apps/contracts/tests/test_cli_client.py::InterpretValidationStatusTest::test_interpret_invalid_with_errors 
+[gw0] [ 77%] PASSED hub/apps/contracts/tests/test_cli_client.py::InterpretValidationStatusTest::test_interpret_invalid_with_errors 
+hub/apps/contracts/tests/test_performance.py::APIPerformanceTest::test_contract_list_with_sorting_performance 
+[gw3] [ 80%] PASSED hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_validate_retry_on_timeout 
+hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_validate_success 
+[gw3] [ 82%] PASSED hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_validate_success 
+hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_validate_with_cache 
+[gw3] [ 85%] PASSED hub/apps/contracts/tests/test_cli_client.py::DataContractCLIClientTest::test_validate_with_cache 
+[gw0] [ 87%] FAILED hub/apps/contracts/tests/test_performance.py::APIPerformanceTest::test_contract_list_with_sorting_performance 
+hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_error_grouping_structure 
+[gw0] [ 90%] PASSED hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_error_grouping_structure 
+[gw1] [ 92%] FAILED hub/apps/contracts/tests/test_performance.py::APIPerformanceTest::test_contract_retrieval_performance 
+hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_empty_issues 
+[gw1] [ 95%] PASSED hub/apps/contracts/tests/test_error_reporting.py::ErrorReportingTest::test_empty_issues 
+[gw2] [ 97%] FAILED hub/apps/contracts/tests/test_performance.py::APIPerformanceTest::test_contract_list_performance 
+hub/apps/contracts/tests/test_performance.py::APIPerformanceTest::test_contract_list_with_filtering_performance 
+[gw2] [100%] FAILED hub/apps/contracts/tests/test_performance.py::APIPerformanceTest::test_contract_list_with_filtering_performance 
+INTERNALERROR> Traceback (most recent call last):
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/sqlitedb.py", line 122, in _execute
+INTERNALERROR>     return self.con.execute(sql, parameters)  # type: ignore[arg-type]
+INTERNALERROR>            ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR> sqlite3.OperationalError: no such table: file
+INTERNALERROR> 
+INTERNALERROR> During handling of the above exception, another exception occurred:
+INTERNALERROR> 
+INTERNALERROR> Traceback (most recent call last):
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/sqlitedb.py", line 127, in _execute
+INTERNALERROR>     return self.con.execute(sql, parameters)  # type: ignore[arg-type]
+INTERNALERROR>            ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR> sqlite3.OperationalError: no such table: file
+INTERNALERROR> 
+INTERNALERROR> The above exception was the direct cause of the following exception:
+INTERNALERROR> 
+INTERNALERROR> Traceback (most recent call last):
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/_pytest/main.py", line 318, in wrap_session
+INTERNALERROR>     session.exitstatus = doit(config, session) or 0
+INTERNALERROR>                          ~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/_pytest/main.py", line 372, in _main
+INTERNALERROR>     config.hook.pytest_runtestloop(session=session)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+INTERNALERROR>     return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+INTERNALERROR>            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+INTERNALERROR>     return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+INTERNALERROR>            ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+INTERNALERROR>     raise exception
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+INTERNALERROR>     teardown.throw(exception)
+INTERNALERROR>     ~~~~~~~~~~~~~~^^^^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/_pytest/logging.py", line 801, in pytest_runtestloop
+INTERNALERROR>     return (yield)  # Run all the tests.
+INTERNALERROR>             ^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+INTERNALERROR>     teardown.throw(exception)
+INTERNALERROR>     ~~~~~~~~~~~~~~^^^^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/_pytest/terminal.py", line 714, in pytest_runtestloop
+INTERNALERROR>     result = yield
+INTERNALERROR>              ^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pluggy/_callers.py", line 152, in _multicall
+INTERNALERROR>     teardown.send(result)
+INTERNALERROR>     ~~~~~~~~~~~~~^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pytest_cov/plugin.py", line 349, in pytest_runtestloop
+INTERNALERROR>     self.cov_controller.finish()
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pytest_cov/engine.py", line 55, in ensure_topdir_wrapper
+INTERNALERROR>     return meth(self, *args, **kwargs)
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/pytest_cov/engine.py", line 386, in finish
+INTERNALERROR>     self.cov.save()
+INTERNALERROR>     ~~~~~~~~~~~~~^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/control.py", line 847, in save
+INTERNALERROR>     data = self.get_data()
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/control.py", line 928, in get_data
+INTERNALERROR>     self._post_save_work()
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~~^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/control.py", line 959, in _post_save_work
+INTERNALERROR>     self._data.touch_files(paths, plugin_name)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/sqldata.py", line 662, in touch_files
+INTERNALERROR>     self._file_id(filename, add=True)
+INTERNALERROR>     ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/sqldata.py", line 444, in _file_id
+INTERNALERROR>     self._file_map[filename] = con.execute_for_rowid(
+INTERNALERROR>                                ~~~~~~~~~~~~~~~~~~~~~^
+INTERNALERROR>         "INSERT OR REPLACE INTO file (path) VALUES (?)",
+INTERNALERROR>         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>         (filename,),
+INTERNALERROR>         ^^^^^^^^^^^^
+INTERNALERROR>     )
+INTERNALERROR>     ^
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/sqlitedb.py", line 178, in execute_for_rowid
+INTERNALERROR>     with self.execute(sql, parameters) as cur:
+INTERNALERROR>          ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/contextlib.py", line 141, in __enter__
+INTERNALERROR>     return next(self.gen)
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/sqlitedb.py", line 157, in execute
+INTERNALERROR>     cur = self._execute(sql, parameters)
+INTERNALERROR>   File "/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/sqlitedb.py", line 145, in _execute
+INTERNALERROR>     raise DataError(f"Couldn't use data file {self.filename!r}: {msg}") from exc
+INTERNALERROR> coverage.exceptions.DataError: Couldn't use data file '/home/ph/Desktop/DataInteroperabilityHub/.coverage.ph-B650M-GAMING-WIFI.1687026.XQAoUtox': no such table: file
+
+======= 4 failed, 36 passed, 15 warnings, 2 errors in 348.21s (0:05:48) ========

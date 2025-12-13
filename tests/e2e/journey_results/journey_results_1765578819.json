@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-006-33056098",
+      "journey_name": "Schema Evolution",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1765578819.5444882,
+      "end_time": 1765578819.6209702,
+      "duration": 0.07648205757141113,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'Persona2DataEngineerJourneys' object has no attribute '_detect_schema_changes'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Create Asset with Dataset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765578819.5444942,
+          "end_time": 1765578819.6209614,
+          "duration": 0.07646727561950684,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T22:33:39.621064"
+}

@@ -1,0 +1,89 @@
+{
+  "name": "Data Interoperability Hub",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml",
+        "ms-kubernetes-tools.vscode-kubernetes-tools"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.ruffEnabled": true,
+        "python.formatting.provider": "black",
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "postCreateCommand": "pip install -r requirements.txt -r requirements-dev.txt && pre-commit install",
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
+  ],
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [
+    8000,
+    8080,
+    8081,
+    8082,
+    8083,
+    8084,
+    8085,
+    8086,
+    8087,
+    5432,
+    6379,
+    9000,
+    9001,
+    3030
+  ],
+  "portsAttributes": {
+    "8000": {
+      "label": "API Service",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "DataContract Service",
+      "onAutoForward": "notify"
+    },
+    "8081": {
+      "label": "Semantic Service",
+      "onAutoForward": "notify"
+    },
+    "8082": {
+      "label": "Compliance Service",
+      "onAutoForward": "notify"
+    },
+    "8083": {
+      "label": "DQ Service",
+      "onAutoForward": "notify"
+    },
+    "8084": {
+      "label": "Prefect Integration Service",
+      "onAutoForward": "notify"
+    },
+    "8085": {
+      "label": "Search Service",
+      "onAutoForward": "notify"
+    },
+    "8086": {
+      "label": "Observability Service",
+      "onAutoForward": "notify"
+    },
+    "8087": {
+      "label": "Webhook Service",
+      "onAutoForward": "notify"
+    }
+  }
+}
+

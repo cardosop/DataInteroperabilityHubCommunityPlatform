@@ -16,6 +16,8 @@ from hub.apps.contracts.migration import (
 )
 from hub.apps.contracts.migration_manager import ContractMigrationManager
 from hub.apps.jobs.models import Job, JobType, JobStatus
+from rest_framework.test import APIClient
+from rest_framework import status
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -48,7 +50,7 @@ class MigrationTest(TestCase):
             original_raw='{"id": "test", "name": "Test Contract", "schema": {"fields": []}}',
             hub_contract_version="1.0.0",
             hub_contract_json={
-                'hub_contract_version': 1,
+                'hub_contract_version': "1.0.0",
                 'id': 'test',
                 'info': {
                     'name': 'Test Contract',
@@ -449,14 +451,14 @@ class BackwardCompatibilityTest(TestCase):
         # Create v1 contract
         self.contract_v1 = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',
             status=ContractStatus.DRAFT,
             hub_contract_version="1.0.0",
             hub_contract_json={
-                'hub_contract_version': 1,
+                'hub_contract_version': "1.0.0",
                 'info': {'name': 'V1 Contract'},
                 'schema': {'fields': []}
             }
@@ -465,7 +467,7 @@ class BackwardCompatibilityTest(TestCase):
         # Create v2 contract
         self.contract_v2 = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',
@@ -512,8 +514,6 @@ class BackwardCompatibilityTest(TestCase):
     
     def test_api_handles_both_versions(self):
         """Test that API handles both v1 and v2 contracts (GAP-10.2.2)"""
-        from rest_framework.test import APIClient
-        
         client = APIClient()
         client.force_authenticate(user=self.user)
         
@@ -556,4 +556,137 @@ class BackwardCompatibilityTest(TestCase):
         # Verify tool can identify contracts needing migration
         # (v1 contracts would need migration to v2)
         # Note: Actual migration requires v2 to be the current version
+
+
+class DCSRemovalMigrationTest(TestCase):
+    """Test migration 0004: Remove DATACONTRACT_COM from OriginalSpecType enum"""
+    
+    def setUp(self):
+        """Set up test fixtures"""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant",
+            status="ACTIVE",
+            kyc_status="VERIFIED"
+        )
+        
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant
+        )
+    
+    def test_original_spec_type_enum_only_odcs(self):
+        """Test that OriginalSpecType enum only contains ODCS after migration"""
+        # Get all choices
+        choices = [choice[0] for choice in OriginalSpecType.choices]
+        
+        # Should only contain ODCS
+        self.assertEqual(len(choices), 1)
+        self.assertEqual(choices[0], OriginalSpecType.ODCS)
+        self.assertNotIn('DATACONTRACT_COM', choices)
+    
+    def test_contract_model_field_constraints(self):
+        """Test that Contract model field only accepts ODCS"""
+        from hub.apps.contracts.models import Contract
+        
+        # Get field
+        field = Contract._meta.get_field('original_spec_type')
+        
+        # Check choices
+        choices = field.choices
+        choice_values = [choice[0] for choice in choices] if choices else []
+        
+        # Should only have ODCS
+        self.assertEqual(len(choice_values), 1)
+        self.assertEqual(choice_values[0], OriginalSpecType.ODCS)
+        self.assertNotIn('DATACONTRACT_COM', choice_values)
+    
+    def test_migration_data_function_exists(self):
+        """Test that migration data function exists and is callable"""
+        import importlib.util
+        from pathlib import Path
+        
+        project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
+        migration_path = project_root / 'hub' / 'apps' / 'contracts' / 'migrations' / '0004_remove_datacontract_com_from_original_spec_type.py'
+        
+        spec = importlib.util.spec_from_file_location("migration_0004", migration_path)
+        migration_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration_module)
+        
+        # Check that data migration function exists
+        self.assertTrue(hasattr(migration_module, 'migrate_datacontract_com_contracts'))
+        
+        func = migration_module.migrate_datacontract_com_contracts
+        self.assertTrue(callable(func))
+    
+    def test_migration_structure(self):
+        """Test that migration has correct structure"""
+        import importlib.util
+        from pathlib import Path
+        
+        project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
+        migration_path = project_root / 'hub' / 'apps' / 'contracts' / 'migrations' / '0004_remove_datacontract_com_from_original_spec_type.py'
+        
+        spec = importlib.util.spec_from_file_location("migration_0004", migration_path)
+        migration_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration_module)
+        
+        # Check that migration exists
+        self.assertTrue(hasattr(migration_module, 'Migration'))
+        
+        migration = migration_module.Migration
+        
+        # Check dependencies
+        deps_str = str(migration.dependencies)
+        self.assertIn('0003', deps_str)
+        
+        # Check operations
+        self.assertGreaterEqual(len(migration.operations), 2)
+        
+        # Should have RunPython for data migration
+        has_run_python = any(
+            op.__class__.__name__ == 'RunPython' 
+            for op in migration.operations
+        )
+        self.assertTrue(has_run_python)
+        
+        # Should have AlterField to update enum
+        has_alter_field = any(
+            op.__class__.__name__ == 'AlterField' 
+            for op in migration.operations
+        )
+        self.assertTrue(has_alter_field)
+    
+    def test_cannot_create_contract_with_datacontract_com(self):
+        """Test that contracts cannot be created with DATACONTRACT_COM (if it still exists in DB)"""
+        # This test verifies that the model constraints prevent DATACONTRACT_COM
+        # In practice, after migration, DATACONTRACT_COM won't be in choices
+        
+        # Try to create contract - should only accept ODCS
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,  # Only valid choice
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test", "name": "Test"}',
+            hub_contract_version="1.0.0",
+            hub_contract_json={
+                'hub_contract_version': "1.0.0",
+                'id': 'test',
+                'info': {'name': 'Test'},
+                'schema': {'fields': []}
+            },
+            normalization_status="NORMALIZED_OK",
+            created_by=self.user
+        )
+        
+        # Should succeed with ODCS
+        self.assertEqual(contract.original_spec_type, OriginalSpecType.ODCS)
+        
+        # Verify we cannot set DATACONTRACT_COM (if it were still in enum)
+        # Since it's removed, this is implicitly tested by the enum constraint
+        self.assertNotEqual(contract.original_spec_type, 'DATACONTRACT_COM')
 

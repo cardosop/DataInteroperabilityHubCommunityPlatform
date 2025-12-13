@@ -274,6 +274,13 @@ class AssetViewSet(viewsets.ModelViewSet):
         asset.increment_version()
         asset.save()
         
+        # Unpublish any marketplace listings for this asset
+        from hub.apps.marketplace.models import Listing, ListingStatus
+        Listing.objects.filter(
+            asset=asset,
+            status=ListingStatus.PUBLISHED
+        ).update(status=ListingStatus.UNLISTED)
+        
         # Log audit event
         create_audit_event(
             resource_type="ASSET",
@@ -567,4 +574,159 @@ class AssetViewSet(viewsets.ModelViewSet):
             AssetSerializer(asset).data,
             status=status.HTTP_200_OK
         )
+    
+    @action(detail=False, methods=['get'], url_path='recommendations')
+    def recommendations(self, request):
+        """
+        Get asset recommendations.
+        
+        GET /api/v1/assets/assets/recommendations/
+        
+        Query Parameters:
+        - user_id: Optional user UUID for personalized recommendations
+        - asset_id: Optional asset UUID for "similar to" recommendations
+        - limit: Maximum number of recommendations (default: 10)
+        - include_usage_patterns: Include usage-based recommendations (default: true)
+        - include_lineage: Include lineage-based recommendations (default: true)
+        - include_user_behavior: Include user behavior-based recommendations (default: true)
+        """
+        from .recommendations import AssetRecommendationService
+        
+        tenant_id = self._get_tenant_id()
+        user_id = request.query_params.get('user_id')
+        asset_id = request.query_params.get('asset_id')
+        limit = int(request.query_params.get('limit', 10))
+        include_usage_patterns = request.query_params.get('include_usage_patterns', 'true').lower() == 'true'
+        include_lineage = request.query_params.get('include_lineage', 'true').lower() == 'true'
+        include_user_behavior = request.query_params.get('include_user_behavior', 'true').lower() == 'true'
+        
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(tenant_id),
+            user_id=user_id,
+            asset_id=asset_id,
+            limit=limit,
+            include_usage_patterns=include_usage_patterns,
+            include_lineage=include_lineage,
+            include_user_behavior=include_user_behavior
+        )
+        
+        return Response(recommendations, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['post'], url_path='track-view')
+    def track_view(self, request, id=None):
+        """
+        Track an asset view.
+        
+        POST /api/v1/assets/assets/{id}/track-view/
+        """
+        from .popularity import AssetPopularityService
+        
+        asset = self.get_object()
+        tenant_id = self._get_tenant_id()
+        
+        AssetPopularityService.track_view(str(asset.id), str(tenant_id))
+        
+        return Response(
+            {'status': 'view tracked'},
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['post'], url_path='track-download')
+    def track_download(self, request, id=None):
+        """
+        Track an asset download.
+        
+        POST /api/v1/assets/assets/{id}/track-download/
+        """
+        from .popularity import AssetPopularityService
+        
+        asset = self.get_object()
+        tenant_id = self._get_tenant_id()
+        
+        AssetPopularityService.track_download(str(asset.id), str(tenant_id))
+        
+        return Response(
+            {'status': 'download tracked'},
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['get'], url_path='health-score')
+    def health_score(self, request, id=None):
+        """
+        Get asset health score.
+        
+        GET /api/v1/assets/assets/{id}/health-score/
+        
+        Query Parameters:
+        - recalculate: Recalculate health score (default: false)
+        - breakdown: Include component breakdown (default: false)
+        """
+        from .health_score import AssetHealthScoreService
+        
+        asset = self.get_object()
+        recalculate = request.query_params.get('recalculate', 'false').lower() == 'true'
+        include_breakdown = request.query_params.get('breakdown', 'false').lower() == 'true'
+        
+        if recalculate:
+            AssetHealthScoreService.calculate_health_score(asset)
+            asset.refresh_from_db()
+        
+        response = {
+            'asset_id': str(asset.id),
+            'health_score': asset.health_score,
+            'dq_status': asset.dq_status,
+            'compliance_status': asset.compliance_status
+        }
+        
+        if include_breakdown:
+            breakdown = AssetHealthScoreService.get_health_score_breakdown(asset)
+            response['breakdown'] = breakdown
+        
+        return Response(response, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['get'], url_path='dependencies')
+    def dependencies(self, request, id=None):
+        """
+        Get asset dependency graph.
+        
+        GET /api/v1/assets/assets/{id}/dependencies/
+        
+        Query Parameters:
+        - direction: "upstream", "downstream", or "both" (default: "both")
+        - max_depth: Maximum traversal depth (default: 10)
+        - format: "json", "d3", "dot", or "mermaid" (default: "json")
+        """
+        from .dependencies import AssetDependencyService
+        
+        asset = self.get_object()
+        tenant_id = self._get_tenant_id()
+        
+        direction = request.query_params.get('direction', 'both')
+        max_depth = int(request.query_params.get('max_depth', 10))
+        format_type = request.query_params.get('format', 'json')
+        
+        # Generate dependency graph
+        graph = AssetDependencyService.generate_dependency_graph(
+            asset_id=str(asset.id),
+            tenant_id=str(tenant_id),
+            direction=direction,
+            max_depth=max_depth
+        )
+        
+        # Get statistics
+        stats = AssetDependencyService.get_dependency_stats(graph)
+        
+        # Format response
+        if format_type == 'd3':
+            response_data = graph.to_d3_format()
+        elif format_type == 'dot':
+            response_data = {"dot": graph.to_dot_format()}
+        elif format_type == 'mermaid':
+            response_data = {"mermaid": graph.to_mermaid_format()}
+        else:  # json
+            response_data = graph.to_dict()
+        
+        response_data['stats'] = stats
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 

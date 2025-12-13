@@ -1,0 +1,72 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0316164493560791
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-006-c0cd54fa",
+      "journey_name": "Retire Asset",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1765569824.6920438,
+      "end_time": 1765569824.7236602,
+      "duration": 0.0316164493560791,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Active Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765569824.6920495,
+          "end_time": 1765569824.7228842,
+          "duration": 0.030834674835205078,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Check Dependencies",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765569824.722893,
+          "end_time": 1765569824.722897,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Retire Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765569824.7228987,
+          "end_time": 1765569824.7236571,
+          "duration": 0.0007584095001220703,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "a8125900-fc30-4489-894d-49dee305d9a7",
+        "dependencies_count": 0
+      }
+    }
+  ],
+  "exported_at": "2025-12-12T20:03:44.723724"
+}

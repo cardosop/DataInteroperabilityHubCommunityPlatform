@@ -1,0 +1,691 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.0, pytest-9.0.1, pluggy-1.6.0 -- /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+cachedir: .pytest_cache
+django: version: 4.2.27, settings: hub.settings (from env)
+rootdir: /home/ph/Desktop/DataInteroperabilityHub
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: locust-2.42.6, django-4.11.1, xdist-3.8.0, Faker-38.2.0, mock-3.15.1, cov-7.0.0, typeguard-4.4.4, anyio-4.12.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+created: 4/4 workers
+4 workers [690 items]
+
+scheduling tests via WorkStealingScheduling
+
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_delivered 
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_1000_fields 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_second_retry 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_triples_count_tracking 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_triples_count_tracking 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_unicode_in_names 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_unicode_in_names 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_uri_generation 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_uri_generation 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_very_large_metadata 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_very_large_metadata 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_very_long_names 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_very_long_names 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_with_asset_link 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_with_asset_link 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_generate_uri_for_different_resource_types 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_generate_uri_for_different_resource_types 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_asset_to_semantic 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_asset_to_semantic 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_updates_existing_resource 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_updates_existing_resource 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_all_field_properties 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_all_field_properties 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_all_sections 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_all_sections 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_asset_link 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_asset_link 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_compliance_policy_dpv 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_compliance_policy_dpv 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_default_quality_profile 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_default_quality_profile 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_different_refresh_cadences 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_different_refresh_cadences 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_empty_marketplace_policy 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_empty_marketplace_policy 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_field_validation_properties 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_field_validation_properties 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_indexes 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_indexes 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_lifecycle_policy_prov 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_lifecycle_policy_prov 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_marketplace_policy_odrl 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_marketplace_policy_odrl 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_no_personal_data 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_no_personal_data 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_owners 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_owners 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_primary_key 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_primary_key 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_quality_rules_dqv 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_quality_rules_dqv 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_semantic_types 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_semantic_types 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_tags 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_tags 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_unique_constraints 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_unique_constraints 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_without_hub_contract_json 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_without_hub_contract_json 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_remap_contract_if_needed_with_asset 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_remap_contract_if_needed_with_asset 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_all_vocabularies_combined 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_all_vocabularies_combined 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_email_address_category_mapping 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_email_address_category_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_jurisdiction_mapping 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_jurisdiction_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_legal_basis_mapping 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_legal_basis_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_accuracy_dimension_mapping 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_accuracy_dimension_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_all_dimensions_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_all_dimensions_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_completeness_dimension_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_completeness_dimension_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_foaf_owner_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_foaf_owner_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_odrl_permission_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_odrl_permission_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_odrl_prohibition_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_odrl_prohibition_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_prov_was_derived_from_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_prov_was_derived_from_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_schema_org_type_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_schema_org_type_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_shacl_validation_mapping 
+[gw2] [  6%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_shacl_validation_mapping 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_allowed_compliance_regimes_empty_list 
+[gw2] [  6%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_allowed_compliance_regimes_empty_list 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_cascade_delete 
+[gw3] [  6%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_second_retry 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_third_retry 
+[gw2] [  6%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_cascade_delete 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_clean_method_invalid_data 
+[gw2] [  6%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_clean_method_invalid_data 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_clean_method_valid_data 
+[gw2] [  6%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_clean_method_valid_data 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_create_tenant_config 
+[gw2] [  6%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_create_tenant_config 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_data_retention_days_maximum 
+[gw2] [  7%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_data_retention_days_maximum 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_data_retention_days_minimum 
+[gw2] [  7%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_data_retention_days_minimum 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_data_retention_days_none 
+[gw2] [  7%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_data_retention_days_none 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_data_retention_days_valid_range 
+[gw2] [  7%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_data_retention_days_valid_range 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_compliance_regimes_empty_list 
+[gw2] [  7%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_compliance_regimes_empty_list 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_compliance_regimes_subset_validation 
+[gw2] [  7%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_compliance_regimes_subset_validation 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_compliance_regimes_valid_subset 
+[gw2] [  7%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_compliance_regimes_valid_subset 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_dq_profile_empty_string 
+[gw2] [  8%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_dq_profile_empty_string 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_dq_profile_none 
+[gw2] [  8%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_default_dq_profile_none 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_max_file_size_bytes_none 
+[gw2] [  8%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_max_file_size_bytes_none 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_max_job_concurrency_none 
+[gw3] [  8%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_third_retry 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_compliance_run 
+[gw2] [  8%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_max_job_concurrency_none 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_max_queued_jobs_none 
+[gw2] [  8%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_max_queued_jobs_none 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_one_to_one_prevents_duplicate 
+[gw2] [  8%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_one_to_one_prevents_duplicate 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_empty_dict 
+[gw2] [  9%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_empty_dict 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_invalid_category 
+[gw2] [  9%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_invalid_category 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_json_field 
+[gw2] [  9%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_json_field 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_negative_values 
+[gw2] [  9%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_negative_values 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_null 
+[gw2] [  9%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_null 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_partial_updates 
+[gw2] [  9%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_partial_updates 
+[gw3] [ 10%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_compliance_run 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_zero_values 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_contract_migration 
+[gw2] [ 10%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_rate_limits_zero_values 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_save_calls_full_clean 
+[gw2] [ 10%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_save_calls_full_clean 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_str_method 
+[gw2] [ 10%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_str_method 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_tenant_config_index 
+[gw2] [ 10%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_tenant_config_index 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_tenant_config_one_to_one_relationship 
+[gw0] [ 10%] PASSED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_1000_fields 
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_100_quality_rules 
+[gw2] [ 10%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_tenant_config_one_to_one_relationship 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_tenant_config_str 
+[gw2] [ 11%] PASSED tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_tenant_config_str 
+tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_all_three_limits 
+[gw2] [ 11%] PASSED tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_all_three_limits 
+tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_missing_required_fields 
+[gw2] [ 11%] PASSED tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_missing_required_fields 
+tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_negative_values 
+[gw2] [ 11%] PASSED tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_negative_values 
+tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_only_burst_per_10s 
+[gw2] [ 11%] PASSED tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_only_burst_per_10s 
+tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_only_daily_cap 
+[gw2] [ 11%] PASSED tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_only_daily_cap 
+tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_only_sustained_per_min 
+[gw2] [ 11%] PASSED tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_only_sustained_per_min 
+tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_zero_values 
+[gw2] [ 12%] PASSED tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_rate_limit_zero_values 
+tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_valid_rate_limit_structure_all_categories 
+[gw2] [ 12%] PASSED tests/unit/tenant_config/test_serializers.py::RateLimitsSerializerTest::test_valid_rate_limit_structure_all_categories 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_default_compliance_regimes_not_subset 
+[gw2] [ 12%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_default_compliance_regimes_not_subset 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_invalid_compliance_regime 
+[gw3] [ 12%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_contract_migration 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_contract_validation 
+[gw2] [ 12%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_invalid_compliance_regime 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_invalid_data_retention_days 
+[gw2] [ 12%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_invalid_data_retention_days 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_invalid_dq_profile 
+[gw2] [ 12%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_invalid_dq_profile 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_invalid_rate_limits 
+[gw2] [ 13%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_invalid_rate_limits 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_partial_data 
+[gw2] [ 13%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_partial_data 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_valid_data 
+[gw2] [ 13%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_deserialization_with_valid_data 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_read_only_fields_cannot_be_updated 
+[gw0] [ 13%] PASSED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_100_quality_rules 
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_100_tags 
+[gw2] [ 13%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_read_only_fields_cannot_be_updated 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_serialization_of_all_fields 
+[gw1] [ 13%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_delivered 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_failed 
+[gw2] [ 13%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_serialization_of_all_fields 
+tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_timestamp_serialization_format 
+[gw2] [ 14%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigSerializerTest::test_timestamp_serialization_format 
+tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_cross_field_validation 
+[gw2] [ 14%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_cross_field_validation 
+tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_multiple_fields 
+[gw2] [ 14%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_multiple_fields 
+tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_preserves_existing_values 
+[gw2] [ 14%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_preserves_existing_values 
+tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_rate_limits_structure 
+[gw3] [ 14%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_contract_validation 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_dq_run 
+[gw2] [ 14%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_rate_limits_structure 
+tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_single_field 
+[gw2] [ 14%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_single_field 
+tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_with_empty_dict 
+[gw2] [ 15%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_with_empty_dict 
+tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_with_none 
+[gw2] [ 15%] PASSED tests/unit/tenant_config/test_serializers.py::TenantConfigUpdateSerializerTest::test_partial_update_with_none 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_empty_dict_for_rate_limits_is_replaced_with_platform_defaults 
+[gw0] [ 15%] PASSED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_100_tags 
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_20_owners 
+[gw1] [ 15%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_failed 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_sent 
+[gw2] [ 15%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_empty_dict_for_rate_limits_is_replaced_with_platform_defaults 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_empty_lists_are_preserved 
+[gw2] [ 15%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_empty_lists_are_preserved 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_merges_tenant_values_with_platform_defaults 
+[gw2] [ 15%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_merges_tenant_values_with_platform_defaults 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_none_values_are_replaced_with_platform_defaults 
+[gw2] [ 16%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_none_values_are_replaced_with_platform_defaults 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_rate_limits_partial_structure_merges_correctly 
+[gw2] [ 16%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_rate_limits_partial_structure_merges_correctly 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_response_structure 
+[gw2] [ 16%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_response_structure 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_returns_platform_defaults_when_config_doesnt_exist 
+[gw2] [ 16%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_returns_platform_defaults_when_config_doesnt_exist 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_returns_tenant_specific_values_when_config_exists 
+[gw2] [ 16%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_returns_tenant_specific_values_when_config_exists 
+tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_timestamp_serialization 
+[gw2] [ 16%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigTest::test_timestamp_serialization 
+[gw3] [ 16%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_dq_run 
+tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_all_configuration_keys 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_semantic_mapping 
+[gw2] [ 17%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_all_configuration_keys 
+tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_returns_custom_default_when_provided 
+[gw2] [ 17%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_returns_custom_default_when_provided 
+tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_returns_none_for_nonexistent_key 
+[gw2] [ 17%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_returns_none_for_nonexistent_key 
+tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_returns_platform_default_when_tenant_value_not_set 
+[gw2] [ 17%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_returns_platform_default_when_tenant_value_not_set 
+tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_returns_tenant_specific_value_when_set 
+[gw2] [ 17%] PASSED tests/unit/tenant_config/test_services.py::GetTenantConfigValueTest::test_returns_tenant_specific_value_when_set 
+tests/unit/tenant_config/test_validators.py::ValidateDQProfileTest::test_empty_string 
+[gw0] [ 17%] PASSED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_20_owners 
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_all_large_sections 
+[gw2] [ 17%] PASSED tests/unit/tenant_config/test_validators.py::ValidateDQProfileTest::test_empty_string 
+tests/unit/tenant_config/test_validators.py::ValidateDQProfileTest::test_invalid_profile_key 
+[gw2] [ 18%] PASSED tests/unit/tenant_config/test_validators.py::ValidateDQProfileTest::test_invalid_profile_key 
+tests/unit/tenant_config/test_validators.py::ValidateDQProfileTest::test_none_value 
+[gw2] [ 18%] PASSED tests/unit/tenant_config/test_validators.py::ValidateDQProfileTest::test_none_value 
+tests/unit/tenant_config/test_validators.py::ValidateDQProfileTest::test_valid_profile_keys 
+[gw2] [ 18%] PASSED tests/unit/tenant_config/test_validators.py::ValidateDQProfileTest::test_valid_profile_keys 
+tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_duplicate_regimes 
+[gw1] [ 18%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_sent 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_metadata_json 
+[gw2] [ 18%] PASSED tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_duplicate_regimes 
+tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_empty_list 
+[gw2] [ 18%] PASSED tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_empty_list 
+tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_invalid_regime 
+[gw2] [ 18%] PASSED tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_invalid_regime 
+tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_mixed_valid_invalid_regimes 
+[gw2] [ 19%] PASSED tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_mixed_valid_invalid_regimes 
+tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_non_list_value 
+[gw2] [ 19%] PASSED tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_non_list_value 
+tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_none_value 
+[gw2] [ 19%] PASSED tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_none_value 
+tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_valid_regimes 
+[gw2] [ 19%] PASSED tests/unit/tenant_config/test_validators.py::ValidateComplianceRegimesTest::test_valid_regimes 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_daily_cap_for_category_that_doesnt_support_it 
+[gw2] [ 19%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_daily_cap_for_category_that_doesnt_support_it 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_empty_dict 
+[gw2] [ 19%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_empty_dict 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_invalid_category 
+[gw2] [ 20%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_invalid_category 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_multiple_categories 
+[gw2] [ 20%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_multiple_categories 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_non_dict_value 
+[gw2] [ 20%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_non_dict_value 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_none_value 
+[gw2] [ 20%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_none_value 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_rate_limits_at_platform_maximums 
+[gw2] [ 20%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_rate_limits_at_platform_maximums 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_rate_limits_below_platform_maximums 
+[gw2] [ 20%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_rate_limits_below_platform_maximums 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_rate_limits_exceeding_platform_maximums 
+[gw2] [ 20%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_rate_limits_exceeding_platform_maximums 
+tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_valid_rate_limits_for_each_category 
+[gw3] [ 21%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_semantic_mapping 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_unknown_type 
+[gw2] [ 21%] PASSED tests/unit/tenant_config/test_validators.py::ValidateRateLimitsTest::test_valid_rate_limits_for_each_category 
+tests/unit/tenant_config/test_validators.py::GetPlatformDefaultsTest::test_platform_defaults_immutability 
+[gw2] [ 21%] PASSED tests/unit/tenant_config/test_validators.py::GetPlatformDefaultsTest::test_platform_defaults_immutability 
+tests/unit/tenant_config/test_validators.py::GetPlatformDefaultsTest::test_platform_defaults_rate_limits_structure 
+[gw2] [ 21%] PASSED tests/unit/tenant_config/test_validators.py::GetPlatformDefaultsTest::test_platform_defaults_rate_limits_structure 
+tests/unit/tenant_config/test_validators.py::GetPlatformDefaultsTest::test_platform_defaults_structure 
+[gw2] [ 21%] PASSED tests/unit/tenant_config/test_validators.py::GetPlatformDefaultsTest::test_platform_defaults_structure 
+tests/unit/tenant_config/test_validators.py::GetPlatformDefaultsTest::test_platform_defaults_values 
+[gw2] [ 21%] PASSED tests/unit/tenant_config/test_validators.py::GetPlatformDefaultsTest::test_platform_defaults_values 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_at_concurrency_limit 
+[gw0] [ 21%] PASSED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_all_large_sections 
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_all_optional_sections_missing 
+[gw1] [ 22%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_metadata_json 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_str_representation 
+[gw3] [ 22%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_unknown_type 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_compliance_run 
+[gw0] [ 22%] PASSED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_all_optional_sections_missing 
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_array_fields 
+[gw1] [ 22%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_str_representation 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_tenant_relationship 
+[gw2] [ 22%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_at_concurrency_limit 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_at_queued_limit 
+[gw3] [ 22%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_compliance_run 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_contract_migration 
+[gw0] [ 22%] FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_array_fields 
+[gw1] [ 23%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_tenant_relationship 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_user_relationship 
+[gw2] [ 23%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_at_queued_limit 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_both_limits 
+[gw3] [ 23%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_contract_migration 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_contract_validation 
+[gw1] [ 23%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_user_relationship 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryRetryLogicTest::test_retry_logic_deferred_status 
+[gw1] [ 23%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryRetryLogicTest::test_retry_logic_deferred_status 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryRetryLogicTest::test_retry_logic_delivered_status 
+[gw1] [ 23%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryRetryLogicTest::test_retry_logic_delivered_status 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryRetryLogicTest::test_retry_logic_max_retries 
+[gw2] [ 23%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_both_limits 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_exceeds_concurrency_limit 
+[gw1] [ 24%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryRetryLogicTest::test_retry_logic_max_retries 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryRetryLogicTest::test_retry_logic_sent_status 
+[gw1] [ 24%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryRetryLogicTest::test_retry_logic_sent_status 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryAsyncSendingTest::test_send_email_async_creates_delivery_record 
+[gw3] [ 24%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_contract_validation 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_dq_run 
+[gw2] [ 24%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_exceeds_concurrency_limit 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_exceeds_queued_limit 
+[gw3] [ 24%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_dq_run 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_semantic_mapping 
+[gw2] [ 24%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_exceeds_queued_limit 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_no_config 
+[gw3] [ 24%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_semantic_mapping 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_unknown_type 
+[gw1] [ 25%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryAsyncSendingTest::test_send_email_async_creates_delivery_record 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryAsyncSendingTest::test_send_email_async_retry_on_failure 
+[gw2] [ 25%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_no_config 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_within_concurrency_limit 
+[gw3] [ 25%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_unknown_type 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_connection_error 
+[gw1] [ 25%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryAsyncSendingTest::test_send_email_async_retry_on_failure 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryAsyncSendingTest::test_send_email_async_tracks_metadata 
+[gw2] [ 25%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_within_concurrency_limit 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_within_queued_limit 
+[gw3] [ 25%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_connection_error 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_timeout_error 
+[gw1] [ 25%] PASSED tests/unit/notifications/test_email_delivery.py::EmailDeliveryAsyncSendingTest::test_send_email_async_tracks_metadata 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_delivery_max_retries 
+[gw2] [ 26%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_check_tenant_job_limits_within_queued_limit 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_decrement_tenant_job_counter_queued 
+[gw3] [ 26%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_timeout_error 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_value_error 
+[gw1] [ 26%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_delivery_max_retries 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_delivery_status_transitions 
+[gw2] [ 26%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_decrement_tenant_job_counter_queued 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_decrement_tenant_job_counter_running 
+[gw3] [ 26%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_value_error 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_503_status 
+[gw1] [ 26%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_delivery_status_transitions 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_rate_limiting 
+[gw2] [ 26%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_decrement_tenant_job_counter_running 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_get_tenant_job_counter_initial 
+[gw3] [ 27%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_503_status 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_connection_keyword 
+[gw2] [ 27%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_get_tenant_job_counter_initial 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_increment_tenant_job_counter_queued 
+[gw3] [ 27%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_connection_keyword 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_network_keyword 
+[gw1] [ 27%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_rate_limiting 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_retry_after_failure 
+[gw2] [ 27%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_increment_tenant_job_counter_queued 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_increment_tenant_job_counter_running 
+[gw3] [ 27%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_network_keyword 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_timeout_keyword 
+[gw1] [ 27%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_retry_after_failure 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_attachments 
+[gw2] [ 28%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_increment_tenant_job_counter_running 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_slot_release_on_job_completion 
+[gw3] [ 28%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_timeout_keyword 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_unavailable_keyword 
+[gw1] [ 28%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_attachments 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_empty_content 
+[gw2] [ 28%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_slot_release_on_job_completion 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_slot_release_on_job_failure 
+[gw3] [ 28%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_unavailable_keyword 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_different_max_retries_per_type 
+[gw1] [ 28%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_empty_content 
+[gw2] [ 28%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_slot_release_on_job_failure 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_invalid_recipient 
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_tenant_isolation 
+[gw1] [ 29%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_invalid_recipient 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_special_characters 
+[gw2] [ 29%] PASSED tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_tenant_isolation 
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_compliance_run_job_compliance_run_not_found 
+[gw3] [ 29%] SKIPPED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_different_max_retries_per_type 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_increments_retry_count 
+[gw1] [ 29%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_special_characters 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_unicode 
+[gw3] [ 29%] SKIPPED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_increments_retry_count 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_non_transient_failure 
+[gw1] [ 29%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_unicode 
+tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_very_long_content 
+[gw3] [ 30%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_non_transient_failure 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_resets_status_and_timestamps 
+[gw1] [ 30%] PASSED tests/unit/notifications/test_email_edge_cases.py::EmailServiceEdgeCaseTest::test_email_with_very_long_content 
+tests/unit/notifications/test_email_service.py::SendGridEmailServiceTest::test_sendgrid_custom_from_email 
+[gw3] [ 30%] SKIPPED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_resets_status_and_timestamps 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_transient_failure_exceeds_max_retries 
+[gw3] [ 30%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_transient_failure_exceeds_max_retries 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_transient_failure_first_retry 
+[gw3] [ 30%] SKIPPED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_transient_failure_first_retry 
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_transient_failure_max_retries 
+[gw3] [ 30%] PASSED tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_retry_job_transient_failure_max_retries 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_high_priority_no_slots 
+[gw3] [ 30%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_high_priority_no_slots 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_high_priority_reserved_slot 
+[gw3] [ 31%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_high_priority_reserved_slot 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_high_priority_shared_slot 
+[gw3] [ 31%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_high_priority_shared_slot 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_low_priority_no_slots 
+[gw3] [ 31%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_low_priority_no_slots 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_low_priority_shared_slot 
+[gw1] [ 31%] SKIPPED tests/unit/notifications/test_email_service.py::SendGridEmailServiceTest::test_sendgrid_custom_from_email 
+tests/unit/notifications/test_email_service.py::SendGridEmailServiceTest::test_sendgrid_default_from_name 
+[gw1] [ 31%] PASSED tests/unit/notifications/test_email_service.py::SendGridEmailServiceTest::test_sendgrid_default_from_name 
+tests/unit/notifications/test_email_service.py::SendGridEmailServiceTest::test_sendgrid_missing_api_key 
+[gw1] [ 31%] PASSED tests/unit/notifications/test_email_service.py::SendGridEmailServiceTest::test_sendgrid_missing_api_key 
+tests/unit/notifications/test_email_service.py::SendGridEmailServiceTest::test_sendgrid_service_initialization 
+[gw1] [ 31%] PASSED tests/unit/notifications/test_email_service.py::SendGridEmailServiceTest::test_sendgrid_service_initialization 
+tests/unit/notifications/test_email_service.py::SESEmailServiceTest::test_ses_custom_from_email 
+[gw3] [ 32%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_low_priority_shared_slot 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_normal_priority_no_slots 
+[gw3] [ 32%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_normal_priority_no_slots 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_normal_priority_shared_slot 
+[gw3] [ 32%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_process_job_normal_priority_shared_slot 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_use_reserved_slot_available 
+[gw3] [ 32%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_use_reserved_slot_available 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_use_shared_slot_available 
+[gw3] [ 32%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_can_use_shared_slot_available 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_get_queue_for_job_type_high_priority 
+[gw3] [ 32%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_get_queue_for_job_type_high_priority 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_get_queue_for_job_type_low_priority 
+[gw3] [ 32%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_get_queue_for_job_type_low_priority 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_get_queue_for_job_type_normal_priority 
+[gw1] [ 33%] SKIPPED tests/unit/notifications/test_email_service.py::SESEmailServiceTest::test_ses_custom_from_email 
+tests/unit/notifications/test_email_service.py::SESEmailServiceTest::test_ses_default_from_name 
+[gw1] [ 33%] PASSED tests/unit/notifications/test_email_service.py::SESEmailServiceTest::test_ses_default_from_name 
+tests/unit/notifications/test_email_service.py::SESEmailServiceTest::test_ses_missing_region 
+[gw1] [ 33%] PASSED tests/unit/notifications/test_email_service.py::SESEmailServiceTest::test_ses_missing_region 
+tests/unit/notifications/test_email_service.py::SESEmailServiceTest::test_ses_service_initialization 
+[gw1] [ 33%] PASSED tests/unit/notifications/test_email_service.py::SESEmailServiceTest::test_ses_service_initialization 
+tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_default_settings 
+[gw1] [ 33%] PASSED tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_default_settings 
+tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_get_connection 
+[gw1] [ 33%] PASSED tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_get_connection 
+tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_send_email_structure 
+[gw1] [ 33%] PASSED tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_send_email_structure 
+tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_service_initialization 
+[gw1] [ 34%] PASSED tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_service_initialization 
+tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_ssl_configuration 
+[gw1] [ 34%] PASSED tests/unit/notifications/test_email_service.py::SMTPEmailServiceTest::test_smtp_ssl_configuration 
+tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_empty_backend 
+[gw1] [ 34%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_empty_backend 
+tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_invalid_backend 
+[gw1] [ 34%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_invalid_backend 
+tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_missing_backend 
+[gw1] [ 34%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_missing_backend 
+tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_sendgrid 
+[gw1] [ 34%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_sendgrid 
+tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_ses 
+[gw1] [ 34%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_ses 
+tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_smtp 
+[gw1] [ 35%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceFactoryTest::test_get_email_service_smtp 
+tests/unit/notifications/test_email_service.py::EmailServiceCommonTest::test_email_service_attachments 
+[gw3] [ 35%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_get_queue_for_job_type_normal_priority 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_priority_processing_order 
+[gw1] [ 35%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceCommonTest::test_email_service_attachments 
+tests/unit/notifications/test_email_service.py::EmailServiceCommonTest::test_email_service_reply_to 
+[gw1] [ 35%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceCommonTest::test_email_service_reply_to 
+tests/unit/notifications/test_email_service.py::EmailServiceCommonTest::test_email_service_send_html_only 
+[gw1] [ 35%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceCommonTest::test_email_service_send_html_only 
+tests/unit/notifications/test_email_service.py::EmailServiceCommonTest::test_email_service_send_with_text_content 
+[gw1] [ 35%] PASSED tests/unit/notifications/test_email_service.py::EmailServiceCommonTest::test_email_service_send_with_text_content 
+tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_job_completion_template 
+[gw3] [ 35%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_priority_processing_order 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_reserved_slots_exclusive_to_high_priority 
+[gw1] [ 36%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_job_completion_template 
+tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_job_failure_template 
+[gw3] [ 36%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_reserved_slots_exclusive_to_high_priority 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_reserved_slots_usage_tracking 
+[gw1] [ 36%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_job_failure_template 
+tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_password_reset_template 
+[gw3] [ 36%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_reserved_slots_usage_tracking 
+tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_shared_slots_usage_tracking 
+[gw1] [ 36%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_password_reset_template 
+tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_template_html_only 
+[gw3] [ 36%] PASSED tests/unit/worker/test_priority_queue.py::PriorityQueueTest::test_shared_slots_usage_tracking 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_can_process_job_elevated_normal_priority_no_slots 
+[gw1] [ 36%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_template_html_only 
+tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_template_with_missing_context 
+[gw3] [ 37%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_can_process_job_elevated_normal_priority_no_slots 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_can_process_job_elevated_normal_priority_reserved_slot 
+[gw1] [ 37%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_template_with_missing_context 
+tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_template_with_text_template 
+[gw3] [ 37%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_can_process_job_elevated_normal_priority_reserved_slot 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_can_process_job_elevated_normal_priority_shared_slot 
+[gw1] [ 37%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_template_with_text_template 
+tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_user_invitation_template 
+[gw3] [ 37%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_can_process_job_elevated_normal_priority_shared_slot 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_get_job_enqueue_timestamp 
+[gw1] [ 37%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateRenderingTest::test_render_user_invitation_template 
+tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_invitation_url 
+[gw1] [ 37%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_invitation_url 
+tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_invitation_url_with_special_characters 
+[gw1] [ 38%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_invitation_url_with_special_characters 
+tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_job_url 
+[gw1] [ 38%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_job_url 
+tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_password_reset_url 
+[gw1] [ 38%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_password_reset_url 
+tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_urls_with_different_base_urls 
+[gw1] [ 38%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_build_urls_with_different_base_urls 
+tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_get_base_url_default 
+[gw1] [ 38%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_get_base_url_default 
+tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_get_base_url_from_settings 
+[gw1] [ 38%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateURLBuildingTest::test_get_base_url_from_settings 
+tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_job_completion_template_contains_required_elements 
+[gw3] [ 38%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_get_job_enqueue_timestamp 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_get_job_wait_time 
+[gw1] [ 39%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_job_completion_template_contains_required_elements 
+tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_job_failure_template_contains_required_elements 
+[gw3] [ 39%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_get_job_wait_time 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_high_priority_never 
+[gw1] [ 39%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_job_failure_template_contains_required_elements 
+tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_password_reset_template_contains_required_elements 
+[gw3] [ 39%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_high_priority_never 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_low_priority_never 
+[gw1] [ 39%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_password_reset_template_contains_required_elements 
+tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_template_handles_missing_user_display_name 
+[gw3] [ 39%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_low_priority_never 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_missing_timestamp 
+[gw3] [ 40%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_missing_timestamp 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_normal_priority_above_threshold 
+[gw1] [ 40%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_template_handles_missing_user_display_name 
+tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_template_text_generation_from_html 
+[gw3] [ 40%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_normal_priority_above_threshold 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_normal_priority_at_threshold 
+[gw1] [ 40%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_template_text_generation_from_html 
+tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_user_invitation_template_contains_required_elements 
+[gw3] [ 40%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_normal_priority_at_threshold 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_normal_priority_below_threshold 
+[gw1] [ 40%] PASSED tests/unit/notifications/test_email_templates.py::EmailTemplateContentTest::test_user_invitation_template_contains_required_elements 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_adds_headers 
+[gw3] [ 40%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_should_elevate_job_normal_priority_below_threshold 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_starvation_prevention_algorithm 
+[gw1] [ 41%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_adds_headers 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_adds_retry_after_header 
+[gw3] [ 41%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_starvation_prevention_algorithm 
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_starvation_prevention_with_high_priority_jobs 
+[gw1] [ 41%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_adds_retry_after_header 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_allows_request 
+[gw3] [ 41%] PASSED tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_starvation_prevention_with_high_priority_jobs 
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_concurrent_job_creation_100_jobs 
+[gw1] [ 41%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_allows_request 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_error_format 
+[gw3] [ 41%] FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_concurrent_job_creation_100_jobs 
+[gw1] [ 41%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_error_format 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_generates_request_id 
+[gw1] [ 42%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_generates_request_id 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_handles_no_results 
+[gw1] [ 42%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_handles_no_results 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_no_headers_for_non_api 
+[gw1] [ 42%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_no_headers_for_non_api 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_rejects_when_exceeded 
+[gw1] [ 42%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_rejects_when_exceeded 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_retry_after_minimum 
+[gw1] [ 42%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_retry_after_minimum 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_sets_retry_after 
+[gw1] [ 42%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_sets_retry_after 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_skips_admin_endpoints 
+[gw2] [ 42%] FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_compliance_run_job_compliance_run_not_found 
+[gw1] [ 43%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_skips_admin_endpoints 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_skips_health_checks 
+[gw1] [ 43%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_skips_health_checks 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_skips_non_api_endpoints 
+[gw1] [ 43%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_skips_non_api_endpoints 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_skips_when_disabled 
+[gw1] [ 43%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_skips_when_disabled 
+tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_uses_existing_request_id 
+[gw1] [ 43%] PASSED tests/unit/rate_limiting/test_middleware.py::RateLimitMiddlewareTest::test_middleware_uses_existing_request_id 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_api_key_generation 
+[gw1] [ 43%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_api_key_generation 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_format_consistency 
+[gw1] [ 43%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_format_consistency 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_generation_requires_tenant 
+[gw1] [ 44%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_generation_requires_tenant 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_hierarchy_api_key_overrides_user 
+[gw1] [ 44%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_hierarchy_api_key_overrides_user 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_hierarchy_tenant_only 
+[gw1] [ 44%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_hierarchy_tenant_only 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_includes_endpoint_category 
+[gw1] [ 44%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_includes_endpoint_category 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_includes_time_window 
+[gw1] [ 44%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_includes_time_window 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_special_characters_handled 
+[gw1] [ 44%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_special_characters_handled 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_api_key 
+[gw1] [ 44%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_api_key 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_category 
+[gw1] [ 45%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_category 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_tenant 
+[gw1] [ 45%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_tenant 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_user 
+[gw1] [ 45%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_user 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_window 
+[gw1] [ 45%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_key_uniqueness_per_window 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_tenant_key_generation 
+[gw1] [ 45%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_tenant_key_generation 
+tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_user_key_generation 
+[gw1] [ 45%] PASSED tests/unit/rate_limiting/test_rate_limit_keys.py::RateLimitKeyGenerationTest::test_user_key_generation 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_cache_behavior 
+[gw1] [ 45%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_cache_behavior 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_concurrent_requests 
+[gw1] [ 46%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_concurrent_requests 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_expired_entries_removal 
+[gw1] [ 46%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_expired_entries_removal 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_header_accuracy 
+[gw1] [ 46%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_header_accuracy 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_key_generation 
+[gw1] [ 46%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_key_generation 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_multiple_windows 
+[gw1] [ 46%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_multiple_windows 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_per_api_key 
+[gw1] [ 46%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_per_api_key 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_per_endpoint_category 
+[gw1] [ 46%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_per_endpoint_category 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_per_user 
+[gw1] [ 47%] PASSED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_per_user 
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_redis_failure 
+[gw1] [ 47%] FAILED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_redis_failure 
+
+=================================== FAILURES ===================================
+[gw0] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+E   AssertionError: 'tags' not found in [{'name': 'tags', 'data_type': 'array', 'nullable': True}, {'name': 'numbers', 'data_type': 'array', 'nullable': True}]
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/unittest/case.py:750: AssertionError: 'tags' not found in [{'name': 'tags', 'data_type': 'array', 'nullable': True}, {'name': 'numbers', 'data_type': 'array', 'nullable': True}]
+[gw3] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+E   AssertionError: 0 not greater than 0
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/unittest/case.py:750: AssertionError: 0 not greater than 0
+[gw2] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+E   ConnectionError: Compliance service is unavailable
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-06 19:44:12,800", "level": "WARNING", "logger": "hub.apps.compliance.service_client", "message": "Network error connecting to Compliance service: [Errno -3] Temporary failure in name resolution. Retrying in 1s..."}
+{"timestamp": "2025-12-06 19:44:13,801", "level": "WARNING", "logger": "hub.apps.compliance.service_client", "message": "Network error connecting to Compliance service: [Errno -3] Temporary failure in name resolution. Retrying in 2s..."}
+{"timestamp": "2025-12-06 19:44:15,802", "level": "ERROR", "logger": "hub.apps.compliance.service_client", "message": "Compliance service health check failed: [Errno -3] Temporary failure in name resolution"}
+/home/ph/Desktop/DataInteroperabilityHub/hub/apps/jobs/tasks.py:484: ConnectionError: Compliance service is unavailable
+[gw1] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+E   AttributeError: <module 'hub.apps.rate_limiting.utils' from '/home/ph/Desktop/DataInteroperabilityHub/hub/apps/rate_limiting/utils.py'> does not have the attribute 'redis'
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/unittest/mock.py:1473: AttributeError: <module 'hub.apps.rate_limiting.utils' from '/home/ph/Desktop/DataInteroperabilityHub/hub/apps/rate_limiting/utils.py'> does not have the attribute 'redis'
+=========================== short test summary info ============================
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_array_fields
+FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_concurrent_job_creation_100_jobs
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_compliance_run_job_compliance_run_not_found
+FAILED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_redis_failure
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 4 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!! xdist.dsession.Interrupted: stopping after 1 failures !!!!!!!!!!!!!
+=========== 4 failed, 274 passed, 48 skipped, 12 warnings in 45.06s ============

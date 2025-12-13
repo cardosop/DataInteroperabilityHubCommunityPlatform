@@ -4,6 +4,7 @@ Unit tests for tenant middleware.
 import pytest
 from django.test import TestCase, RequestFactory
 from django.http import HttpResponse, JsonResponse
+from unittest.mock import Mock
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.tenants.middleware import TenantSuspensionMiddleware
 
@@ -16,7 +17,8 @@ class TenantSuspensionMiddlewareTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.factory = RequestFactory()
-        self.middleware = TenantSuspensionMiddleware(get_response=lambda request: HttpResponse())
+        self.get_response = Mock(return_value=HttpResponse())
+        self.middleware = TenantSuspensionMiddleware(self.get_response)
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
     
     def test_suspended_tenant_blocks_writes(self):
@@ -75,4 +77,30 @@ class TenantSuspensionMiddlewareTest(TestCase):
         response = self.middleware.process_request(request)
         
         self.assertIsNone(response)  # Health check is allowed
+    
+    def test_middleware_is_callable(self):
+        """Test that middleware is callable (Django 6 pattern)"""
+        request = self.factory.get("/api/v1/assets/")
+        request.tenant = self.tenant
+        
+        response = self.middleware(request)
+        
+        self.assertIsNotNone(response)
+        self.assertIsInstance(response, HttpResponse)
+        self.get_response.assert_called_once()
+    
+    def test_middleware_performance(self):
+        """Test middleware performance (should be fast)"""
+        import time
+        
+        request = self.factory.get("/api/v1/assets/")
+        request.tenant = self.tenant
+        
+        start = time.time()
+        for _ in range(100):
+            self.middleware.process_request(request)
+        elapsed = time.time() - start
+        
+        # Should process 100 requests in less than 0.5 seconds
+        self.assertLess(elapsed, 0.5, f"Middleware too slow: {elapsed:.3f}s for 100 requests")
 

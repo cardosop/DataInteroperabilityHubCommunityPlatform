@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-004-0fc1acd9",
+      "journey_name": "Monitor Asset Quality",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1765569823.6727698,
+      "end_time": 1765569823.7115467,
+      "duration": 0.03877687454223633,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "{'job': ['This field cannot be null.'], 'profile_key': ['This field cannot be blank.'], 'engine': ['This field cannot be blank.']}",
+      "error_type": "ValidationError",
+      "steps": [
+        {
+          "step_name": "Create Asset with DQ Runs",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765569823.6727753,
+          "end_time": 1765569823.71151,
+          "duration": 0.03873467445373535,
+          "error_message": "{'job': ['This field cannot be null.'], 'profile_key': ['This field cannot be blank.'], 'engine': ['This field cannot be blank.']}",
+          "error_type": "ValidationError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T20:03:43.711640"
+}

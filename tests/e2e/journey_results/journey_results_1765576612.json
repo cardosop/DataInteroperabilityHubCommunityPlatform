@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-001-79ba6d14",
+      "journey_name": "Review Compliance for Asset",
+      "persona": "Compliance & Privacy Officer",
+      "status": "failed",
+      "start_time": 1765576612.5316195,
+      "end_time": 1765576612.5316386,
+      "duration": 1.9073486328125e-05,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "'Persona3CompliancePrivacyOfficerJourneys' object has no attribute '_create_activated_asset'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Create Asset with Compliance Runs",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765576612.5316257,
+          "end_time": 1765576612.5316343,
+          "duration": 8.58306884765625e-06,
+          "error_message": "'Persona3CompliancePrivacyOfficerJourneys' object has no attribute '_create_activated_asset'",
+          "error_type": "AttributeError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T21:56:52.531715"
+}

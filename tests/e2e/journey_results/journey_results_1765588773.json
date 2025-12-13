@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.03374052047729492
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-001-0361c010",
+      "journey_name": "Build Custom Integration",
+      "persona": "External Developer / Integrator",
+      "status": "completed",
+      "start_time": 1765588773.930842,
+      "end_time": 1765588773.9645824,
+      "duration": 0.03374052047729492,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Authenticate with API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588773.9308476,
+          "end_time": 1765588773.9308527,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Explore API Endpoints",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588773.9308548,
+          "end_time": 1765588773.9516578,
+          "duration": 0.020802974700927734,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Test API Calls",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588773.9516675,
+          "end_time": 1765588773.964565,
+          "duration": 0.012897491455078125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Implement Integration",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588773.964571,
+          "end_time": 1765588773.9645808,
+          "duration": 9.775161743164062e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        }
+      ],
+      "metadata": {
+        "integration_id": "6b8b077a-5943-49b9-aa24-d7446a8ed3f6"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T01:19:33.964644"
+}

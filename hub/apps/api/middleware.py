@@ -7,7 +7,6 @@ import uuid
 import time
 import logging
 import structlog
-from django.utils.deprecation import MiddlewareMixin
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.utils import timezone
@@ -15,10 +14,27 @@ from django.utils import timezone
 logger = structlog.get_logger(__name__)
 
 
-class RequestIDMiddleware(MiddlewareMixin):
+class RequestIDMiddleware:
     """
     Middleware to generate and attach request ID to each request.
     """
+    
+    def __init__(self, get_response):
+        """Initialize middleware with get_response callable."""
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        """Process request and return response."""
+        # Process request
+        self.process_request(request)
+        
+        # Get response
+        response = self.get_response(request)
+        
+        # Process response
+        response = self.process_response(request, response)
+        
+        return response
     
     def process_request(self, request):
         """Generate request ID if not present"""
@@ -51,10 +67,72 @@ class RequestIDMiddleware(MiddlewareMixin):
         return response
 
 
-class RateLimitMiddleware(MiddlewareMixin):
+class SecurityHeadersMiddleware:
+    """
+    Middleware to add security headers (Django 6 enhancements).
+    
+    Adds additional security headers beyond Django's built-in SecurityMiddleware:
+    - X-Content-Type-Options (if not already set)
+    - Referrer-Policy
+    - Permissions-Policy (optional)
+    """
+    
+    def __init__(self, get_response):
+        """Initialize middleware with get_response callable."""
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        """Process request and return response."""
+        response = self.get_response(request)
+        return self.process_response(request, response)
+    
+    def process_response(self, request, response):
+        """Add security headers to response."""
+        from django.conf import settings
+        
+        # X-Content-Type-Options (if not already set by SecurityMiddleware)
+        if 'X-Content-Type-Options' not in response:
+            if getattr(settings, 'SECURE_CONTENT_TYPE_NOSNIFF', True):
+                response['X-Content-Type-Options'] = 'nosniff'
+        
+        # Referrer-Policy
+        referrer_policy = getattr(settings, 'SECURE_REFERRER_POLICY', 'strict-origin-when-cross-origin')
+        if referrer_policy:
+            response['Referrer-Policy'] = referrer_policy
+        
+        # Permissions-Policy (optional, configure as needed)
+        permissions_policy = getattr(settings, 'SECURE_PERMISSIONS_POLICY', None)
+        if permissions_policy:
+            # Convert dict to header format: "geolocation=(), camera=()"
+            policy_parts = [f"{key}={value}" for key, value in permissions_policy.items()]
+            response['Permissions-Policy'] = ', '.join(policy_parts)
+        
+        return response
+
+
+class RateLimitMiddleware:
     """
     Middleware for rate limiting per tenant, per user, and per endpoint.
     """
+    
+    def __init__(self, get_response):
+        """Initialize middleware with get_response callable."""
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        """Process request and return response."""
+        # Process request (may return early response)
+        response = self.process_request(request)
+        if response is not None:
+            return response
+        
+        # Get response
+        response = self.get_response(request)
+        
+        # Process response
+        response = self.process_response(request, response)
+        
+        return response
     
     def process_request(self, request):
         """Check rate limits before processing request"""
@@ -176,4 +254,3 @@ class RateLimitMiddleware(MiddlewareMixin):
                 response['X-RateLimit-User-Remaining'] = str(max(0, limit - count))
         
         return response
-

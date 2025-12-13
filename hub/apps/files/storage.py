@@ -280,4 +280,66 @@ class S3StorageClient:
             return response['ContentLength']
         except ClientError as e:
             raise Exception(f"Failed to get file size: {str(e)}")
+    
+    def get_file_content(self, key: str) -> bytes:
+        """
+        Download file content from S3.
+        
+        Args:
+            key: S3 object key (path)
+        
+        Returns:
+            File content as bytes
+        """
+        try:
+            response = self.client.get_object(
+                Bucket=self.bucket_name,
+                Key=key
+            )
+            return response['Body'].read()
+        except ClientError as e:
+            raise Exception(f"Failed to download file: {str(e)}")
+    
+    def save_file(
+        self,
+        tenant_id: str,
+        file_id: str,
+        file_content
+    ) -> str:
+        """
+        Save file to S3 storage.
+        
+        Args:
+            tenant_id: Tenant ID
+            file_id: File ID
+            file_content: File content (file-like object or ContentFile)
+        
+        Returns:
+            S3 object key (storage path)
+        """
+        key = f"{tenant_id}/{file_id}"
+        
+        try:
+            # Get content type from file_content if available
+            content_type = getattr(file_content, 'content_type', 'application/octet-stream')
+            
+            # Read content if it's a file-like object
+            if hasattr(file_content, 'read'):
+                content = file_content.read()
+                # Reset file pointer if possible
+                if hasattr(file_content, 'seek'):
+                    file_content.seek(0)
+            else:
+                content = file_content
+            
+            self.client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=content,
+                ContentType=content_type
+            )
+            
+            return key
+        except ClientError as e:
+            raise Exception(f"Failed to save file: {str(e)}")
 

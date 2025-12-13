@@ -1,0 +1,603 @@
+Detailed Test Failures - Sat Dec  6 02:25:27 PM -03 2025
+================================
+
+
+=== Unit Tests Detailed Failures ===
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_all_large_sections PASSED [  0%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_all_optional_sections_missing PASSED [  0%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_array_fields FAILED [  1%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_boolean_fields FAILED [  1%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_complex_compliance_policy PASSED [  1%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_complex_lifecycle_policy PASSED [  1%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_compliance_jurisdictions_extraction FAILED [  1%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_compliance_without_jurisdictions PASSED [  1%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_data_contract_com_format FAILED [  1%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_data_contract_com_missing_sections PASSED [  2%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_date_time_fields FAILED [  2%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_default_values FAILED [  2%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_duplicate_field_names PASSED [  2%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_empty_fields PASSED [  2%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_empty_owners_array PASSED [  2%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_empty_quality_rules PASSED [  2%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_empty_strings PASSED [  3%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_empty_tags_array PASSED [  3%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_metadata_preservation FAILED [  3%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_min_max_only FAILED [  3%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_only_enum FAILED [  3%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_only_format FAILED [  3%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_only_max FAILED [  3%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_only_min FAILED [  4%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_pattern_only FAILED [  4%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_with_all_properties PASSED [  4%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_with_sql_keywords PASSED [  4%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_with_unicode_in_name PASSED [  4%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_with_whitespace_in_name PASSED [  4%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_without_name PASSED [  4%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_without_type PASSED [  5%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_foreign_keys PASSED [  5%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_indexes PASSED [  5%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_enum_values FAILED [  5%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_format FAILED [  5%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_max_type FAILED [  5%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_min_max FAILED [  5%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_min_type FAILED [  6%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_pattern_regex FAILED [  6%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_lifecycle_refresh_cadence PASSED [  6%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_lifecycle_without_refresh_cadence PASSED [  6%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_marketplace_license_extraction PASSED [  6%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_marketplace_without_license PASSED [  6%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_missing_compliance PASSED [  6%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_missing_lifecycle PASSED [  7%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_missing_marketplace PASSED [  7%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_missing_owners PASSED [  7%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_missing_quality PASSED [  7%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_missing_tags PASSED [  7%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_mixed_case_field_names PASSED [  7%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_multiple_extensions FAILED [  7%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_nested_extensions FAILED [  8%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_nested_quality_rules PASSED [  8%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_nested_structures FAILED [  8%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_normalization_errors FAILED [  8%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_normalization_status_tracking PASSED [  8%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_normalization_warnings PASSED [  8%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_null_values PASSED [  8%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_numeric_precision FAILED [  9%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_odcs_vs_datacontract_detection FAILED [  9%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_owner_without_email PASSED [  9%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_owner_without_name PASSED [  9%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_preserve_original_structure PASSED [  9%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_primary_key_constraints FAILED [  9%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_quality_profile_extraction PASSED [ 10%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_quality_profile_without_rules PASSED [ 10%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_quality_rule_without_dimension PASSED [ 10%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_quality_rule_without_expression PASSED [ 10%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_required_vs_optional_fields FAILED [ 10%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_semantic_type_extraction FAILED [ 10%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_special_characters FAILED [ 10%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_unicode_characters FAILED [ 11%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_unique_constraints FAILED [ 11%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_unmappable_fields_in_extensions FAILED [ 11%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_very_long_field_names FAILED [ 11%]
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_very_long_strings PASSED [ 11%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extensions_preserve_datacontract_com_unmappable PASSED [ 11%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extensions_preserve_unmappable_fields PASSED [ 11%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_default_from_datacontract_com PASSED [ 12%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_default_from_odcs PASSED [ 12%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_enum_from_datacontract_com PASSED [ 12%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_enum_from_odcs PASSED [ 12%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_format_from_datacontract_com PASSED [ 12%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_format_from_odcs PASSED [ 12%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_metadata_from_datacontract_com PASSED [ 12%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_metadata_from_odcs PASSED [ 13%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_min_max_length_from_datacontract_com PASSED [ 13%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_min_max_length_from_odcs PASSED [ 13%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_min_max_numeric_from_datacontract_com PASSED [ 13%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_min_max_numeric_from_odcs PASSED [ 13%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_pattern_from_datacontract_com PASSED [ 13%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_pattern_from_odcs PASSED [ 13%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_semantic_type_from_datacontract_com PASSED [ 14%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_extract_semantic_type_from_odcs PASSED [ 14%]
+tests/unit/contracts/test_normalization_enhanced.py::EnhancedNormalizationTest::test_normalize_complete_contract_all_sections PASSED [ 14%]
+--
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_db_connections_active_set PASSED [ 18%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_db_query_duration_seconds_metric_exists PASSED [ 18%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_db_query_duration_seconds_observe FAILED [ 19%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_dq_runs_total_metric_exists PASSED [ 19%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_dq_runs_total_per_tenant PASSED [ 19%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_file_upload_size_bytes_metric_exists PASSED [ 19%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_file_upload_size_bytes_observe FAILED [ 19%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_file_uploads_total_metric_exists PASSED [ 19%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_file_uploads_total_per_tenant PASSED [ 20%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_gauge_inc_dec PASSED [ 20%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_get_status_class_2xx PASSED [ 20%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_get_status_class_4xx PASSED [ 20%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_get_status_class_5xx PASSED [ 20%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_get_status_class_other PASSED [ 20%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_histogram_buckets_configuration FAILED [ 20%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_http_errors_total_increment PASSED [ 21%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_http_errors_total_metric_exists PASSED [ 21%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_http_request_duration_seconds_metric_exists PASSED [ 21%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_http_request_duration_seconds_observe FAILED [ 21%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_http_requests_total_increment PASSED [ 21%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_http_requests_total_labels PASSED [ 21%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_http_requests_total_metric_exists PASSED [ 21%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_job_duration_seconds_metric_exists PASSED [ 22%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_job_duration_seconds_observe FAILED [ 22%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_job_queue_length_metric_exists PASSED [ 22%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_job_queue_length_set PASSED [ 22%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_jobs_completed_total_labels PASSED [ 22%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_jobs_completed_total_metric_exists PASSED [ 22%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_jobs_failed_total_metric_exists PASSED [ 22%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_jobs_failed_total_per_tenant PASSED [ 23%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_jobs_started_total_metric_exists PASSED [ 23%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_jobs_started_total_per_tenant PASSED [ 23%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_metrics_registered_in_prometheus PASSED [ 23%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_per_tenant_metrics_isolation PASSED [ 23%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_tenant_queued_jobs_metric_exists PASSED [ 23%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_tenant_queued_jobs_per_tenant PASSED [ 23%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_tenant_running_jobs_metric_exists PASSED [ 24%]
+tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_tenant_running_jobs_per_tenant PASSED [ 24%]
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_all_types PASSED [ 24%]
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_can_retry PASSED [ 24%]
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_creation PASSED [ 24%]
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_increment_retry PASSED [ 24%]
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_bounced PASSED [ 24%]
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_delivered PASSED [ 25%]
+--
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_per_endpoint_category PASSED [ 40%]
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_per_user PASSED [ 40%]
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_redis_failure FAILED [ 40%]
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_remaining_calculation PASSED [ 40%]
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_reset_time_calculation PASSED [ 40%]
+tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_window_boundary PASSED [ 40%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_allows_within_limit PASSED [ 41%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_cache_hit_prevents_redis_call PASSED [ 41%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_cache_miss_calls_redis PASSED [ 41%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_caches_result PASSED [ 41%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_redis_unavailable_fails_open PASSED [ 41%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_rejects_when_exceeded PASSED [ 41%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_removes_expired_entries PASSED [ 41%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_ttl_expiration PASSED [ 42%]
+tests/unit/rate_limiting/test_sliding_window.py::SlidingWindowAlgorithmTest::test_sliding_window_uses_atomic_operations PASSED [ 42%]
+tests/unit/rate_limiting/test_sliding_window.py::MultipleTimeWindowsTest::test_burst_window_10_seconds PASSED [ 42%]
+tests/unit/rate_limiting/test_sliding_window.py::MultipleTimeWindowsTest::test_daily_window_86400_seconds PASSED [ 42%]
+tests/unit/rate_limiting/test_sliding_window.py::MultipleTimeWindowsTest::test_sustained_window_60_seconds PASSED [ 42%]
+tests/unit/rate_limiting/test_sliding_window.py::MultipleTimeWindowsTest::test_window_sliding_prevents_boundary_bursts PASSED [ 42%]
+tests/unit/rate_limiting/test_sliding_window.py::GetRateLimitInfoTest::test_get_rate_limit_info PASSED [ 42%]
+tests/unit/rate_limiting/test_sliding_window.py::GetRateLimitInfoTest::test_get_rate_limit_info_redis_unavailable PASSED [ 43%]
+tests/unit/rate_limiting/test_sliding_window.py::GetRateLimitInfoTest::test_get_rate_limit_info_removes_expired PASSED [ 43%]
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_100_fields SKIPPED [ 43%]
+--
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_slot_release_on_job_failure PASSED [ 71%]
+tests/unit/worker/test_concurrency_limits.py::ConcurrencyLimitsTest::test_tenant_isolation PASSED [ 71%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_compliance_run_job_compliance_run_not_found FAILED [ 72%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_compliance_run_job_missing_compliance_run_id FAILED [ 72%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_contract_migration_job_contract_not_found PASSED [ 72%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_contract_validation_job_contract_no_original_raw FAILED [ 72%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_contract_validation_job_contract_not_found PASSED [ 72%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_contract_validation_job_missing_contract_id FAILED [ 72%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_dq_run_job_dq_run_not_found FAILED [ 72%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_dq_run_job_missing_dq_run_id FAILED [ 73%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_dq_run_job_service_unavailable SKIPPED [ 73%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_job_logic_compliance_run FAILED [ 73%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_job_logic_contract_migration PASSED [ 73%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_job_logic_contract_validation PASSED [ 73%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_job_logic_dq_run FAILED [ 73%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_job_logic_semantic_mapping PASSED [ 73%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_job_logic_unknown_job_type PASSED [ 74%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_semantic_mapping_job_contract_not_found FAILED [ 74%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_semantic_mapping_job_missing_resource_id PASSED [ 74%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_semantic_mapping_job_missing_resource_type PASSED [ 74%]
+tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_semantic_mapping_job_unknown_resource_type FAILED [ 74%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_exponential_backoff PASSED [ 74%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_first_retry PASSED [ 74%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_second_retry PASSED [ 75%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_third_retry PASSED [ 75%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_compliance_run PASSED [ 75%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_contract_migration PASSED [ 75%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_contract_validation PASSED [ 75%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_dq_run PASSED [ 75%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_semantic_mapping PASSED [ 75%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_max_retries_unknown_type PASSED [ 76%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_compliance_run PASSED [ 76%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_contract_migration PASSED [ 76%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_contract_validation PASSED [ 76%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_dq_run PASSED [ 76%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_semantic_mapping PASSED [ 76%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_get_job_timeout_unknown_type PASSED [ 76%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_connection_error PASSED [ 77%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_timeout_error PASSED [ 77%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_value_error PASSED [ 77%]
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_is_transient_failure_with_503_status PASSED [ 77%]
+--
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_starvation_prevention_algorithm PASSED [ 83%]
+tests/unit/worker/test_starvation_prevention.py::StarvationPreventionTest::test_starvation_prevention_with_high_priority_jobs PASSED [ 83%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_concurrent_job_creation_100_jobs FAILED [ 83%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_concurrent_job_processing FAILED [ 83%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_queue_selection PASSED [ 83%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_retry_after_failure FAILED [ 83%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_starvation_prevention FAILED [ 84%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_timeout_handling FAILED [ 84%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_with_invalid_data FAILED [ 84%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_with_missing_required_fields PASSED [ 84%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_with_nonexistent_tenant PASSED [ 84%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_redis_connection_loss PASSED [ 84%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_tenant_job_limit_enforcement PASSED [ 84%]
+tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_worker_restart_during_job_processing FAILED [ 85%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_with_access_token PASSED [ 85%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_with_api_key PASSED [ 85%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_access_token_priority PASSED [ 85%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_no_auth PASSED [ 85%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_api_key_only PASSED [ 85%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_ensure_authenticated_with_api_key PASSED [ 85%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_ensure_authenticated_with_token PASSED [ 86%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_ensure_authenticated_no_auth PASSED [ 86%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_ensure_authenticated_api_key_preferred PASSED [ 86%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_auth_manager_with_custom_config PASSED [ 86%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_auth_manager_with_global_config PASSED [ 86%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_empty_token PASSED [ 86%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_empty_api_key PASSED [ 86%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_special_characters_in_token PASSED [ 87%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_unicode_in_token PASSED [ 87%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_very_long_token PASSED [ 87%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_clear_auth_after_setting PASSED [ 87%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_get_auth_headers_after_clear PASSED [ 87%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_ensure_authenticated_after_clear PASSED [ 87%]
+tests/unit/cli/test_auth.py::TestAuthManager::test_auth_manager_config_isolation PASSED [ 87%]
+--
+        self.assertIsNotNone(hub_contract)
+>       self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
+E       AssertionError: NormalizationStatus.NORMALIZATION_FAILED != NormalizationStatus.NORMALIZED_OK
+
+tests/unit/contracts/test_normalization_edge_cases.py:1269: AssertionError
+______ NormalizationEdgeCaseTest.test_normalize_contract_date_time_fields ______
+
+self = <tests.unit.contracts.test_normalization_edge_cases.NormalizationEdgeCaseTest testMethod=test_normalize_contract_date_time_fields>
+
+    def test_normalize_contract_date_time_fields(self):
+        """Test normalization with date/time fields"""
+        odcs_contract = {
+            "id": "test-contract-datetime",
+            "name": "DateTime Contract",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "created_at",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    {
+                        "name": "birth_date",
+--
+        self.assertEqual(status1, NormalizationStatus.NORMALIZED_OK)
+>       self.assertEqual(status2, NormalizationStatus.NORMALIZED_OK)
+E       AssertionError: NormalizationStatus.NORMALIZATION_FAILED != NormalizationStatus.NORMALIZED_OK
+
+tests/unit/contracts/test_normalization_edge_cases.py:1326: AssertionError
+__ NormalizationEdgeCaseTest.test_normalize_contract_primary_key_constraints ___
+
+self = <tests.unit.contracts.test_normalization_edge_cases.NormalizationEdgeCaseTest testMethod=test_normalize_contract_primary_key_constraints>
+
+    def test_normalize_contract_primary_key_constraints(self):
+        """Test normalization with primary key constraints"""
+        odcs_contract = {
+            "id": "test-contract-pk",
+            "name": "Primary Key Contract",
+            "schema": {
+                "fields": [
+                    {"name": "id", "type": "string", "primaryKey": True},
+                    {"name": "name", "type": "string"},
+                    {"name": "email", "type": "string", "unique": True}
+                ]
+            }
+        }
+    
+--
+{"timestamp": "2025-12-06 17:26:08,072", "level": "WARNING", "logger": "hub.apps.compliance.service_client", "message": "Network error connecting to Compliance service: [Errno 111] Connection refused. Retrying in 1s..."}
+{"timestamp": "2025-12-06 17:26:09,073", "level": "WARNING", "logger": "hub.apps.compliance.service_client", "message": "Network error connecting to Compliance service: [Errno 111] Connection refused. Retrying in 2s..."}
+{"timestamp": "2025-12-06 17:26:11,074", "level": "ERROR", "logger": "hub.apps.compliance.service_client", "message": "Compliance service health check failed: [Errno 111] Connection refused"}
+_ JobProcessorsTest.test_execute_compliance_run_job_missing_compliance_run_id __
+
+self = <tests.unit.worker.test_job_processors.JobProcessorsTest testMethod=test_execute_compliance_run_job_missing_compliance_run_id>
+
+    def test_execute_compliance_run_job_missing_compliance_run_id(self):
+        """Test COMPLIANCE_RUN job processor with missing compliance_run_id"""
+        job = JobFactory.create_job(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.PENDING,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=None,
+            created_by=self.user,
+            details_json={}  # No compliance_run_id
+        )
+    
+        with self.assertRaises(ValueError) as cm:
+>           _execute_compliance_run_job(job)
+
+tests/unit/worker/test_job_processors.py:156: 
+--
+{"timestamp": "2025-12-06 17:26:11,152", "level": "WARNING", "logger": "hub.apps.compliance.service_client", "message": "Network error connecting to Compliance service: [Errno 111] Connection refused. Retrying in 1s..."}
+{"timestamp": "2025-12-06 17:26:12,152", "level": "WARNING", "logger": "hub.apps.compliance.service_client", "message": "Network error connecting to Compliance service: [Errno 111] Connection refused. Retrying in 2s..."}
+{"timestamp": "2025-12-06 17:26:14,153", "level": "ERROR", "logger": "hub.apps.compliance.service_client", "message": "Compliance service health check failed: [Errno 111] Connection refused"}
+_ JobProcessorsTest.test_execute_contract_validation_job_contract_no_original_raw _
+
+self = <django.db.backends.utils.CursorWrapper object at 0x7967f8ebd070>
+sql = 'INSERT INTO "contracts" ("id", "tenant_id", "asset_id", "version", "status", "original_spec_type", "original_spec_ver...ted_at", "updated_at") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+params = (UUID('2af14fc8-6834-43ce-8e24-7f6c7de9aa9c'), UUID('bda3fb77-7a01-42fd-978b-0f4389c0db38'), None, 1, ContractStatus.DRAFT, OriginalSpecType.ODCS, ...)
+ignored_wrapper_args = (False, {'connection': <DatabaseWrapper vendor='postgresql' alias='default'>, 'cursor': <django.db.backends.utils.CursorWrapper object at 0x7967f8ebd070>})
+
+    def _execute(self, sql, params, *ignored_wrapper_args):
+        self.db.validate_no_broken_transaction()
+        with self.db.wrap_database_errors:
+            if params is None:
+                # params default might be backend specific.
+                return self.cursor.execute(sql)
+            else:
+>               return self.cursor.execute(sql, params)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               psycopg2.errors.NotNullViolation: null value in column "original_raw" of relation "contracts" violates not-null constraint
+E               DETAIL:  Failing row contains (2af14fc8-6834-43ce-8e24-7f6c7de9aa9c, bda3fb77-7a01-42fd-978b-0f4389c0db38, null, 1, DRAFT, ODCS, , JSON, null, null, null, NOT_NORMALIZED, [], [], null, [], [], null, null, d689837b-0a76-46e9-a01e-48d0003e204e, 2025-12-06 17:26:14.300018+00, 2025-12-06 17:26:14.300022+00).
+
+venv-python312-test/lib/python3.14/site-packages/django/db/backends/utils.py:89: NotNullViolation
+--
+{"timestamp": "2025-12-06 17:26:14,664", "level": "WARNING", "logger": "hub.apps.dq.service_client", "message": "Network error connecting to DQ service: [Errno 111] Connection refused. Retrying in 1s..."}
+{"timestamp": "2025-12-06 17:26:15,664", "level": "WARNING", "logger": "hub.apps.dq.service_client", "message": "Network error connecting to DQ service: [Errno 111] Connection refused. Retrying in 2s..."}
+{"timestamp": "2025-12-06 17:26:17,666", "level": "ERROR", "logger": "hub.apps.dq.service_client", "message": "DQ service health check failed: [Errno 111] Connection refused"}
+_________ JobProcessorsTest.test_execute_dq_run_job_missing_dq_run_id __________
+
+self = <tests.unit.worker.test_job_processors.JobProcessorsTest testMethod=test_execute_dq_run_job_missing_dq_run_id>
+
+    def test_execute_dq_run_job_missing_dq_run_id(self):
+        """Test DQ_RUN job processor with missing dq_run_id"""
+        job = JobFactory.create_job(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.PENDING,
+            resource_type="DQ_RUN",
+            resource_id=None,
+            created_by=self.user,
+            details_json={}  # No dq_run_id
+        )
+    
+        with self.assertRaises(ValueError) as cm:
+>           _execute_dq_run_job(job)
+
+tests/unit/worker/test_job_processors.py:87: 
+--
+{"timestamp": "2025-12-06 17:26:17,744", "level": "WARNING", "logger": "hub.apps.dq.service_client", "message": "Network error connecting to DQ service: [Errno 111] Connection refused. Retrying in 1s..."}
+{"timestamp": "2025-12-06 17:26:18,744", "level": "WARNING", "logger": "hub.apps.dq.service_client", "message": "Network error connecting to DQ service: [Errno 111] Connection refused. Retrying in 2s..."}
+{"timestamp": "2025-12-06 17:26:20,745", "level": "ERROR", "logger": "hub.apps.dq.service_client", "message": "DQ service health check failed: [Errno 111] Connection refused"}
+___________ JobProcessorsTest.test_execute_job_logic_compliance_run ____________
+
+self = <tests.unit.worker.test_job_processors.JobProcessorsTest testMethod=test_execute_job_logic_compliance_run>
+
+    def test_execute_job_logic_compliance_run(self):
+        """Test _execute_job_logic routes to COMPLIANCE_RUN processor"""
+        compliance_run_id = uuid.uuid4()
+        job = JobFactory.create_job(
+            tenant=self.tenant,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.PENDING,
+            resource_type="COMPLIANCE_RUN",
+            resource_id=compliance_run_id,
+            created_by=self.user,
+            details_json={'compliance_run_id': str(compliance_run_id)}
+        )
+    
+        # Should raise ValueError because compliance run doesn't exist
+        with self.assertRaises(ValueError):
+>           _execute_job_logic(job, JobType.COMPLIANCE_RUN)
+--
+{"timestamp": "2025-12-06 17:26:20,824", "level": "WARNING", "logger": "hub.apps.compliance.service_client", "message": "Network error connecting to Compliance service: [Errno 111] Connection refused. Retrying in 1s..."}
+{"timestamp": "2025-12-06 17:26:21,825", "level": "WARNING", "logger": "hub.apps.compliance.service_client", "message": "Network error connecting to Compliance service: [Errno 111] Connection refused. Retrying in 2s..."}
+{"timestamp": "2025-12-06 17:26:23,825", "level": "ERROR", "logger": "hub.apps.compliance.service_client", "message": "Compliance service health check failed: [Errno 111] Connection refused"}
+_______________ JobProcessorsTest.test_execute_job_logic_dq_run ________________
+
+self = <tests.unit.worker.test_job_processors.JobProcessorsTest testMethod=test_execute_job_logic_dq_run>
+
+    def test_execute_job_logic_dq_run(self):
+        """Test _execute_job_logic routes to DQ_RUN processor"""
+        dq_run_id = uuid.uuid4()
+        job = JobFactory.create_job(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.PENDING,
+            resource_type="DQ_RUN",
+            resource_id=dq_run_id,
+            created_by=self.user,
+            details_json={'dq_run_id': str(dq_run_id)}
+        )
+    
+        # Should raise ValueError because DQ run doesn't exist
+        with self.assertRaises(ValueError):
+>           _execute_job_logic(job, JobType.DQ_RUN)
+--
+{"timestamp": "2025-12-06 17:26:24,036", "level": "WARNING", "logger": "hub.apps.dq.service_client", "message": "Network error connecting to DQ service: [Errno 111] Connection refused. Retrying in 1s..."}
+{"timestamp": "2025-12-06 17:26:25,036", "level": "WARNING", "logger": "hub.apps.dq.service_client", "message": "Network error connecting to DQ service: [Errno 111] Connection refused. Retrying in 2s..."}
+{"timestamp": "2025-12-06 17:26:27,037", "level": "ERROR", "logger": "hub.apps.dq.service_client", "message": "DQ service health check failed: [Errno 111] Connection refused"}
+____ JobProcessorsTest.test_execute_semantic_mapping_job_contract_not_found ____
+
+self = <tests.unit.worker.test_job_processors.JobProcessorsTest testMethod=test_execute_semantic_mapping_job_contract_not_found>
+
+    def test_execute_semantic_mapping_job_contract_not_found(self):
+        """Test SEMANTIC_MAPPING job processor with non-existent contract"""
+        non_existent_id = uuid.uuid4()
+        job = JobFactory.create_job(
+            tenant=self.tenant,
+            type=JobType.SEMANTIC_MAPPING,
+            status=JobStatus.PENDING,
+            resource_type="CONTRACT",
+            resource_id=non_existent_id,
+            created_by=self.user,
+            details_json={
+                'resource_type': 'CONTRACT',
+                'resource_id': str(non_existent_id)
+            }
+        )
+    
+--
+{"timestamp": "2025-12-06 17:26:27,244", "level": "WARNING", "logger": "hub.apps.semantic.service_client", "message": "Network error connecting to Semantic service: [Errno 111] Connection refused. Retrying in 1s..."}
+{"timestamp": "2025-12-06 17:26:28,245", "level": "WARNING", "logger": "hub.apps.semantic.service_client", "message": "Network error connecting to Semantic service: [Errno 111] Connection refused. Retrying in 2s..."}
+{"timestamp": "2025-12-06 17:26:30,245", "level": "ERROR", "logger": "hub.apps.semantic.service_client", "message": "Semantic service health check failed: [Errno 111] Connection refused"}
+__ JobProcessorsTest.test_execute_semantic_mapping_job_unknown_resource_type ___
+
+self = <tests.unit.worker.test_job_processors.JobProcessorsTest testMethod=test_execute_semantic_mapping_job_unknown_resource_type>
+
+    def test_execute_semantic_mapping_job_unknown_resource_type(self):
+        """Test SEMANTIC_MAPPING job processor with unknown resource_type"""
+        job = JobFactory.create_job(
+            tenant=self.tenant,
+            type=JobType.SEMANTIC_MAPPING,
+            status=JobStatus.PENDING,
+            resource_type="UNKNOWN_TYPE",
+            resource_id=uuid.uuid4(),
+            created_by=self.user,
+            details_json={
+                'resource_type': 'UNKNOWN_TYPE',
+                'resource_id': str(uuid.uuid4())
+            }
+        )
+    
+        with self.assertRaises(ValueError) as cm:
+--
+{"timestamp": "2025-12-06 17:26:30,450", "level": "WARNING", "logger": "hub.apps.semantic.service_client", "message": "Network error connecting to Semantic service: [Errno 111] Connection refused. Retrying in 1s..."}
+{"timestamp": "2025-12-06 17:26:31,450", "level": "WARNING", "logger": "hub.apps.semantic.service_client", "message": "Network error connecting to Semantic service: [Errno 111] Connection refused. Retrying in 2s..."}
+{"timestamp": "2025-12-06 17:26:33,451", "level": "ERROR", "logger": "hub.apps.semantic.service_client", "message": "Semantic service health check failed: [Errno 111] Connection refused"}
+_______ WorkerServiceEdgeCaseTest.test_concurrent_job_creation_100_jobs ________
+
+self = <tests.unit.worker.test_worker_edge_cases.WorkerServiceEdgeCaseTest testMethod=test_concurrent_job_creation_100_jobs>
+
+    def test_concurrent_job_creation_100_jobs(self):
+        """Test creating 100 jobs simultaneously"""
+        jobs_created = []
+        errors = []
+    
+        def create_job(index):
+            try:
+                job = JobFactory.create_job(
+                    tenant=self.tenant,
+                    created_by=self.user,
+                    job_type=JobType.DQ_RUN,
+                    status=JobStatus.PENDING
+                )
+                jobs_created.append(job.id)
+            except Exception as e:
+                errors.append(str(e))
+--
+            created_by=self.user,
+            job_type=JobType.DQ_RUN,
+            status=JobStatus.FAILED,
+            error_message="Test error",
+            details_json={"retry_count": 0}
+        )
+
+tests/unit/worker/test_worker_edge_cases.py:154: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+tenant = <Tenant: Test Tenant 4a620377 (test-tenant-4a620377)>
+type = JobType.DQ_RUN, status = JobStatus.FAILED, resource_type = 'CONTRACT'
+resource_id = UUID('4ec7a2d9-1ecf-4a6d-b4b9-a3f56fb33361')
+created_by = <User: test@example.com (Test Tenant 4a620377)>, started_at = None
+completed_at = None, error_message = 'Test error', result_json = {}
+details_json = {'retry_count': 0}, timeout_seconds = 3600
+kwargs = {'job_type': JobType.DQ_RUN}
+
+    @staticmethod
+    def create_job(
+        tenant: Optional[Tenant] = None,
+        type: JobType = JobType.DQ_RUN,
+        status: JobStatus = JobStatus.PENDING,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[uuid.UUID] = None,
+        created_by: Optional[User] = None,
+        started_at: Optional[timezone.datetime] = None,
+        completed_at: Optional[timezone.datetime] = None,
+        error_message: Optional[str] = None,
+        result_json: Optional[Dict[str, Any]] = None,
+        details_json: Optional[Dict[str, Any]] = None,
+        timeout_seconds: Optional[int] = None,
+--
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <Job: DQ_RUN - FAILED (CONTRACT:4ec7a2d9-1ecf-4a6d-b4b9-a3f56fb33361)>
+args = (), kwargs = {'job_type': JobType.DQ_RUN}
+cls = <class 'hub.apps.jobs.models.Job'>, opts = <Options for Job>
+_setattr = <built-in function setattr>, _DEFERRED = <Deferred field>
+fields_iter = <tuple_iterator object at 0x7967f8ea1390>, val = None
+field = <django.db.models.fields.DateTimeField: updated_at>
+is_related_object = False
+rel_obj = <User: test@example.com (Test Tenant 4a620377)>
+property_names = frozenset({'pk'})
+
+    def __init__(self, *args, **kwargs):
+        # Alias some things as locals to avoid repeat global lookups
+        cls = self.__class__
+        opts = self._meta
+        _setattr = setattr
+        _DEFERRED = DEFERRED
+        if opts.abstract:
+            raise TypeError("Abstract models cannot be instantiated.")
+    
+        pre_init.send(sender=cls, args=args, kwargs=kwargs)
+    
+--
+Coverage XML written to file coverage.xml
+=========================== short test summary info ============================
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_array_fields
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_boolean_fields
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_compliance_jurisdictions_extraction
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_data_contract_com_format
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_date_time_fields
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_default_values
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_metadata_preservation
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_min_max_only
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_only_enum
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_only_format
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_only_max
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_only_min
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_field_pattern_only
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_enum_values
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_format
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_max_type
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_min_max
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_min_type
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_invalid_pattern_regex
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_multiple_extensions
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_nested_extensions
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_nested_structures
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_normalization_errors
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_numeric_precision
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_odcs_vs_datacontract_detection
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_primary_key_constraints
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_required_vs_optional_fields
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_semantic_type_extraction
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_special_characters
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_unicode_characters
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_unique_constraints
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_unmappable_fields_in_extensions
+FAILED tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_very_long_field_names
+FAILED tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_db_query_duration_seconds_observe
+FAILED tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_file_upload_size_bytes_observe
+FAILED tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_histogram_buckets_configuration
+FAILED tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_http_request_duration_seconds_observe
+FAILED tests/unit/monitoring/test_metrics.py::PrometheusMetricsTest::test_job_duration_seconds_observe
+FAILED tests/unit/rate_limiting/test_rate_limiting_edge_cases.py::RateLimitingEdgeCaseTest::test_rate_limit_redis_failure
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_compliance_run_job_compliance_run_not_found
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_compliance_run_job_missing_compliance_run_id
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_contract_validation_job_contract_no_original_raw
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_contract_validation_job_missing_contract_id
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_dq_run_job_dq_run_not_found
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_dq_run_job_missing_dq_run_id
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_job_logic_compliance_run
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_job_logic_dq_run
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_semantic_mapping_job_contract_not_found
+FAILED tests/unit/worker/test_job_processors.py::JobProcessorsTest::test_execute_semantic_mapping_job_unknown_resource_type
+FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_concurrent_job_creation_100_jobs
+FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_concurrent_job_processing
+FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_retry_after_failure
+FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_starvation_prevention
+FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_timeout_handling
+FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_job_with_invalid_data
+FAILED tests/unit/worker/test_worker_edge_cases.py::WorkerServiceEdgeCaseTest::test_worker_restart_during_job_processing
+====== 56 failed, 539 passed, 95 skipped, 5 warnings in 78.89s (0:01:18) =======

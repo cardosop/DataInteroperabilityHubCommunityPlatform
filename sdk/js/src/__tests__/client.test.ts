@@ -52,7 +52,7 @@ describe('DataHubClient', () => {
       const config = { headers: {} };
       requestInterceptor(config);
       
-      expect(config.headers.Authorization).toBe('Bearer test-token');
+      expect((config.headers as any).Authorization).toBe('Bearer test-token');
     });
 
     it('should allow setting token after initialization', () => {
@@ -61,7 +61,7 @@ describe('DataHubClient', () => {
       const config = { headers: {} };
       requestInterceptor(config);
       
-      expect(config.headers.Authorization).toBe('Bearer new-token');
+      expect((config.headers as any).Authorization).toBe('Bearer new-token');
     });
   });
 
@@ -79,11 +79,20 @@ describe('DataHubClient', () => {
             },
           },
         },
+        config: {},
+        request: {},
       };
 
-      mockAxiosInstance.request.mockRejectedValueOnce(errorResponse);
+      // Get the response interceptor
+      const responseInterceptor = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
       
-      await expect(client.get('/test')).rejects.toThrow(ValidationError);
+      // Test the interceptor directly
+      try {
+        await responseInterceptor(errorResponse);
+        fail('Should have thrown error');
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(ValidationError);
+      }
     });
 
     it('should parse and throw NotFoundError for 404', async () => {
@@ -98,11 +107,20 @@ describe('DataHubClient', () => {
             },
           },
         },
+        config: {},
+        request: {},
       };
 
-      mockAxiosInstance.request.mockRejectedValueOnce(errorResponse);
+      // Get the response interceptor
+      const responseInterceptor = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
       
-      await expect(client.get('/test')).rejects.toThrow(NotFoundError);
+      // Test the interceptor directly
+      try {
+        await responseInterceptor(errorResponse);
+        fail('Should have thrown error');
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(NotFoundError);
+      }
     });
   });
 
@@ -113,26 +131,41 @@ describe('DataHubClient', () => {
         request: {},
       };
 
-      mockAxiosInstance.request
-        .mockRejectedValueOnce(errorResponse)
-        .mockRejectedValueOnce(errorResponse)
-        .mockResolvedValueOnce({ data: { success: true } });
+      let callCount = 0;
+      mockAxiosInstance.request.mockImplementation(() => {
+        callCount++;
+        if (callCount <= 2) {
+          return Promise.reject(errorResponse);
+        }
+        return Promise.resolve({ data: { success: true }, status: 200 });
+      });
 
       jest.useFakeTimers();
       
       const promise = client.get('/test');
       
-      // Fast-forward through retries
-      jest.advanceTimersByTime(3000);
+      // Fast-forward through retries using runAllTimersAsync for async code
+      await jest.runAllTimersAsync();
       
-      await expect(promise).resolves.toEqual({ success: true });
+      const result = await promise;
+      expect(result).toEqual({ success: true });
+      expect(mockAxiosInstance.request).toHaveBeenCalledTimes(3);
       
       jest.useRealTimers();
     });
 
     it('should not retry on 4xx errors', async () => {
       const errorResponse = {
-        response: { status: 400 },
+        response: { 
+          status: 400,
+          data: {
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Invalid input',
+              http_status: 400,
+            },
+          },
+        },
         request: {},
       };
 

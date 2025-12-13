@@ -16,6 +16,9 @@ class JobType(models.TextChoices):
     CONTRACT_VALIDATION = "CONTRACT_VALIDATION", "Contract Validation"
     SEMANTIC_MAPPING = "SEMANTIC_MAPPING", "Semantic Mapping"
     CONTRACT_MIGRATION = "CONTRACT_MIGRATION", "Contract Migration"
+    SCHEDULED_INGESTION = "SCHEDULED_INGESTION", "Scheduled Ingestion"
+    RETENTION_POLICY_ENFORCEMENT = "RETENTION_POLICY_ENFORCEMENT", "Retention Policy Enforcement"
+    SEARCH_INDEX_UPDATE = "SEARCH_INDEX_UPDATE", "Search Index Update"
 
 
 class JobStatus(models.TextChoices):
@@ -140,7 +143,7 @@ class Job(models.Model):
         
         # Track metrics
         try:
-            from hub.apps.observability.metrics import jobs_started_total
+            from hub.apps.observability.otel_metrics import jobs_started_total
             tenant_id = str(self.tenant.id) if self.tenant else 'system'
             jobs_started_total.labels(
                 job_type=self.type,
@@ -159,7 +162,7 @@ class Job(models.Model):
         
         # Track metrics
         try:
-            from hub.apps.observability.metrics import (
+            from hub.apps.observability.otel_metrics import (
                 jobs_completed_total,
                 job_duration_seconds
             )
@@ -192,7 +195,7 @@ class Job(models.Model):
         
         # Track metrics
         try:
-            from hub.apps.observability.metrics import (
+            from hub.apps.observability.otel_metrics import (
                 jobs_failed_total,
                 job_duration_seconds
             )

@@ -1,0 +1,86 @@
+Full Contract Test Suite - Comprehensive Execution
+==================================================
+Timestamp: 20251209_094832
+Python version: Python 3.14.0
+Django version: 6.0
+Parallel workers: 4
+Max failures: 100
+
+
+=== Test Execution (16 Parallel Batches) ===
+Total test files discovered:
+  - Contracts tests: 43
+  - Regression tests: 9
+  - Integration tests: 24
+  - E2E tests: 64
+  - Service tests: 22
+  - Other app tests: 93
+
+
+=== Batch 1: Foundation Unit Tests ===
+Files: 12
+Total: 0, Passed: 149, Failed: 12, Errors: 0, Skipped: 0, Duration: 182s
+
+=== Batch 2: Object Normalization Tests ===
+Files: 7
+Total: 0, Passed: 44, Failed: 5, Errors: 2, Skipped: 0, Duration: 163s
+
+=== Batch 3: Lineage Tests ===
+Files: 8
+Total: 0, Passed: 23, Failed: 27, Errors: 1, Skipped: 0, Duration: 483s
+
+=== Batch 4: API and Integration Tests ===
+Files: 10
+Total: 0, Passed: 11, Failed: 28, Errors: 2, Skipped: 6, Duration: 317s
+
+=== Batch 5: Phase 15 Tests ===
+Files: 6
+Total: 0, Passed: 36, Failed: 4, Errors: 2, Skipped: 0, Duration: 350s
+
+=== Batch 6: Regression Tests ===
+Files: 9
+Total: 0, Passed: 27, Failed: 132, Errors: 0, Skipped: 0, Duration: 253s
+
+=== Batch 7: Integration Tests ===
+Files: 24
+Total: 0, Passed: 146, Failed: 122, Errors: 0, Skipped: 34, Duration: 6051s
+
+=== Batch 8: Service Tests ===
+Files: 22
+Total: 0, Passed: 18, Failed: 9, Errors: 18, Skipped: 0, Duration: 242s
+
+=== Batch 9: E2E Contract Tests ===
+Files: 7
+Total: 0, Passed: 2, Failed: 57, Errors: 0, Skipped: 5, Duration: 361s
+
+=== Batch 10: E2E Data Tests ===
+Files: 11
+Total: 0, Passed: 1, Failed: 68, Errors: 4, Skipped: 2, Duration: 375s
+
+=== Batch 11: E2E Service Tests ===
+Files: 12
+Total: 0, Passed: 22, Failed: 48, Errors: 1, Skipped: 0, Duration: 636s
+
+=== Batch 12: E2E Governance Tests ===
+Files: 9
+Total: 0, Passed: 7, Failed: 98, Errors: 0, Skipped: 0, Duration: 290s
+
+=== Batch 13: E2E Persona Tests ===
+Files: 5
+Total: 0, Passed: 12, Failed: 83, Errors: 0, Skipped: 0, Duration: 304s
+
+=== Batch 14: E2E Marketplace Tests ===
+Files: 9
+Total: 0, Passed: 2, Failed: 80, Errors: 0, Skipped: 21, Duration: 376s
+
+=== Batch 15: E2E Infrastructure Tests ===
+Files: 11
+Total: 0, Passed: 54, Failed: 92, Errors: 30, Skipped: 3, Duration: 1812s
+
+=== Batch 16: Other App Tests ===
+Files: 28
+Total: 0, Passed: 74, Failed: 42, Errors: 10, Skipped: 0, Duration: 363s
+
+=== Final Summary ===
+Total failures: 16
+Report directory: test_reports_fullcontract_20251209_094832

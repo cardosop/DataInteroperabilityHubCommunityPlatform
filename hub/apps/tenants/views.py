@@ -323,12 +323,15 @@ class TenantConfigViewSet(viewsets.ViewSet):
         },
         tags=["Tenants"]
     )
-    def retrieve(self, request, tenant_id=None):
+    def retrieve(self, request, tenant_id=None, **kwargs):
         """
         Get tenant configuration.
         
         Returns tenant configuration with platform defaults for any unset values.
         """
+        # Extract tenant_id from kwargs if not provided directly
+        if tenant_id is None:
+            tenant_id = kwargs.get('tenant_id')
         tenant = self.get_tenant(tenant_id)
         config_dict = get_tenant_config(tenant)
         
@@ -349,12 +352,15 @@ class TenantConfigViewSet(viewsets.ViewSet):
         tags=["Tenants"]
     )
     @transaction.atomic
-    def partial_update(self, request, tenant_id=None):
+    def partial_update(self, request, tenant_id=None, **kwargs):
         """
         Update tenant configuration (partial update).
         
         Updates only the provided fields, leaving others unchanged.
         """
+        # Extract tenant_id from kwargs if not provided directly
+        if tenant_id is None:
+            tenant_id = kwargs.get('tenant_id')
         tenant = self.get_tenant(tenant_id)
         
         # Get or create tenant config

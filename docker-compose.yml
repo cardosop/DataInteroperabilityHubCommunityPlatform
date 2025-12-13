@@ -21,11 +21,18 @@ services:
     networks:
       - hub-net
 
-  # Redis for Job Queue
+  # Redis for Job Queue and Event Bus
   redis:
     image: redis:7-alpine
     container_name: hub-redis
-    command: redis-server --appendonly yes
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory ${REDIS_MAX_MEMORY:-2gb}
+      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -37,6 +44,10 @@ services:
       retries: 5
     networks:
       - hub-net
+    # Event bus specific configuration
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_MAX_MEMORY:-2gb}
+      - REDIS_MAXMEMORY_POLICY=${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
 
   # MinIO (S3-compatible storage)
   minio:
@@ -142,12 +153,21 @@ services:
       - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Data Interoperability Hub}
+      # OpenTelemetry configuration
+      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
+      - OPENTELEMETRY_METRICS_ENABLED=${OPENTELEMETRY_METRICS_ENABLED:-true}
+      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
+      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     networks:
       - hub-net
@@ -189,6 +209,13 @@ services:
       - WORKER_MAX_CONCURRENCY=${WORKER_MAX_CONCURRENCY:-4}
       - WORKER_RESERVED_SLOTS_RATIO=${WORKER_RESERVED_SLOTS_RATIO:-0.5}
       - WORKER_STARVATION_THRESHOLD_SECONDS=${WORKER_STARVATION_THRESHOLD_SECONDS:-300}
+      # OpenTelemetry configuration
+      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
+      - OPENTELEMETRY_METRICS_ENABLED=${OPENTELEMETRY_METRICS_ENABLED:-true}
+      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
+      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
     container_name: hub-worker
     # Process all priority queues: job_critical (HIGH) → job_default (NORMAL) → job_low (LOW)
     # Worker polls queues in priority order with reserved slots for HIGH priority
@@ -205,10 +232,71 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      jaeger:
+        condition: service_healthy
     networks:
       - hub-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Workflow Engine Service
+  workflow-engine-service:
+    build:
+      context: .
+      dockerfile: services/workflow-engine/Dockerfile
+    environment:
+      # Database configuration
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-hub}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
+      - POSTGRES_DB=${POSTGRES_DB:-hub}
+      # Redis configuration
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Workflow engine configuration
+      - WORKFLOW_ENGINE_HEALTH_PORT=${WORKFLOW_ENGINE_HEALTH_PORT:-8088}
+      - WORKFLOW_ENGINE_POLL_INTERVAL=${WORKFLOW_ENGINE_POLL_INTERVAL:-5}
+      - WORKFLOW_ENGINE_BATCH_SIZE=${WORKFLOW_ENGINE_BATCH_SIZE:-10}
+      # Django settings
+      - DJANGO_SETTINGS_MODULE=hub.settings
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-False}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # OpenTelemetry configuration
+      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
+      - OPENTELEMETRY_METRICS_ENABLED=${OPENTELEMETRY_METRICS_ENABLED:-true}
+      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
+      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+    container_name: hub-workflow-engine
+    # Process workflows continuously (polls for DRAFT and RUNNING workflows)
+    # Uses services/workflow-engine/main.py which includes health check HTTP server on port 8088
+    command: python services/workflow-engine/main.py --poll-interval ${WORKFLOW_ENGINE_POLL_INTERVAL:-5} --batch-size ${WORKFLOW_ENGINE_BATCH_SIZE:-10}
+    ports:
+      - "${WORKFLOW_ENGINE_HEALTH_PORT:-8088}:8088"  # Health check endpoints (/healthz, /ready, /metrics)
+    volumes:
+      - .:/app
+    env_file:
+      - .env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -262,6 +350,352 @@ services:
       timeout: 10s
       retries: 3
 
+  # Prefect Server
+  prefect-server:
+    build:
+      context: .
+      dockerfile: services/prefect-server/Dockerfile
+    container_name: hub-prefect-server
+    command: prefect server start --host 0.0.0.0
+    environment:
+      PREFECT_API_URL: http://localhost:4200/api
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:${PREFECT_DB_PASSWORD:-prefect}@prefect-db:5432/prefect
+      PREFECT_LOGGING_LEVEL: ${PREFECT_LOGGING_LEVEL:-INFO}
+    ports:
+      - "${PREFECT_SERVER_PORT:-4200}:4200"
+      - "${PREFECT_UI_PORT:-4201}:4201"
+    volumes:
+      - prefect-server-data:/root/.prefect
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    depends_on:
+      prefect-db:
+        condition: service_healthy
+    networks:
+      - hub-net
+
+  # Prefect Database (PostgreSQL)
+  prefect-db:
+    image: postgres:16-alpine
+    container_name: hub-prefect-db
+    environment:
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: ${PREFECT_DB_PASSWORD:-prefect}
+      POSTGRES_DB: prefect
+    ports:
+      - "${PREFECT_DB_PORT:-5433}:5432"
+    volumes:
+      - prefect-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prefect"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub-net
+
+  # Prefect Workers
+  prefect-worker:
+    image: prefecthq/prefect:2-python3.12
+    container_name: hub-prefect-worker
+    command: prefect worker start --pool ${PREFECT_WORKER_POOL:-default} --type process
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_LOGGING_LEVEL: ${PREFECT_LOGGING_LEVEL:-INFO}
+      PREFECT_API_KEY: ${PREFECT_API_KEY:-}
+    volumes:
+      - ./services/prefect-integration:/app:ro
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import sys; sys.exit(0)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Prefect Integration Service
+  prefect-integration-service:
+    build:
+      context: .
+      dockerfile: services/prefect-integration/Dockerfile
+    container_name: hub-prefect-integration
+    ports:
+      - "${PREFECT_INTEGRATION_PORT:-8084}:8084"
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_API_KEY: ${PREFECT_API_KEY:-}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Search Service
+  search-service:
+    build:
+      context: .
+      dockerfile: services/search-service/Dockerfile
+    container_name: hub-search
+    ports:
+      - "${SEARCH_PORT:-8085}:8085"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SEARCH_INDEX_UPDATE_INTERVAL_SECONDS: ${SEARCH_INDEX_UPDATE_INTERVAL_SECONDS:-60}
+      SEARCH_RESULT_LIMIT: ${SEARCH_RESULT_LIMIT:-100}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Observability Service
+  observability-service:
+    build:
+      context: .
+      dockerfile: services/observability-service/Dockerfile
+    container_name: hub-observability
+    ports:
+      - "${OBSERVABILITY_PORT:-8086}:8086"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      PROMETHEUS_URL: http://prometheus:9090
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      METRICS_UPDATE_INTERVAL_SECONDS: ${METRICS_UPDATE_INTERVAL_SECONDS:-60}
+      FRESHNESS_CHECK_INTERVAL_SECONDS: ${FRESHNESS_CHECK_INTERVAL_SECONDS:-300}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Webhook Service
+  webhook-service:
+    build:
+      context: .
+      dockerfile: services/webhook-service/Dockerfile
+    container_name: hub-webhook
+    ports:
+      - "${WEBHOOK_PORT:-8087}:8087"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      WEBHOOK_RETRY_MAX_ATTEMPTS: ${WEBHOOK_RETRY_MAX_ATTEMPTS:-5}
+      WEBHOOK_RETRY_BACKOFF_SECONDS: ${WEBHOOK_RETRY_BACKOFF_SECONDS:-1,5,30,300,1800}
+      WEBHOOK_TIMEOUT_SECONDS: ${WEBHOOK_TIMEOUT_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Event Bus Health Service
+  event-bus-health-service:
+    build:
+      context: .
+      dockerfile: services/event-bus/Dockerfile
+    container_name: hub-event-bus-health
+    ports:
+      - "${EVENT_BUS_HEALTH_PORT:-8090}:8090"
+    environment:
+      # Database configuration
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-hub}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
+      - POSTGRES_DB=${POSTGRES_DB:-hub}
+      # Redis configuration
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Event bus configuration
+      - EVENT_BUS_REDIS_POOL_SIZE=${EVENT_BUS_REDIS_POOL_SIZE:-50}
+      - EVENT_BUS_REDIS_MAX_CONNECTIONS=${EVENT_BUS_REDIS_MAX_CONNECTIONS:-100}
+      - EVENT_BUS_REDIS_SOCKET_TIMEOUT=${EVENT_BUS_REDIS_SOCKET_TIMEOUT:-5}
+      - EVENT_BUS_REDIS_SOCKET_CONNECT_TIMEOUT=${EVENT_BUS_REDIS_SOCKET_CONNECT_TIMEOUT:-5}
+      - EVENT_BUS_REDIS_RETRY_ON_TIMEOUT=${EVENT_BUS_REDIS_RETRY_ON_TIMEOUT:-true}
+      - EVENT_BUS_REDIS_HEALTH_CHECK_INTERVAL=${EVENT_BUS_REDIS_HEALTH_CHECK_INTERVAL:-30}
+      - EVENT_BUS_HEALTH_CHECK_INTERVAL=${EVENT_BUS_HEALTH_CHECK_INTERVAL:-30}
+      - EVENT_BUS_CHANNEL_PREFIX=${EVENT_BUS_CHANNEL_PREFIX:-events}
+      - EVENT_BUS_ENABLE_PERSISTENCE=${EVENT_BUS_ENABLE_PERSISTENCE:-true}
+      - EVENT_BUS_MAX_RETRIES=${EVENT_BUS_MAX_RETRIES:-3}
+      # Django settings
+      - DJANGO_SETTINGS_MODULE=hub.settings
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-False}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # Service configuration
+      - EVENT_BUS_HEALTH_PORT=${EVENT_BUS_HEALTH_PORT:-8090}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # OpenTelemetry configuration
+      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
+      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
+      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+    volumes:
+      - .:/app
+    env_file:
+      - .env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Event Schema Registry Service
+  event-schema-registry-service:
+    build:
+      context: .
+      dockerfile: services/event-schema-registry/Dockerfile
+    container_name: hub-event-schema-registry
+    ports:
+      - "${EVENT_SCHEMA_REGISTRY_PORT:-8091}:8091"
+    environment:
+      # Database configuration (for potential future schema persistence)
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-hub}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
+      - POSTGRES_DB=${POSTGRES_DB:-hub}
+      # Django settings
+      - DJANGO_SETTINGS_MODULE=hub.settings
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-False}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # Service configuration
+      - EVENT_SCHEMA_REGISTRY_PORT=${EVENT_SCHEMA_REGISTRY_PORT:-8091}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # OpenTelemetry configuration
+      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
+      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
+      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+    volumes:
+      - .:/app
+    env_file:
+      - .env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Workflow Registry Service
+  workflow-registry-service:
+    build:
+      context: .
+      dockerfile: services/workflow-registry/Dockerfile
+    container_name: hub-workflow-registry
+    ports:
+      - "${WORKFLOW_REGISTRY_PORT:-8089}:8089"
+    environment:
+      # Database configuration
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-hub}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
+      - POSTGRES_DB=${POSTGRES_DB:-hub}
+      # Django settings
+      - DJANGO_SETTINGS_MODULE=hub.settings
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-False}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # Service configuration
+      - WORKFLOW_REGISTRY_PORT=${WORKFLOW_REGISTRY_PORT:-8089}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # OpenTelemetry configuration
+      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
+      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
+      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+    volumes:
+      - .:/app
+    env_file:
+      - .env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # Prometheus
   prometheus:
     image: prom/prometheus:latest
@@ -278,6 +712,7 @@ services:
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     networks:
       - hub-net
@@ -288,6 +723,12 @@ services:
       - dq-service
       - compliance-service
       - datacontract-service
+      - prefect-integration-service
+      - search-service
+      - webhook-service
+      - workflow-engine-service
+      - workflow-registry-service
+      - event-schema-registry-service
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
       interval: 30s
@@ -361,6 +802,51 @@ services:
       timeout: 10s
       retries: 3
 
+  # Traefik API Gateway
+  traefik:
+    image: traefik:v3.0
+    container_name: hub-traefik
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=hub-net"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@hub.example.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--log.level=INFO"
+      - "--log.format=json"
+      - "--accesslog=true"
+      - "--accesslog.format=json"
+      - "--metrics.prometheus=true"
+    ports:
+      - "${TRAEFIK_PORT:-8080}:80"
+      - "${TRAEFIK_SECURE_PORT:-8443}:443"
+      - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"  # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infrastructure/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-letsencrypt:/letsencrypt
+    networks:
+      - hub-net
+    depends_on:
+      - jaeger
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.hub.local`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+
 networks:
   hub-net:
     driver: bridge
@@ -373,4 +859,7 @@ volumes:
   prometheus-data:
   grafana-data:
   alertmanager-data:
+  prefect-server-data:
+  prefect-db-data:
+  traefik-letsencrypt:
 

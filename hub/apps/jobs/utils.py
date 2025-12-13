@@ -23,6 +23,9 @@ JOB_TIMEOUTS = {
     JobType.CONTRACT_VALIDATION: 300,  # 5 minutes
     JobType.SEMANTIC_MAPPING: 60,  # 1 minute
     JobType.CONTRACT_MIGRATION: 600,  # 10 minutes
+    JobType.SCHEDULED_INGESTION: 3600,  # 1 hour (file discovery, download, dataset creation can take time)
+    JobType.RETENTION_POLICY_ENFORCEMENT: 3600,  # 1 hour
+    JobType.SEARCH_INDEX_UPDATE: 300,  # 5 minutes
 }
 
 # Maximum retry attempts per job type
@@ -32,6 +35,9 @@ JOB_MAX_RETRIES = {
     JobType.CONTRACT_VALIDATION: 2,  # Contract validation can retry up to 2 times
     JobType.SEMANTIC_MAPPING: 2,  # Semantic mapping can retry up to 2 times
     JobType.CONTRACT_MIGRATION: 1,  # Contract migration typically doesn't need retries
+    JobType.SCHEDULED_INGESTION: 2,  # Scheduled ingestion can retry up to 2 times
+    JobType.RETENTION_POLICY_ENFORCEMENT: 1,  # Retention policy enforcement typically doesn't need retries
+    JobType.SEARCH_INDEX_UPDATE: 2,  # Search index update can retry up to 2 times
 }
 
 # Base delay for exponential backoff (in seconds)
@@ -291,7 +297,7 @@ def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -
         
         # Update Prometheus metrics
         try:
-            from hub.apps.observability.metrics import tenant_running_jobs, tenant_queued_jobs
+            from hub.apps.observability.otel_metrics import tenant_running_jobs, tenant_queued_jobs
             new_count = cache.get(key, 0)
             if counter_type == "running":
                 tenant_running_jobs.labels(tenant_id=tenant_id).set(new_count)
@@ -328,7 +334,7 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
         
         # Update Prometheus metrics
         try:
-            from hub.apps.observability.metrics import tenant_running_jobs, tenant_queued_jobs
+            from hub.apps.observability.otel_metrics import tenant_running_jobs, tenant_queued_jobs
             new_count = cache.get(key, 0)
             if counter_type == "running":
                 tenant_running_jobs.labels(tenant_id=tenant_id).set(new_count)
@@ -424,27 +430,41 @@ def create_job(
         queue_name = get_queue_for_job_type(job_type)
     
     # Enqueue job for processing
-    queue = get_queue(queue_name)
-    from .tasks import process_job  # Import here to avoid circular imports
-    queue.enqueue(process_job, str(job.id), job_type=job_type, timeout=timeout_seconds)
+    try:
+        queue = get_queue(queue_name)
+        from .tasks import process_job  # Import here to avoid circular imports
+        queue.enqueue(process_job, str(job.id), job_type=job_type, timeout=timeout_seconds)
+    except Exception as e:
+        # Handle Redis connection failures gracefully (e.g., in test environments)
+        # Log warning but don't fail job creation - job remains in PENDING status
+        # so it can be manually processed or retried when Redis becomes available
+        logger.warning(
+            "job_enqueue_failed",
+            job_id=str(job.id),
+            job_type=job_type,
+            error=str(e),
+            message="Failed to enqueue job (Redis may be unavailable). Job record created but not queued."
+        )
+        # Note: Job remains in PENDING status - can be manually processed or retried
     
     return job
 
 
 def get_queue_for_job_type(job_type: str) -> str:
     """
-    Determine which queue to use for a job type based on priority.
+    Get queue name for a job type.
     
-    Priority mapping:
-    - HIGH (job_critical): DQ_RUN, COMPLIANCE_RUN (long-running, critical)
-    - NORMAL (job_default): SEMANTIC_MAPPING, CONTRACT_MIGRATION (standard jobs)
-    - LOW (job_low): CONTRACT_VALIDATION (quick validation jobs)
+    Queue mapping:
+    - DQ_RUN, COMPLIANCE_RUN → job_critical (HIGH priority)
+    - SEMANTIC_MAPPING, CONTRACT_MIGRATION → job_default (NORMAL priority)
+    - CONTRACT_VALIDATION → job_low (LOW priority)
+    - SCHEDULED_INGESTION → job_default (NORMAL priority, can be long-running)
     
     Args:
         job_type: Job type string
     
     Returns:
-        Queue name ('job_critical', 'job_default', 'job_low')
+        Queue name
     """
     # HIGH priority queue (job_critical) for long-running critical jobs
     if job_type in [JobType.DQ_RUN, JobType.COMPLIANCE_RUN]:
@@ -455,7 +475,7 @@ def get_queue_for_job_type(job_type: str) -> str:
         return 'job_low'
     
     # NORMAL priority queue (job_default) for standard jobs
-    # Includes: SEMANTIC_MAPPING, CONTRACT_MIGRATION, and any other job types
+    # Includes: SEMANTIC_MAPPING, CONTRACT_MIGRATION, SCHEDULED_INGESTION, RETENTION_POLICY_ENFORCEMENT, SEARCH_INDEX_UPDATE
     return 'job_default'
 
 

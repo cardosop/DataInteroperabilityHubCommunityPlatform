@@ -1,0 +1,12 @@
+Comprehensive Test Execution Summary - Sat Dec  6 02:25:27 PM -03 2025
+===============================================
+
+Django version: 4.2.27
+Python version: Python 3.14.0
+
+Running Unit Tests...
+❌ Unit Tests: 56 failed, 0 errors, 539 passed, 95 skipped
+Report: test_reports_django6/Unit Tests_20251206_142527.txt
+Total tests: 690
+
+Running Integration Tests...

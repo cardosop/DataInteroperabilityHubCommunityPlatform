@@ -1,0 +1,72 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0008103847503662109
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-005-49106fe5",
+      "journey_name": "Audit Access Logs",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1765585792.2458994,
+      "end_time": 1765585792.2467098,
+      "duration": 0.0008103847503662109,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "List Audit Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585792.2459056,
+          "end_time": 1765585792.246699,
+          "duration": 0.00079345703125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Filter Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585792.2467027,
+          "end_time": 1765585792.246705,
+          "duration": 2.384185791015625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Export Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585792.246707,
+          "end_time": 1765585792.246709,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "logs_count": 0,
+        "filtered_count": 0
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T00:29:52.246774"
+}

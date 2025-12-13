@@ -1,83 +1,156 @@
-# Documentation
+# Data Interoperability Hub - Documentation
 
-Complete documentation for the Interoperable Data Hub.
+Complete documentation for the Data Interoperability Hub platform.
 
-## Documentation Index
+## Quick Start
 
-### For Users
+- **[Quick Start Guide](QUICK_START.md)** - Get up and running in minutes
+- **[Developer Onboarding](DEVELOPER_ONBOARDING.md)** - Complete guide for new developers
 
-- **[User Guide](./USER_GUIDE.md)** - Complete guide for platform users
-  - Getting started
-  - Managing assets
-  - Working with contracts
-  - Data quality and compliance
-  - Marketplace operations
+## Core Documentation
 
-### For Developers
+### Architecture & Design
+- **[Architecture](ARCHITECTURE.md)** - System architecture overview
+- **[Services Architecture](SERVICES_ARCHITECTURE.md)** - Microservices and service boundaries
+- **[Docker Compose Structure](DOCKER_COMPOSE_STRUCTURE.md)** - Docker Compose configuration
 
-- **[Developer Onboarding Guide](./DEVELOPER_ONBOARDING.md)** - Guide for new developers
-  - Initial setup
-  - Development workflow
-  - Coding standards
-  - Testing guidelines
-  - Common tasks
+### APIs
+- **[API Reference](API_REFERENCE.md)** - Complete API documentation (REST, GraphQL, WebSocket)
+- **[API Standards](API_STANDARDS.md)** - API consistency standards and conventions
+- **[API Endpoints Reference](API_ENDPOINTS_REFERENCE.md)** - Detailed endpoint documentation
+- **[API Error Codes](API_ERROR_CODES.md)** - Comprehensive error code reference
+- **[API Best Practices](API_BEST_PRACTICES.md)** - API development best practices
+- **[API Versioning Policy](API_VERSIONING_POLICY.md)** - API versioning strategy
+- **[API Testing Guide](API_TESTING_GUIDE.md)** - API testing strategies
+- **[GraphQL API](GRAPHQL_API.md)** - GraphQL API documentation
+- **[WebSocket API](WEBSOCKET_API.md)** - WebSocket API for real-time updates
 
-- **[API Documentation](./API_DOCUMENTATION.md)** - Complete REST API reference
-  - Authentication
-  - All endpoints
-  - Request/response formats
-  - Error handling
-  - Rate limiting
+### Features
+- **[Features](FEATURES.md)** - Complete feature documentation
 
-- **[SDK Documentation](./SDK_DOCUMENTATION.md)** - SDK usage guides
-  - Python SDK
-  - JavaScript/TypeScript SDK
-  - Common patterns
-  - Best practices
+### Development
+- **[Development Guide](DEVELOPMENT_GUIDE.md)** - Development workflows and practices
+- **[Developer Onboarding](DEVELOPER_ONBOARDING.md)** - Complete onboarding guide
+- **[Testing Guide](TESTING_GUIDE.md)** - Testing strategies and test execution
+- **[Code Quality Standards](CODE_QUALITY_STANDARDS.md)** - Coding standards and best practices
+- **[Bug Prevention Patterns](BUG_PREVENTION_PATTERNS.md)** - Bug prevention strategies
+- **[Error Handling](ERROR_HANDLING.md)** - Error handling patterns and practices
 
-### For Operations
+### Deployment
+- **[Docker Compose Deployment](DOCKER_COMPOSE_DEPLOYMENT.md)** - Deploy using Docker Compose
+- **[Kubernetes Deployment](KUBERNETES_DEPLOYMENT.md)** - Production Kubernetes deployment
+- **[Service Deployment Guide](SERVICE_DEPLOYMENT_GUIDE.md)** - Individual service deployment
+- **[Docker Compose Structure](DOCKER_COMPOSE_STRUCTURE.md)** - Docker Compose configuration
 
-- **[Deployment Documentation](./DEPLOYMENT.md)** - Deployment procedures
-  - Staging deployment
-  - Production deployment
-  - Post-deployment verification
-  - Rollback procedures
-  - Troubleshooting
+### Operations
+- **[Monitoring](MONITORING.md)** - Monitoring and observability
+- **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Runbooks](RUNBOOKS.md)** - Operational runbooks
+
+### Infrastructure
+- **[Event Bus](EVENT_BUS.md)** - Event-driven communication
+- **[Event Types Reference](EVENT_TYPES_REFERENCE.md)** - Event type documentation
+
+## Documentation Structure
+
+```
+docs/
+├── README.md                    # This file
+├── QUICK_START.md               # Quick start guide
+├── ARCHITECTURE.md              # System architecture
+├── SERVICES_ARCHITECTURE.md     # Services architecture
+├── DOCKER_COMPOSE_STRUCTURE.md  # Docker Compose structure
+│
+├── API Documentation
+│   ├── API_REFERENCE.md         # Complete API reference
+│   ├── API_STANDARDS.md         # API standards
+│   ├── API_ENDPOINTS_REFERENCE.md # Endpoint reference
+│   ├── API_ERROR_CODES.md       # Error codes
+│   ├── API_BEST_PRACTICES.md    # Best practices
+│   ├── API_VERSIONING_POLICY.md # Versioning policy
+│   ├── API_TESTING_GUIDE.md     # API testing
+│   ├── GRAPHQL_API.md          # GraphQL API
+│   └── WEBSOCKET_API.md        # WebSocket API
+│
+├── Features
+│   └── FEATURES.md              # Feature overview
+│
+├── Development
+│   ├── DEVELOPMENT_GUIDE.md     # Development guide
+│   ├── DEVELOPER_ONBOARDING.md  # Onboarding
+│   ├── TESTING_GUIDE.md         # Testing guide
+│   ├── CODE_QUALITY_STANDARDS.md # Quality standards
+│   ├── BUG_PREVENTION_PATTERNS.md # Bug prevention
+│   └── ERROR_HANDLING.md        # Error handling
+│
+├── Deployment
+│   ├── DOCKER_COMPOSE_DEPLOYMENT.md # Docker Compose
+│   ├── KUBERNETES_DEPLOYMENT.md     # Kubernetes
+│   ├── SERVICE_DEPLOYMENT_GUIDE.md  # Service deployment
+│   └── DOCKER_COMPOSE_STRUCTURE.md  # Docker structure
+│
+├── Operations
+│   ├── MONITORING.md            # Monitoring
+│   ├── TROUBLESHOOTING.md        # Troubleshooting
+│   └── RUNBOOKS.md              # Runbooks
+│
+├── Infrastructure
+│   ├── EVENT_BUS.md             # Event bus
+│   └── EVENT_TYPES_REFERENCE.md  # Event types
+│
+└── deprecated-doc/              # Historical documentation
+    ├── archive/                  # Archived documentation
+    ├── test-docs/                # Test documentation
+    ├── deployment-docs/          # Deployment details
+    ├── strategy-docs/            # Strategy documents
+    ├── analysis-docs/            # Analysis documents
+    ├── feature-docs/             # Feature implementation details
+    ├── implementation-summaries/ # Implementation summaries
+    ├── phase-reports/            # Phase reports
+    ├── migration-strategies/      # Migration strategies
+    ├── test-results/             # Test results
+    └── fix-summaries/            # Fix summaries
+```
 
 ## Quick Links
 
-- **API Base URL**: `https://api.hub.example.com/api/v1`
-- **Interactive API Docs**: `/api-docs/` (Swagger UI)
-- **OpenAPI Schema**: `/api-docs/openapi.json`
-- **ReDoc**: `/api-docs/redoc/`
+- **API Base URL**: `http://localhost:8000/api/v1`
+- **GraphQL Endpoint**: `http://localhost:8000/graphql`
+- **API Documentation**: `http://localhost:8000/api-docs/`
+- **Health Check**: `http://localhost:8000/health`
+- **Swagger UI**: `http://localhost:8000/api-docs/`
+- **ReDoc**: `http://localhost:8000/api-docs/redoc/`
 
-## Additional Resources
+## Deprecated Documentation
 
-- **Runbooks**: `../runbooks/` - Operational procedures
-- **Input Docs**: `../InputDocs/` - Design and architecture documents
-- **E2E Tests**: `../tests/e2e/` - End-to-end test documentation
+Historical documentation, detailed implementation guides, user journey mappings, and other non-essential documentation have been moved to `deprecated-doc/` for reference:
 
-## Documentation Standards
+- **archive/** - Archived detailed documentation
+- **test-docs/** - Test documentation
+- **deployment-docs/** - Deployment details
+- **strategy-docs/** - Strategy documents
+- **analysis-docs/** - Analysis documents
+- **feature-docs/** - Feature implementation details
+- **implementation-summaries/** - Implementation summaries
+- **phase-reports/** - Phase reports
+- **migration-strategies/** - Migration strategies
+- **test-results/** - Test results
+- **fix-summaries/** - Fix summaries
 
-All documentation follows these standards:
+**Note**: Deprecated documentation may not reflect the current state of the application. For current documentation, refer to the main documentation above.
 
-- **Markdown format**: All docs are in Markdown
-- **Table of Contents**: All docs include TOC
-- **Code Examples**: All code examples are tested
-- **Versioning**: Docs are versioned with the codebase
-- **Regular Updates**: Docs are updated with each release
+## Contributing
 
-## Contributing to Documentation
+When updating documentation:
+1. Keep documentation current with code changes
+2. Use clear, concise language
+3. Include code examples where helpful
+4. Update the table of contents when adding new sections
+5. Mark deprecated features clearly
+6. Move outdated documentation to `deprecated-doc/archive/`
 
-To update documentation:
+## Related Resources
 
-1. Edit the relevant `.md` file in `docs/`
-2. Test code examples
-3. Update version and date
-4. Submit PR with documentation changes
-
----
-
-**Last Updated**: 2025-01-15  
-**Documentation Version**: 1.0.0
-
+- [OpenSpec Specifications](../openspec/) - Specification-driven development
+- [Examples](../examples/) - Code examples
+- [Runbooks](runbooks/) - Operational runbooks

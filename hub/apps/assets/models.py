@@ -107,6 +107,25 @@ class Asset(models.Model):
         blank=True,
         help_text="User who created the asset"
     )
+    # Popularity and health metrics
+    health_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Overall health score (0-100) combining DQ, compliance, freshness, usage"
+    )
+    popularity_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Popularity score (0-100) based on views, downloads, usage frequency"
+    )
+    view_count = models.IntegerField(
+        default=0,
+        help_text="Number of times asset has been viewed"
+    )
+    download_count = models.IntegerField(
+        default=0,
+        help_text="Number of times asset has been downloaded"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

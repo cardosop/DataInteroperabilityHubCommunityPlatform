@@ -1,0 +1,25 @@
+# Bandit YAML configuration (alternative format)
+# See: https://bandit.readthedocs.io/en/latest/config.html
+
+exclude_dirs:
+  - .git
+  - .venv
+  - venv
+  - __pycache__
+  - .pytest_cache
+  - .mypy_cache
+  - build
+  - dist
+  - migrations
+  - node_modules
+  - tests
+
+skips:
+  - B101  # assert_used - Allow asserts in tests
+  - B601  # shell_injection_subprocess - Some subprocess calls are safe
+
+tests: []
+
+severity_level: low
+confidence_level: low
+

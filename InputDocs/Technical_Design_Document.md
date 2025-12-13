@@ -184,7 +184,7 @@ Columns:
 - `tenant_id` (UUID, FK, NOT NULL)
 - `asset_id` (UUID, FK → `assets.id`, NULL - nullable for contract-only assets)
 - `version` (integer, NOT NULL, per-asset version counter)
-- `source_spec` (text, NOT NULL: e.g. `ODCS`, `DATA_CONTRACT_DOT_COM`)
+- `source_spec` (text, NOT NULL: e.g. `ODCS`)
 - `source_spec_version` (text, NOT NULL: `3.0.2`, etc.)
 - `hub_contract_version` (text, NOT NULL: `1.0.0`, etc.)
 - `raw_contract` (JSONB or text, NOT NULL; original content)
@@ -196,7 +196,7 @@ Columns:
     - `privacy_compliance`: contains_personal_data, personal_data_categories, jurisdictions, legal_bases, retention_policy
     - `lifecycle`: data_source, refresh_cadence, slas (availability, latency_ms_p95)
     - `marketplace`: license_summary, intended_use, restricted_use
-    - `extensions`: Unmappable fields preserved in extensions.odcs or extensions.datacontract_com
+    - `extensions`: Unmappable fields preserved in extensions.odcs
 - `cli_validation_status` (enum: `VALID`, `INVALID`, `WARNING_ONLY`, `ERROR`, NULL, DEFAULT NULL - set after CLI validation)
 - `cli_output` (JSONB, NULL; sanitized lint/validation details)
 - `status` (enum: `DRAFT`, `VALID`, `INVALID`, `WARNING_ONLY`, NOT NULL, DEFAULT `DRAFT`)

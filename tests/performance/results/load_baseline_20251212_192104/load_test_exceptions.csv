@@ -1,0 +1,36 @@
+Count,Message,Traceback,Nodes
+1,"Tried to set status on a request that has not yet been made. Make sure you use a with-block, like this:
+
+with self.client.request(..., catch_response=True) as response:
+    response.failure(...)","  File ""/usr/local/lib/python3.12/site-packages/locust/user/task.py"", line 355, in run
+    self.execute_next_task()
+  File ""/usr/local/lib/python3.12/site-packages/locust/user/task.py"", line 388, in execute_next_task
+    self.execute_task(self._task_queue.popleft())
+  File ""/usr/local/lib/python3.12/site-packages/locust/user/task.py"", line 505, in execute_task
+    task(self.user)
+  File ""/app/tests/performance/locust_api_endpoints_availability.py"", line 173, in test_init_file_upload
+    response = self._test_endpoint('POST', '/api/v1/files/init', json=file_data, name='POST /files/init')
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/app/tests/performance/locust_api_endpoints_availability.py"", line 222, in _test_endpoint
+    response.failure(f""Client error: {response.status_code}"")
+  File ""/usr/local/lib/python3.12/site-packages/locust/contrib/fasthttp.py"", line 748, in failure
+    raise LocustError(
+",local
+2,"Tried to set status on a request that has not yet been made. Make sure you use a with-block, like this:
+
+with self.client.request(..., catch_response=True) as response:
+    response.failure(...)","  File ""/usr/local/lib/python3.12/site-packages/locust/user/task.py"", line 355, in run
+    self.execute_next_task()
+  File ""/usr/local/lib/python3.12/site-packages/locust/user/task.py"", line 388, in execute_next_task
+    self.execute_task(self._task_queue.popleft())
+  File ""/usr/local/lib/python3.12/site-packages/locust/user/task.py"", line 505, in execute_task
+    task(self.user)
+  File ""/app/tests/performance/locust_api_endpoints_availability.py"", line 69, in test_get_asset_detail
+    self.test_get_assets()
+  File ""/app/tests/performance/locust_api_endpoints_availability.py"", line 60, in test_get_assets
+    self._test_endpoint('GET', '/api/v1/assets', name='GET /assets')
+  File ""/app/tests/performance/locust_api_endpoints_availability.py"", line 222, in _test_endpoint
+    response.failure(f""Client error: {response.status_code}"")
+  File ""/usr/local/lib/python3.12/site-packages/locust/contrib/fasthttp.py"", line 748, in failure
+    raise LocustError(
+",local

@@ -12,9 +12,11 @@ from .views import (
     accept_invitation,
     APIKeyViewSet
 )
+from .sso_views import SSOViewSet
 
 router = DefaultRouter()
 router.register(r"api-keys", APIKeyViewSet, basename="api-key")
+router.register(r"sso", SSOViewSet, basename="sso")
 
 urlpatterns = [
     path("login/", login, name="login"),

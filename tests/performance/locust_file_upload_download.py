@@ -23,28 +23,27 @@ except ImportError:
     pytestmark = pytest.mark.skip(reason="locust not installed")
 
 if LOCUST_AVAILABLE:
-        import os
-        import time
-        import random
-        import requests
-        import boto3
-        from botocore.config import Config
-        from botocore.exceptions import ClientError
+    import os
+    import time
+    import random
+    import requests
+    import boto3
+    from botocore.config import Config
+    from botocore.exceptions import ClientError
 
-        import sys
-        from pathlib import Path
-        project_root = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(project_root))
-        from tests.performance.helpers import PerformanceTestHelper
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent.parent
+    sys.path.insert(0, str(project_root))
+    from tests.performance.helpers import PerformanceTestHelper
 
+    class FileUploadDownloadUser(FastHttpUser):
+        """Locust user for file upload/download load testing"""
 
-        class FileUploadDownloadUser(FastHttpUser):
-            """Locust user for file upload/download load testing"""
+        wait_time = between(1, 3)  # Wait 1-3 seconds between tasks
+        weight = 1
 
-            wait_time = between(1, 3)  # Wait 1-3 seconds between tasks
-            weight = 1
-
-            def on_start(self):
+        def on_start(self):
             """Set up test user and authentication"""
             self.helper = PerformanceTestHelper(base_url=self.host)
             self.test_data = self.helper.create_test_tenant_and_user(
@@ -58,7 +57,7 @@ if LOCUST_AVAILABLE:
             # Initialize S3 client for direct uploads
             self._init_s3_client()
 
-            def _init_s3_client(self):
+        def _init_s3_client(self):
             """Initialize S3 client for direct uploads"""
             try:
                 # Get S3 settings from environment or use defaults
@@ -78,23 +77,23 @@ if LOCUST_AVAILABLE:
                 print(f"Warning: Could not initialize S3 client: {e}")
                 self.s3_client = None
 
-            @task(3)
-            def test_file_upload_small(self):
+        @task(3)
+        def test_file_upload_small(self):
             """Test small file upload (10-100 MB)"""
             self._upload_file(size_mb=random.randint(10, 100))
 
-            @task(2)
-            def test_file_upload_medium(self):
+        @task(2)
+        def test_file_upload_medium(self):
             """Test medium file upload (100-500 MB)"""
             self._upload_file(size_mb=random.randint(100, 500))
 
-            @task(1)
-            def test_file_upload_large(self):
+        @task(1)
+        def test_file_upload_large(self):
             """Test large file upload (0.5-2 GB) - chunked"""
             self._upload_file(size_mb=random.randint(500, 2000), use_chunked=True)
 
-            @task(5)
-            def test_file_download(self):
+        @task(5)
+        def test_file_download(self):
             """Test file download"""
             if not self.uploaded_files:
                 return
@@ -137,7 +136,7 @@ if LOCUST_AVAILABLE:
                 else:
                     response.failure(f"Unexpected status: {response.status_code}")
 
-            def _upload_file(self, size_mb: int, use_chunked: bool = False):
+        def _upload_file(self, size_mb: int, use_chunked: bool = False):
             """Upload a file of specified size"""
             file_name = f"perf-test-{int(time.time())}-{random.randint(1000, 9999)}.csv"
 

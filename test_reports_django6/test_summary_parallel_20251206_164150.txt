@@ -1,0 +1,43 @@
+Parallel Test Execution Summary - Sat Dec  6 04:41:50 PM -03 2025
+=======================================
+
+Django version: 4.2.27
+Python version: Python 3.14.0
+Parallel workers: 4
+
+Running Unit Tests (parallel)...
+❌ Unit Tests: 0 failed, 0 errors, 0 passed, 0 skipped (1s)
+Report: test_reports_django6/Unit Tests_parallel_20251206_164150.txt
+Duration: 1s
+Total tests: 
+
+Running Integration Tests (parallel)...
+❌ Integration Tests: 0 failed, 0 errors, 0 passed, 0 skipped (0s)
+Report: test_reports_django6/Integration Tests_parallel_20251206_164150.txt
+Duration: 0s
+Total tests: 
+
+Running Regression Tests (parallel)...
+❌ Regression Tests: 0 failed, 0 errors, 0 passed, 0 skipped (0s)
+Report: test_reports_django6/Regression Tests_parallel_20251206_164150.txt
+Duration: 0s
+Total tests: 
+
+Running Security Tests (parallel)...
+❌ Security Tests: 0 failed, 0 errors, 0 passed, 0 skipped (1s)
+Report: test_reports_django6/Security Tests_parallel_20251206_164150.txt
+Duration: 1s
+Total tests: 
+
+Running Performance Tests (parallel)...
+❌ Performance Tests: 0 failed, 0 errors, 0 passed, 0 skipped (0s)
+Report: test_reports_django6/Performance Tests_parallel_20251206_164150.txt
+Duration: 0s
+Total tests: 
+
+Running E2E Tests (parallel)...
+❌ E2E Tests: 0 failed, 0 errors, 0 passed, 0 skipped (0s)
+Report: test_reports_django6/E2E Tests_parallel_20251206_164150.txt
+Duration: 0s
+Total tests: 
+

@@ -19,6 +19,9 @@ def config_cmd():
 @click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
 def get_config(key: str, output_format: str):
     """Get configuration value(s)"""
+    # Reload config to ensure we're using the correct file path (important for tests with monkeypatch)
+    config._load()
+    
     if key:
         value = config.get(key)
         if output_format == 'json':
@@ -67,6 +70,9 @@ def set_config(key: str, value: str):
 @click.argument('key')
 def unset_config(key: str):
     """Unset configuration value"""
+    # Reload config to ensure we're using the correct file path (important for tests with monkeypatch)
+    config._load()
+    
     if key in ['api_key', 'access_token', 'refresh_token']:
         click.echo("Warning: Use 'datahub logout' to clear authentication tokens", err=True)
         return

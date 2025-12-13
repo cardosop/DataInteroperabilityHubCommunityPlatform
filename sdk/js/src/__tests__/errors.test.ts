@@ -49,7 +49,7 @@ describe('Error Classes', () => {
 
   describe('Specific Error Types', () => {
     it('should create ValidationError', () => {
-      const error = new ValidationError('Invalid input', 'req-123', {
+      const error = new ValidationError('Invalid input', 'req-123', undefined, {
         field_errors: [],
       });
 

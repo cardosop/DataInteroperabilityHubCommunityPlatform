@@ -6,9 +6,12 @@
  */
 
 export { DataHubClient } from './client';
-export { DataHubClientConfig } from './config';
+export type { DataHubClientConfig } from './config';
+export { DEFAULT_CONFIG } from './config';
 export * from './errors';
 export * from './types';
+export { ContractsAPI } from './contracts';
+export { LineageAPI } from './lineage';
 
 // Re-export generated API clients
 export * from './generated';

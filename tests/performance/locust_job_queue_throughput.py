@@ -24,24 +24,23 @@ except ImportError:
     pytestmark = pytest.mark.skip(reason="locust not installed")
 
 if LOCUST_AVAILABLE:
-        import time
-        import random
-        from typing import List, Dict
+    import time
+    import random
+    from typing import List, Dict
 
-        import sys
-        from pathlib import Path
-        project_root = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(project_root))
-        from tests.performance.helpers import PerformanceTestHelper
+    import sys
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent.parent
+    sys.path.insert(0, str(project_root))
+    from tests.performance.helpers import PerformanceTestHelper
 
+    class JobQueueThroughputUser(FastHttpUser):
+        """Locust user for job queue throughput testing"""
 
-        class JobQueueThroughputUser(FastHttpUser):
-            """Locust user for job queue throughput testing"""
+        wait_time = between(0.5, 2)  # Wait 0.5-2 seconds between tasks
+        weight = 1
 
-            wait_time = between(0.5, 2)  # Wait 0.5-2 seconds between tasks
-            weight = 1
-
-            def on_start(self):
+        def on_start(self):
             """Set up test user and authentication"""
             self.helper = PerformanceTestHelper(base_url=self.host)
             self.test_data = self.helper.create_test_tenant_and_user(
@@ -53,23 +52,23 @@ if LOCUST_AVAILABLE:
             self.created_jobs: List[Dict] = []
             self.job_start_times: Dict[str, float] = {}
 
-            @task(5)
-            def test_create_dq_job(self):
+        @task(5)
+        def test_create_dq_job(self):
             """Create a DQ run job"""
             self._create_job('DQ_RUN')
 
-            @task(5)
-            def test_create_compliance_job(self):
+        @task(5)
+        def test_create_compliance_job(self):
             """Create a compliance run job"""
             self._create_job('COMPLIANCE_RUN')
 
-            @task(3)
-            def test_create_semantic_mapping_job(self):
+        @task(3)
+        def test_create_semantic_mapping_job(self):
             """Create a semantic mapping job"""
             self._create_job('SEMANTIC_MAPPING')
 
-            @task(10)
-            def test_poll_job_status(self):
+        @task(10)
+        def test_poll_job_status(self):
             """Poll job status"""
             if not self.created_jobs:
                 return
@@ -117,8 +116,8 @@ if LOCUST_AVAILABLE:
                 else:
                     response.failure(f"Unexpected status: {response.status_code}")
 
-            @task(2)
-            def test_list_jobs(self):
+        @task(2)
+        def test_list_jobs(self):
             """List jobs with filtering"""
             params = {
                 'status': random.choice(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
@@ -138,7 +137,7 @@ if LOCUST_AVAILABLE:
                 else:
                     response.failure(f"Unexpected status: {response.status_code}")
 
-            def _create_job(self, job_type: str):
+        def _create_job(self, job_type: str):
             """Create a job of specified type"""
             # First, we need a resource to create a job for
             # For DQ/compliance, we need a file or dataset
@@ -150,7 +149,7 @@ if LOCUST_AVAILABLE:
             elif job_type == 'SEMANTIC_MAPPING':
                 self._create_semantic_mapping_job()
 
-            def _create_dq_or_compliance_run(self, run_type: str):
+        def _create_dq_or_compliance_run(self, run_type: str):
             """Create a DQ or compliance run (which creates a job)"""
             endpoint = '/dq-runs' if run_type == 'DQ_RUN' else '/compliance-runs'
 
@@ -194,7 +193,7 @@ if LOCUST_AVAILABLE:
                 else:
                     response.failure(f"Failed to create {run_type}: {response.status_code}")
 
-            def _create_semantic_mapping_job(self):
+        def _create_semantic_mapping_job(self):
             """Create a semantic mapping job"""
             # This would typically be created when an asset is created
             # For now, we'll create a minimal asset which triggers semantic mapping
@@ -224,7 +223,7 @@ if LOCUST_AVAILABLE:
                 else:
                     response.failure(f"Failed to create asset: {response.status_code}")
 
-            def _ensure_test_file(self) -> str:
+        def _ensure_test_file(self) -> str:
             """Ensure we have a test file, create one if needed"""
             # For performance testing, we can reuse a single test file
             # or create a minimal one

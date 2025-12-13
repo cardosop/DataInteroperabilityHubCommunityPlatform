@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-002-74ea2164",
+      "journey_name": "Request Access to Asset",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1765588758.4059553,
+      "end_time": 1765588759.5214765,
+      "duration": 1.1155211925506592,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'Persona4DataConsumerJourneys' object has no attribute '_create_access_request'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588758.405963,
+          "end_time": 1765588759.5009172,
+          "duration": 1.094954252243042,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Find Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588759.500928,
+          "end_time": 1765588759.521462,
+          "duration": 0.020534038543701172,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Check Access Status",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588759.5214684,
+          "end_time": 1765588759.5214725,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T01:19:19.521550"
+}

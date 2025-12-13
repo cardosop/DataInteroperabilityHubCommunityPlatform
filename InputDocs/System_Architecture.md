@@ -22,7 +22,7 @@ It focuses on:
 - Support **multi-tenant** data onboarding and cataloging via:
   - Data-first, Contract-first, Contract-only flows.
 - Enforce:
-  - **Data contract standards** (ODCS/DataContract.com) via DataContract CLI.
+  - **Data contract standards** (ODCS v3.0.2+) via DataContract CLI.
   - **Data Quality** and **Compliance** checks at **intake** (fail-closed for compliance).
 - Treat data contracts as **semantic assets**:
   - Provide URIs, JSON-LD, RDF, and a SPARQL endpoint.

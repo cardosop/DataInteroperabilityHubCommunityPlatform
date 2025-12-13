@@ -6,7 +6,7 @@ Tests partial updates, validation errors, and concurrent updates.
 import pytest
 import threading
 import time
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -20,7 +20,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
-class APIEdgeCaseTest(TestCase):
+class APIEdgeCaseTest(TransactionTestCase):
     """Edge case tests for API endpoints"""
     
     def setUp(self):
@@ -350,10 +350,15 @@ class APIEdgeCaseTest(TestCase):
     
     def test_concurrent_updates_two_users(self):
         """Test two users updating contract simultaneously"""
+        # Ensure tenant is saved and committed
+        self.tenant.save()
+        
         contract = ContractFactoryEnhanced.create_contract_with_all_sections(
             tenant=self.tenant,
             created_by=self.user
         )
+        # Ensure contract is saved and committed
+        contract.save()
         
         # Create second user
         user2 = User.objects.create_user(
@@ -362,33 +367,43 @@ class APIEdgeCaseTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        user2.save()
         client2 = APIClient()
         client2.force_authenticate(user=user2)
         
         update_count = {"user1": 0, "user2": 0}
         errors = {"user1": [], "user2": []}
+        lock = threading.Lock()
         
-        def update_contract(user_id, client):
+        def update_contract(user_id, client, contract_id):
             try:
-                current_hub = contract.hub_contract_json.copy()
+                # Refresh contract from database to get latest version
+                contract_obj = Contract.objects.get(id=contract_id)
+                current_hub = contract_obj.hub_contract_json.copy() if contract_obj.hub_contract_json else {}
+                if "info" not in current_hub:
+                    current_hub["info"] = {}
                 current_hub["info"]["name"] = f"Updated by {user_id}"
                 
+                # Convert to JSON string properly
+                import json
                 response = client.patch(
-                    f"/api/v1/contracts/contracts/{contract.id}/",
-                    {"original_raw": str(current_hub).replace("'", '"')},
+                    f"/api/v1/contracts/contracts/{contract_id}/",
+                    {"original_raw": json.dumps(current_hub)},
                     format="json"
                 )
                 
-                if response.status_code == status.HTTP_200_OK:
-                    update_count[user_id] += 1
-                else:
-                    errors[user_id].append(response.status_code)
+                with lock:
+                    if response.status_code == status.HTTP_200_OK:
+                        update_count[user_id] += 1
+                    else:
+                        errors[user_id].append(f"Status {response.status_code}: {response.data if hasattr(response, 'data') else 'No data'}")
             except Exception as e:
-                errors[user_id].append(str(e))
+                with lock:
+                    errors[user_id].append(str(e))
         
         # Start concurrent updates
-        thread1 = threading.Thread(target=update_contract, args=("user1", self.client))
-        thread2 = threading.Thread(target=update_contract, args=("user2", client2))
+        thread1 = threading.Thread(target=update_contract, args=("user1", self.client, contract.id))
+        thread2 = threading.Thread(target=update_contract, args=("user2", client2, contract.id))
         
         thread1.start()
         thread2.start()
@@ -397,7 +412,8 @@ class APIEdgeCaseTest(TestCase):
         thread2.join()
         
         # At least one update should succeed
-        self.assertGreater(update_count["user1"] + update_count["user2"], 0)
+        error_msg = f"No updates succeeded. Errors: {errors}"
+        self.assertGreater(update_count["user1"] + update_count["user2"], 0, error_msg)
     
     def test_concurrent_update_during_semantic_mapping(self):
         """Test updating contract while semantic mapping in progress"""

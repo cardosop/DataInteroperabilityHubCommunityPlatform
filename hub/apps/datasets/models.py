@@ -68,6 +68,52 @@ class Dataset(models.Model):
         default=1,
         help_text="Dataset version (per-asset version counter)"
     )
+    # Version history fields
+    parent_version = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        related_name='child_versions',
+        null=True,
+        blank=True,
+        help_text="Parent version in version tree"
+    )
+    version_hash = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="SHA-256 hash of schema and file content for version identification"
+    )
+    snapshot_metadata = models.JSONField(
+        default=dict,
+        null=True,
+        blank=True,
+        help_text="Additional metadata for version snapshot"
+    )
+    is_current = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Whether this is the current version for the asset"
+    )
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Timestamp when version was archived"
+    )
+    semantic_version = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Semantic version string (e.g., '1.0.0')"
+    )
+    version_tags = models.JSONField(
+        default=list,
+        null=True,
+        blank=True,
+        help_text="Version tags (e.g., ['production', 'staging'])"
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -86,6 +132,12 @@ class Dataset(models.Model):
             models.Index(fields=["tenant", "asset"]),
             models.Index(fields=["tenant", "file"]),
             models.Index(fields=["tenant", "format"]),
+            # Version history indexes
+            models.Index(fields=["tenant", "asset", "is_current"]),
+            models.Index(fields=["tenant", "asset", "semantic_version"]),
+            models.Index(fields=["tenant", "asset", "parent_version"]),
+            models.Index(fields=["tenant", "asset", "archived_at"]),
+            models.Index(fields=["version_hash"]),
         ]
         # Unique constraint on (tenant, asset, version) if asset is provided
         constraints = [
@@ -100,3 +152,88 @@ class Dataset(models.Model):
         asset_name = self.asset.name if self.asset else "No Asset"
         return f"{asset_name} - {self.file.name} (v{self.version}, {self.format})"
 
+
+class SchemaVersion(models.Model):
+    """
+    Tracks schema evolution for dataset versions.
+    
+    Stores schema snapshots and change logs for each dataset version.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dataset = models.OneToOneField(
+        Dataset,
+        on_delete=models.CASCADE,
+        related_name='schema_version',
+        help_text="Dataset version this schema belongs to"
+    )
+    parent_schema_version = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        related_name='child_schema_versions',
+        null=True,
+        blank=True,
+        help_text="Parent schema version in evolution chain"
+    )
+    schema_json = models.JSONField(
+        help_text="Complete schema JSON snapshot"
+    )
+    compatibility_level = models.CharField(
+        max_length=20,
+        help_text="Compatibility level: FULLY_COMPATIBLE, BACKWARD_COMPATIBLE, FORWARD_COMPATIBLE, INCOMPATIBLE"
+    )
+    change_summary = models.JSONField(
+        default=dict,
+        help_text="Summary of changes (counts by change type)"
+    )
+    change_log = models.JSONField(
+        default=dict,
+        help_text="Complete change log with all changes"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = "schema_versions"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["dataset"]),
+            models.Index(fields=["parent_schema_version"]),
+            models.Index(fields=["compatibility_level"]),
+        ]
+    
+    def __str__(self):
+        return f"SchemaVersion for {self.dataset} ({self.compatibility_level})"
+
+
+class DatasetSnapshot(models.Model):
+    """
+    Optional snapshot storage for time-travel queries.
+    
+    Stores complete dataset snapshots for point-in-time recovery.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dataset = models.ForeignKey(
+        Dataset,
+        on_delete=models.CASCADE,
+        related_name='snapshots',
+        help_text="Dataset version this snapshot belongs to"
+    )
+    snapshot_data = models.JSONField(
+        help_text="Complete dataset snapshot (schema, sample data, metadata)"
+    )
+    snapshot_type = models.CharField(
+        max_length=20,
+        default="FULL",
+        help_text="Snapshot type: FULL, SCHEMA_ONLY, METADATA_ONLY"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = "dataset_snapshots"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["dataset", "created_at"]),
+            models.Index(fields=["snapshot_type"]),
+        ]
+    
+    def __str__(self):
+        return f"Snapshot for {self.dataset} ({self.snapshot_type})"

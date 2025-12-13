@@ -1,0 +1,887 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.0, pytest-9.0.1, pluggy-1.6.0 -- /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+cachedir: .pytest_cache
+django: version: 6.0, settings: hub.settings (from env)
+rootdir: /home/ph/Desktop/DataInteroperabilityHub
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: locust-2.42.6, django-4.11.1, xdist-3.8.0, Faker-38.2.0, mock-3.15.1, cov-7.0.0, typeguard-4.4.4, anyio-4.12.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+created: 4/4 workers
+4 workers [27 items]
+
+scheduling tests via WorkStealingScheduling
+
+services/datacontract-service/tests/test_cli_integration.py::test_health_check 
+services/datacontract-service/tests/test_normalization.py::test_compute_contract_hash 
+services/worker/tests/test_health.py::HealthzEndpointTest::test_healthz_no_deep_checks 
+services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_returns_503_when_database_unavailable 
+[gw2] [  3%] PASSED services/datacontract-service/tests/test_normalization.py::test_compute_contract_hash 
+services/datacontract-service/tests/test_integration.py::test_validate_valid_odcs 
+[gw3] [  7%] PASSED services/datacontract-service/tests/test_cli_integration.py::test_health_check 
+services/datacontract-service/tests/test_cli_integration.py::test_validate_valid_contract 
+[gw2] [ 11%] FAILED services/datacontract-service/tests/test_integration.py::test_validate_valid_odcs 
+services/datacontract-service/tests/test_integration.py::test_normalize_odcs_yaml 
+[gw3] [ 14%] FAILED services/datacontract-service/tests/test_cli_integration.py::test_validate_valid_contract 
+services/datacontract-service/tests/test_cli_integration.py::test_validate_invalid_contract 
+[gw2] [ 18%] PASSED services/datacontract-service/tests/test_integration.py::test_normalize_odcs_yaml 
+services/datacontract-service/tests/test_integration.py::test_normalize_odcs 
+[gw2] [ 22%] PASSED services/datacontract-service/tests/test_integration.py::test_normalize_odcs 
+[gw3] [ 25%] FAILED services/datacontract-service/tests/test_cli_integration.py::test_validate_invalid_contract 
+services/datacontract-service/tests/test_cli_integration.py::test_lint_contract 
+services/datacontract-service/tests/test_integration.py::test_validation_caching 
+[gw2] [ 29%] FAILED services/datacontract-service/tests/test_integration.py::test_validation_caching 
+services/datacontract-service/tests/test_integration.py::test_convert_odcs_yaml_to_json 
+[gw3] [ 33%] FAILED services/datacontract-service/tests/test_cli_integration.py::test_lint_contract 
+services/datacontract-service/tests/test_cli_integration.py::test_convert_contract 
+[gw2] [ 37%] PASSED services/datacontract-service/tests/test_integration.py::test_convert_odcs_yaml_to_json 
+services/datacontract-service/tests/test_integration.py::test_lint_contract 
+[gw3] [ 40%] PASSED services/datacontract-service/tests/test_cli_integration.py::test_convert_contract 
+services/datacontract-service/tests/test_cli_integration.py::test_validate_timeout 
+[gw2] [ 44%] FAILED services/datacontract-service/tests/test_integration.py::test_lint_contract 
+services/datacontract-service/tests/test_normalization.py::test_detect_spec_type_odcs 
+[gw3] [ 48%] FAILED services/datacontract-service/tests/test_cli_integration.py::test_validate_timeout 
+services/datacontract-service/tests/test_cli_integration.py::test_validate_missing_contract 
+[gw2] [ 51%] FAILED services/datacontract-service/tests/test_normalization.py::test_detect_spec_type_odcs 
+services/datacontract-service/tests/test_normalization.py::test_normalize_contract_yaml 
+[gw2] [ 55%] PASSED services/datacontract-service/tests/test_normalization.py::test_normalize_contract_yaml 
+[gw3] [ 59%] FAILED services/datacontract-service/tests/test_cli_integration.py::test_validate_missing_contract 
+services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_checks_database_connection 
+services/datacontract-service/tests/test_normalization.py::test_normalize_contract_json 
+[gw2] [ 62%] PASSED services/datacontract-service/tests/test_normalization.py::test_normalize_contract_json 
+services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_returns_json_response 
+[gw1] [ 66%] PASSED services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_returns_503_when_database_unavailable 
+services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_returns_503_when_redis_unavailable 
+[gw1] [ 70%] PASSED services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_returns_503_when_redis_unavailable 
+services/worker/tests/test_health.py::HealthzEndpointTest::test_healthz_returns_json_response 
+[gw1] [ 74%] PASSED services/worker/tests/test_health.py::HealthzEndpointTest::test_healthz_returns_json_response 
+services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_returns_200_when_all_dependencies_ready 
+[gw1] [ 77%] PASSED services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_returns_200_when_all_dependencies_ready 
+[gw0] [ 81%] PASSED services/worker/tests/test_health.py::HealthzEndpointTest::test_healthz_no_deep_checks 
+services/worker/tests/test_health.py::HealthzEndpointTest::test_healthz_returns_200_when_worker_running 
+[gw0] [ 85%] PASSED services/worker/tests/test_health.py::HealthzEndpointTest::test_healthz_returns_200_when_worker_running 
+[gw3] [ 88%] PASSED services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_checks_database_connection 
+services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_checks_redis_connection 
+[gw3] [ 92%] PASSED services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_checks_redis_connection 
+[gw2] [ 96%] PASSED services/worker/tests/test_health.py::ReadyEndpointTest::test_ready_returns_json_response 
+services/datacontract-service/tests/test_normalization.py::test_normalize_odcs_contract 
+[gw2] [100%] PASSED services/datacontract-service/tests/test_normalization.py::test_normalize_odcs_contract /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/report_core.py:107: CoverageWarning: Couldn't parse Python file '/home/ph/Desktop/DataInteroperabilityHub/hub/apps/contracts/impact_visualization.py' (couldnt-parse); see https://coverage.readthedocs.io/en/7.12.0/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/lib/python3.14/site-packages/coverage/report_core.py:107: CoverageWarning: Couldn't parse Python file '/home/ph/Desktop/DataInteroperabilityHub/hub/apps/datasets/versioning.py' (couldnt-parse); see https://coverage.readthedocs.io/en/7.12.0/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+
+
+==================================== ERRORS ====================================
+__ ERROR collecting services/semantic-service/tests/test_rdf_jsonld_smoke.py ___
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/semantic-service/tests/test_rdf_jsonld_smoke.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_rdf_jsonld_smoke'
+_ ERROR collecting services/semantic-service/tests/test_integration_normalization_rdf.py _
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/semantic-service/tests/test_integration_normalization_rdf.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_integration_normalization_rdf'
+_ ERROR collecting services/semantic-service/tests/test_integration_jsonld_context.py _
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/semantic-service/tests/test_integration_jsonld_context.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_integration_jsonld_context'
+_ ERROR collecting services/semantic-service/tests/test_integration_sparql_vocabularies.py _
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/semantic-service/tests/test_integration_sparql_vocabularies.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_integration_sparql_vocabularies'
+_______ ERROR collecting services/semantic-service/tests/test_mapping.py _______
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/semantic-service/tests/test_mapping.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_mapping'
+_ ERROR collecting services/semantic-service/tests/test_fuseki_integration.py __
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/semantic-service/tests/test_fuseki_integration.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_fuseki_integration'
+_ ERROR collecting services/semantic-service/tests/test_standard_vocabularies.py _
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/semantic-service/tests/test_standard_vocabularies.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_standard_vocabularies'
+___ ERROR collecting services/semantic-service/tests/test_uri_resolution.py ____
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/semantic-service/tests/test_uri_resolution.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_uri_resolution'
+_ ERROR collecting services/compliance-service/tests/test_compliance_report.py _
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/compliance-service/tests/test_compliance_report.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_compliance_report'
+___ ERROR collecting services/compliance-service/tests/test_pii_detection.py ___
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/compliance-service/tests/test_pii_detection.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_pii_detection'
+___ ERROR collecting services/compliance-service/tests/test_policy_engine.py ___
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/compliance-service/tests/test_policy_engine.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_policy_engine'
+_ ERROR collecting services/compliance-service/tests/test_regulatory_mapping.py _
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/compliance-service/tests/test_regulatory_mapping.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_regulatory_mapping'
+_ ERROR collecting services/compliance-service/tests/test_risk_calculation.py __
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/compliance-service/tests/test_risk_calculation.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_risk_calculation'
+_______ ERROR collecting services/dq-service/tests/test_dq_execution.py ________
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/dq-service/tests/test_dq_execution.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_dq_execution'
+____ ERROR collecting services/prefect-integration/tests/test_connectors.py ____
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/prefect-integration/tests/test_connectors.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_connectors'
+_ ERROR collecting services/prefect-integration/tests/test_deployment_sync.py __
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/prefect-integration/tests/test_deployment_sync.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_deployment_sync'
+_______ ERROR collecting services/prefect-integration/tests/test_e2e.py ________
+ImportError while importing test module '/home/ph/Desktop/DataInteroperabilityHub/services/prefect-integration/tests/test_e2e.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/linuxbrew/.linuxbrew/opt/python@3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'tests.test_e2e'
+___ ERROR collecting services/prefect-integration/tests/test_integration.py ____
+import file mismatch:
+imported module 'tests.test_integration' has this __file__ attribute:
+  /home/ph/Desktop/DataInteroperabilityHub/services/datacontract-service/tests/test_integration.py
+which is not the same as the test file we want to collect:
+  /home/ph/Desktop/DataInteroperabilityHub/services/prefect-integration/tests/test_integration.py
+HINT: remove __pycache__ / .pyc files and/or use a unique basename for your test file modules
+=================================== FAILURES ===================================
+___________________________ test_validate_valid_odcs ___________________________
+[gw2] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_integration.py:93: in test_validate_valid_odcs
+    assert response.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-09 14:58:34,170", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable""}
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable"
+_________________________ test_validate_valid_contract _________________________
+[gw3] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_cli_integration.py:66: in test_validate_valid_contract
+    assert response.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-09 14:58:34,176", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable""}
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable"
+________________________ test_validate_invalid_contract ________________________
+[gw3] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_cli_integration.py:85: in test_validate_invalid_contract
+    assert response.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-09 14:58:34,189", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable""}
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable"
+___________________________ test_validation_caching ____________________________
+[gw2] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_integration.py:152: in test_validation_caching
+    assert response1.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-09 14:58:34,195", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable""}
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable"
+______________________________ test_lint_contract ______________________________
+[gw3] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_cli_integration.py:102: in test_lint_contract
+    assert response.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-09 14:58:34,196", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/lint "HTTP/1.1 503 Service Unavailable""}
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/lint "HTTP/1.1 503 Service Unavailable"
+______________________________ test_lint_contract ______________________________
+[gw2] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_integration.py:209: in test_lint_contract
+    assert response.status_code == 200
+E   assert 503 == 200
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-09 14:58:34,208", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/lint "HTTP/1.1 503 Service Unavailable""}
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/lint "HTTP/1.1 503 Service Unavailable"
+____________________________ test_validate_timeout _____________________________
+[gw3] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_cli_integration.py:140: in test_validate_timeout
+    assert response.status_code in [200, 504]
+E   assert 503 in [200, 504]
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-09 14:58:34,208", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable""}
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable"
+__________________________ test_detect_spec_type_odcs __________________________
+[gw2] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_normalization.py:72: in test_detect_spec_type_odcs
+    assert spec_version == "1.0"
+E   AssertionError: assert '3.0.2' == '1.0'
+E     
+E     - 1.0
+E     + 3.0.2
+________________________ test_validate_missing_contract ________________________
+[gw3] linux -- Python 3.14.0 /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+services/datacontract-service/tests/test_cli_integration.py:153: in test_validate_missing_contract
+    assert response.status_code in [200, 400, 422]
+E   assert 503 in [200, 400, 422]
+E    +  where 503 = <Response [503 Service Unavailable]>.status_code
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2025-12-09 14:58:34,215", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable""}
+------------------------------ Captured log call -------------------------------
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/validate "HTTP/1.1 503 Service Unavailable"
+- generated xml file: /home/ph/Desktop/DataInteroperabilityHub/test_reports_fullcontract_20251209_094832/Batch_8:_Service_Tests_junit.xml -
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.14.0-final-0 ________________
+
+Name                                                                                                              Stmts   Miss Branch BrPart  Cover   Missing
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+hub/__init__.py                                                                                                       0      0      0      0   100%
+hub/apps/__init__.py                                                                                                  0      0      0      0   100%
+hub/apps/api/__init__.py                                                                                              0      0      0      0   100%
+hub/apps/api/analytics/__init__.py                                                                                    0      0      0      0   100%
+hub/apps/api/analytics/analytics.py                                                                                  92     92     34      0     0%   6-274
+hub/apps/api/analytics/apps.py                                                                                        5      0      0      0   100%
+hub/apps/api/analytics/middleware.py                                                                                 39     39     16      0     0%   6-87
+hub/apps/api/analytics/migrations/0001_initial.py                                                                     8      8      0      0     0%   3-18
+hub/apps/api/analytics/migrations/__init__.py                                                                         0      0      0      0   100%
+hub/apps/api/analytics/models.py                                                                                     21      1      0      0    95%   74
+hub/apps/api/analytics/urls.py                                                                                        6      6      0      0     0%   6-13
+hub/apps/api/analytics/views.py                                                                                      92     92     20      0     0%   6-292
+hub/apps/api/apps.py                                                                                                  4      0      0      0   100%
+hub/apps/api/exceptions.py                                                                                           96     96     64      0     0%   6-250
+hub/apps/api/middleware.py                                                                                          116    116     44      0     0%   6-256
+hub/apps/api/openapi_enhancement.py                                                                                 104    104     62      0     0%   7-344
+hub/apps/api/openapi_validation.py                                                                                   62     62     46      0     0%   6-149
+hub/apps/api/tests/__init__.py                                                                                        0      0      0      0   100%
+hub/apps/api/tests/test_analytics.py                                                                                 51     51     10      0     0%   6-148
+hub/apps/api/tests/test_api_integration.py                                                                           58     58      0      0     0%   6-119
+hub/apps/api/tests/test_middleware.py                                                                                85     85      8      0     0%   4-146
+hub/apps/api/tests/test_openapi_validation.py                                                                        31     31      0      0     0%   6-100
+hub/apps/api/tests/test_versioning.py                                                                                68     68      0      0     0%   6-125
+hub/apps/api/urls.py                                                                                                  3      3      0      0     0%   1-4
+hub/apps/api/versioning.py                                                                                          165    165     44      0     0%   6-344
+hub/apps/api/views.py                                                                                                66     66      6      0     0%   6-187
+hub/apps/assets/__init__.py                                                                                           0      0      0      0   100%
+hub/apps/assets/apps.py                                                                                               4      0      0      0   100%
+hub/apps/assets/dependencies.py                                                                                     116    116     52      0     0%   6-339
+hub/apps/assets/health_score.py                                                                                     109    109     42      0     0%   6-236
+hub/apps/assets/migrations/0001_initial.py                                                                            8      8      0      0     0%   3-18
+hub/apps/assets/migrations/0002_rename_assets_tenant_key_idx_assets_tenant__76965e_idx_and_more.py                    4      4      0      0     0%   3-12
+hub/apps/assets/migrations/0003_add_popularity_metrics.py                                                             4      4      0      0     0%   3-12
+hub/apps/assets/migrations/__init__.py                                                                                0      0      0      0   100%
+hub/apps/assets/models.py                                                                                            83     33     26      0    46%   150, 154-190, 202-242, 246-247
+hub/apps/assets/popularity.py                                                                                        61     61      6      0     0%   6-186
+hub/apps/assets/recommendations.py                                                                                  122    122     52      0     0%   6-349
+hub/apps/assets/serializers.py                                                                                       41     41     14      0     0%   4-100
+hub/apps/assets/tests/__init__.py                                                                                     0      0      0      0   100%
+hub/apps/assets/tests/factories.py                                                                                   23     23      6      0     0%   6-121
+hub/apps/assets/tests/test_activation_integration.py                                                                 74     74      0      0     0%   4-271
+hub/apps/assets/tests/test_asset_activation.py                                                                      101    101      0      0     0%   4-403
+hub/apps/assets/tests/test_asset_crud.py                                                                             83     83      0      0     0%   4-215
+hub/apps/assets/tests/test_asset_relationships.py                                                                   119    119      0      0     0%   4-399
+hub/apps/assets/tests/test_dependencies.py                                                                           45     45      0      0     0%   6-141
+hub/apps/assets/tests/test_health_score.py                                                                           81     81      4      0     0%   6-217
+hub/apps/assets/tests/test_health_score_integration.py                                                               31     31      0      0     0%   6-113
+hub/apps/assets/tests/test_models.py                                                                                 48     48      0      0     0%   4-134
+hub/apps/assets/tests/test_popularity.py                                                                             64     64      4      0     0%   6-152
+hub/apps/assets/tests/test_popularity_integration.py                                                                 27     27      4      0     0%   6-69
+hub/apps/assets/tests/test_recommendations.py                                                                        46     46      4      0     0%   6-209
+hub/apps/assets/tests/test_recommendations_integration.py                                                            23     23      0      0     0%   6-88
+hub/apps/assets/tests/test_serializers.py                                                                            30     30      0      0     0%   4-81
+hub/apps/assets/urls.py                                                                                               6      6      0      0     0%   4-11
+hub/apps/assets/views.py                                                                                            253    253     66      0     0%   6-722
+hub/apps/audit/__init__.py                                                                                            0      0      0      0   100%
+hub/apps/audit/apps.py                                                                                                4      0      0      0   100%
+hub/apps/audit/management/__init__.py                                                                                 0      0      0      0   100%
+hub/apps/audit/management/commands/__init__.py                                                                        0      0      0      0   100%
+hub/apps/audit/management/commands/archive_old_audit_events.py                                                       27     27      8      0     0%   7-62
+hub/apps/audit/migrations/0001_initial.py                                                                             8      8      0      0     0%   3-18
+hub/apps/audit/migrations/0002_alter_auditevent_options_and_more.py                                                   4      4      0      0     0%   3-12
+hub/apps/audit/migrations/__init__.py                                                                                 0      0      0      0   100%
+hub/apps/audit/models.py                                                                                             28      5      2      0    77%   85, 89-91, 95
+hub/apps/audit/serializers.py                                                                                         9      9      0      0     0%   4-29
+hub/apps/audit/tests/__init__.py                                                                                      0      0      0      0   100%
+hub/apps/audit/tests/test_audit_event_creation.py                                                                    80     80      0      0     0%   4-205
+hub/apps/audit/tests/test_audit_event_querying.py                                                                   104    104      4      0     0%   4-257
+hub/apps/audit/tests/test_models.py                                                                                  18     18      0      0     0%   4-46
+hub/apps/audit/tests/test_utils.py                                                                                   46     46      0      0     0%   4-123
+hub/apps/audit/urls.py                                                                                               13     13      2      0     0%   4-43
+hub/apps/audit/utils.py                                                                                              84     84     36      0     0%   6-268
+hub/apps/audit/views.py                                                                                             105    105     34      0     0%   6-219
+hub/apps/auth/__init__.py                                                                                             0      0      0      0   100%
+hub/apps/auth/apps.py                                                                                                10      2      0      0    80%   13-14
+hub/apps/auth/authentication.py                                                                                      72     72     22      0     0%   6-159
+hub/apps/auth/jwt_utils.py                                                                                           62     62     18      0     0%   6-169
+hub/apps/auth/middleware.py                                                                                         130    130     52      0     0%   12-270
+hub/apps/auth/migrations/0001_initial.py                                                                              9      9      0      0     0%   3-19
+hub/apps/auth/migrations/0002_rename_api_keys_tenant_user_idx_api_keys_tenant__fbfac6_idx_and_more.py                 4      4      0      0     0%   3-12
+hub/apps/auth/migrations/__init__.py                                                                                  0      0      0      0   100%
+hub/apps/auth/models.py                                                                                              66     17      4      0    70%   70, 75, 80, 84-86, 90-91, 133, 138, 143, 147, 151, 155, 159-161
+hub/apps/auth/openapi_extensions.py                                                                                  12      2      0      0    83%   18, 34
+hub/apps/auth/permissions.py                                                                                         47     47     24      0     0%   6-120
+hub/apps/auth/serializers.py                                                                                         56     56      2      0     0%   6-119
+hub/apps/auth/sso.py                                                                                                154    154     42      0     0%   6-365
+hub/apps/auth/sso_views.py                                                                                           76     76     30      0     0%   6-245
+hub/apps/auth/tests/__init__.py                                                                                       0      0      0      0   100%
+hub/apps/auth/tests/test_api_key_auth.py                                                                             58     58      0      0     0%   4-147
+hub/apps/auth/tests/test_authentication_flows.py                                                                     94     94      0      0     0%   4-243
+hub/apps/auth/tests/test_authorization.py                                                                            68     68      0      0     0%   4-169
+hub/apps/auth/tests/test_jwt_utils.py                                                                                40     40      0      0     0%   4-88
+hub/apps/auth/tests/test_middleware.py                                                                               61     61      4      0     0%   4-126
+hub/apps/auth/tests/test_models.py                                                                                   36     36      0      0     0%   4-78
+hub/apps/auth/tests/test_sso.py                                                                                      26     26      0      0     0%   6-79
+hub/apps/auth/tests/test_sso_integration.py                                                                          24     24      0      0     0%   6-74
+hub/apps/auth/urls.py                                                                                                 8      8      0      0     0%   4-21
+hub/apps/auth/views.py                                                                                              185    185     26      0     0%   6-516
+hub/apps/compliance/__init__.py                                                                                       0      0      0      0   100%
+hub/apps/compliance/apps.py                                                                                           4      0      0      0   100%
+hub/apps/compliance/contract_integration.py                                                                          56     56     10      0     0%   6-160
+hub/apps/compliance/migrations/0001_initial.py                                                                        7      7      0      0     0%   3-20
+hub/apps/compliance/migrations/__init__.py                                                                            0      0      0      0   100%
+hub/apps/compliance/models.py                                                                                        46      6      2      0    83%   140, 144-147, 153-154
+hub/apps/compliance/serializers.py                                                                                   17     17      2      0     0%   4-73
+hub/apps/compliance/service_client.py                                                                                65     65     16      0     0%   6-127
+hub/apps/compliance/tests/__init__.py                                                                                 0      0      0      0   100%
+hub/apps/compliance/tests/test_compliance_execution.py                                                               93     93      0      0     0%   4-267
+hub/apps/compliance/tests/test_contract_integration.py                                                              103    103      4      0     0%   10-273
+hub/apps/compliance/tests/test_fail_closed_behavior.py                                                               74     74      0      0     0%   4-227
+hub/apps/compliance/tests/test_models.py                                                                             20     20      0      0     0%   4-51
+hub/apps/compliance/tests/test_risk_score_calculation.py                                                             61     61      0      0     0%   4-229
+hub/apps/compliance/tests/test_service_client.py                                                                     39     39      0      0     0%   4-124
+hub/apps/compliance/urls.py                                                                                           6      6      0      0     0%   4-11
+hub/apps/compliance/views.py                                                                                        172    172     50      0     0%   6-390
+hub/apps/contracts/__init__.py                                                                                        0      0      0      0   100%
+hub/apps/contracts/apps.py                                                                                            4      0      0      0   100%
+hub/apps/contracts/caching.py                                                                                        79     79     16      0     0%   6-298
+hub/apps/contracts/cli_client.py                                                                                    117    117     26      0     0%   6-338
+hub/apps/contracts/context_fields.py                                                                                 35     35     30      0     0%   6-96
+hub/apps/contracts/coverage.py                                                                                       78     78     20      0     0%   4-182
+hub/apps/contracts/impact_analysis.py                                                                               248    248    108      0     0%   8-589
+hub/apps/contracts/impact_notifications.py                                                                           77     77     18      0     0%   6-255
+hub/apps/contracts/lineage.py                                                                                       411    411    232      0     0%   11-814
+hub/apps/contracts/management/__init__.py                                                                             0      0      0      0   100%
+hub/apps/contracts/management/commands/__init__.py                                                                    0      0      0      0   100%
+hub/apps/contracts/management/commands/migrate_contracts.py                                                          80     80     34      0     0%   9-170
+hub/apps/contracts/migration.py                                                                                     170    170    100      0     0%   6-319
+hub/apps/contracts/migration_manager.py                                                                              72     72     26      0     0%   6-224
+hub/apps/contracts/migrations/0001_initial.py                                                                         8      8      0      0     0%   3-19
+hub/apps/contracts/migrations/0002_rename_contracts_tenant_asset_idx_contracts_tenant__910299_idx_and_more.py         5      5      0      0     0%   3-16
+hub/apps/contracts/migrations/0002_set_default_hub_contract_version.py                                               11     11      0      0     0%   6-35
+hub/apps/contracts/migrations/0003_add_hub_contract_json_gin_index.py                                                 4      4      0      0     0%   4-13
+hub/apps/contracts/migrations/0004_remove_datacontract_com_from_original_spec_type.py                                27     27      8      0     0%   5-76
+hub/apps/contracts/migrations/0005_add_lineage_indexes.py                                                             4      4      0      0     0%   7-16
+hub/apps/contracts/migrations/0005_merge_20251208_1803.py                                                             4      4      0      0     0%   3-13
+hub/apps/contracts/migrations/0006_add_additional_indexes.py                                                          4      4      0      0     0%   7-16
+hub/apps/contracts/migrations/0007_add_comprehensive_indexes_phase15.py                                               4      4      0      0     0%   14-23
+hub/apps/contracts/migrations/__init__.py                                                                             0      0      0      0   100%
+hub/apps/contracts/models.py                                                                                         76     20     16      0    61%   194-195, 199-223, 235-244
+hub/apps/contracts/normalization.py                                                                                 641    641    458      0     0%   6-1232
+hub/apps/contracts/normalization_metrics.py                                                                          58     58     32      0     0%   6-165
+hub/apps/contracts/optimization.py                                                                                   58     58     20      0     0%   9-191
+hub/apps/contracts/pagination.py                                                                                     45     45     10      0     0%   6-154
+hub/apps/contracts/serializers.py                                                                                   191    191     20      0     0%   6-615
+hub/apps/contracts/source_paths.py                                                                                   79     79     34      0     0%   6-231
+hub/apps/contracts/spec_detection.py                                                                                 44     44     24      0     0%   6-149
+hub/apps/contracts/tests/__init__.py                                                                                  0      0      0      0   100%
+hub/apps/contracts/tests/factories.py                                                                                47     47     28      0     0%   6-254
+hub/apps/contracts/tests/test_api_filtering_phase15.py                                                              137    137      8      0     0%   10-280
+hub/apps/contracts/tests/test_cli_client.py                                                                         138    138      0      0     0%   4-352
+hub/apps/contracts/tests/test_context_fields.py                                                                      43     43      0      0     0%   4-82
+hub/apps/contracts/tests/test_contract_crud.py                                                                       70     70      0      0     0%   4-209
+hub/apps/contracts/tests/test_contract_status_rules.py                                                               58     58      0      0     0%   4-197
+hub/apps/contracts/tests/test_coverage.py                                                                            63     63      0      0     0%   4-156
+hub/apps/contracts/tests/test_dcs_rejection.py                                                                       91     91      4      0     0%   7-293
+hub/apps/contracts/tests/test_definitions_normalization.py                                                           86     86      0      0     0%   4-265
+hub/apps/contracts/tests/test_edge_cases_phase15.py                                                                  93     93      8      0     0%   11-388
+hub/apps/contracts/tests/test_error_reporting.py                                                                     65     65      2      0     0%   4-171
+hub/apps/contracts/tests/test_impact_analysis.py                                                                     50     50      0      0     0%   6-172
+hub/apps/contracts/tests/test_impact_api.py                                                                          50     50      0      0     0%   6-110
+hub/apps/contracts/tests/test_impact_visualization.py                                                                46     46      2      0     0%   6-125
+hub/apps/contracts/tests/test_index_performance_phase15.py                                                          104    104     22      0     0%   12-241
+hub/apps/contracts/tests/test_integration.py                                                                         43     43      2      0     0%   7-119
+hub/apps/contracts/tests/test_integration_lineage.py                                                                 74     74     16      0     0%   4-207
+hub/apps/contracts/tests/test_integration_metrics_phase15.py                                                         63     63      4      0     0%   11-198
+hub/apps/contracts/tests/test_integration_new_mappings.py                                                            78     78     10      0     0%   7-277
+hub/apps/contracts/tests/test_integration_onboarding.py                                                             299    299     54      0     0%   11-798
+hub/apps/contracts/tests/test_integration_phase2_objects.py                                                          69     69      2      0     0%   4-217
+hub/apps/contracts/tests/test_integration_versioning.py                                                              21     21      4      0     0%   4-82
+hub/apps/contracts/tests/test_jsonfield_queries.py                                                                   65     65      4      0     0%   7-229
+hub/apps/contracts/tests/test_lineage_extraction.py                                                                  99     99      0      0     0%   4-240
+hub/apps/contracts/tests/test_lineage_reference_resolution.py                                                       109    109      0      0     0%   4-201
+hub/apps/contracts/tests/test_lineage_traversal.py                                                                   40     40      0      0     0%   4-88
+hub/apps/contracts/tests/test_lineage_visualization.py                                                               31     31      0      0     0%   4-74
+hub/apps/contracts/tests/test_migration.py                                                                          238    238      2      0     0%   4-691
+hub/apps/contracts/tests/test_models.py                                                                              41     41      0      0     0%   4-122
+hub/apps/contracts/tests/test_models_complete_normalization.py                                                       86     86      0      0     0%   4-273
+hub/apps/contracts/tests/test_normalization.py                                                                      211    211      0      0     0%   4-671
+hub/apps/contracts/tests/test_normalization_metrics.py                                                              102    102     20      0     0%   12-199
+hub/apps/contracts/tests/test_normalizers.py                                                                         79     79      0      0     0%   4-151
+hub/apps/contracts/tests/test_performance.py                                                                        138    138      4      0     0%   9-541
+hub/apps/contracts/tests/test_serializers.py                                                                         34     34      0      0     0%   4-95
+hub/apps/contracts/tests/test_source_paths.py                                                                        60     60      0      0     0%   4-123
+hub/apps/contracts/tests/test_spec_detection.py                                                                      33     33      0      0     0%   4-63
+hub/apps/contracts/tests/test_support_channels_normalization.py                                                      64     64      2      0     0%   4-203
+hub/apps/contracts/tests/test_typed_models.py                                                                        71     71      0      0     0%   4-197
+hub/apps/contracts/tests/test_validation.py                                                                          91     91      0      0     0%   4-288
+hub/apps/contracts/tests/test_validation_enrichment.py                                                              210    210      0      0     0%   4-326
+hub/apps/contracts/tests/test_versioning.py                                                                         101    101      0      0     0%   4-183
+hub/apps/contracts/tests/test_views_filtering_sorting.py                                                            129    129      0      0     0%   8-367
+hub/apps/contracts/tests/test_views_validation.py                                                                    75     75      0      0     0%   4-193
+hub/apps/contracts/typed_models.py                                                                                  333     43     24      0    81%   40-42, 72-74, 79-81, 97-99, 123-125, 130-132, 197-199, 270-272, 426-428, 473-475, 479-481, 494-503
+hub/apps/contracts/urls.py                                                                                            6      6      0      0     0%   4-11
+hub/apps/contracts/validation.py                                                                                    226    226    154      0     0%   7-479
+hub/apps/contracts/versioning.py                                                                                    130     99     56      0    17%   31, 34, 37-39, 42-44, 47, 50-52, 55, 73-94, 107-118, 133-153, 165, 180-193, 212-225, 243-253, 277-314, 330-331
+hub/apps/contracts/views.py                                                                                         669    669    306      0     0%   6-2234
+hub/apps/datasets/__init__.py                                                                                         0      0      0      0   100%
+hub/apps/datasets/apps.py                                                                                             5      0      0      0   100%
+hub/apps/datasets/migrations/0001_initial.py                                                                          8      8      0      0     0%   3-19
+hub/apps/datasets/migrations/0002_rename_datasets_tenant_asset_idx_datasets_tenant__5d12ce_idx_and_more.py            4      4      0      0     0%   3-12
+hub/apps/datasets/migrations/0003_add_version_history_fields.py                                                       5      5      0      0     0%   3-13
+hub/apps/datasets/migrations/0004_add_schema_evolution_tracking.py                                                    6      6      0      0     0%   3-14
+hub/apps/datasets/migrations/0005_add_version_history_indexes.py                                                      4      4      0      0     0%   11-20
+hub/apps/datasets/migrations/__init__.py                                                                              0      0      0      0   100%
+hub/apps/datasets/models.py                                                                                          61      4      0      0    93%   152-153, 204, 239
+hub/apps/datasets/rollback.py                                                                                        99     99     32      0     0%   6-312
+hub/apps/datasets/schema_evolution.py                                                                               109    109     32      0     0%   7-340
+hub/apps/datasets/schema_inference.py                                                                               398    398    198      0     0%   6-907
+hub/apps/datasets/serializers.py                                                                                     10     10      0      0     0%   4-43
+hub/apps/datasets/tests/__init__.py                                                                                   0      0      0      0   100%
+hub/apps/datasets/tests/factories.py                                                                                 25     25      8      0     0%   6-191
+hub/apps/datasets/tests/test_models.py                                                                               23     23      0      0     0%   4-62
+hub/apps/datasets/tests/test_rollback.py                                                                             64     64      0      0     0%   6-269
+hub/apps/datasets/tests/test_sample_data_extraction.py                                                               47     47      0      0     0%   4-99
+hub/apps/datasets/tests/test_schema_evolution.py                                                                     90     90      0      0     0%   6-298
+hub/apps/datasets/tests/test_schema_evolution_integration.py                                                         66     66      0      0     0%   6-263
+hub/apps/datasets/tests/test_schema_inference.py                                                                    211    211      0      0     0%   4-437
+hub/apps/datasets/tests/test_semantic_versioning_enhanced.py                                                        194    194      0      0     0%   6-894
+hub/apps/datasets/tests/test_semantic_versioning_integration.py                                                     123    123      0      0     0%   7-526
+hub/apps/datasets/tests/test_time_travel.py                                                                         112    112      0      0     0%   6-353
+hub/apps/datasets/tests/test_version_comparison.py                                                                   94     94      0      0     0%   6-400
+hub/apps/datasets/tests/test_version_history.py                                                                     184    184      0      0     0%   6-762
+hub/apps/datasets/tests/test_version_impact.py                                                                       65     65      0      0     0%   6-242
+hub/apps/datasets/tests/test_version_impact_integration.py                                                           31     31      0      0     0%   6-102
+hub/apps/datasets/tests/test_version_integration.py                                                                  95     95      0      0     0%   6-319
+hub/apps/datasets/time_travel.py                                                                                     52     52     12      0     0%   6-233
+hub/apps/datasets/urls.py                                                                                             6      6      0      0     0%   4-11
+hub/apps/datasets/version_comparison.py                                                                             152    152     66      0     0%   7-573
+hub/apps/datasets/version_impact.py                                                                                 119    119     44      0     0%   6-308
+hub/apps/datasets/views.py                                                                                          115    115     34      0     0%   6-294
+hub/apps/dq/__init__.py                                                                                               0      0      0      0   100%
+hub/apps/dq/alerting.py                                                                                              79     79     30      0     0%   6-236
+hub/apps/dq/anomaly_detection.py                                                                                    126    126     46      0     0%   6-378
+hub/apps/dq/apps.py                                                                                                   4      0      0      0   100%
+hub/apps/dq/contract_integration.py                                                                                 149    149     44      0     0%   6-324
+hub/apps/dq/migrations/0001_initial.py                                                                                7      7      0      0     0%   3-20
+hub/apps/dq/migrations/0002_add_anomaly_and_trend_models.py                                                           6      6      0      0     0%   3-18
+hub/apps/dq/migrations/0003_add_alerting_rules_model.py                                                               6      6      0      0     0%   3-17
+hub/apps/dq/migrations/__init__.py                                                                                    0      0      0      0   100%
+hub/apps/dq/models.py                                                                                               156     35     26      0    66%   144, 148-151, 157-158, 267, 366, 467, 471-482, 486-487, 499-515
+hub/apps/dq/root_cause_analysis.py                                                                                  170    170     88      0     0%   6-427
+hub/apps/dq/scorecards.py                                                                                            91     91     26      0     0%   6-309
+hub/apps/dq/serializers.py                                                                                           22     22      6      0     0%   4-75
+hub/apps/dq/service_client.py                                                                                        72     72     18      0     0%   6-155
+hub/apps/dq/tests/__init__.py                                                                                         0      0      0      0   100%
+hub/apps/dq/tests/test_alerting.py                                                                                   91     91      0      0     0%   6-249
+hub/apps/dq/tests/test_alerting_integration.py                                                                       28     28      0      0     0%   6-118
+hub/apps/dq/tests/test_anomaly_detection.py                                                                          72     72     12      0     0%   6-241
+hub/apps/dq/tests/test_anomaly_detection_integration.py                                                              36     36      4      0     0%   6-136
+hub/apps/dq/tests/test_contract_integration.py                                                                      137    137      2      0     0%   9-375
+hub/apps/dq/tests/test_dq_execution.py                                                                               76     76      0      0     0%   4-216
+hub/apps/dq/tests/test_dq_result_structure.py                                                                        67     67      0      0     0%   4-220
+hub/apps/dq/tests/test_integration_execution.py                                                                     115    115      8      0     0%   9-346
+hub/apps/dq/tests/test_models.py                                                                                     22     22      0      0     0%   4-55
+hub/apps/dq/tests/test_root_cause_analysis.py                                                                        82     82     10      0     0%   6-328
+hub/apps/dq/tests/test_root_cause_integration.py                                                                     45     45      4      0     0%   6-205
+hub/apps/dq/tests/test_scorecards.py                                                                                103    103      8      0     0%   6-249
+hub/apps/dq/tests/test_scorecards_integration.py                                                                     39     39      4      0     0%   6-145
+hub/apps/dq/tests/test_service_client.py                                                                             28     28      0      0     0%   4-79
+hub/apps/dq/tests/test_trend_analysis.py                                                                             76     76     18      0     0%   6-239
+hub/apps/dq/tests/test_trend_analysis_integration.py                                                                 49     49      8      0     0%   6-167
+hub/apps/dq/trend_analysis.py                                                                                       145    145     70      0     0%   6-370
+hub/apps/dq/urls.py                                                                                                   8      8      0      0     0%   4-15
+hub/apps/dq/views.py                                                                                                159    159     48      0     0%   6-360
+hub/apps/files/__init__.py                                                                                            0      0      0      0   100%
+hub/apps/files/apps.py                                                                                                4      0      0      0   100%
+hub/apps/files/migrations/0001_initial.py                                                                             8      8      0      0     0%   3-18
+hub/apps/files/migrations/0002_rename_files_tenant_status_idx_files_tenant__3f0e67_idx_and_more.py                    4      4      0      0     0%   3-12
+hub/apps/files/migrations/__init__.py                                                                                 0      0      0      0   100%
+hub/apps/files/models.py                                                                                             45     10      2      0    74%   91, 104-111, 115, 119, 123
+hub/apps/files/serializers.py                                                                                        41     41      0      0     0%   4-104
+hub/apps/files/storage.py                                                                                            92     92     10      0     0%   6-344
+hub/apps/files/tests/__init__.py                                                                                      0      0      0      0   100%
+hub/apps/files/tests/factories.py                                                                                    34     34     14      0     0%   6-130
+hub/apps/files/tests/test_chunked_upload.py                                                                          71     71      0      0     0%   4-202
+hub/apps/files/tests/test_file_size_limits.py                                                                        83     83      2      0     0%   4-178
+hub/apps/files/tests/test_file_upload_download.py                                                                   138    138      0      0     0%   4-353
+hub/apps/files/tests/test_models.py                                                                                  22     22      0      0     0%   4-57
+hub/apps/files/urls.py                                                                                                6      6      0      0     0%   4-11
+hub/apps/files/validators.py                                                                                         55     55     30      0     0%   6-159
+hub/apps/files/views.py                                                                                             169    169     38      0     0%   6-490
+hub/apps/governance/__init__.py                                                                                       0      0      0      0   100%
+hub/apps/governance/abac.py                                                                                         146    117     72      0    13%   23-26, 69-124, 129-141, 150-185, 190, 200-211, 220-252, 272-308, 319-343, 352-360, 365-367
+hub/apps/governance/access_analytics.py                                                                             137    137     52      0     0%   6-441
+hub/apps/governance/access_certification.py                                                                          99     99     12      0     0%   6-332
+hub/apps/governance/access_requests.py                                                                               98     98     28      0     0%   6-302
+hub/apps/governance/apps.py                                                                                           7      0      0      0   100%
+hub/apps/governance/classification.py                                                                               140    140     46      0     0%   6-474
+hub/apps/governance/compliance_reports.py                                                                           100    100     26      0     0%   6-436
+hub/apps/governance/data_masking.py                                                                                 104    104     48      0     0%   6-244
+hub/apps/governance/middleware.py                                                                                    64     64     30      0     0%   6-141
+hub/apps/governance/models.py                                                                                       205     31     14      0    79%   153-155, 159-162, 168-169, 307-308, 312-326, 332-333, 480-481, 485-488, 494-495, 576, 659, 733
+hub/apps/governance/report_scheduler.py                                                                             104    104     38      0     0%   6-312
+hub/apps/governance/retention.py                                                                                    135    135     52      0     0%   6-298
+hub/apps/governance/signals.py                                                                                       25     14     14      0    28%   15-27, 37-47, 58-59
+hub/apps/governance/tests/__init__.py                                                                                 0      0      0      0   100%
+hub/apps/governance/tests/test_abac.py                                                                               65     65      0      0     0%   7-337
+hub/apps/governance/tests/test_abac_enhanced.py                                                                      39     39      0      0     0%   6-157
+hub/apps/governance/tests/test_abac_integration.py                                                                   31     31      0      0     0%   6-144
+hub/apps/governance/tests/test_access_analytics.py                                                                   44     44      4      0     0%   6-140
+hub/apps/governance/tests/test_access_analytics_integration.py                                                       19     19      0      0     0%   6-67
+hub/apps/governance/tests/test_access_certification.py                                                               49     49      2      0     0%   6-154
+hub/apps/governance/tests/test_access_requests.py                                                                    78     78      0      0     0%   7-284
+hub/apps/governance/tests/test_classification.py                                                                     83     83      0      0     0%   7-295
+hub/apps/governance/tests/test_compliance_reports.py                                                                 73     73      0      0     0%   7-249
+hub/apps/governance/tests/test_compliance_reports_integration.py                                                     42     42      0      0     0%   7-153
+hub/apps/governance/tests/test_data_masking.py                                                                       81     81      0      0     0%   7-222
+hub/apps/governance/tests/test_retention.py                                                                          87     87      0      0     0%   7-327
+hub/apps/governance/urls.py                                                                                           7      7      0      0     0%   6-14
+hub/apps/governance/views.py                                                                                        150    150     34      0     0%   6-504
+hub/apps/graphql/__init__.py                                                                                          0      0      0      0   100%
+hub/apps/graphql/apps.py                                                                                              4      0      0      0   100%
+hub/apps/graphql/schema.py                                                                                          250    250     88      0     0%   7-531
+hub/apps/graphql/tests/__init__.py                                                                                    0      0      0      0   100%
+hub/apps/graphql/tests/test_graphql_queries.py                                                                       68     68      4      0     0%   4-244
+hub/apps/graphql/urls.py                                                                                              4      4      0      0     0%   4-8
+hub/apps/graphql/views.py                                                                                            82     82     46      0     0%   6-178
+hub/apps/health/__init__.py                                                                                           0      0      0      0   100%
+hub/apps/health/apps.py                                                                                               4      0      0      0   100%
+hub/apps/health/urls.py                                                                                               3      3      0      0     0%   1-4
+hub/apps/health/views.py                                                                                             22     22      0      0     0%   1-33
+hub/apps/jobs/__init__.py                                                                                             0      0      0      0   100%
+hub/apps/jobs/apps.py                                                                                                 4      0      0      0   100%
+hub/apps/jobs/management/__init__.py                                                                                  0      0      0      0   100%
+hub/apps/jobs/management/commands/__init__.py                                                                         0      0      0      0   100%
+hub/apps/jobs/management/commands/check_job_timeouts.py                                                              12     12      0      0     0%   4-20
+hub/apps/jobs/migrations/0001_initial.py                                                                              8      8      0      0     0%   3-18
+hub/apps/jobs/migrations/0002_rename_jobs_tenant_status_idx_jobs_tenant__a46df1_idx_and_more.py                       4      4      0      0     0%   3-12
+hub/apps/jobs/migrations/__init__.py                                                                                  0      0      0      0   100%
+hub/apps/jobs/models.py                                                                                              97     50     12      0    43%   120, 124, 132, 136, 140-153, 157-185, 189-225, 229-231
+hub/apps/jobs/scheduled_ingestion_job.py                                                                             70     70     12      0     0%   6-171
+hub/apps/jobs/serializers.py                                                                                         14     14      0      0     0%   4-54
+hub/apps/jobs/tasks.py                                                                                              371    371    152      0     0%   6-954
+hub/apps/jobs/tests/__init__.py                                                                                       0      0      0      0   100%
+hub/apps/jobs/tests/test_integration_processing.py                                                                   78     78      0      0     0%   6-245
+hub/apps/jobs/tests/test_job_cancellation.py                                                                         74     74      0      0     0%   4-198
+hub/apps/jobs/tests/test_job_creation_processing.py                                                                 118    118      0      0     0%   4-273
+hub/apps/jobs/tests/test_job_execution_integration.py                                                               166    166      4      0     0%   10-435
+hub/apps/jobs/tests/test_job_integration_lifecycle.py                                                               120    120      2      0     0%   11-363
+hub/apps/jobs/tests/test_job_processors.py                                                                          313    313      4      0     0%   7-698
+hub/apps/jobs/tests/test_job_queue_infrastructure.py                                                                157    157     12      0     0%   6-324
+hub/apps/jobs/tests/test_job_queue_integration.py                                                                   108    108      4      0     0%   13-313
+hub/apps/jobs/tests/test_job_timeouts.py                                                                             52     52      0      0     0%   4-158
+hub/apps/jobs/tests/test_models.py                                                                                   29     29      0      0     0%   4-76
+hub/apps/jobs/tests/test_scheduled_ingestion_job.py                                                                  97     97      0      0     0%   6-265
+hub/apps/jobs/tests/test_utils.py                                                                                    36     36      0      0     0%   4-83
+hub/apps/jobs/urls.py                                                                                                 6      6      0      0     0%   4-11
+hub/apps/jobs/utils.py                                                                                              220    220     70      0     0%   6-678
+hub/apps/jobs/views.py                                                                                               96     96     28      0     0%   6-229
+hub/apps/marketplace/__init__.py                                                                                      0      0      0      0   100%
+hub/apps/marketplace/access_utils.py                                                                                 51     51     18      0     0%   6-152
+hub/apps/marketplace/apps.py                                                                                          4      0      0      0   100%
+hub/apps/marketplace/contract_integration.py                                                                         71     71     24      0     0%   6-194
+hub/apps/marketplace/entitlement_serializers.py                                                                      22     22      4      0     0%   6-65
+hub/apps/marketplace/entitlement_views.py                                                                            84     84     24      0     0%   6-191
+hub/apps/marketplace/management/__init__.py                                                                           0      0      0      0   100%
+hub/apps/marketplace/management/commands/__init__.py                                                                  0      0      0      0   100%
+hub/apps/marketplace/management/commands/expire_entitlements.py                                                      33     33     10      0     0%   4-62
+hub/apps/marketplace/migrations/0001_initial.py                                                                       8      8      0      0     0%   3-19
+hub/apps/marketplace/migrations/__init__.py                                                                           0      0      0      0   100%
+hub/apps/marketplace/models.py                                                                                      205    112     70      0    34%   89-90, 94-122, 128-129, 138-147, 151-158, 162-166, 170-171, 259, 263-277, 281-282, 286-292, 296-308, 312-316, 320-325, 408, 412-428, 432-433, 442-448, 452-457, 461-474
+hub/apps/marketplace/order_serializers.py                                                                            30     30      6      0     0%   6-88
+hub/apps/marketplace/order_views.py                                                                                 189    189     60      0     0%   6-527
+hub/apps/marketplace/serializers.py                                                                                  73     73     12      0     0%   6-190
+hub/apps/marketplace/tests/__init__.py                                                                                0      0      0      0   100%
+hub/apps/marketplace/tests/test_access_checks.py                                                                     73     73      0      0     0%   4-249
+hub/apps/marketplace/tests/test_access_utils.py                                                                      39     39      0      0     0%   4-115
+hub/apps/marketplace/tests/test_auto_approval.py                                                                     69     69      0      0     0%   4-229
+hub/apps/marketplace/tests/test_contract_integration.py                                                              98     98      0      0     0%   9-270
+hub/apps/marketplace/tests/test_entitlement_lifecycle.py                                                             64     64      0      0     0%   4-208
+hub/apps/marketplace/tests/test_integration_order_flow.py                                                            77     77     10      0     0%   7-251
+hub/apps/marketplace/tests/test_kyc_enforcement.py                                                                   80     80      0      0     0%   4-268
+hub/apps/marketplace/tests/test_listing_crud.py                                                                      81     81      0      0     0%   4-294
+hub/apps/marketplace/tests/test_models.py                                                                           100    100      0      0     0%   4-293
+hub/apps/marketplace/tests/test_order_flow.py                                                                        91     91      0      0     0%   4-323
+hub/apps/marketplace/tests/test_serializers.py                                                                       29     29      0      0     0%   4-82
+hub/apps/marketplace/tests/test_views.py                                                                             40     40      0      0     0%   4-122
+hub/apps/marketplace/urls.py                                                                                         10     10      0      0     0%   6-17
+hub/apps/marketplace/views.py                                                                                       207    207     78      0     0%   6-450
+hub/apps/notifications/__init__.py                                                                                    0      0      0      0   100%
+hub/apps/notifications/apps.py                                                                                        6      0      0      0   100%
+hub/apps/notifications/management/__init__.py                                                                         0      0      0      0   100%
+hub/apps/notifications/management/commands/__init__.py                                                                0      0      0      0   100%
+hub/apps/notifications/migrations/0001_initial.py                                                                     8      8      0      0     0%   3-18
+hub/apps/notifications/migrations/0002_rename_email_deli_to_emai_idx_email_deliv_to_emai_5d5179_idx_and_more.py       4      4      0      0     0%   3-12
+hub/apps/notifications/migrations/__init__.py                                                                         0      0      0      0   100%
+hub/apps/notifications/models.py                                                                                     67     21      4      0    65%   132, 136-140, 144-146, 150-153, 157-161, 165, 172-173
+hub/apps/notifications/services.py                                                                                  154    123     50      0    15%   21-23, 29-32, 75, 91-98, 112-188, 199-213, 227-326, 337-344, 348, 371-436, 449-461
+hub/apps/notifications/signals.py                                                                                    17     11     12      0    21%   22-40
+hub/apps/notifications/tasks.py                                                                                     142    120     24      0    13%   39-67, 98-240, 251-305, 316-369, 380-440, 451-511
+hub/apps/notifications/templates.py                                                                                  38     27      6      0    25%   14-16, 36-59, 72-76, 89-90, 103-104, 117-118
+hub/apps/notifications/tests/__init__.py                                                                              0      0      0      0   100%
+hub/apps/notifications/tests/test_integration.py                                                                     79     79      0      0     0%   4-184
+hub/apps/notifications/tests/test_models.py                                                                          65     65      0      0     0%   4-154
+hub/apps/notifications/tests/test_services.py                                                                       131    131      0      0     0%   4-287
+hub/apps/notifications/tests/test_templates.py                                                                       38     38      0      0     0%   4-83
+hub/apps/observability/__init__.py                                                                                    0      0      0      0   100%
+hub/apps/observability/_legacy_metrics.py                                                                            37     37      6      0     0%   6-184
+hub/apps/observability/apps.py                                                                                        5      0      0      0   100%
+hub/apps/observability/data_slas.py                                                                                 120    120     44      0     0%   6-364
+hub/apps/observability/freshness.py                                                                                  95     95     40      0     0%   6-332
+hub/apps/observability/incident_management.py                                                                       116    116     38      0     0%   6-415
+hub/apps/observability/logging.py                                                                                    57     38     28      1    24%   32-39, 55-75, 90-92, 110, 125-140, 174
+hub/apps/observability/middleware.py                                                                                 32     32      4      0     0%   14-109
+hub/apps/observability/models.py                                                                                    169     10      0      0    94%   126-127, 250-251, 371-372, 508, 640-641, 800
+hub/apps/observability/otel_metrics.py                                                                              243    243     64      0     0%   33-691
+hub/apps/observability/pipeline_monitoring.py                                                                       121    121     40      0     0%   6-438
+hub/apps/observability/schema_drift.py                                                                              134    134     74      0     0%   6-390
+hub/apps/observability/serializers.py                                                                                26     26      0      0     0%   4-89
+hub/apps/observability/tests/__init__.py                                                                              0      0      0      0   100%
+hub/apps/observability/tests/test_data_slas.py                                                                       46     46      0      0     0%   4-132
+hub/apps/observability/tests/test_e2e_observability.py                                                              123    123      2      0     0%   6-398
+hub/apps/observability/tests/test_freshness.py                                                                       51     51      0      0     0%   6-151
+hub/apps/observability/tests/test_incident_management.py                                                             69     69      2      0     0%   4-202
+hub/apps/observability/tests/test_logging.py                                                                         26     26      0      0     0%   4-51
+hub/apps/observability/tests/test_metrics.py                                                                         28     28      2      0     0%   4-68
+hub/apps/observability/tests/test_metrics_collection.py                                                             106    106      0      0     0%   6-269
+hub/apps/observability/tests/test_middleware.py                                                                      85     85      2      0     0%   4-152
+hub/apps/observability/tests/test_pipeline_monitoring.py                                                             49     49      2      0     0%   4-152
+hub/apps/observability/tests/test_schema_drift.py                                                                    62     62      0      0     0%   6-209
+hub/apps/observability/tests/test_views.py                                                                          145    145      4      0     0%   6-431
+hub/apps/observability/tests/test_volume.py                                                                          40     40      6      0     0%   6-125
+hub/apps/observability/tracing.py                                                                                    66     66      6      0     0%   6-137
+hub/apps/observability/urls.py                                                                                        7      7      0      0     0%   4-12
+hub/apps/observability/views.py                                                                                     220    220     54      0     0%   6-1047
+hub/apps/observability/volume.py                                                                                    122    122     48      0     0%   6-353
+hub/apps/rate_limiting/__init__.py                                                                                    0      0      0      0   100%
+hub/apps/rate_limiting/apps.py                                                                                        5      0      0      0   100%
+hub/apps/rate_limiting/config.py                                                                                     27     27      2      0     0%   6-206
+hub/apps/rate_limiting/middleware.py                                                                                 54     54     22      0     0%   6-159
+hub/apps/rate_limiting/migrations/__init__.py                                                                         0      0      0      0   100%
+hub/apps/rate_limiting/quota.py                                                                                      39     39      4      0     0%   6-146
+hub/apps/rate_limiting/service.py                                                                                    83     83     34      0     0%   6-264
+hub/apps/rate_limiting/tests/__init__.py                                                                              0      0      0      0   100%
+hub/apps/rate_limiting/tests/test_config.py                                                                          77     77      8      0     0%   4-261
+hub/apps/rate_limiting/tests/test_integration.py                                                                     96     96      0      0     0%   4-293
+hub/apps/rate_limiting/tests/test_middleware.py                                                                     109    109      2      0     0%   4-210
+hub/apps/rate_limiting/tests/test_performance.py                                                                     75     75      4      0     0%   6-162
+hub/apps/rate_limiting/tests/test_service.py                                                                        110    110      4      0     0%   4-222
+hub/apps/rate_limiting/tests/test_utils.py                                                                          153    153      0      0     0%   4-339
+hub/apps/rate_limiting/utils.py                                                                                     120    120     42      0     0%   6-285
+hub/apps/scheduled_ingestion/__init__.py                                                                              1      0      0      0   100%
+hub/apps/scheduled_ingestion/apps.py                                                                                  5      0      0      0   100%
+hub/apps/scheduled_ingestion/cost_tracking.py                                                                        80     80     26      0     0%   6-251
+hub/apps/scheduled_ingestion/dead_letter_queue.py                                                                    85     85     18      0     0%   6-231
+hub/apps/scheduled_ingestion/incremental_state.py                                                                   100    100     24      0     0%   6-307
+hub/apps/scheduled_ingestion/ingestion.py                                                                           279    279     80      0     0%   6-736
+hub/apps/scheduled_ingestion/models.py                                                                              193     66     26      0    58%   192, 197-211, 215-221, 225-290, 373, 461, 532, 536-541
+hub/apps/scheduled_ingestion/monitoring.py                                                                           74     74     20      0     0%   6-292
+hub/apps/scheduled_ingestion/serializers.py                                                                          81     81     36      0     0%   6-216
+hub/apps/scheduled_ingestion/templates.py                                                                            80     80     14      0     0%   6-391
+hub/apps/scheduled_ingestion/urls.py                                                                                  7      7      0      0     0%   6-14
+hub/apps/scheduled_ingestion/views.py                                                                               212    212     46      0     0%   6-532
+hub/apps/search/__init__.py                                                                                           0      0      0      0   100%
+hub/apps/search/apps.py                                                                                               5      0      0      0   100%
+hub/apps/search/indexing.py                                                                                         184    184     82      0     0%   6-423
+hub/apps/search/models.py                                                                                            57      2      0      0    96%   153, 254
+hub/apps/search/search_engine.py                                                                                     98     98     42      0     0%   6-325
+hub/apps/search/serializers.py                                                                                       39     39      0      0     0%   4-74
+hub/apps/search/tests/__init__.py                                                                                     0      0      0      0   100%
+hub/apps/search/tests/test_indexing.py                                                                               60     60      0      0     0%   6-199
+hub/apps/search/tests/test_search_engine.py                                                                          59     59      4      0     0%   6-183
+hub/apps/search/tests/test_views.py                                                                                  55     55      2      0     0%   6-144
+hub/apps/search/urls.py                                                                                               6      6      0      0     0%   4-11
+hub/apps/search/views.py                                                                                             94     94     18      0     0%   4-319
+hub/apps/semantic/__init__.py                                                                                         0      0      0      0   100%
+hub/apps/semantic/apps.py                                                                                             6      0      0      0   100%
+hub/apps/semantic/models.py                                                                                          33      1      0      0    97%   96
+hub/apps/semantic/serializers.py                                                                                     11     11      0      0     0%   6-48
+hub/apps/semantic/service_client.py                                                                                 145    128     24      0    10%   22-50, 54-95, 99-120, 139-152, 184-201, 229-244, 268-300, 323-341, 353-363, 375-380
+hub/apps/semantic/signals.py                                                                                         29     18      4      0    33%   25-36, 47-57
+hub/apps/semantic/tests/__init__.py                                                                                   0      0      0      0   100%
+hub/apps/semantic/tests/test_models.py                                                                               16     16      0      0     0%   4-41
+hub/apps/semantic/tests/test_rdf_mapping.py                                                                          70     70      0      0     0%   4-198
+hub/apps/semantic/tests/test_sparql_endpoint.py                                                                     123    123      0      0     0%   4-286
+hub/apps/semantic/tests/test_sparql_limits.py                                                                        83     83      2      0     0%   4-209
+hub/apps/semantic/tests/test_uri_generation.py                                                                       65     65      0      0     0%   4-108
+hub/apps/semantic/tests/test_uri_ontology_endpoints.py                                                              155    155      0      0     0%   4-355
+hub/apps/semantic/tests/test_utils.py                                                                                73     73      0      0     0%   4-208
+hub/apps/semantic/urls.py                                                                                             6      6      0      0     0%   6-20
+hub/apps/semantic/utils.py                                                                                           70     58     14      0    14%   28-42, 61-106, 125-167, 186-226, 248-264
+hub/apps/semantic/views.py                                                                                          223    223     72      0     0%   6-612
+hub/apps/tenants/__init__.py                                                                                          0      0      0      0   100%
+hub/apps/tenants/apps.py                                                                                              6      0      0      0   100%
+hub/apps/tenants/management/__init__.py                                                                               0      0      0      0   100%
+hub/apps/tenants/management/commands/__init__.py                                                                      0      0      0      0   100%
+hub/apps/tenants/management/commands/init_tenant_configs.py                                                          66     66     20      0     0%   6-146
+hub/apps/tenants/middleware.py                                                                                       91     91     46      0     0%   6-183
+hub/apps/tenants/migrations/0001_initial.py                                                                           7      7      0      0     0%   3-15
+hub/apps/tenants/migrations/0002_add_sso_config.py                                                                    4      4      0      0     0%   3-15
+hub/apps/tenants/migrations/0002_add_tenant_config.py                                                                 6      6      0      0     0%   3-14
+hub/apps/tenants/migrations/0003_rename_tenant_configs_tenant_idx_tenant_conf_tenant__37e737_idx_and_more.py          5      5      0      0     0%   3-13
+hub/apps/tenants/migrations/__init__.py                                                                               0      0      0      0   100%
+hub/apps/tenants/models.py                                                                                           84     27      8      0    62%   15, 20, 92, 96, 100, 104, 108, 112-115, 119-122, 126-128, 226, 230-237, 243-244
+hub/apps/tenants/permissions.py                                                                                      10     10      2      0     0%   6-40
+hub/apps/tenants/serializers.py                                                                                     110    110     34      0     0%   6-255
+hub/apps/tenants/services.py                                                                                         62     62      4      0     0%   6-220
+hub/apps/tenants/signals.py                                                                                          13      8      4      0    29%   22-57
+hub/apps/tenants/tests/__init__.py                                                                                    0      0      0      0   100%
+hub/apps/tenants/tests/test_integration_isolation.py                                                                 54     54      0      0     0%   6-179
+hub/apps/tenants/tests/test_middleware.py                                                                            62     62      2      0     0%   4-105
+hub/apps/tenants/tests/test_models.py                                                                                85     85      0      0     0%   4-142
+hub/apps/tenants/tests/test_permissions.py                                                                           46     46      2      0     0%   4-86
+hub/apps/tenants/tests/test_signals.py                                                                               18     18      0      0     0%   4-33
+hub/apps/tenants/tests/test_tenant_config_api_spec_compliance.py                                                    153    153     36      0     0%   7-354
+hub/apps/tenants/tests/test_tenant_config_compliance_integration.py                                                  83     83      8      0     0%   6-214
+hub/apps/tenants/tests/test_tenant_config_dq_integration.py                                                          76     76      8      0     0%   6-200
+hub/apps/tenants/tests/test_tenant_config_file_upload_integration.py                                                 67     67      0      0     0%   6-189
+hub/apps/tenants/tests/test_tenant_config_job_integration.py                                                        111    111      0      0     0%   6-286
+hub/apps/tenants/tests/test_tenant_config_management_command.py                                                      82     82      4      0     0%   6-162
+hub/apps/tenants/tests/test_tenant_config_models.py                                                                 136    136      0      0     0%   4-339
+hub/apps/tenants/tests/test_tenant_config_serializers.py                                                            196    196     14      0     0%   7-413
+hub/apps/tenants/tests/test_tenant_config_services.py                                                               102    102      8      0     0%   6-268
+hub/apps/tenants/tests/test_tenant_config_validators.py                                                             170    170     16      0     0%   6-347
+hub/apps/tenants/tests/test_tenant_config_views.py                                                                  305    305      6      0     0%   7-781
+hub/apps/tenants/tests/test_views.py                                                                                 93     93      2      0     0%   4-172
+hub/apps/tenants/urls.py                                                                                              6      6      0      0     0%   4-13
+hub/apps/tenants/validators.py                                                                                       34     34     26      0     0%   6-181
+hub/apps/tenants/views.py                                                                                           135    135     24      0     0%   6-384
+hub/apps/testing/__init__.py                                                                                          2      2      0      0     0%   4-13
+hub/apps/testing/service_utils.py                                                                                    81     81     30      0     0%   7-193
+hub/apps/users/__init__.py                                                                                            0      0      0      0   100%
+hub/apps/users/apps.py                                                                                                4      0      0      0   100%
+hub/apps/users/migrations/0001_initial.py                                                                             9      9      0      0     0%   3-19
+hub/apps/users/migrations/0002_alter_user_status.py                                                                   4      4      0      0     0%   3-12
+hub/apps/users/migrations/__init__.py                                                                                 0      0      0      0   100%
+hub/apps/users/models.py                                                                                             87     21      6      0    71%   26-36, 40-46, 152, 156, 160, 164, 168-169, 211, 247
+hub/apps/users/serializers.py                                                                                        72     72     12      0     0%   6-164
+hub/apps/users/tests/__init__.py                                                                                      0      0      0      0   100%
+hub/apps/users/tests/test_models.py                                                                                  21     21      0      0     0%   4-50
+hub/apps/users/tests/test_role_management.py                                                                         58     58      0      0     0%   4-176
+hub/apps/users/tests/test_user_deletion.py                                                                           47     47      0      0     0%   4-133
+hub/apps/users/tests/test_views.py                                                                                   88     88      0      0     0%   4-211
+hub/apps/users/urls.py                                                                                                7      7      0      0     0%   4-12
+hub/apps/users/views.py                                                                                             157    157     42      0     0%   6-378
+hub/apps/webhooks/models.py                                                                                          84     14     10      0    74%   117, 121-137, 144, 221
+hub/asgi.py                                                                                                           4      4      0      0     0%   10-16
+hub/manage.py                                                                                                        14     14      2      0     0%   3-26
+hub/security_settings.py                                                                                             28     28      0      0     0%   7-119
+hub/settings.py                                                                                                     211     30     20      9    82%   142, 144, 151-152, 167-172, 178->188, 184, 197-198, 226-227, 274, 299, 350, 357-365, 386-391, 593-594
+hub/urls.py                                                                                                           8      8      2      0     0%   4-27
+hub/wsgi.py                                                                                                           4      4      0      0     0%   10-16
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                                                                                             36131  33956   6862     10     5%
+Coverage HTML written to dir htmlcov
+Coverage XML written to file coverage.xml
+=========================== short test summary info ============================
+FAILED services/datacontract-service/tests/test_integration.py::test_validate_valid_odcs
+FAILED services/datacontract-service/tests/test_cli_integration.py::test_validate_valid_contract
+FAILED services/datacontract-service/tests/test_cli_integration.py::test_validate_invalid_contract
+FAILED services/datacontract-service/tests/test_integration.py::test_validation_caching
+FAILED services/datacontract-service/tests/test_cli_integration.py::test_lint_contract
+FAILED services/datacontract-service/tests/test_integration.py::test_lint_contract
+FAILED services/datacontract-service/tests/test_cli_integration.py::test_validate_timeout
+FAILED services/datacontract-service/tests/test_normalization.py::test_detect_spec_type_odcs
+FAILED services/datacontract-service/tests/test_cli_integration.py::test_validate_missing_contract
+ERROR services/semantic-service/tests/test_rdf_jsonld_smoke.py - ImportError ...
+ERROR services/semantic-service/tests/test_integration_normalization_rdf.py
+ERROR services/semantic-service/tests/test_integration_jsonld_context.py - Im...
+ERROR services/semantic-service/tests/test_integration_sparql_vocabularies.py
+ERROR services/semantic-service/tests/test_mapping.py - ImportError while imp...
+ERROR services/semantic-service/tests/test_fuseki_integration.py - ImportErro...
+ERROR services/semantic-service/tests/test_standard_vocabularies.py - ImportE...
+ERROR services/semantic-service/tests/test_uri_resolution.py - ImportError wh...
+ERROR services/compliance-service/tests/test_compliance_report.py - ImportErr...
+ERROR services/compliance-service/tests/test_pii_detection.py - ImportError w...
+ERROR services/compliance-service/tests/test_policy_engine.py - ImportError w...
+ERROR services/compliance-service/tests/test_regulatory_mapping.py - ImportEr...
+ERROR services/compliance-service/tests/test_risk_calculation.py - ImportErro...
+ERROR services/dq-service/tests/test_dq_execution.py - ImportError while impo...
+ERROR services/prefect-integration/tests/test_connectors.py - ImportError whi...
+ERROR services/prefect-integration/tests/test_deployment_sync.py - ImportErro...
+ERROR services/prefect-integration/tests/test_e2e.py - ImportError while impo...
+ERROR services/prefect-integration/tests/test_integration.py - import file mi...
+======= 9 failed, 18 passed, 21 warnings, 18 errors in 239.03s (0:03:59) =======

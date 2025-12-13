@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.20331215858459473
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-001-0486495b",
+      "journey_name": "Onboard New User",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1765585802.596805,
+      "end_time": 1765585802.8001173,
+      "duration": 0.20331215858459473,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create User Account",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585802.5968132,
+          "end_time": 1765585802.7957897,
+          "duration": 0.1989765167236328,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Assign Roles",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585802.7957995,
+          "end_time": 1765585802.8000917,
+          "duration": 0.00429224967956543,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Configure Permissions",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585802.8001,
+          "end_time": 1765585802.8001056,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Send Invitation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585802.8001075,
+          "end_time": 1765585802.8001137,
+          "duration": 6.198883056640625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "user_id": "beda11a7-aa24-422f-89b8-6a1b57540602"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T00:30:02.800203"
+}

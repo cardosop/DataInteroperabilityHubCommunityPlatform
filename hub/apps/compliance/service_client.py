@@ -18,7 +18,19 @@ class ComplianceServiceClient:
     """
     
     def __init__(self):
-        self.base_url = getattr(settings, 'COMPLIANCE_SERVICE_URL', 'http://compliance-service:8082')
+        # In test environment, use localhost instead of service name
+        default_url = 'http://compliance-service:8082'
+        if hasattr(settings, 'TESTING') and settings.TESTING:
+            import os
+            if os.getenv('TEST_ENVIRONMENT') == 'staging':
+                default_url = 'http://localhost:8082'
+            elif os.getenv('TEST_ENVIRONMENT') == 'default':
+                default_url = 'http://localhost:8082'
+            import sys
+            if 'pytest' in sys.modules or 'unittest' in sys.modules:
+                default_url = 'http://localhost:8082'
+        
+        self.base_url = getattr(settings, 'COMPLIANCE_SERVICE_URL', default_url)
         self.timeout = getattr(settings, 'COMPLIANCE_SERVICE_TIMEOUT', 1800)  # 30 minutes default
         if not self.base_url.endswith('/'):
             self.base_url = self.base_url.rstrip('/')

@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-001-4ed74611",
+      "journey_name": "Programmatic Contract-First Onboarding",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1765577765.3535109,
+      "end_time": 1765577770.7891173,
+      "duration": 5.435606479644775,
+      "completion_rate": 66.66666666666666,
+      "success_rate": 66.66666666666666,
+      "error_message": "{'hub_contract_json': ['id: Field required', 'info -> name: Field required']}",
+      "error_type": "ValidationError",
+      "steps": [
+        {
+          "step_name": "Create Contract via API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765577765.3535178,
+          "end_time": 1765577765.385691,
+          "duration": 0.03217315673828125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765577765.385704,
+          "end_time": 1765577770.784532,
+          "duration": 5.398828029632568,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Normalize Contract",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765577770.7845418,
+          "end_time": 1765577770.7890997,
+          "duration": 0.00455784797668457,
+          "error_message": "{'hub_contract_json': ['id: Field required', 'info -> name: Field required']}",
+          "error_type": "ValidationError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('55fb2bb1-17ff-48f2-a94a-a39517820a5c',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T22:16:10.789254"
+}

@@ -60,11 +60,6 @@ def migrate_hubcontract_v1_to_v2(hub_contract_v1: Dict[str, Any]) -> Tuple[Dict[
             if odcs_ext and 'owners' in odcs_ext:
                 info['owners'] = odcs_ext['owners']
                 warnings.append("Migrated owners from extensions.odcs")
-            # Check DataContract.com extensions
-            dc_ext = extensions.get('datacontract_com', {})
-            if dc_ext and 'owners' in dc_ext:
-                info['owners'] = dc_ext['owners']
-                warnings.append("Migrated owners from extensions.datacontract_com")
     
     # Migrate tags from old format
     if 'tags' not in info:
@@ -74,10 +69,6 @@ def migrate_hubcontract_v1_to_v2(hub_contract_v1: Dict[str, Any]) -> Tuple[Dict[
             if odcs_ext and 'tags' in odcs_ext:
                 info['tags'] = odcs_ext['tags']
                 warnings.append("Migrated tags from extensions.odcs")
-            dc_ext = extensions.get('datacontract_com', {})
-            if dc_ext and 'tags' in dc_ext:
-                info['tags'] = dc_ext['tags']
-                warnings.append("Migrated tags from extensions.datacontract_com")
     
     # Migrate quality section (GAP-10.2.1)
     if 'quality' not in hub_contract_v2:

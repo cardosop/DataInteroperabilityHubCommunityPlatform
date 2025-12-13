@@ -1,0 +1,39 @@
+Parallel Batched Test Execution Summary - Sat Dec  6 04:43:33 PM -03 2025
+===============================================
+
+Django version: 4.2.27
+Python version: Python 3.14.0
+Parallel workers: 4
+Max failures: 50
+
+Running Unit Tests (4 workers)...
+❌ Unit Tests: 4 failed, 0 errors, 274 passed, 48 skipped (46s)
+Report: test_reports_django6/Unit Tests_batches_20251206_164332.txt
+Duration: 46s
+
+Running Integration Tests (4 workers)...
+❌ Integration Tests: 0 failed, 0 errors, 0 passed, 0 skipped (118s)
+Report: test_reports_django6/Integration Tests_batches_20251206_164332.txt
+Duration: 118s
+
+Running Regression Tests (4 workers)...
+❌ Regression Tests: 3 failed, 1 errors, 6 passed, 0 skipped (46s)
+Report: test_reports_django6/Regression Tests_batches_20251206_164332.txt
+Duration: 46s
+
+Running Security Tests (4 workers)...
+✅ Security Tests: 10 passed, 0 skipped (41s)
+Report: test_reports_django6/Security Tests_batches_20251206_164332.txt
+Duration: 41s
+
+Running Performance Tests (4 workers)...
+❌ Performance Tests: 4 failed, 0 errors, 17 passed, 0 skipped (94s)
+Report: test_reports_django6/Performance Tests_batches_20251206_164332.txt
+Duration: 94s
+
+
+Total execution time: 465s (7m 45s)
+
+Status: ❌ SOME TESTS FAILED
+
+See test_reports_django6/test_failures_batches_20251206_164332.txt for failure summary

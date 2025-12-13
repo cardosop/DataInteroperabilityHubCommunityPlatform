@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-004-aa336c9b",
+      "journey_name": "Monitor Asset Quality",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1765572668.3660989,
+      "end_time": 1765572669.5801795,
+      "duration": 1.214080572128296,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "{'engine': [\"Value 'great_expectations' is not a valid choice.\"]}",
+      "error_type": "ValidationError",
+      "steps": [
+        {
+          "step_name": "Create Asset with DQ Runs",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765572668.366107,
+          "end_time": 1765572669.580147,
+          "duration": 1.2140400409698486,
+          "error_message": "{'engine': [\"Value 'great_expectations' is not a valid choice.\"]}",
+          "error_type": "ValidationError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T20:51:09.580308"
+}

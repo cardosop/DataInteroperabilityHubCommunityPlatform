@@ -146,7 +146,7 @@ class ContractFactoryEnhanced:
             indexes = []
         
         return {
-            "hub_contract_version": 1,
+            "hub_contract_version": "1.0.0",
             "id": contract_id,
             "info": {
                 "name": name,

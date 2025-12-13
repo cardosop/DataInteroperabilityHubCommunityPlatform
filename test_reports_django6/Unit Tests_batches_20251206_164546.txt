@@ -1,0 +1,102 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.0, pytest-9.0.1, pluggy-1.6.0 -- /home/ph/Desktop/DataInteroperabilityHub/venv-python312-test/bin/python3.14
+cachedir: .pytest_cache
+django: version: 6.0, settings: hub.settings (from env)
+rootdir: /home/ph/Desktop/DataInteroperabilityHub
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: locust-2.42.6, django-4.11.1, xdist-3.8.0, Faker-38.2.0, mock-3.15.1, cov-7.0.0, typeguard-4.4.4, anyio-4.12.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+created: 4/4 workers
+4 workers [690 items]
+
+scheduling tests via WorkStealingScheduling
+
+tests/unit/worker/test_job_timeouts.py::JobTimeoutsTest::test_calculate_retry_delay_second_retry 
+tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_1000_fields 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_triples_count_tracking 
+tests/unit/notifications/test_email_delivery.py::EmailDeliveryModelTest::test_email_delivery_mark_delivered 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_triples_count_tracking 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_unicode_in_names 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_unicode_in_names 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_uri_generation 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_uri_generation 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_very_large_metadata 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_very_large_metadata 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_very_long_names 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_very_long_names 
+tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_with_asset_link 
+[gw2] [  0%] SKIPPED tests/unit/semantic/test_rdf_mapping_edge_cases.py::RDFMappingEdgeCaseTest::test_map_contract_with_asset_link 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_generate_uri_for_different_resource_types 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_generate_uri_for_different_resource_types 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_asset_to_semantic 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_asset_to_semantic 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_updates_existing_resource 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_updates_existing_resource 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_all_field_properties 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_all_field_properties 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_all_sections 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_all_sections 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_asset_link 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_asset_link 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_compliance_policy_dpv 
+[gw2] [  1%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_compliance_policy_dpv 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_default_quality_profile 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_default_quality_profile 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_different_refresh_cadences 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_different_refresh_cadences 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_empty_marketplace_policy 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_empty_marketplace_policy 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_field_validation_properties 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_field_validation_properties 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_indexes 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_indexes 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_lifecycle_policy_prov 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_lifecycle_policy_prov 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_marketplace_policy_odrl 
+[gw2] [  2%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_marketplace_policy_odrl 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_no_personal_data 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_no_personal_data 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_owners 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_owners 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_primary_key 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_primary_key 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_quality_rules_dqv 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_quality_rules_dqv 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_semantic_types 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_semantic_types 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_tags 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_tags 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_unique_constraints 
+[gw2] [  3%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_with_unique_constraints 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_without_hub_contract_json 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_map_contract_without_hub_contract_json 
+tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_remap_contract_if_needed_with_asset 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_rdf_mapping_enhanced.py::EnhancedRDFMappingTest::test_remap_contract_if_needed_with_asset 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_all_vocabularies_combined 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_all_vocabularies_combined 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_email_address_category_mapping 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_email_address_category_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_jurisdiction_mapping 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_jurisdiction_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_legal_basis_mapping 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dpv_legal_basis_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_accuracy_dimension_mapping 
+[gw2] [  4%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_accuracy_dimension_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_all_dimensions_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_all_dimensions_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_completeness_dimension_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_dqv_completeness_dimension_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_foaf_owner_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_foaf_owner_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_odrl_permission_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_odrl_permission_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_odrl_prohibition_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_odrl_prohibition_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_prov_was_derived_from_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_prov_was_derived_from_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_schema_org_type_mapping 
+[gw2] [  5%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_schema_org_type_mapping 
+tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_shacl_validation_mapping 
+[gw2] [  6%] SKIPPED tests/unit/semantic/test_standard_vocabularies.py::StandardVocabularyTest::test_shacl_validation_mapping 
+tests/unit/tenant_config/test_models.py::TenantConfigModelTest::test_allowed_compliance_regimes_empty_list 
+[gw0] [  6%] ERROR tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_1000_fields 

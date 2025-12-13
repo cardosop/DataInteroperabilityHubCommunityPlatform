@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-001-f91ba092",
+      "journey_name": "Programmatic Contract-First Onboarding",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1765577192.667495,
+      "end_time": 1765577198.4975858,
+      "duration": 5.830090761184692,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "{'hub_contract_json': ['hub_contract_version: Input should be a valid string', 'info: Field required', 'schema -> fields: Field required']}",
+      "error_type": "ValidationError",
+      "steps": [
+        {
+          "step_name": "Create Contract via API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765577192.6675036,
+          "end_time": 1765577194.1591372,
+          "duration": 1.491633653640747,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Contract",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765577194.1591482,
+          "end_time": 1765577198.4975772,
+          "duration": 4.338428974151611,
+          "error_message": "{'hub_contract_json': ['hub_contract_version: Input should be a valid string', 'info: Field required', 'schema -> fields: Field required']}",
+          "error_type": "ValidationError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('c1536f4b-a238-422b-a73a-d928e66fbab3',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T22:06:38.497698"
+}

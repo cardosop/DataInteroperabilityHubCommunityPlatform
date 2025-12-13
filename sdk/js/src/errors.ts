@@ -72,8 +72,8 @@ export class DataHubError extends Error {
  * Validation error (400)
  */
 export class ValidationError extends DataHubError {
-  constructor(message: string, requestId?: string, details?: ErrorDetails) {
-    super(message, 'VALIDATION_ERROR', 400, requestId, undefined, details);
+  constructor(message: string, requestId?: string, timestamp?: string, details?: ErrorDetails) {
+    super(message, 'VALIDATION_ERROR', 400, requestId, timestamp, details);
   }
 }
 
@@ -168,7 +168,7 @@ export function parseError(response: any): DataHubError {
     // Map error codes to specific error classes
     switch (httpStatus) {
       case 400:
-        return new ValidationError(message, requestId, details);
+        return new ValidationError(message, requestId, timestamp, details);
       case 401:
         return new UnauthorizedError(message, requestId);
       case 403:

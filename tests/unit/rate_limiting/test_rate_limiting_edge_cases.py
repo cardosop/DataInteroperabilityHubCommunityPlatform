@@ -71,13 +71,14 @@ class RateLimitingEdgeCaseTest(TestCase):
             window=TimeWindow.BURST
         )
         
-        # Mock Redis failure
-        with patch('hub.apps.rate_limiting.utils.redis') as mock_redis:
-            mock_redis.from_url.side_effect = Exception("Redis unavailable")
-            
-            # Should fail open (allow request)
+        # Test Redis failure by using an invalid Redis URL
+        # This tests the actual failure handling without mocks
+        from django.test import override_settings
+        with override_settings(REDIS_URL='redis://invalid-host:6379/0'):
+            # Should fail open (allow request) when Redis is unavailable
             allowed, count, reset = sliding_window_check(key, 10, TimeWindow.BURST)
             self.assertTrue(allowed)  # Fail open
+            self.assertEqual(count, 0)  # Count should be 0 when Redis fails
     
     def test_rate_limit_concurrent_requests(self):
         """Test rate limiting with concurrent requests"""

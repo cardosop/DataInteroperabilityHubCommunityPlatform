@@ -90,7 +90,7 @@ class DataContractCLIIntegrationTest(TestCase):
         contract = Contract.objects.create(
             tenant=self.tenant,
             status=ContractStatus.DRAFT,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="0.4.0",
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(contract_data),

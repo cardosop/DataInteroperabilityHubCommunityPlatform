@@ -43,7 +43,7 @@ class ContractSerializerTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "test", "name": "Test Contract"}',
             hub_contract_version="1.0.0",
-            hub_contract_json={"hub_contract_version": 1, "id": "test"},
+            hub_contract_json={"hub_contract_version": "1.0.0", "id": "test"},
             created_by=self.user
         )
     

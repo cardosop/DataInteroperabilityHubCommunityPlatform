@@ -3,34 +3,77 @@ Contract Views
 
 REST API views for contract management.
 """
-from rest_framework import viewsets, status, permissions, filters
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError
-from django.db import transaction, models
-from django.db.models import Q, F, Case, When, Value, IntegerField
-from django.utils import timezone
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse, inline_serializer
-from drf_spectacular.types import OpenApiTypes
-from rest_framework import serializers
 
-from .models import Contract, ContractStatus, NormalizationStatus, ValidationStatus
-from .serializers import ContractSerializer, ContractCreateSerializer, ContractUpdateSerializer
-from .normalization import (
-    normalize_contract,
-    validate_hubcontract_schema
+from django.db import models, transaction
+from django.db.models import Case, F, IntegerField, Q, Value, When
+from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import filters, permissions, serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.response import Response
+
+from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.services.base import NotFoundError as ServiceNotFoundError
+from hub.apps.core.services.base import ValidationError
+from hub.apps.jobs.models import JobType
+from hub.apps.jobs.utils import create_job
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
+
+from .caching import (
+    cache_contract,
+    cache_lineage,
+    cache_query_result,
+    get_cached_contract,
+    get_cached_lineage,
+    get_cached_query_result,
+    invalidate_contract_cache,
+    invalidate_lineage_cache,
 )
 from .cli_client import (
+    SYNC_TIMEOUT,
     DataContractCLIClient,
-    interpret_validation_status,
     group_errors_by_category,
-    SYNC_TIMEOUT
+    interpret_validation_status,
 )
-from .migration_manager import ContractMigrationManager
+from .impact_analysis import ImpactAnalyzer, ImpactScorer
+from .impact_notifications import ImpactNotifier
+from .impact_visualization import ImpactVisualizer
+from .lineage import (
+    LineageTraverser,
+    generate_lineage_dot,
+    generate_lineage_json,
+    generate_lineage_mermaid,
+)
+from .lineage_service import LineageService
 from .migration import MigrationStrategy, get_current_hubcontract_version
-from hub.apps.audit.utils import create_audit_event
-from hub.apps.jobs.utils import create_job
-from hub.apps.jobs.models import JobType
+from .migration_manager import ContractMigrationManager
+from .models import Contract, ContractStatus, NormalizationStatus, ValidationStatus
+from .normalization import normalize_contract, validate_hubcontract_schema
+from .normalization_metrics import record_all_normalization_metrics
+from .normalization_service import NormalizationService
+from .optimization import (
+    estimate_contract_json_size,
+    optimize_large_contract_json,
+    should_optimize_contract,
+)
+from .pagination import (
+    ContractPageNumberPagination,
+    get_pagination_params,
+    optimize_queryset_for_pagination,
+    paginate_queryset,
+)
+from .serializers import ContractCreateSerializer, ContractSerializer, ContractUpdateSerializer
+from .services import ContractService
 
 
 @extend_schema_view(
@@ -63,49 +106,98 @@ from hub.apps.jobs.models import JobType
         """,
         parameters=[
             OpenApiParameter(
-                name='owner_email',
+                name="owner_email",
                 type=OpenApiTypes.EMAIL,
                 location=OpenApiParameter.QUERY,
-                description='Filter by owner email (case-insensitive)',
-                required=False
+                description="Filter by owner email (case-insensitive)",
+                required=False,
             ),
             OpenApiParameter(
-                name='owner_name',
+                name="owner_name",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by owner name (case-insensitive partial match)',
-                required=False
+                description="Filter by owner name (case-insensitive partial match)",
+                required=False,
             ),
             OpenApiParameter(
-                name='tag',
+                name="tag",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by tag (can specify multiple times)',
-                required=False
+                description="Filter by tag (can specify multiple times)",
+                required=False,
             ),
             OpenApiParameter(
-                name='quality_profile',
+                name="quality_profile",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by quality profile key (e.g., intake_basic)',
-                required=False
+                description="Filter by quality profile key (e.g., intake_basic)",
+                required=False,
             ),
             OpenApiParameter(
-                name='compliance_regime',
+                name="compliance_regime",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by compliance jurisdiction (e.g., GDPR, LGPD, CCPA)',
-                required=False
+                description="Filter by compliance jurisdiction (e.g., GDPR, LGPD, CCPA)",
+                required=False,
             ),
             OpenApiParameter(
-                name='ordering',
+                name="contact_email",
+                type=OpenApiTypes.EMAIL,
+                location=OpenApiParameter.QUERY,
+                description="Filter by contact email (case-insensitive)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="contact_name",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Comma-separated list of fields to sort by (e.g., -created_at,quality_score)',
-                required=False
+                description="Filter by contact name (case-insensitive partial match)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="server_type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by server type (e.g., S3, PostgreSQL, API)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="server_url",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by server URL (case-insensitive partial match)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="min_availability",
+                type=OpenApiTypes.FLOAT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by minimum availability (from servicelevels)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="max_latency_ms",
+                type=OpenApiTypes.FLOAT,
+                location=OpenApiParameter.QUERY,
+                description="Filter by maximum latency in milliseconds (from servicelevels)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="model_name",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by model name",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated list of fields to sort by (e.g., -created_at,quality_score)",
+                required=False,
             ),
         ],
-        tags=['Contracts']
+        tags=["Contracts"],
     ),
     retrieve=extend_schema(
         summary="Retrieve contract",
@@ -134,7 +226,7 @@ from hub.apps.jobs.models import JobType
         - `WARNING_ONLY`: Contract has warnings but no errors
         - `ERROR`: Validation error occurred
         """,
-        tags=['Contracts']
+        tags=["Contracts"],
     ),
     create=extend_schema(
         summary="Create contract",
@@ -150,17 +242,17 @@ from hub.apps.jobs.models import JobType
         - YAML (original_format: "YAML")
         
         **Supported Spec Types:**
-        - ODCS (original_spec_type: "ODCS")
-        - DataContract.com (original_spec_type: "DATACONTRACT_COM")
+        - ODCS (original_spec_type: "ODCS") - Open Data Contract Standard v3.0.2+
         
         If `original_spec_type` is not provided, it will be auto-detected.
+        Note: Only ODCS is supported. The Data Contract Specification (DCS) has been deprecated.
         """,
         request=ContractCreateSerializer,
         responses={
             201: ContractSerializer,
             400: OpenApiResponse(description="Validation error or normalization failed"),
         },
-        tags=['Contracts']
+        tags=["Contracts"],
     ),
     update=extend_schema(
         summary="Update contract",
@@ -175,7 +267,7 @@ from hub.apps.jobs.models import JobType
             200: ContractSerializer,
             400: OpenApiResponse(description="Validation error"),
         },
-        tags=['Contracts']
+        tags=["Contracts"],
     ),
     destroy=extend_schema(
         summary="Delete contract",
@@ -185,10 +277,23 @@ from hub.apps.jobs.models import JobType
         responses={
             204: OpenApiResponse(description="Contract deleted successfully"),
         },
-        tags=['Contracts']
+        tags=["Contracts"],
     ),
 )
 class ContractViewSet(viewsets.ModelViewSet):
+    """
+    Contract ViewSet with caching and pagination support.
+
+    Features:
+
+    Note: Overrides initialize_request to handle format suffix conflicts
+    for the lineage visualization endpoint.
+    - Caching for contract retrieval and lineage queries
+    - Pagination for large result sets
+    - Performance optimizations for large JSON
+    """
+
+    pagination_class = ContractPageNumberPagination
     """
     ViewSet for contract management.
     
@@ -197,139 +302,131 @@ class ContractViewSet(viewsets.ModelViewSet):
     queryset = Contract.objects.all()
     serializer_class = ContractSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def check_auditor_permissions(self, request, view_action):
         """Check if AUDITOR role can perform the action (read-only)"""
         if not request.user or not request.user.is_authenticated:
             return True  # Let IsAuthenticated handle this
-        
+
         # Check if user has AUDITOR role
-        if hasattr(request.user, 'user_roles'):
+        if hasattr(request.user, "user_roles"):
             role_names = [ur.role.name for ur in request.user.user_roles.all()]
-            if 'AUDITOR' in role_names:
+            if "AUDITOR" in role_names:
                 # AUDITOR can only read, not write
-                if view_action in ['create', 'update', 'partial_update', 'destroy']:
-                    from rest_framework.exceptions import PermissionDenied
-                    raise PermissionDenied("AUDITOR role has read-only access. Cannot perform write operations.")
-        
+                if view_action in ["create", "update", "partial_update", "destroy"]:
+                    raise PermissionDenied(
+                        "AUDITOR role has read-only access. Cannot perform write operations."
+                    )
+
         return True
+
     lookup_field = "id"
-    
+
+    def initialize_request(self, request, *args, **kwargs):
+        """
+        Override initialize_request to handle format suffix conflicts.
+
+        When format is in query parameters (e.g., ?format=dot), DRF's format suffix
+        patterns can interfere. For the lineage visualization endpoint, we need to
+        ensure query parameters take precedence over format suffixes.
+        """
+        # Call parent to get the DRF request object
+        drf_request = super().initialize_request(request, *args, **kwargs)
+
+        # Check if this is the lineage visualization endpoint
+        # The action name is determined by the URL path
+        if hasattr(drf_request, "path") and "lineage/visualization" in drf_request.path:
+            # If format is in query parameters, clear any format from kwargs
+            # This prevents DRF from trying to match format suffix patterns
+            if "format" in request.GET or "format" in drf_request.query_params:
+                # Clear format from kwargs if it was set by format suffix pattern
+                if "format" in kwargs:
+                    # Store it temporarily but don't use it for routing
+                    drf_request._format_from_suffix = kwargs.pop("format")
+                # Also clear format attribute if it was set
+                if hasattr(drf_request, "format") and drf_request.format:
+                    # Only clear if format is also in query params (query params take precedence)
+                    format_in_query = request.GET.get("format") or drf_request.query_params.get(
+                        "format"
+                    )
+                    if format_in_query:
+                        drf_request._original_format = drf_request.format
+                        drf_request.format = None
+
+        return drf_request
+
     @transaction.atomic
     def create(self, request):
         """
-        Create a new contract.
-        
+        Create a new contract using workflow orchestration.
+
         POST /contracts
         Body: {
             "asset_id": "uuid" (optional),
             "original_raw": "contract content",
             "original_format": "JSON" or "YAML",
-            "original_spec_type": "ODCS" or "DATACONTRACT_COM" (optional)
+            "original_spec_type": "ODCS" (optional, auto-detected if not provided)
         }
         """
-        self.check_auditor_permissions(request, 'create')
+        self.check_auditor_permissions(request, "create")
         serializer = ContractCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
-        original_raw = serializer.validated_data['original_raw']
-        original_format = serializer.validated_data['original_format']
-        original_spec_type = serializer.validated_data.get('original_spec_type')
-        asset_id = serializer.validated_data.get('asset_id')
-        
+
+        original_raw = serializer.validated_data["original_raw"]
+        original_format = serializer.validated_data["original_format"]
+        original_spec_type = serializer.validated_data.get("original_spec_type")
+        asset_id = serializer.validated_data.get("asset_id")
+
         # Get tenant from user
-        tenant = request.user.tenant if hasattr(request.user, 'tenant') and request.user.tenant else None
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
         if not tenant:
             return Response(
-                {'error': 'User must belong to a tenant to create contracts'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "User must belong to a tenant to create contracts"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
-        # Get asset if provided
-        asset = None
-        if asset_id:
-            try:
-                from hub.apps.assets.models import Asset
-                asset = Asset.objects.get(id=asset_id, tenant=tenant)
-            except Exception:
-                return Response(
-                    {'error': 'Asset not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        # Get next version for asset (if asset provided)
-        version = 1
-        if asset:
-            latest_contract = Contract.objects.filter(
-                tenant=tenant,
-                asset=asset
-            ).order_by('-version').first()
-            if latest_contract:
-                version = latest_contract.version + 1
-        
-        # Normalize contract
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=original_raw,
-            format=original_format,
-            spec_type=original_spec_type
-        )
-        
-        # Use provided spec_type or detected
-        final_spec_type = original_spec_type or detected_spec_type
-        final_spec_version = detected_spec_version
-        
-        # Validate HubContract schema if normalization succeeded
-        if hub_contract:
-            is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
-            if not is_valid:
-                norm_status = NormalizationStatus.NORMALIZATION_FAILED
-                norm_errors.extend(validation_errors)
-                hub_contract = None
-        
-        # Create contract
-        contract = Contract.objects.create(
-            tenant=tenant,
-            asset=asset,
-            version=version,
-            status=ContractStatus.DRAFT,
-            original_spec_type=final_spec_type,
-            original_spec_version=final_spec_version,
-            original_format=original_format,
-            original_raw=original_raw,
-            hub_contract_version="1.0.0" if hub_contract else None,
-            hub_contract_json=hub_contract,
-            normalization_status=norm_status,
-            normalization_errors=norm_errors,
-            normalization_warnings=norm_warnings,
-            created_by=request.user
-        )
-        
-        # Log audit event
-        create_audit_event(
-            resource_type="CONTRACT",
-            action="CONTRACT_CREATED",
-            actor_user=request.user,
-            tenant=tenant,
-            resource_id=str(contract.id),
-            details={
-                'original_spec_type': final_spec_type,
-                'original_spec_version': final_spec_version,
-                'normalization_status': norm_status,
-                'asset_id': str(asset_id) if asset_id else None
-            },
-            request=request
-        )
-        
-        return Response(
-            ContractSerializer(contract).data,
-            status=status.HTTP_201_CREATED
-        )
-    
+
+        # Use service layer
+        try:
+            service = ContractService(
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
+                request_id=getattr(request, "request_id", None),
+            )
+            contract = service.create_contract(
+                original_raw=original_raw,
+                original_format=original_format,
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
+                asset_id=str(asset_id) if asset_id else None,
+                original_spec_type=original_spec_type,
+            )
+
+            return Response(ContractSerializer(contract).data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=e.http_status
+            )
+        except NotFoundError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=e.http_status
+            )
+        except Exception as e:
+            return Response(
+                {
+                    "error": "Contract creation failed",
+                    "code": "INTERNAL_ERROR",
+                    "details": {"error": str(e)},
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         """
         Update a contract.
-        
+
         PATCH /contracts/{id}
         Body: {
             "original_raw": "updated contract content" (optional),
@@ -337,30 +434,56 @@ class ContractViewSet(viewsets.ModelViewSet):
             "status": "DRAFT" | "ACTIVE" | "RETIRED" (optional)
         }
         """
-        self.check_auditor_permissions(request, 'update')
+        self.check_auditor_permissions(request, "update")
         contract = self.get_object()
         serializer = ContractUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        
+
         # Store old values for audit
         old_status = contract.status
         old_hub_contract_json = contract.hub_contract_json
-        
+
         # Update original_raw if provided
-        if 'original_raw' in serializer.validated_data:
-            contract.original_raw = serializer.validated_data['original_raw']
-            
+        if "original_raw" in serializer.validated_data:
+            contract.original_raw = serializer.validated_data["original_raw"]
+
             # Update format if provided
-            if 'original_format' in serializer.validated_data:
-                contract.original_format = serializer.validated_data['original_format']
-            
+            if "original_format" in serializer.validated_data:
+                contract.original_format = serializer.validated_data["original_format"]
+
             # Re-normalize contract
-            hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
+            (
+                hub_contract,
+                detected_spec_type,
+                detected_spec_version,
+                norm_status,
+                norm_errors,
+                norm_warnings,
+            ) = normalize_contract(
                 raw_contract=contract.original_raw,
                 format=contract.original_format,
-                spec_type=contract.original_spec_type
+                spec_type=contract.original_spec_type,
             )
-            
+
+            # Check if normalization failed due to DCS rejection
+            if norm_status == NormalizationStatus.NORMALIZATION_FAILED and norm_errors:
+                dcs_rejection_errors = [
+                    e
+                    for e in norm_errors
+                    if "data contract specification" in e.lower()
+                    or "dcs" in e.lower()
+                    or "no longer supported" in e.lower()
+                ]
+                if dcs_rejection_errors:
+                    return Response(
+                        {
+                            "error": "DCS contracts are no longer supported",
+                            "code": "DCS_NOT_SUPPORTED",
+                            "details": norm_errors,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
             # Validate HubContract schema if normalization succeeded
             if hub_contract:
                 is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
@@ -368,36 +491,36 @@ class ContractViewSet(viewsets.ModelViewSet):
                     norm_status = NormalizationStatus.NORMALIZATION_FAILED
                     norm_errors.extend(validation_errors)
                     hub_contract = None
-            
+
             # Update normalization fields
             contract.hub_contract_version = "1.0.0" if hub_contract else None
             contract.hub_contract_json = hub_contract
             contract.normalization_status = norm_status
             contract.normalization_errors = norm_errors
             contract.normalization_warnings = norm_warnings
-            
+
             # Reset validation status (requires re-validation)
             # If contract is ACTIVE, set to DRAFT since it needs re-validation
             # This prevents validation errors when saving ACTIVE contract with validation_status=None
             if contract.status == ContractStatus.ACTIVE:
                 contract.status = ContractStatus.DRAFT
-            
+
             contract.validation_status = None
             contract.validation_errors = []
             contract.validation_warnings = []
             contract.last_validated_at = None
-        
+
         # Update status if provided
-        if 'status' in serializer.validated_data:
-            new_status = serializer.validated_data['status']
-            
+        if "status" in serializer.validated_data:
+            new_status = serializer.validated_data["status"]
+
             # Enforce ACTIVE status requirements
             if new_status == ContractStatus.ACTIVE:
                 # Ensure validation_status is set BEFORE checking can_activate
                 # can_activate() requires validation_status to be VALID or WARNING_ONLY
                 if contract.validation_status is None:
                     contract.validation_status = ValidationStatus.VALID
-                
+
                 # Ensure normalization_status is set BEFORE checking can_activate
                 # can_activate() requires normalization_status to be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS
                 if contract.normalization_status is None:
@@ -405,38 +528,39 @@ class ContractViewSet(viewsets.ModelViewSet):
                         contract.normalization_status = NormalizationStatus.NORMALIZED_OK
                     else:
                         return Response(
-                            {'error': 'Cannot activate contract: hub_contract_json is required for activation'},
-                            status=status.HTTP_400_BAD_REQUEST
+                            {
+                                "error": "Cannot activate contract: hub_contract_json is required for activation"
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
                         )
-                
+
                 # Now check if contract can be activated (after ensuring statuses are set)
                 can_activate, reason = contract.can_activate()
                 if not can_activate:
                     return Response(
-                        {'error': f'Cannot activate contract: {reason}'},
-                        status=status.HTTP_400_BAD_REQUEST
+                        {"error": f"Cannot activate contract: {reason}"},
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
-            
+
             contract.status = new_status
-        
+
         # Apply ON_WRITE migration if needed
         if contract.hub_contract_json and contract.hub_contract_version:
-            migrated, migrated_hub_contract, migration_warnings = ContractMigrationManager.migrate_on_write(contract)
+            migrated, migrated_hub_contract, migration_warnings = (
+                ContractMigrationManager.migrate_on_write(contract)
+            )
             if migrated:
                 # Contract was migrated, refresh from DB
                 contract.refresh_from_db()
-        
+
         # Validate contract before saving
         try:
             contract.full_clean()
         except ValidationError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         contract.save()
-        
+
         # Log audit event
         create_audit_event(
             resource_type="CONTRACT",
@@ -445,34 +569,31 @@ class ContractViewSet(viewsets.ModelViewSet):
             tenant=contract.tenant,
             resource_id=str(contract.id),
             details={
-                'old_status': old_status,
-                'new_status': contract.status,
-                'normalization_status': contract.normalization_status,
-                'old_hub_contract_json': old_hub_contract_json,
-                'new_hub_contract_json': contract.hub_contract_json
+                "old_status": old_status,
+                "new_status": contract.status,
+                "normalization_status": contract.normalization_status,
+                "old_hub_contract_json": old_hub_contract_json,
+                "new_hub_contract_json": contract.hub_contract_json,
             },
-            request=request
+            request=request,
         )
-        
-        return Response(
-            ContractSerializer(contract).data,
-            status=status.HTTP_200_OK
-        )
-    
+
+        return Response(ContractSerializer(contract).data, status=status.HTTP_200_OK)
+
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         """
         Delete a contract (soft delete: set status to RETIRED).
-        
+
         DELETE /contracts/{id}
         """
-        self.check_auditor_permissions(request, 'destroy')
+        self.check_auditor_permissions(request, "destroy")
         contract = self.get_object()
-        
+
         # Soft delete: set status to RETIRED
         contract.status = ContractStatus.RETIRED
         contract.save()
-        
+
         # Log audit event
         create_audit_event(
             resource_type="CONTRACT",
@@ -481,18 +602,18 @@ class ContractViewSet(viewsets.ModelViewSet):
             tenant=contract.tenant,
             resource_id=str(contract.id),
             details={
-                'original_spec_type': contract.original_spec_type,
-                'original_spec_version': contract.original_spec_version
+                "original_spec_type": contract.original_spec_type,
+                "original_spec_version": contract.original_spec_version,
             },
-            request=request
+            request=request,
         )
-        
+
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
+
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters (GAP-9.2.2)"""
         user = self.request.user
-        
+
         # Platform admins can see all contracts
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             queryset = Contract.objects.all()
@@ -506,6 +627,7 @@ class ContractViewSet(viewsets.ModelViewSet):
                 tenant_id = self.request.tenant_id
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -517,10 +639,11 @@ class ContractViewSet(viewsets.ModelViewSet):
             if not tenant_id and hasattr(user, "id") and user.id:
                 from django.contrib.auth import get_user_model
                 from django.contrib.auth.models import AnonymousUser
+
                 User = get_user_model()
                 if not isinstance(user, AnonymousUser):
                     try:
-                        db_user = User.objects.only('tenant_id').get(id=user.id)
+                        db_user = User.objects.only("tenant_id").get(id=user.id)
                         if db_user.tenant_id:
                             tenant_id = db_user.tenant_id
                     except User.DoesNotExist:
@@ -531,11 +654,15 @@ class ContractViewSet(viewsets.ModelViewSet):
             # Last resort: get from user.tenant relationship
             if not tenant_id and hasattr(user, "tenant") and user.tenant:
                 tenant_id = user.tenant.id
-            
+
             # DEBUG: Log tenant_id retrieval for troubleshooting (only in test environments)
             import os
-            if os.environ.get('DJANGO_SETTINGS_MODULE', '').endswith('test') or 'test' in os.environ.get('PYTEST_CURRENT_TEST', ''):
+
+            if os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith(
+                "test"
+            ) or "test" in os.environ.get("PYTEST_CURRENT_TEST", ""):
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.debug(
                     f"ContractViewSet.get_queryset: tenant_id={tenant_id}, "
@@ -544,11 +671,12 @@ class ContractViewSet(viewsets.ModelViewSet):
                     f"request.tenant_id={getattr(self.request, 'tenant_id', None)}, "
                     f"request.tenant={getattr(self.request, 'tenant', None)}"
                 )
-            
+
             # Regular users can only see contracts in their tenant
             if tenant_id:
                 if isinstance(tenant_id, str):
                     import uuid
+
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
@@ -557,14 +685,18 @@ class ContractViewSet(viewsets.ModelViewSet):
                         queryset = Contract.objects.filter(tenant_id=tenant_id)
                 else:
                     queryset = Contract.objects.filter(tenant_id=tenant_id)
-                
+
                 # DEBUG: Verify queryset has contracts (only in test environments)
                 import os
-                if 'test' in os.environ.get('PYTEST_CURRENT_TEST', '') or 'pytest' in str(os.environ.get('_', '')):
+
+                if "test" in os.environ.get("PYTEST_CURRENT_TEST", "") or "pytest" in str(
+                    os.environ.get("_", "")
+                ):
                     count_before_filtering = queryset.count()
                     if count_before_filtering == 0:
                         # Log for debugging
                         import logging
+
                         logger = logging.getLogger(__name__)
                         logger.warning(
                             f"ContractViewSet.get_queryset: tenant_id={tenant_id}, "
@@ -572,36 +704,36 @@ class ContractViewSet(viewsets.ModelViewSet):
                         )
             else:
                 queryset = Contract.objects.none()
-        
+
         # Apply enhanced filtering (GAP-9.2.2)
         # NOTE: Filtering must happen BEFORE sorting annotations are applied
         # because filtering may need to evaluate the queryset, and annotations can interfere
         queryset = self._apply_filtering(queryset)
-        
+
         # Apply enhanced sorting (GAP-9.2.2)
         # Sorting annotations are applied after filtering to avoid interfering with queryset evaluation
         queryset = self._apply_sorting(queryset)
-        
+
         return queryset
-    
+
     def _apply_filtering(self, queryset):
-        """Apply filtering by owners, tags, quality profile, compliance regime (GAP-9.2.2)"""
+        """Apply filtering by owners, tags, quality profile, compliance regime, and new filters (GAP-9.2.2)"""
         request = self.request
         # Handle both DRF Request objects (with query_params) and Django WSGIRequest (with GET)
-        if hasattr(request, 'query_params'):
+        if hasattr(request, "query_params"):
             query_params = request.query_params
         else:
             # Fallback for Django WSGIRequest (e.g., in tests with APIRequestFactory)
             query_params = request.GET
-        
+
         # Filter by owners (email or name)
-        owner_email = query_params.get('owner_email')
-        owner_name = query_params.get('owner_name')
+        owner_email = query_params.get("owner_email")
+        owner_name = query_params.get("owner_name")
         if owner_email or owner_name:
             # Filter contracts where hub_contract_json.info.owners contains matching owner
             # Use a Python-based filter for JSON arrays (more reliable than JSONField lookups)
             contract_ids = []
-            
+
             # Evaluate queryset to check JSON fields (needed for complex JSON filtering)
             # This is acceptable for owner filtering as it's typically a small dataset per tenant
             # We need to load hub_contract_json to check the owners array
@@ -614,44 +746,47 @@ class ContractViewSet(viewsets.ModelViewSet):
                 # The sorting annotations might interfere with queryset evaluation
                 # So we evaluate the base queryset first, then filter, then apply sorting
                 contracts_list = list(queryset)
-                
+
                 # If queryset is empty, there's nothing to filter - return early
                 if not contracts_list:
                     return queryset.none()
-                
+
                 for contract in contracts_list:
                     if not contract.hub_contract_json:
                         continue
-                    info = contract.hub_contract_json.get('info', {})
+                    info = contract.hub_contract_json.get("info", {})
                     if not info:
                         continue
-                    owners = info.get('owners', [])
+                    owners = info.get("owners", [])
                     if not owners:
                         continue
-                    
+
                     email_match = True
                     name_match = True
-                    
+
                     if owner_email:
                         # Check if any owner has this email (case-insensitive)
                         email_match = False
                         for owner in owners:
                             if isinstance(owner, dict):
-                                owner_email_val = owner.get('email', '')
-                                if owner_email_val and owner_email_val.lower() == owner_email.lower():
+                                owner_email_val = owner.get("email", "")
+                                if (
+                                    owner_email_val
+                                    and owner_email_val.lower() == owner_email.lower()
+                                ):
                                     email_match = True
                                     break
-                    
+
                     if owner_name:
                         # Check if any owner has this name (case-insensitive contains)
                         name_match = False
                         for owner in owners:
                             if isinstance(owner, dict):
-                                owner_name_val = owner.get('name', '')
+                                owner_name_val = owner.get("name", "")
                                 if owner_name_val and owner_name.lower() in owner_name_val.lower():
                                     name_match = True
                                     break
-                    
+
                     # Both conditions must be met if both are specified, otherwise either one
                     if owner_email and owner_name:
                         if email_match and name_match:
@@ -665,11 +800,12 @@ class ContractViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 # Log the error for debugging but don't fail silently
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Error filtering contracts by owner: {e}", exc_info=True)
                 # If queryset evaluation fails, return empty queryset
                 return queryset.none()
-            
+
             if contract_ids:
                 # Filter the queryset by the matching contract IDs
                 # Since the contracts_list came from a tenant-filtered queryset, all IDs are already tenant-scoped
@@ -678,9 +814,9 @@ class ContractViewSet(viewsets.ModelViewSet):
             else:
                 # No contracts matched the owner filter
                 queryset = queryset.none()
-        
+
         # Filter by tags
-        tags = query_params.getlist('tag')  # Support multiple tags
+        tags = query_params.getlist("tag")  # Support multiple tags
         if tags:
             # Filter contracts where hub_contract_json.info.tags contains any of the specified tags
             # Use contains lookup for array elements (works better for simple arrays)
@@ -688,61 +824,201 @@ class ContractViewSet(viewsets.ModelViewSet):
             for tag in tags:
                 tag_filter |= Q(hub_contract_json__info__tags__contains=[tag])
             queryset = queryset.filter(tag_filter)
-        
+
         # Filter by quality profile
-        quality_profile = query_params.get('quality_profile')
+        quality_profile = query_params.get("quality_profile")
         if quality_profile:
             queryset = queryset.filter(
                 hub_contract_json__quality__default_profile_key=quality_profile
             )
-        
+
         # Filter by compliance regime (jurisdiction)
-        compliance_regime = query_params.get('compliance_regime')
+        compliance_regime = query_params.get("compliance_regime")
         if compliance_regime:
             # Filter contracts where hub_contract_json.privacy_compliance.jurisdictions contains the regime
             queryset = queryset.filter(
                 hub_contract_json__privacy_compliance__jurisdictions__contains=[compliance_regime]
             )
-        
+
+        # Filter by contact_email (from contact[] array)
+        contact_email = query_params.get("contact_email")
+        if contact_email:
+            contract_ids = []
+            try:
+                contracts_list = list(queryset)
+                for contract in contracts_list:
+                    if not contract.hub_contract_json:
+                        continue
+                    contacts = contract.hub_contract_json.get("contact", [])
+                    if contacts:
+                        for contact in contacts:
+                            if isinstance(contact, dict):
+                                email = contact.get("email", "")
+                                if email and email.lower() == contact_email.lower():
+                                    contract_ids.append(contract.id)
+                                    break
+            except Exception as e:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Error filtering contracts by contact_email: {e}", exc_info=True)
+                return queryset.none()
+
+            if contract_ids:
+                queryset = queryset.filter(id__in=contract_ids)
+            else:
+                queryset = queryset.none()
+
+        # Filter by contact_name (from contact[] array)
+        contact_name = query_params.get("contact_name")
+        if contact_name:
+            contract_ids = []
+            try:
+                contracts_list = list(queryset)
+                for contract in contracts_list:
+                    if not contract.hub_contract_json:
+                        continue
+                    contacts = contract.hub_contract_json.get("contact", [])
+                    if contacts:
+                        for contact in contacts:
+                            if isinstance(contact, dict):
+                                name = contact.get("name", "")
+                                if name and contact_name.lower() in name.lower():
+                                    contract_ids.append(contract.id)
+                                    break
+            except Exception as e:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Error filtering contracts by contact_name: {e}", exc_info=True)
+                return queryset.none()
+
+            if contract_ids:
+                queryset = queryset.filter(id__in=contract_ids)
+            else:
+                queryset = queryset.none()
+
+        # Filter by server_type
+        server_type = query_params.get("server_type")
+        if server_type:
+            queryset = queryset.filter(hub_contract_json__servers__type=server_type)
+
+        # Filter by server_url
+        server_url = query_params.get("server_url")
+        if server_url:
+            queryset = queryset.filter(hub_contract_json__servers__url__icontains=server_url)
+
+        # Filter by min_availability (from servicelevels[])
+        min_availability = query_params.get("min_availability")
+        if min_availability:
+            try:
+                min_avail_float = float(min_availability)
+                # Filter contracts where any servicelevel has target >= min_availability
+                # This requires evaluating the queryset
+                contract_ids = []
+                contracts_list = list(queryset)
+                for contract in contracts_list:
+                    if not contract.hub_contract_json:
+                        continue
+                    servicelevels = contract.hub_contract_json.get("servicelevels", [])
+                    if servicelevels:
+                        for sl in servicelevels:
+                            if isinstance(sl, dict):
+                                target = sl.get("target")
+                                if target is not None:
+                                    try:
+                                        target_float = float(target)
+                                        if target_float >= min_avail_float:
+                                            contract_ids.append(contract.id)
+                                            break
+                                    except (ValueError, TypeError):
+                                        continue
+            except (ValueError, TypeError):
+                # Invalid min_availability value, return empty queryset
+                queryset = queryset.none()
+            else:
+                if contract_ids:
+                    queryset = queryset.filter(id__in=contract_ids)
+                else:
+                    queryset = queryset.none()
+
+        # Filter by max_latency_ms (from servicelevels[])
+        max_latency_ms = query_params.get("max_latency_ms")
+        if max_latency_ms:
+            try:
+                max_latency_float = float(max_latency_ms)
+                # Filter contracts where any servicelevel has target <= max_latency_ms
+                contract_ids = []
+                contracts_list = list(queryset)
+                for contract in contracts_list:
+                    if not contract.hub_contract_json:
+                        continue
+                    servicelevels = contract.hub_contract_json.get("servicelevels", [])
+                    if servicelevels:
+                        for sl in servicelevels:
+                            if isinstance(sl, dict):
+                                target = sl.get("target")
+                                metric = sl.get("metric", "").lower()
+                                if target is not None and "latency" in metric:
+                                    try:
+                                        target_float = float(target)
+                                        if target_float <= max_latency_float:
+                                            contract_ids.append(contract.id)
+                                            break
+                                    except (ValueError, TypeError):
+                                        continue
+            except (ValueError, TypeError):
+                queryset = queryset.none()
+            else:
+                if contract_ids:
+                    queryset = queryset.filter(id__in=contract_ids)
+                else:
+                    queryset = queryset.none()
+
+        # Filter by model_name
+        model_name = query_params.get("model_name")
+        if model_name:
+            queryset = queryset.filter(hub_contract_json__models__name=model_name)
+
         return queryset
-    
+
     def _apply_sorting(self, queryset):
         """Apply sorting by quality score, compliance risk level, creation date, update date (GAP-9.2.2)"""
         request = self.request
         # Handle both DRF Request objects (with query_params) and Django WSGIRequest (with GET)
-        if hasattr(request, 'query_params'):
+        if hasattr(request, "query_params"):
             query_params = request.query_params
         else:
             # Fallback for Django WSGIRequest (e.g., in tests with APIRequestFactory)
             query_params = request.GET
-        ordering = query_params.get('ordering', '-created_at')  # Default to newest first
-        
+        ordering = query_params.get("ordering", "-created_at")  # Default to newest first
+
         # Parse ordering parameter (can be comma-separated)
-        order_fields = [field.strip() for field in ordering.split(',')]
-        
+        order_fields = [field.strip() for field in ordering.split(",")]
+
         # Map sort fields to database fields or annotations
         sort_mapping = {
-            'created_at': 'created_at',
-            '-created_at': '-created_at',
-            'updated_at': 'updated_at',
-            '-updated_at': '-updated_at',
-            'quality_score': 'quality_score',
-            '-quality_score': '-quality_score',
-            'compliance_risk': 'compliance_risk',
-            '-compliance_risk': '-compliance_risk',
+            "created_at": "created_at",
+            "-created_at": "-created_at",
+            "updated_at": "updated_at",
+            "-updated_at": "-updated_at",
+            "quality_score": "quality_score",
+            "-quality_score": "-quality_score",
+            "compliance_risk": "compliance_risk",
+            "-compliance_risk": "-compliance_risk",
         }
-        
+
         # Build ordering list
         ordering_list = []
         for field in order_fields:
             if field in sort_mapping:
                 ordering_list.append(sort_mapping[field])
-            elif field.startswith('-') and field[1:] in sort_mapping:
+            elif field.startswith("-") and field[1:] in sort_mapping:
                 ordering_list.append(sort_mapping[field])
             else:
                 # Default fallback
                 ordering_list.append(field)
-        
+
         # Annotate queryset with computed fields for sorting (GAP-9.2.2)
         # Quality score: extract from hub_contract_json if available
         # For now, we'll use a simple annotation based on normalization status
@@ -750,48 +1026,145 @@ class ContractViewSet(viewsets.ModelViewSet):
         queryset = queryset.annotate(
             quality_score=Case(
                 When(normalization_status=NormalizationStatus.NORMALIZED_OK, then=Value(100)),
-                When(normalization_status=NormalizationStatus.NORMALIZED_WITH_WARNINGS, then=Value(75)),
+                When(
+                    normalization_status=NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    then=Value(75),
+                ),
                 When(normalization_status=NormalizationStatus.NORMALIZATION_FAILED, then=Value(0)),
                 default=Value(50),
-                output_field=IntegerField()
+                output_field=IntegerField(),
             )
         )
-        
+
         # Compliance risk: extract from hub_contract_json.privacy_compliance if available
         # For now, use a simple annotation based on whether personal data is present
         queryset = queryset.annotate(
             compliance_risk=Case(
-                When(hub_contract_json__privacy_compliance__contains_personal_data=True, then=Value(100)),
+                When(
+                    hub_contract_json__privacy_compliance__contains_personal_data=True,
+                    then=Value(100),
+                ),
                 default=Value(0),
-                output_field=IntegerField()
+                output_field=IntegerField(),
             )
         )
-        
+
         # Apply ordering
         if ordering_list:
             queryset = queryset.order_by(*ordering_list)
         else:
-            queryset = queryset.order_by('-created_at')  # Default ordering
-        
+            queryset = queryset.order_by("-created_at")  # Default ordering
+
         return queryset
-    
+
     def list(self, request, *args, **kwargs):
-        """List contracts (tenant-scoped) with enhanced filtering and sorting (GAP-9.2.2)"""
-        return super().list(request, *args, **kwargs)
-    
+        """
+        List contracts (tenant-scoped) with enhanced filtering, sorting, caching, and pagination.
+
+        Features:
+        - Query result caching
+        - Optimized pagination
+        - Performance optimizations
+        """
+        # Get tenant ID for caching
+        tenant_id = None
+        if hasattr(request, "user") and request.user and hasattr(request.user, "tenant_id"):
+            tenant_id = str(request.user.tenant_id)
+
+        # Build query parameters dict for cache key
+        query_params = dict(request.query_params.items())
+
+        # Check cache for query results
+        if tenant_id:
+            cached_result = get_cached_query_result(query_params, tenant_id)
+            if cached_result:
+                results, total_count = cached_result
+                # Return cached results with pagination metadata
+                pagination_params = get_pagination_params(request)
+                page = pagination_params["page"]
+                page_size = pagination_params["page_size"]
+
+                # Calculate pagination metadata
+                start_idx = (page - 1) * page_size
+                end_idx = start_idx + page_size
+                paginated_results = results[start_idx:end_idx]
+
+                return Response(
+                    {
+                        "count": total_count,
+                        "page": page,
+                        "page_size": page_size,
+                        "total_pages": (total_count + page_size - 1) // page_size,
+                        "results": paginated_results,
+                        "_cached": True,
+                    }
+                )
+
+        # Optimize queryset for pagination
+        queryset = self.filter_queryset(self.get_queryset())
+        queryset = optimize_queryset_for_pagination(queryset)
+
+        # Get pagination parameters
+        pagination_params = get_pagination_params(request)
+
+        # Paginate queryset
+        results, pagination_meta = paginate_queryset(
+            queryset,
+            page=pagination_params["page"],
+            page_size=pagination_params["page_size"],
+            max_page_size=pagination_params["max_page_size"],
+        )
+
+        # Serialize results
+        serializer = self.get_serializer(results, many=True)
+
+        # Cache query results if tenant_id is available
+        if tenant_id:
+            cache_query_result(query_params, tenant_id, serializer.data, pagination_meta["count"])
+
+        # Return paginated response
+        return Response(
+            {
+                "count": pagination_meta["count"],
+                "page": pagination_meta["page"],
+                "page_size": pagination_meta["page_size"],
+                "total_pages": pagination_meta["total_pages"],
+                "has_next": pagination_meta["has_next"],
+                "has_previous": pagination_meta["has_previous"],
+                "next_page": pagination_meta.get("next_page"),
+                "previous_page": pagination_meta.get("previous_page"),
+                "results": serializer.data,
+            }
+        )
+
     def retrieve(self, request, *args, **kwargs):
         """
-        Retrieve contract by ID.
-        
+        Retrieve contract by ID with caching support.
+
         Applies ON_READ migration (lazy migration) if needed (GAP-10.2.2).
         Supports both v1 and v2 contracts (backward compatible).
         """
         contract = self.get_object()
-        
+        contract_id = str(contract.id)
+
+        # Check cache first
+        cached_data = get_cached_contract(contract_id)
+        if cached_data:
+            # Return cached data (but still apply migration if needed)
+            serializer = self.get_serializer(contract)
+            response_data = serializer.data
+            response_data["hub_contract_json"] = cached_data.get(
+                "hub_contract_json", contract.hub_contract_json
+            )
+            response_data["_cached"] = True
+            return Response(response_data)
+
         # Apply ON_READ migration (lazy, in-memory) for backward compatibility (GAP-10.2.2)
         if contract.hub_contract_json and contract.hub_contract_version:
-            migrated_hub_contract, migration_warnings = ContractMigrationManager.migrate_on_read(contract)
-            
+            migrated_hub_contract, migration_warnings = ContractMigrationManager.migrate_on_read(
+                contract
+            )
+
             # If migration was applied, return migrated version in response
             # (but don't update DB - that's the lazy part)
             if migrated_hub_contract != contract.hub_contract_json:
@@ -799,15 +1172,49 @@ class ContractViewSet(viewsets.ModelViewSet):
                 serializer = self.get_serializer(contract)
                 response_data = serializer.data
                 # Override hub_contract_json with migrated version
-                response_data['hub_contract_json'] = migrated_hub_contract
+                response_data["hub_contract_json"] = migrated_hub_contract
                 if migration_warnings:
-                    response_data['migration_warnings'] = migration_warnings
+                    response_data["migration_warnings"] = migration_warnings
+
+                # Cache the migrated contract
+                cache_contract(
+                    contract_id,
+                    {
+                        "hub_contract_json": migrated_hub_contract,
+                        "status": contract.status,
+                        "normalization_status": contract.normalization_status,
+                    },
+                )
+
                 return Response(response_data)
-        
+
+        # Cache the contract for future requests
+        if contract.hub_contract_json:
+            # Optimize large JSON before caching
+            if should_optimize_contract(contract.hub_contract_json):
+                optimized_json = optimize_large_contract_json(contract.hub_contract_json)
+                cache_contract(
+                    contract_id,
+                    {
+                        "hub_contract_json": optimized_json,
+                        "status": contract.status,
+                        "normalization_status": contract.normalization_status,
+                    },
+                )
+            else:
+                cache_contract(
+                    contract_id,
+                    {
+                        "hub_contract_json": contract.hub_contract_json,
+                        "status": contract.status,
+                        "normalization_status": contract.normalization_status,
+                    },
+                )
+
         # Support both v1 and v2 contracts (GAP-10.2.2)
         # API handles both versions transparently
         return super().retrieve(request, *args, **kwargs)
-    
+
     @transaction.atomic
     @extend_schema(
         summary="Validate contract",
@@ -833,59 +1240,62 @@ class ContractViewSet(viewsets.ModelViewSet):
         - `validated_at`: Timestamp of validation
         """,
         request=inline_serializer(
-            name='ContractValidationRequest',
+            name="ContractValidationRequest",
             fields={
-                'async': serializers.BooleanField(required=False, default=False, help_text='Use async validation (default: false)')
-            }
+                "async": serializers.BooleanField(
+                    required=False, default=False, help_text="Use async validation (default: false)"
+                )
+            },
         ),
         responses={
             200: inline_serializer(
-                name='ContractValidationResponse',
+                name="ContractValidationResponse",
                 fields={
-                    'validation_status': serializers.CharField(),
-                    'errors': serializers.ListField(child=serializers.DictField()),
-                    'warnings': serializers.ListField(child=serializers.DictField()),
-                    'grouped_errors': serializers.DictField(),
-                    'cli_version': serializers.CharField(),
-                    'validated_at': serializers.DateTimeField()
-                }
+                    "validation_status": serializers.CharField(),
+                    "errors": serializers.ListField(child=serializers.DictField()),
+                    "warnings": serializers.ListField(child=serializers.DictField()),
+                    "grouped_errors": serializers.DictField(),
+                    "cli_version": serializers.CharField(),
+                    "validated_at": serializers.DateTimeField(),
+                },
             ),
             202: inline_serializer(
-                name='ContractValidationJobResponse',
+                name="ContractValidationJobResponse",
                 fields={
-                    'job_id': serializers.UUIDField(),
-                    'status': serializers.CharField(),
-                    'message': serializers.CharField()
-                }
+                    "job_id": serializers.UUIDField(),
+                    "status": serializers.CharField(),
+                    "message": serializers.CharField(),
+                },
             ),
-            500: OpenApiResponse(description="Validation failed")
+            500: OpenApiResponse(description="Validation failed"),
         },
-        tags=['Contracts']
+        tags=["Contracts"],
     )
-    @action(detail=True, methods=['post'], url_path='validate')
+    @action(detail=True, methods=["post"], url_path="validate")
     def validate_contract(self, request, id=None):
         """
         Validate a contract using DataContract CLI.
-        
+
         POST /contracts/{id}/validate
         Body: {
             "async": false (optional, default false for sync validation)
         }
-        
+
         Returns validation result with status, errors, warnings.
         """
         contract = self.get_object()
-        
-        use_async = request.data.get('async', False)
-        contract_size = len(contract.original_raw.encode('utf-8'))
-        
+
+        use_async = request.data.get("async", False)
+        contract_size = len(contract.original_raw.encode("utf-8"))
+
         # Determine if async is needed based on size
         from django.conf import settings
-        sync_size_limit = getattr(settings, 'DATACONTRACT_VALIDATION_SYNC_SIZE_LIMIT', 100 * 1024)
-        
+
+        sync_size_limit = getattr(settings, "DATACONTRACT_VALIDATION_SYNC_SIZE_LIMIT", 100 * 1024)
+
         if contract_size > sync_size_limit:
             use_async = True
-        
+
         if use_async:
             # Create async validation job
             job = create_job(
@@ -894,13 +1304,10 @@ class ContractViewSet(viewsets.ModelViewSet):
                 resource_id=str(contract.id),
                 tenant=contract.tenant,
                 created_by=request.user,
-                details_json={
-                    'contract_id': str(contract.id),
-                    'validation_type': 'async'
-                },
-                queue_name='default'
+                details_json={"contract_id": str(contract.id), "validation_type": "async"},
+                queue_name="default",
             )
-            
+
             # Log audit event
             create_audit_event(
                 resource_type="CONTRACT",
@@ -908,56 +1315,55 @@ class ContractViewSet(viewsets.ModelViewSet):
                 actor_user=request.user,
                 tenant=contract.tenant,
                 resource_id=str(contract.id),
-                details={
-                    'job_id': str(job.id),
-                    'validation_type': 'async'
-                },
-                request=request
+                details={"job_id": str(job.id), "validation_type": "async"},
+                request=request,
             )
-            
+
             return Response(
                 {
-                    'job_id': str(job.id),
-                    'status': 'pending',
-                    'message': 'Validation job created. Poll /jobs/{job_id} for status.'
+                    "job_id": str(job.id),
+                    "status": "pending",
+                    "message": "Validation job created. Poll /jobs/{job_id} for status.",
                 },
-                status=status.HTTP_202_ACCEPTED
+                status=status.HTTP_202_ACCEPTED,
             )
         else:
             # Synchronous validation
             try:
                 cli_client = DataContractCLIClient()
-                
+
                 # Validate contract
                 validation_result = cli_client.validate(
                     raw_contract=contract.original_raw,
                     format=contract.original_format,
                     tenant_id=str(contract.tenant.id) if contract.tenant else None,
                     use_cache=True,
-                    timeout=SYNC_TIMEOUT
+                    timeout=SYNC_TIMEOUT,
                 )
-                
+
                 # Interpret validation status
                 validation_status, errors, warnings = interpret_validation_status(validation_result)
-                
+
                 # Group errors by category
                 grouped_errors = group_errors_by_category(errors)
-                
+
                 # Update contract with validation results
                 contract.validation_status = validation_status
                 contract.validation_errors = errors
                 contract.validation_warnings = warnings
-                contract.cli_version = validation_result.get('cli_version', 'unknown')
+                contract.cli_version = validation_result.get("cli_version", "unknown")
                 contract.last_validated_at = timezone.now()
-                contract.save(update_fields=[
-                    'validation_status',
-                    'validation_errors',
-                    'validation_warnings',
-                    'cli_version',
-                    'last_validated_at',
-                    'updated_at'
-                ])
-                
+                contract.save(
+                    update_fields=[
+                        "validation_status",
+                        "validation_errors",
+                        "validation_warnings",
+                        "cli_version",
+                        "last_validated_at",
+                        "updated_at",
+                    ]
+                )
+
                 # Log audit event
                 create_audit_event(
                     resource_type="CONTRACT",
@@ -966,38 +1372,40 @@ class ContractViewSet(viewsets.ModelViewSet):
                     tenant=contract.tenant,
                     resource_id=str(contract.id),
                     details={
-                        'validation_status': validation_status,
-                        'error_count': len(errors),
-                        'warning_count': len(warnings),
-                        'cli_version': contract.cli_version
+                        "validation_status": validation_status,
+                        "error_count": len(errors),
+                        "warning_count": len(warnings),
+                        "cli_version": contract.cli_version,
                     },
-                    request=request
+                    request=request,
                 )
-                
+
                 return Response(
                     {
-                        'validation_status': validation_status,
-                        'errors': errors,
-                        'warnings': warnings,
-                        'grouped_errors': grouped_errors,
-                        'cli_version': contract.cli_version,
-                        'validated_at': contract.last_validated_at.isoformat()
+                        "validation_status": validation_status,
+                        "errors": errors,
+                        "warnings": warnings,
+                        "grouped_errors": grouped_errors,
+                        "cli_version": contract.cli_version,
+                        "validated_at": contract.last_validated_at.isoformat(),
                     },
-                    status=status.HTTP_200_OK
+                    status=status.HTTP_200_OK,
                 )
-            
+
             except Exception as e:
                 # Mark validation as ERROR
                 contract.validation_status = ValidationStatus.ERROR
-                contract.validation_errors = [{'message': str(e), 'severity': 'ERROR'}]
+                contract.validation_errors = [{"message": str(e), "severity": "ERROR"}]
                 contract.last_validated_at = timezone.now()
-                contract.save(update_fields=[
-                    'validation_status',
-                    'validation_errors',
-                    'last_validated_at',
-                    'updated_at'
-                ])
-                
+                contract.save(
+                    update_fields=[
+                        "validation_status",
+                        "validation_errors",
+                        "last_validated_at",
+                        "updated_at",
+                    ]
+                )
+
                 # Log audit event
                 create_audit_event(
                     resource_type="CONTRACT",
@@ -1005,15 +1413,15 @@ class ContractViewSet(viewsets.ModelViewSet):
                     actor_user=request.user,
                     tenant=contract.tenant,
                     resource_id=str(contract.id),
-                    details={'error': str(e)},
-                    request=request
+                    details={"error": str(e)},
+                    request=request,
                 )
-                
+
                 return Response(
-                    {'error': f'Validation failed: {str(e)}'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    {"error": f"Validation failed: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
-    
+
     @extend_schema(
         summary="Lint contract",
         description="""
@@ -1023,37 +1431,37 @@ class ContractViewSet(viewsets.ModelViewSet):
         """,
         responses={
             200: inline_serializer(
-                name='ContractLintResponse',
+                name="ContractLintResponse",
                 fields={
-                    'issues': serializers.ListField(child=serializers.DictField()),
-                    'cli_version': serializers.CharField()
-                }
+                    "issues": serializers.ListField(child=serializers.DictField()),
+                    "cli_version": serializers.CharField(),
+                },
             ),
-            500: OpenApiResponse(description="Linting failed")
+            500: OpenApiResponse(description="Linting failed"),
         },
-        tags=['Contracts']
+        tags=["Contracts"],
     )
-    @action(detail=True, methods=['post'], url_path='lint')
+    @action(detail=True, methods=["post"], url_path="lint")
     def lint_contract(self, request, id=None):
         """
         Lint a contract using DataContract CLI.
-        
+
         POST /contracts/{id}/lint
-        
+
         Returns linting result with issues.
         """
         contract = self.get_object()
-        
+
         try:
             cli_client = DataContractCLIClient()
-            
+
             # Lint contract
             lint_result = cli_client.lint(
                 raw_contract=contract.original_raw,
                 format=contract.original_format,
-                timeout=SYNC_TIMEOUT
+                timeout=SYNC_TIMEOUT,
             )
-            
+
             # Log audit event
             create_audit_event(
                 resource_type="CONTRACT",
@@ -1061,24 +1469,23 @@ class ContractViewSet(viewsets.ModelViewSet):
                 actor_user=request.user,
                 tenant=contract.tenant,
                 resource_id=str(contract.id),
-                details={'issues_count': len(lint_result.get('issues', []))},
-                request=request
+                details={"issues_count": len(lint_result.get("issues", []))},
+                request=request,
             )
-            
+
             return Response(
                 {
-                    'issues': lint_result.get('issues', []),
-                    'cli_version': lint_result.get('cli_version', 'unknown')
+                    "issues": lint_result.get("issues", []),
+                    "cli_version": lint_result.get("cli_version", "unknown"),
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
-        
+
         except Exception as e:
             return Response(
-                {'error': f'Linting failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": f"Linting failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
+
     @extend_schema(
         summary="Convert contract format",
         description="""
@@ -1089,62 +1496,61 @@ class ContractViewSet(viewsets.ModelViewSet):
         - `YAML`: Convert to YAML format
         """,
         request=inline_serializer(
-            name='ContractConvertRequest',
+            name="ContractConvertRequest",
             fields={
-                'target_format': serializers.ChoiceField(
-                    choices=['JSON', 'YAML'],
+                "target_format": serializers.ChoiceField(
+                    choices=["JSON", "YAML"],
                     required=True,
-                    help_text='Target format for conversion'
+                    help_text="Target format for conversion",
                 )
-            }
+            },
         ),
         responses={
             200: inline_serializer(
-                name='ContractConvertResponse',
+                name="ContractConvertResponse",
                 fields={
-                    'converted_contract': serializers.CharField(),
-                    'target_format': serializers.CharField(),
-                    'format': serializers.CharField(),
-                    'cli_version': serializers.CharField()
-                }
+                    "converted_contract": serializers.CharField(),
+                    "target_format": serializers.CharField(),
+                    "format": serializers.CharField(),
+                    "cli_version": serializers.CharField(),
+                },
             ),
             400: OpenApiResponse(description="Invalid target format"),
-            500: OpenApiResponse(description="Conversion failed")
+            500: OpenApiResponse(description="Conversion failed"),
         },
-        tags=['Contracts']
+        tags=["Contracts"],
     )
-    @action(detail=True, methods=['post'], url_path='convert')
+    @action(detail=True, methods=["post"], url_path="convert")
     def convert_contract(self, request, id=None):
         """
         Convert a contract between formats.
-        
+
         POST /contracts/{id}/convert
         Body: {
             "target_format": "JSON" or "YAML"
         }
-        
+
         Returns converted contract.
         """
         contract = self.get_object()
-        target_format = request.data.get('target_format', 'JSON')
-        
-        if target_format not in ['JSON', 'YAML']:
+        target_format = request.data.get("target_format", "JSON")
+
+        if target_format not in ["JSON", "YAML"]:
             return Response(
-                {'error': 'target_format must be JSON or YAML'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "target_format must be JSON or YAML"}, status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
             cli_client = DataContractCLIClient()
-            
+
             # Convert contract
             convert_result = cli_client.convert(
                 raw_contract=contract.original_raw,
                 source_format=contract.original_format,
                 target_format=target_format,
-                timeout=SYNC_TIMEOUT
+                timeout=SYNC_TIMEOUT,
             )
-            
+
             # Log audit event
             create_audit_event(
                 resource_type="CONTRACT",
@@ -1152,29 +1558,26 @@ class ContractViewSet(viewsets.ModelViewSet):
                 actor_user=request.user,
                 tenant=contract.tenant,
                 resource_id=str(contract.id),
-                details={
-                    'source_format': contract.original_format,
-                    'target_format': target_format
-                },
-                request=request
+                details={"source_format": contract.original_format, "target_format": target_format},
+                request=request,
             )
-            
+
             return Response(
                 {
-                    'converted_contract': convert_result.get('converted_contract', ''),
-                    'target_format': convert_result.get('target_format', target_format),
-                    'format': target_format,  # Keep for backward compatibility
-                    'cli_version': convert_result.get('cli_version', 'unknown')
+                    "converted_contract": convert_result.get("converted_contract", ""),
+                    "target_format": convert_result.get("target_format", target_format),
+                    "format": target_format,  # Keep for backward compatibility
+                    "cli_version": convert_result.get("cli_version", "unknown"),
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
-        
+
         except Exception as e:
             return Response(
-                {'error': f'Conversion failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": f"Conversion failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-    
+
     @transaction.atomic
     @extend_schema(
         summary="Migrate contract",
@@ -1191,198 +1594,797 @@ class ContractViewSet(viewsets.ModelViewSet):
         - For `BACKGROUND`: Returns job ID to poll for status
         """,
         request=inline_serializer(
-            name='ContractMigrationRequest',
+            name="ContractMigrationRequest",
             fields={
-                'target_hub_contract_version': serializers.CharField(
-                    required=False,
-                    help_text='Target HubContract version (defaults to current)'
+                "target_hub_contract_version": serializers.CharField(
+                    required=False, help_text="Target HubContract version (defaults to current)"
                 ),
-                'migration_strategy': serializers.ChoiceField(
-                    choices=['ON_WRITE', 'ON_READ', 'BACKGROUND'],
+                "migration_strategy": serializers.ChoiceField(
+                    choices=["ON_WRITE", "ON_READ", "BACKGROUND"],
                     required=False,
-                    default='ON_WRITE',
-                    help_text='Migration strategy (default: ON_WRITE)'
-                )
-            }
+                    default="ON_WRITE",
+                    help_text="Migration strategy (default: ON_WRITE)",
+                ),
+            },
         ),
         responses={
             200: inline_serializer(
-                name='ContractMigrationResponse',
+                name="ContractMigrationResponse",
                 fields={
-                    'contract': ContractSerializer,
-                    'migration_applied': serializers.BooleanField(),
-                    'migration_details': serializers.DictField()
-                }
+                    "contract": ContractSerializer,
+                    "migration_applied": serializers.BooleanField(),
+                    "migration_details": serializers.DictField(),
+                },
             ),
             202: inline_serializer(
-                name='ContractMigrationJobResponse',
+                name="ContractMigrationJobResponse",
                 fields={
-                    'job': serializers.DictField(),
-                    'migration_details': serializers.DictField()
-                }
+                    "job": serializers.DictField(),
+                    "migration_details": serializers.DictField(),
+                },
             ),
-            400: OpenApiResponse(description="Invalid migration strategy or contract not normalized")
+            400: OpenApiResponse(
+                description="Invalid migration strategy or contract not normalized"
+            ),
         },
-        tags=['Contracts']
+        tags=["Contracts"],
     )
-    @action(detail=True, methods=['post'], url_path='migrate')
+    @action(detail=True, methods=["post"], url_path="migrate")
     def migrate_contract(self, request, id=None):
         """
         Migrate contract to a new HubContract version.
-        
+
         POST /contracts/{id}/migrate
         Body: {
             "target_hub_contract_version": "2.0.0" (optional, defaults to current),
             "migration_strategy": "ON_WRITE" | "ON_READ" | "BACKGROUND" (optional, default: "ON_WRITE")
         }
-        
+
         Returns migration result or job ID for BACKGROUND strategy.
         """
         contract = self.get_object()
-        
-        target_version = request.data.get('target_hub_contract_version')
+
+        target_version = request.data.get("target_hub_contract_version")
         if not target_version:
             target_version = get_current_hubcontract_version()
-        
-        strategy = request.data.get('migration_strategy', MigrationStrategy.ON_WRITE)
-        
-        if strategy not in [MigrationStrategy.ON_WRITE, MigrationStrategy.ON_READ, MigrationStrategy.BACKGROUND]:
+
+        strategy = request.data.get("migration_strategy", MigrationStrategy.ON_WRITE)
+
+        if strategy not in [
+            MigrationStrategy.ON_WRITE,
+            MigrationStrategy.ON_READ,
+            MigrationStrategy.BACKGROUND,
+        ]:
             return Response(
-                {'error': f'Invalid migration_strategy: {strategy}'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": f"Invalid migration_strategy: {strategy}"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
         # Check if migration is needed
         if not contract.hub_contract_json or not contract.hub_contract_version:
             return Response(
-                {'error': 'Contract is not normalized. Cannot migrate.'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Contract is not normalized. Cannot migrate."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
         if contract.hub_contract_version == target_version:
             return Response(
                 {
-                    'contract': ContractSerializer(contract).data,
-                    'migration_applied': False,
-                    'migration_details': {
-                        'source_version': contract.hub_contract_version,
-                        'target_version': target_version,
-                        'message': 'Contract is already at target version'
-                    }
+                    "contract": ContractSerializer(contract).data,
+                    "migration_applied": False,
+                    "migration_details": {
+                        "source_version": contract.hub_contract_version,
+                        "target_version": target_version,
+                        "message": "Contract is already at target version",
+                    },
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
-        
+
         # Execute migration based on strategy
         if strategy == MigrationStrategy.ON_WRITE:
-            migrated, migrated_hub_contract, warnings = ContractMigrationManager.migrate_on_write(contract)
-            
+            migrated, migrated_hub_contract, warnings = ContractMigrationManager.migrate_on_write(
+                contract
+            )
+
             if not migrated:
                 # Migration not needed (already at target version) or failed
                 # Check if it's because migration isn't needed
                 from .migration import needs_migration
+
                 if not needs_migration(contract.hub_contract_version):
                     # Already at target version - return success
                     return Response(
                         {
-                            'contract': ContractSerializer(contract).data,
-                            'migration_applied': False,
-                            'migration_details': {
-                                'source_version': contract.hub_contract_version,
-                                'target_version': target_version,
-                                'message': 'Contract is already at target version'
-                            }
+                            "contract": ContractSerializer(contract).data,
+                            "migration_applied": False,
+                            "migration_details": {
+                                "source_version": contract.hub_contract_version,
+                                "target_version": target_version,
+                                "message": "Contract is already at target version",
+                            },
                         },
-                        status=status.HTTP_200_OK
+                        status=status.HTTP_200_OK,
                     )
                 else:
                     # Migration failed
                     return Response(
-                        {'error': 'Migration failed or not supported'},
-                        status=status.HTTP_400_BAD_REQUEST
+                        {"error": "Migration failed or not supported"},
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
-            
+
             # Refresh contract from DB
             contract.refresh_from_db()
-            
+
             return Response(
                 {
-                    'contract': ContractSerializer(contract).data,
-                    'migration_applied': True,
-                    'migration_details': {
-                        'source_version': contract.hub_contract_version,
-                        'target_version': target_version,
-                        'migration_strategy': strategy,
-                        'warnings': warnings
-                    }
+                    "contract": ContractSerializer(contract).data,
+                    "migration_applied": True,
+                    "migration_details": {
+                        "source_version": contract.hub_contract_version,
+                        "target_version": target_version,
+                        "migration_strategy": strategy,
+                        "warnings": warnings,
+                    },
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
-        
+
         elif strategy == MigrationStrategy.ON_READ:
             migrated_hub_contract, warnings = ContractMigrationManager.migrate_on_read(contract)
-            
+
             # Return migrated version (in-memory, not persisted)
             serializer = ContractSerializer(contract)
             response_data = serializer.data
-            response_data['hub_contract_json'] = migrated_hub_contract
-            
+            response_data["hub_contract_json"] = migrated_hub_contract
+
             return Response(
                 {
-                    'contract': response_data,
-                    'migration_applied': True,
-                    'migration_details': {
-                        'source_version': contract.hub_contract_version,
-                        'target_version': target_version,
-                        'migration_strategy': strategy,
-                        'warnings': warnings,
-                        'note': 'Migration applied in-memory only (lazy migration)'
-                    }
+                    "contract": response_data,
+                    "migration_applied": True,
+                    "migration_details": {
+                        "source_version": contract.hub_contract_version,
+                        "target_version": target_version,
+                        "migration_strategy": strategy,
+                        "warnings": warnings,
+                        "note": "Migration applied in-memory only (lazy migration)",
+                    },
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
-        
+
         elif strategy == MigrationStrategy.BACKGROUND:
             job = ContractMigrationManager.migrate_background(contract, user=request.user)
-            
+
             if not job:
                 # Check if migration isn't needed (already at target version)
                 from .migration import needs_migration
+
                 if not needs_migration(contract.hub_contract_version):
                     # Already at target version - return success
                     return Response(
                         {
-                            'contract': ContractSerializer(contract).data,
-                            'migration_applied': False,
-                            'migration_details': {
-                                'source_version': contract.hub_contract_version,
-                                'target_version': target_version,
-                                'message': 'Contract is already at target version'
-                            }
+                            "contract": ContractSerializer(contract).data,
+                            "migration_applied": False,
+                            "migration_details": {
+                                "source_version": contract.hub_contract_version,
+                                "target_version": target_version,
+                                "message": "Contract is already at target version",
+                            },
                         },
-                        status=status.HTTP_200_OK
+                        status=status.HTTP_200_OK,
                     )
                 else:
                     # Migration failed
                     return Response(
-                        {'error': 'Migration failed or not needed'},
-                        status=status.HTTP_400_BAD_REQUEST
+                        {"error": "Migration failed or not needed"},
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
-            
+
             return Response(
                 {
-                    'job': {
-                        'id': str(job.id),
-                        'type': job.type,
-                        'status': job.status,
-                        'resource_type': job.resource_type,
-                        'resource_id': str(job.resource_id)
+                    "job": {
+                        "id": str(job.id),
+                        "type": job.type,
+                        "status": job.status,
+                        "resource_type": job.resource_type,
+                        "resource_id": str(job.resource_id),
                     },
-                    'migration_details': {
-                        'source_version': contract.hub_contract_version,
-                        'target_version': target_version,
-                        'migration_strategy': strategy
-                    }
+                    "migration_details": {
+                        "source_version": contract.hub_contract_version,
+                        "target_version": target_version,
+                        "migration_strategy": strategy,
+                    },
                 },
-                status=status.HTTP_202_ACCEPTED
+                status=status.HTTP_202_ACCEPTED,
             )
+
+    @extend_schema(
+        summary="Get field-level lineage",
+        description="""
+        Get lineage for a specific field in a contract.
+        
+        Returns lineage information including input fields and transformations.
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="field_name",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description="Field name",
+                required=True,
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="FieldLineageResponse",
+                fields={
+                    "field_name": serializers.CharField(),
+                    "lineage": serializers.DictField(),
+                },
+            ),
+            404: OpenApiResponse(description="Contract or field not found"),
+        },
+        tags=["Contracts", "Lineage"],
+    )
+    @action(detail=True, methods=["get"], url_path="fields/(?P<field_name>[^/.]+)/lineage")
+    def get_field_lineage(self, request, id=None, field_name=None):
+        """
+        Get field-level lineage with caching support.
+        """
+        contract = self.get_object()
+        contract_id = str(contract.id)
+
+        if not contract.hub_contract_json:
+            return Response(
+                {"error": "Contract has no hub_contract_json"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        hub_contract = contract.hub_contract_json
+        models_list = hub_contract.get("models", [])
+
+        for model in models_list:
+            if not isinstance(model, dict):
+                continue
+            model_name = model.get("name")
+            fields = model.get("fields", [])
+            for field in fields:
+                if isinstance(field, dict) and field.get("name") == field_name:
+                    lineage = field.get("lineage", {})
+
+                    # Check cache first
+                    cached_lineage = get_cached_lineage(
+                        contract_id, model_name=model_name, field_name=field_name
+                    )
+                    if cached_lineage:
+                        # Cached data might be in different formats, normalize it
+                        if isinstance(cached_lineage, dict) and "lineage" in cached_lineage:
+                            return Response(cached_lineage)
+                        return Response(
+                            {
+                                "field_name": field_name,
+                                "model_name": model_name,
+                                "lineage": (
+                                    cached_lineage
+                                    if isinstance(cached_lineage, dict)
+                                    and "input_fields" in cached_lineage
+                                    else {
+                                        "input_fields": cached_lineage.get("input_fields", []),
+                                        "transformations": cached_lineage.get(
+                                            "transformations", []
+                                        ),
+                                    }
+                                ),
+                                "_cached": True,
+                            }
+                        )
+
+                    # Format lineage response to match service layer format
+                    field_lineage_result = {
+                        "field_name": field_name,
+                        "model_name": model_name,
+                        "lineage": {
+                            "input_fields": lineage.get("input_fields", []),
+                            "transformations": lineage.get("transformations", []),
+                        },
+                    }
+
+                    # Cache the lineage
+                    cache_lineage(
+                        contract_id,
+                        field_lineage_result,
+                        model_name=model_name,
+                        field_name=field_name,
+                    )
+
+                    return Response(field_lineage_result)
+
+        return Response(
+            {"error": f"Field {field_name} not found"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    @extend_schema(
+        summary="Get model-level lineage",
+        description="""
+        Get lineage for a specific model in a contract.
+        
+        Returns lineage information including model references and entries.
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="model_name",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description="Model name",
+                required=True,
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="ModelLineageResponse",
+                fields={
+                    "model_name": serializers.CharField(),
+                    "lineage": serializers.DictField(),
+                },
+            ),
+            404: OpenApiResponse(description="Contract or model not found"),
+        },
+        tags=["Contracts", "Lineage"],
+    )
+    @action(detail=True, methods=["get"], url_path="models/(?P<model_name>[^/.]+)/lineage")
+    def get_model_lineage(self, request, id=None, model_name=None):
+        """
+        Get model-level lineage with caching support.
+        """
+        contract = self.get_object()
+        contract_id = str(contract.id)
+
+        # Check cache first
+        cached_lineage = get_cached_lineage(contract_id, model_name=model_name)
+        if cached_lineage:
+            # Cached data might be in different formats, normalize it
+            if isinstance(cached_lineage, dict) and "lineage" in cached_lineage:
+                return Response(cached_lineage)
+            return Response(
+                {
+                    "model_name": model_name,
+                    "lineage": (
+                        cached_lineage
+                        if isinstance(cached_lineage, dict) and "models" in cached_lineage
+                        else {
+                            "models": cached_lineage.get("models", []),
+                            "entries": cached_lineage.get("entries", []),
+                        }
+                    ),
+                    "_cached": True,
+                }
+            )
+
+        # Generate lineage
+        if not contract.hub_contract_json:
+            return Response(
+                {"error": "Contract has no hub_contract_json"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        hub_contract = contract.hub_contract_json
+        models_list = hub_contract.get("models", [])
+
+        for model in models_list:
+            if isinstance(model, dict) and model.get("name") == model_name:
+                lineage_data = model.get("lineage", {})
+
+                # Format response to match service layer format
+                model_lineage_result = {
+                    "model_name": model_name,
+                    "lineage": {
+                        "models": lineage_data.get("models", []),
+                        "entries": lineage_data.get("entries", []),
+                    },
+                }
+
+                # Cache the lineage
+                cache_lineage(contract_id, model_lineage_result, model_name=model_name)
+
+                return Response(model_lineage_result)
+
+        return Response(
+            {"error": f"Model {model_name} not found"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    @extend_schema(
+        summary="Get contract-level lineage",
+        description="""
+        Get contract-level lineage including contract references.
+        
+        Returns contract references and lineage entries.
+        """,
+        responses={
+            200: inline_serializer(
+                name="ContractLineageResponse",
+                fields={
+                    "contracts": serializers.ListField(),
+                    "entries": serializers.ListField(),
+                },
+            ),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "Lineage"],
+    )
+    @action(detail=True, methods=["get"], url_path="lineage/contracts")
+    def get_contract_lineage(self, request, id=None):
+        """
+        Get contract-level lineage with caching support.
+        """
+        contract = self.get_object()
+        contract_id = str(contract.id)
+
+        # Check cache first
+        cached_lineage = get_cached_lineage(contract_id)
+        if cached_lineage:
+            # Cached lineage should already be in {contracts, entries} format
+            if isinstance(cached_lineage, dict):
+                return Response(
+                    {
+                        "contracts": cached_lineage.get("contracts", []),
+                        "entries": cached_lineage.get("entries", []),
+                        "_cached": True,
+                    }
+                )
+
+        # Generate lineage (existing logic)
+        from .lineage import extract_contract_level_lineage
+
+        hub_contract = contract.hub_contract_json
+        if not hub_contract:
+            return Response(
+                {"error": "Contract is not normalized"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        lineage = hub_contract.get("lineage", {})
+        if not lineage:
+            return Response({"contracts": [], "entries": []})
+
+        # Extract contracts and entries from lineage
+        contracts = lineage.get("contracts", []) if isinstance(lineage, dict) else []
+        entries = lineage.get("entries", []) if isinstance(lineage, dict) else []
+
+        # Cache the lineage in expected format
+        cache_lineage(contract_id, {"contracts": contracts, "entries": entries})
+
+        return Response({"contracts": contracts, "entries": entries})
+
+    @extend_schema(
+        summary="Get hierarchical lineage",
+        description="""
+        Get complete hierarchical lineage (contract, model, and field levels).
+        
+        Returns full lineage traversal with all levels.
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="max_contract_depth",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Maximum contract depth for traversal (default: 10)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="max_model_depth",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Maximum model depth for traversal (default: 10)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="max_field_depth",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Maximum field depth for traversal (default: 10)",
+                required=False,
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="HierarchicalLineageResponse",
+                fields={
+                    "upstream": serializers.DictField(),
+                    "downstream": serializers.DictField(),
+                },
+            ),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "Lineage"],
+    )
+    @action(detail=True, methods=["get"], url_path="lineage/full")
+    def get_hierarchical_lineage(self, request, id=None):
+        """Get hierarchical lineage (bidirectional traversal)."""
+        contract = self.get_object()
+
+        max_contract_depth = int(request.query_params.get("max_contract_depth", 10))
+        max_model_depth = int(request.query_params.get("max_model_depth", 10))
+        max_field_depth = int(request.query_params.get("max_field_depth", 10))
+
+        traverser = LineageTraverser(
+            contract,
+            max_contract_depth=max_contract_depth,
+            max_model_depth=max_model_depth,
+            max_field_depth=max_field_depth,
+        )
+
+        result = traverser.traverse_bidirectional()
+
+        return Response(result)
+
+    @extend_schema(
+        summary="Get lineage visualization",
+        description="""
+        Get lineage graph in various visualization formats.
+        
+        Supports JSON (D3.js), DOT (Graphviz), and Mermaid formats.
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="format",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Visualization format: json, dot, or mermaid (default: json)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="max_depth",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Maximum traversal depth (default: 10)",
+                required=False,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(description="Lineage graph in requested format"),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "Lineage"],
+    )
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="lineage/visualization",
+        url_name="lineage-visualization",
+    )
+    def get_lineage_visualization(self, request, id=None):
+        """Get lineage visualization in various formats."""
+        # Use pre-retrieved contract if available (from custom view), otherwise use get_object()
+        # This allows the custom URL view to bypass DRF's get_object() which may have issues
+        # with manually instantiated viewsets
+        if hasattr(self, "_contract"):
+            contract = self._contract
+            # Clean up the temporary attribute
+            delattr(self, "_contract")
+        else:
+            # Use get_object() for proper tenant scoping and object retrieval
+            # This is the same approach used by get_hierarchical_lineage which works correctly
+            # get_object() handles tenant scoping automatically via get_queryset()
+            contract = self.get_object()
+
+        # Get format from query params - prioritize query param over format suffix
+        # DRF's DefaultRouter creates format suffix patterns that can interfere with query params
+        # CRITICAL: Check query parameter FIRST before any format suffix handling
+        # This ensures ?format=dot works even if DRF tries to interpret it as a suffix
+        # Use request.query_params (DRF's version) - this works with both DRF Request and Django HttpRequest
+        # If request is a DRF Request, use query_params; if it's a Django HttpRequest, use GET
+        if hasattr(request, "query_params"):
+            format_param = request.query_params.get("format", "json").lower().strip()
+        elif hasattr(request, "GET"):
+            format_param = request.GET.get("format", "json").lower().strip()
+        else:
+            format_param = "json"
+
+        # Also check DRF's format attribute (set by format suffix pattern) as fallback
+        # But only if query param wasn't found
+        if not format_param and hasattr(request, "format") and request.format:
+            format_param = request.format.lower()
+
+        format_type = format_param if format_param in ["json", "dot", "mermaid"] else "json"
+        max_depth = int(request.query_params.get("max_depth", 10))
+
+        if format_type == "dot":
+            dot_string = generate_lineage_dot(contract, max_depth=max_depth)
+            return Response(dot_string, content_type="text/plain")
+        elif format_type == "mermaid":
+            mermaid_string = generate_lineage_mermaid(contract, max_depth=max_depth)
+            return Response(mermaid_string, content_type="text/plain")
+        else:  # Default to JSON
+            graph_data = generate_lineage_json(contract, max_depth=max_depth)
+            return Response(graph_data)
+
+    @extend_schema(
+        summary="Get impact analysis",
+        description="""
+        Analyze impact of changes to a contract, model, or field.
+        
+        Performs reverse lineage traversal to find all resources that depend on
+        the specified contract/model/field.
+        
+        **Query Parameters:**
+        - `depth`: Maximum traversal depth (default: 10)
+        - `model_name`: Optional model name for model-level impact
+        - `field_name`: Optional field name for field-level impact
+        - `include_fields`: Include field-level dependencies (default: true)
+        - `format`: Response format (json, csv, dot, mermaid, paths) (default: json)
+        
+        **Response includes:**
+        - Source contract/model/field information
+        - Impact graph with all affected resources
+        - Impact scores and severity levels
+        - Summary statistics
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="depth",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Maximum traversal depth (default: 10)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="model_name",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Model name for model-level impact analysis",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="field_name",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Field name for field-level impact analysis",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="include_fields",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Include field-level dependencies (default: true)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="format",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Response format: json, csv, dot, mermaid, paths (default: json)",
+                required=False,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(description="Impact analysis result"),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "Impact Analysis"],
+    )
+    @action(detail=True, methods=["get"], url_path="impact-analysis")
+    def get_impact_analysis(self, request, id=None):
+        """Get impact analysis for a contract, model, or field."""
+        # Get contract ID from URL kwargs
+        contract_id = self.kwargs.get("pk") or self.kwargs.get("id")
+        if not contract_id:
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound("Contract ID not found in URL")
+
+        # Get contract directly and verify tenant access
+        try:
+            contract = Contract.objects.get(id=contract_id)
+        except Contract.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound("Contract not found")
+
+        # Verify tenant access (same logic as get_queryset)
+        user = request.user
+        if not (hasattr(user, "is_platform_admin") and user.is_platform_admin):
+            # Get tenant from request or user
+            tenant_id = None
+            if hasattr(request, "tenant_id") and request.tenant_id:
+                tenant_id = request.tenant_id
+                if isinstance(tenant_id, str):
+                    import uuid
+
+                    try:
+                        tenant_id = uuid.UUID(tenant_id)
+                    except (ValueError, TypeError):
+                        tenant_id = None
+            elif hasattr(request, "tenant") and request.tenant:
+                tenant_id = request.tenant.id
+            elif hasattr(user, "tenant_id") and user.tenant_id:
+                tenant_id = user.tenant_id
+            elif hasattr(user, "tenant") and user.tenant:
+                tenant_id = user.tenant.id
+
+            # Verify contract belongs to user's tenant
+            if tenant_id and contract.tenant_id:
+                # Convert both to UUID for comparison
+                import uuid
+
+                contract_tenant_id = contract.tenant_id
+                if isinstance(contract_tenant_id, str):
+                    try:
+                        contract_tenant_id = uuid.UUID(contract_tenant_id)
+                    except (ValueError, TypeError):
+                        contract_tenant_id = None
+                if isinstance(tenant_id, str):
+                    try:
+                        tenant_id = uuid.UUID(tenant_id)
+                    except (ValueError, TypeError):
+                        tenant_id = None
+
+                if contract_tenant_id != tenant_id:
+                    from rest_framework.exceptions import NotFound
+
+                    raise NotFound("Contract not found")
+
+        # Get parameters
+        depth = int(request.query_params.get("depth", 10))
+        model_name = request.query_params.get("model_name")
+        field_name = request.query_params.get("field_name")
+        include_fields = request.query_params.get("include_fields", "true").lower() == "true"
+        format_type = request.query_params.get("format", "json").lower()
+
+        # Get tenant ID for scoping
+        tenant_id = str(contract.tenant_id) if contract.tenant else None
+
+        # Perform impact analysis
+        analyzer = ImpactAnalyzer(
+            max_contract_depth=depth,
+            max_model_depth=depth,
+            max_field_depth=depth if include_fields else 0,
+            include_fields=include_fields,
+        )
+
+        impact_result = analyzer.analyze_impact(
+            contract_id=str(contract.id),
+            model_name=model_name,
+            field_name=field_name,
+            tenant_id=tenant_id,
+        )
+
+        # Check for errors
+        if "error" in impact_result:
+            return Response(
+                impact_result,
+                status=(
+                    status.HTTP_404_NOT_FOUND
+                    if "not found" in impact_result.get("error", "").lower()
+                    else status.HTTP_400_BAD_REQUEST
+                ),
+            )
+
+        # Format response based on format parameter
+        if format_type == "csv":
+            csv_string = ImpactVisualizer.generate_impact_csv(impact_result)
+            return Response(
+                csv_string,
+                content_type="text/csv",
+                headers={
+                    "Content-Disposition": f'attachment; filename="impact_analysis_{contract.id}.csv"'
+                },
+            )
+        elif format_type == "dot":
+            dot_string = ImpactVisualizer.generate_impact_dot(impact_result)
+            return Response(dot_string, content_type="text/plain")
+        elif format_type == "mermaid":
+            mermaid_string = ImpactVisualizer.generate_impact_mermaid(impact_result)
+            return Response(mermaid_string, content_type="text/plain")
+        elif format_type == "paths":
+            paths = ImpactVisualizer.generate_impact_paths(impact_result)
+            return Response(
+                {
+                    "source": impact_result.get("source", {}),
+                    "paths": paths,
+                    "total_paths": len(paths),
+                }
+            )
+        else:  # Default to JSON
+            # Generate JSON visualization
+            json_graph = ImpactVisualizer.generate_impact_json(impact_result)
+            # Include impact_graph for backward compatibility and test expectations
+            json_graph["impact_graph"] = impact_result.get("impact_graph", {})
+            return Response(json_graph)

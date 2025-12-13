@@ -105,6 +105,10 @@ class APIClient:
         """GET request with streaming"""
         return self._request('GET', endpoint, params=params, stream=True)
     
+    def request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Make a raw request and return Response object"""
+        return self._request(method, endpoint, params=params)
+    
     def _handle_response(self, response: requests.Response) -> Dict[str, Any]:
         """Handle API response"""
         if response.status_code >= 400:

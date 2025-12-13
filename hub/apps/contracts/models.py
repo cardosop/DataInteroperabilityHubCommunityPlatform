@@ -8,6 +8,9 @@ from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
+from .typed_models import validate_hub_contract_dict
+from .versioning import get_default_version
+
 
 class ContractStatus(models.TextChoices):
     """Contract lifecycle status enumeration"""
@@ -35,7 +38,6 @@ class NormalizationStatus(models.TextChoices):
 class OriginalSpecType(models.TextChoices):
     """Original specification type enumeration"""
     ODCS = "ODCS", "ODCS"
-    DATACONTRACT_COM = "DATACONTRACT_COM", "DataContract.com"
 
 
 class OriginalFormat(models.TextChoices):
@@ -48,7 +50,7 @@ class Contract(models.Model):
     """
     Contract model representing a data contract with HubContract normalization.
     
-    Stores original contract (ODCS or DataContract.com) and normalized HubContract.
+    Stores original contract (ODCS) and normalized HubContract.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tenant = models.ForeignKey(
@@ -80,7 +82,7 @@ class Contract(models.Model):
     original_spec_type = models.CharField(
         max_length=50,
         choices=OriginalSpecType.choices,
-        help_text="Original spec type: ODCS or DATACONTRACT_COM"
+        help_text="Original spec type: ODCS (Open Data Contract Standard)"
     )
     original_spec_version = models.CharField(
         max_length=20,
@@ -103,6 +105,7 @@ class Contract(models.Model):
         help_text="HubContract version (e.g., 1.0.0)"
     )
     hub_contract_json = models.JSONField(
+        db_index=True,  # GIN index for JSONB queries (Django 6)
         null=True,
         blank=True,
         help_text="Normalized HubContract JSON"
@@ -194,6 +197,14 @@ class Contract(models.Model):
     def clean(self):
         """Validate contract status rules"""
         super().clean()
+
+        if self.hub_contract_json:
+            validated_contract, validation_errors = validate_hub_contract_dict(self.hub_contract_json)
+            if validation_errors:
+                raise ValidationError({"hub_contract_json": validation_errors})
+            expected_version = get_default_version()
+            if validated_contract and str(validated_contract.hub_contract_version) != expected_version:
+                raise ValidationError({"hub_contract_json": [f"hub_contract_version must be {expected_version}"]})
         
         # Enforce ACTIVE status requirements
         if self.status == ContractStatus.ACTIVE:
@@ -231,4 +242,3 @@ class Contract(models.Model):
             return False, f"normalization_status must be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS (current: {self.normalization_status})"
         
         return True, ""
-

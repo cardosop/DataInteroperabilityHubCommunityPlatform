@@ -24,14 +24,22 @@ function calculateBackoffDelay(attempt: number, baseDelay: number = 1000): numbe
  * Check if error is retryable
  */
 function isRetryableError(error: any): boolean {
-  if (!error.response) {
-    // Network error - retryable
-    return true;
+  // Check if it's a transformed DataHubError (has httpStatus property)
+  if (error.httpStatus !== undefined) {
+    const status = error.httpStatus;
+    // Retry on 5xx errors and 429 (rate limit)
+    return status >= 500 || status === 429;
   }
   
-  const status = error.response.status;
-  // Retry on 5xx errors and 429 (rate limit)
-  return status >= 500 || status === 429;
+  // Check if it's an axios error with response
+  if (error.response) {
+    const status = error.response.status;
+    // Retry on 5xx errors and 429 (rate limit)
+    return status >= 500 || status === 429;
+  }
+  
+  // Network error (no response) - retryable
+  return true;
 }
 
 /**
@@ -71,6 +79,9 @@ export class DataHubClient {
         return Promise.reject(error);
       }
     );
+
+    // Initialize API modules
+    this.initializeAPIs();
 
     // Set up response interceptor for error handling
     this.axiosInstance.interceptors.response.use(
@@ -229,6 +240,37 @@ export class DataHubClient {
    */
   getConfig(): Readonly<DataHubClientConfig> {
     return { ...this.config };
+  }
+
+  // API modules
+  contracts: any;
+  lineage: any;
+  scheduledIngestion: any;
+  versioning: any;
+  governance: any;
+  search: any;
+  observability: any;
+  webhooks: any;
+
+  /**
+   * Initialize API modules
+   */
+  private initializeAPIs(): void {
+    // Import and initialize API modules
+    // Using dynamic imports to avoid circular dependencies
+    const { ContractsAPI } = require('./contracts');
+    const { LineageAPI } = require('./lineage');
+    // Note: Other APIs will be added as they are created
+    
+    this.contracts = new ContractsAPI(this);
+    this.lineage = new LineageAPI(this);
+    // Initialize other APIs when modules are created
+    // this.scheduledIngestion = new ScheduledIngestionAPI(this);
+    // this.versioning = new VersioningAPI(this);
+    // this.governance = new GovernanceAPI(this);
+    // this.search = new SearchAPI(this);
+    // this.observability = new ObservabilityAPI(this);
+    // this.webhooks = new WebhooksAPI(this);
   }
 }
 

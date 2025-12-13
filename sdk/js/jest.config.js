@@ -7,8 +7,19 @@ module.exports = {
     'src/**/*.ts',
     '!src/**/*.d.ts',
     '!src/generated/**',
+    '!src/__tests__/**',
   ],
   coverageDirectory: 'coverage',
-  coverageReporters: ['text', 'lcov', 'html'],
+  coverageReporters: ['text', 'lcov', 'html', 'json'],
+  coverageThreshold: {
+    global: {
+      branches: 100,
+      functions: 100,
+      lines: 100,
+      statements: 100,
+    },
+  },
+  testTimeout: 30000,
+  verbose: true,
 };
 

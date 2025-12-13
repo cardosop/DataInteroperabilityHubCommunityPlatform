@@ -1,0 +1,85 @@
+Test Skips - Tue Dec  9 09:48:32 AM -03 2025
+======================
+
+=== Batch 4: API and Integration Tests ===
+[gw2] [  8%] SKIPPED hub/apps/contracts/tests/test_integration.py::DataContractCLIIntegrationTest::test_health_check_integration 
+[gw2] [ 11%] SKIPPED hub/apps/contracts/tests/test_integration.py::DataContractCLIIntegrationTest::test_validate_contract_integration 
+[gw2] [ 13%] SKIPPED hub/apps/contracts/tests/test_integration_onboarding.py::DataFirstOnboardingTest::test_data_first_flow_compliance_failure 
+[gw2] [ 15%] SKIPPED hub/apps/contracts/tests/test_integration_onboarding.py::DataFirstOnboardingTest::test_data_first_flow_success 
+[gw2] [ 17%] SKIPPED hub/apps/contracts/tests/test_integration_onboarding.py::ContractFirstOnboardingTest::test_contract_first_flow_success 
+[gw2] [ 20%] SKIPPED hub/apps/contracts/tests/test_integration_onboarding.py::ContractOnlyOnboardingTest::test_contract_only_flow_success 
+
+=== Batch 7: Integration Tests ===
+[gw3] [  0%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_odrl_marketplace_policy 
+[gw0] [  0%] SKIPPED tests/integration/test_normalization_rdf_flow.py::NormalizationRDFFlowTest::test_complete_flow_all_sections 
+[gw3] [  0%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_output_formats 
+[gw3] [  1%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_prov_lifecycle_policy 
+[gw3] [  1%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_quality_rules_by_dimension 
+[gw3] [  1%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_schema_org_semantic_types 
+[gw3] [  2%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_shacl_field_validation 
+[gw3] [  2%] SKIPPED tests/integration/test_uri_resolution_enhanced.py::URIResolutionEnhancedTest::test_resolve_contract_uri_includes_all_sections 
+[gw3] [  2%] SKIPPED tests/integration/test_uri_resolution_enhanced.py::URIResolutionEnhancedTest::test_resolve_contract_uri_includes_standard_vocabularies 
+[gw3] [  3%] SKIPPED tests/integration/test_uri_resolution_enhanced.py::URIResolutionEnhancedTest::test_resolve_contract_uri_returns_jsonld 
+[gw3] [  3%] SKIPPED tests/integration/test_uri_resolution_enhanced.py::URIResolutionEnhancedTest::test_resolve_nonexistent_uri_returns_error 
+[gw3] [  3%] SKIPPED tests/integration/test_uri_resolution_enhanced.py::URIResolutionEnhancedTest::test_resolve_uri_different_resource_types 
+[gw3] [  4%] SKIPPED tests/integration/test_uri_resolution_enhanced.py::URIResolutionEnhancedTest::test_resolve_uri_field_resource 
+[gw0] [  4%] SKIPPED tests/integration/test_normalization_rdf_flow.py::NormalizationRDFFlowTest::test_normalize_update_remap_flow 
+[gw0] [  4%] SKIPPED tests/integration/test_normalization_rdf_flow.py::NormalizationRDFFlowTest::test_normalize_with_warnings_then_map 
+[gw0] [  5%] SKIPPED tests/integration/test_normalization_rdf_flow.py::NormalizationRDFFlowTest::test_odcs_normalize_then_map_to_rdf 
+[gw1] [ 39%] SKIPPED tests/integration/test_jsonld_context.py::JSONLDContextTest::test_jsonld_context_includes_all_prefixes 
+[gw1] [ 39%] SKIPPED tests/integration/test_jsonld_context.py::JSONLDContextTest::test_jsonld_context_prefixes_are_uris 
+[gw1] [ 39%] SKIPPED tests/integration/test_jsonld_context.py::JSONLDContextTest::test_jsonld_context_structure 
+[gw1] [ 40%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_all_vocabularies_combined 
+[gw1] [ 40%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_compliance_by_jurisdiction 
+[gw1] [ 40%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_dpv_compliance_policy 
+[gw1] [ 41%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_dqv_quality_rules 
+[gw1] [ 41%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_fields_by_semantic_type 
+[gw1] [ 41%] SKIPPED tests/integration/test_sparql_standard_vocabularies.py::SPARQLStandardVocabulariesTest::test_sparql_query_foaf_owners 
+[gw3] [ 46%] SKIPPED tests/integration/test_tracing.py::TracingTest::test_tracing_instrumentation 
+[gw3] [ 50%] SKIPPED tests/integration/test_monitoring_infrastructure.py::MonitoringInfrastructureTest::test_grafana_available 
+[gw3] [ 50%] SKIPPED tests/integration/test_monitoring_infrastructure.py::MonitoringInfrastructureTest::test_jaeger_available 
+[gw3] [ 51%] SKIPPED tests/integration/test_monitoring_infrastructure.py::MonitoringInfrastructureTest::test_prometheus_available 
+[gw3] [ 62%] SKIPPED tests/integration/test_services_django6.py::DataContractServiceDjango6Test::test_datacontract_service_health 
+[gw3] [ 63%] SKIPPED tests/integration/test_services_django6.py::DataContractServiceDjango6Test::test_datacontract_service_normalization 
+[gw3] [ 64%] SKIPPED tests/integration/test_services_django6.py::SemanticServiceDjango6Test::test_semantic_service_health 
+[gw3] [ 65%] SKIPPED tests/integration/test_services_django6.py::SemanticServiceDjango6Test::test_semantic_service_uri_resolution 
+[gw0] [ 67%] SKIPPED tests/integration/test_cross_service_integration_comprehensive.py::SemanticServiceIntegrationTest::test_semantic_service_health_check 
+
+=== Batch 9: E2E Contract Tests ===
+[gw2] [ 48%] SKIPPED tests/e2e/test_contract_first_flow.py::ContractFirstE2ETest::test_complete_contract_first_journey 
+[gw0] [ 54%] SKIPPED tests/e2e/test_contract_operations.py::ContractOperationsE2ETest::test_contract_validation_caching 
+[gw0] [ 93%] SKIPPED tests/e2e/test_contract_operations.py::ContractOperationsE2ETest::test_convert_contract_json_to_yaml 
+[gw1] [ 95%] SKIPPED tests/e2e/test_contract_operations.py::ContractOperationsE2ETest::test_lint_contract_success 
+[gw0] [ 98%] SKIPPED tests/e2e/test_contract_operations.py::ContractOperationsE2ETest::test_convert_contract_yaml_to_json 
+
+=== Batch 10: E2E Data Tests ===
+[gw1] [ 14%] SKIPPED tests/e2e/test_data_first_flow.py::DataFirstE2ETest::test_complete_data_first_journey 
+[gw0] [ 16%] SKIPPED tests/e2e/test_data_first_comprehensive.py::DataFirstFlowSuccessTests::test_data_first_with_parquet_file 
+
+=== Batch 14: E2E Marketplace Tests ===
+[gw3] [ 14%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_api_key_authentication 
+[gw3] [ 15%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_create_asset 
+[gw3] [ 16%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_create_contract 
+[gw3] [ 17%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_custom_headers 
+[gw3] [ 18%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_delete_asset 
+[gw3] [ 19%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_file_upload_flow 
+[gw3] [ 20%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_forbidden_error_handling 
+[gw3] [ 21%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_get_asset 
+[gw3] [ 22%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_invalid_token_handling 
+[gw3] [ 23%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_jwt_token_authentication 
+[gw3] [ 24%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_list_assets 
+[gw3] [ 25%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_list_assets_with_pagination 
+[gw3] [ 26%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_missing_token_handling 
+[gw3] [ 27%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_not_found_error_handling 
+[gw3] [ 28%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_query_parameters 
+[gw3] [ 29%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_retry_configuration 
+[gw3] [ 30%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_timeout_configuration 
+[gw3] [ 31%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_token_refresh_on_401 
+[gw3] [ 32%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_unauthorized_error_handling 
+[gw3] [ 33%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_update_asset 
+[gw3] [ 33%] SKIPPED tests/e2e/test_sdk_python.py::SDKPythonE2ETest::test_sdk_validation_error_handling 
+
+=== Batch 15: E2E Infrastructure Tests ===
+[gw3] [  6%] SKIPPED tests/e2e/test_complete_user_journeys.py::CompleteUserJourneysE2ETest::test_data_consumer_journey 
+[gw3] [  7%] SKIPPED tests/e2e/test_complete_user_journeys.py::CompleteUserJourneysE2ETest::test_data_provider_journey 
+[gw0] [  8%] SKIPPED tests/e2e/test_health_checks.py::HealthCheckE2ETest::test_datacontract_service_health 

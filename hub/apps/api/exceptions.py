@@ -236,15 +236,59 @@ def custom_exception_handler(exc, context):
                         elif 'file' in error_str.lower() and 'file' not in custom_response_data:
                             custom_response_data['file'] = error_str
     
+    # Log error using enhanced error logger
+    from hub.apps.core.error_handling.error_logging import ErrorLogger
+    from hub.apps.core.error_handling.error_tracking import get_error_tracker
+    
+    error_logger = ErrorLogger()
+    error_tracker = get_error_tracker()
+    
+    # Get tenant and user IDs from request
+    tenant_id = None
+    user_id = None
+    if request:
+        if hasattr(request, 'tenant_id'):
+            tenant_id = str(request.tenant_id)
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            user_id = str(request.user.id)
+    
     # Log error
-    logger.error(
-        'api_error',
+    error_logger.log_error(
+        error=exc,
         error_code=error_code,
-        error_message=error_message,
+        message=error_message,
         http_status=http_status,
         request_id=request_id,
-        exception_type=type(exc).__name__,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        additional_context={
+            "path": request.path if request else None,
+            "method": request.method if request else None,
+        },
+        level="error",
     )
+    
+    # Track error in Sentry
+    error_tracker.track_error(
+        error=exc,
+        error_code=error_code,
+        message=error_message,
+        http_status=http_status,
+        request_id=request_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        context={
+            "path": request.path if request else None,
+            "method": request.method if request else None,
+        },
+        level="error",
+    )
+    
+    # Set user context for Sentry
+    if user_id:
+        error_tracker.set_user(user_id)
+    if tenant_id:
+        error_tracker.set_tenant(tenant_id)
     
     response.data = custom_response_data
     return response

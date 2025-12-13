@@ -1,0 +1,15 @@
+Test Failures - Sat Dec  6 04:41:50 PM -03 2025
+======================
+
+
+=== Unit Tests Failures ===
+
+=== Integration Tests Failures ===
+
+=== Regression Tests Failures ===
+
+=== Security Tests Failures ===
+
+=== Performance Tests Failures ===
+
+=== E2E Tests Failures ===

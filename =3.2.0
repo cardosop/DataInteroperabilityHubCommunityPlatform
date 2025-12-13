@@ -1,0 +1,37 @@
+Collecting graphene-django
+  Downloading graphene_django-3.2.3-py2.py3-none-any.whl.metadata (8.2 kB)
+Collecting graphene<4,>=3.0 (from graphene-django)
+  Downloading graphene-3.4.3-py2.py3-none-any.whl.metadata (6.9 kB)
+Requirement already satisfied: graphql-core<4,>=3.1.0 in ./venv/lib/python3.14/site-packages (from graphene-django) (3.2.7)
+Collecting graphql-relay<4,>=3.1.1 (from graphene-django)
+  Downloading graphql_relay-3.2.0-py3-none-any.whl.metadata (12 kB)
+Requirement already satisfied: Django>=3.2 in ./venv/lib/python3.14/site-packages (from graphene-django) (6.0)
+Collecting promise>=2.1 (from graphene-django)
+  Downloading promise-2.3.tar.gz (19 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting text-unidecode (from graphene-django)
+  Downloading text_unidecode-1.3-py2.py3-none-any.whl.metadata (2.4 kB)
+Requirement already satisfied: python-dateutil<3,>=2.7.0 in ./venv/lib/python3.14/site-packages (from graphene<4,>=3.0->graphene-django) (2.9.0.post0)
+Requirement already satisfied: typing-extensions<5,>=4.7.1 in ./venv/lib/python3.14/site-packages (from graphene<4,>=3.0->graphene-django) (4.15.0)
+Requirement already satisfied: six>=1.5 in ./venv/lib/python3.14/site-packages (from python-dateutil<3,>=2.7.0->graphene<4,>=3.0->graphene-django) (1.17.0)
+Requirement already satisfied: asgiref>=3.9.1 in ./venv/lib/python3.14/site-packages (from Django>=3.2->graphene-django) (3.11.0)
+Requirement already satisfied: sqlparse>=0.5.0 in ./venv/lib/python3.14/site-packages (from Django>=3.2->graphene-django) (0.5.4)
+Downloading graphene_django-3.2.3-py2.py3-none-any.whl (114 kB)
+Downloading graphene-3.4.3-py2.py3-none-any.whl (114 kB)
+Downloading graphql_relay-3.2.0-py3-none-any.whl (16 kB)
+Downloading text_unidecode-1.3-py2.py3-none-any.whl (78 kB)
+Building wheels for collected packages: promise
+  Building wheel for promise (pyproject.toml): started
+  Building wheel for promise (pyproject.toml): finished with status 'done'
+  Created wheel for promise: filename=promise-2.3-py3-none-any.whl size=21581 sha256=e58c9535c1a7ad5fa68ccd018e11e1832680cb812069bad398a4e606f2fd54e8
+  Stored in directory: /home/ph/.cache/pip/wheels/68/84/8e/314a4702c4ab98ca290c1f28e161efbb3e20c4ab2feeb6db22
+Successfully built promise
+Installing collected packages: text-unidecode, promise, graphql-relay, graphene, graphene-django
+
+
+Successfully installed graphene-3.4.3 graphene-django-3.2.3 graphql-relay-3.2.0 promise-2.3 text-unidecode-1.3

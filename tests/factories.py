@@ -13,8 +13,56 @@ from datetime import timedelta
 from hub.apps.tenants.models import Tenant, TenantConfig, TenantStatus, KYCStatus
 from hub.apps.notifications.models import EmailDelivery, EmailDeliveryStatus, EmailType
 from hub.apps.jobs.models import Job, JobType, JobStatus
+from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceStatus
+from hub.apps.files.models import File, FileStatus
+from hub.apps.datasets.models import Dataset
 
 User = get_user_model()
+
+# Import app-specific factories
+from hub.apps.assets.tests.factories import AssetFactory
+from hub.apps.files.tests.factories import FileFactory
+from hub.apps.datasets.tests.factories import DatasetFactory
+
+
+class UserFactory:
+    """Factory for creating User instances"""
+    
+    @staticmethod
+    def create_user(
+        email: Optional[str] = None,
+        tenant: Optional[Tenant] = None,
+        **kwargs
+    ) -> User:
+        """
+        Create a User instance.
+        
+        Args:
+            email: User email (default: auto-generated)
+            tenant: Tenant instance (required)
+            **kwargs: Additional fields (display_name, status, etc.)
+            
+        Returns:
+            User instance
+        """
+        if email is None:
+            email = f"user_{uuid.uuid4().hex[:8]}@example.com"
+        if tenant is None:
+            tenant = TenantFactory()
+        
+        return User.objects.create(
+            email=email,
+            tenant=tenant,
+            **kwargs
+        )
+    
+    def __call__(self, **kwargs) -> User:
+        """Allow factory to be called directly: UserFactory(**kwargs)"""
+        return self.create_user(**kwargs)
+
+
+# Make UserFactory callable
+UserFactory = UserFactory()
 
 
 class TenantFactory:
@@ -56,6 +104,14 @@ class TenantFactory:
             region=region,
             **kwargs
         )
+    
+    def __call__(self, **kwargs) -> Tenant:
+        """Allow factory to be called directly: TenantFactory(**kwargs)"""
+        return self.create_tenant(**kwargs)
+
+
+# Make TenantFactory callable
+TenantFactory = TenantFactory()
 
 
 class TenantConfigFactory:
@@ -291,8 +347,12 @@ class JobFactory:
         if resource_type is None:
             resource_type = "CONTRACT"
         
-        if resource_id is None:
+        # Generate UUID if resource_id is None, unless explicitly disabled via kwargs
+        # This allows tests to pass resource_id=None via kwargs to test missing ID scenarios
+        if resource_id is None and not kwargs.get('_allow_none_resource_id', False):
             resource_id = uuid.uuid4()
+        # Remove the flag from kwargs before creating the job
+        kwargs.pop('_allow_none_resource_id', None)
         
         if result_json is None:
             result_json = {}

@@ -382,6 +382,16 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
     elif job_type == JobType.CONTRACT_MIGRATION:
         return _execute_contract_migration_job(job_obj)
     
+    elif job_type == JobType.SCHEDULED_INGESTION:
+        from hub.apps.jobs.scheduled_ingestion_job import _execute_scheduled_ingestion_job
+        return _execute_scheduled_ingestion_job(job_obj)
+    
+    elif job_type == JobType.RETENTION_POLICY_ENFORCEMENT:
+        return _execute_retention_policy_enforcement_job(job_obj)
+    
+    elif job_type == JobType.SEARCH_INDEX_UPDATE:
+        return _execute_search_index_update_job(job_obj)
+    
     else:
         raise ValueError(f"Unknown job type: {job_type}")
 
@@ -402,15 +412,28 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
         Exception: For other errors
     """
     # Get dq_run_id from job details or resource_id
-    dq_run_id = job_obj.details_json.get('dq_run_id') or job_obj.resource_id
+    # Handle None values explicitly (details_json can have None, resource_id can be None if model allows)
+    dq_run_id = job_obj.details_json.get('dq_run_id')
+    if not dq_run_id:  # None or empty string
+        dq_run_id = job_obj.resource_id
+    
+    # Convert to string if it's a UUID object, handle None case
+    if dq_run_id is not None:
+        dq_run_id = str(dq_run_id)
     
     if not dq_run_id:
-        raise ValueError("DQ run ID is required for DQ_RUN job")
+        raise ValueError("DQ run ID is required")
+    
+    # Check if DQ run exists before executing
+    try:
+        from hub.apps.dq.models import DQRun, DQRunStatus
+        dq_run = DQRun.objects.get(id=dq_run_id)
+    except DQRun.DoesNotExist:
+        raise ValueError(f"DQ run {dq_run_id} not found")
     
     try:
         # Import here to avoid circular imports
         from hub.apps.dq.views import execute_dq_run
-        from hub.apps.dq.models import DQRun, DQRunStatus
         from hub.apps.dq.service_client import DQServiceClient
         
         # Check if DQ service is available
@@ -422,11 +445,8 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
         # Execute DQ run (this handles its own errors and updates DQRun status)
         execute_dq_run(str(dq_run_id))
         
-        # Get updated DQ run
-        try:
-            dq_run = DQRun.objects.get(id=dq_run_id)
-        except DQRun.DoesNotExist:
-            raise ValueError(f"DQ run {dq_run_id} not found")
+        # Get updated DQ run (refresh from DB)
+        dq_run.refresh_from_db()
         
         # Check if DQ run failed
         if dq_run.status == DQRunStatus.FAILED:
@@ -468,14 +488,24 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
     # Get compliance_run_id from job details or resource_id
     compliance_run_id = job_obj.details_json.get('compliance_run_id') or job_obj.resource_id
     
+    # Convert to string if it's a UUID object
+    if compliance_run_id:
+        compliance_run_id = str(compliance_run_id)
+    
     if not compliance_run_id:
-        raise ValueError("Compliance run ID is required for COMPLIANCE_RUN job")
+        raise ValueError("Compliance run ID is required")
     
     try:
         # Import here to avoid circular imports
         from hub.apps.compliance.views import execute_compliance_run
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
         from hub.apps.compliance.service_client import ComplianceServiceClient
+        
+        # Check if compliance run exists before executing
+        try:
+            compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
+        except ComplianceRun.DoesNotExist:
+            raise ValueError(f"Compliance run {compliance_run_id} not found")
         
         # Check if compliance service is available
         compliance_client = ComplianceServiceClient()
@@ -486,11 +516,8 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
         # Execute compliance run (this handles its own errors and updates ComplianceRun status)
         execute_compliance_run(str(compliance_run_id))
         
-        # Get updated compliance run
-        try:
-            compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
-        except ComplianceRun.DoesNotExist:
-            raise ValueError(f"Compliance run {compliance_run_id} not found")
+        # Get updated compliance run (refresh from DB)
+        compliance_run.refresh_from_db()
         
         # Check if compliance run failed
         if compliance_run.status == ComplianceRunStatus.FAILED:
@@ -533,8 +560,12 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
     # Get contract ID from resource_id
     contract_id = job_obj.resource_id
     
+    # Convert to string if it's a UUID object, handle None case
+    if contract_id is not None:
+        contract_id = str(contract_id)
+    
     if not contract_id:
-        raise ValueError("Contract ID is required for CONTRACT_VALIDATION job")
+        raise ValueError("Contract ID is required")
     
     try:
         # Import here to avoid circular imports
@@ -548,7 +579,7 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
         except Contract.DoesNotExist:
             raise ValueError(f"Contract {contract_id} not found")
         
-        if not contract.original_raw:
+        if not contract.original_raw or contract.original_raw.strip() == '':
             raise ValueError(f"Contract {contract_id} has no original_raw content")
         
         # Check if DataContract CLI service is available
@@ -630,18 +661,11 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
         from hub.apps.semantic.utils import map_contract_to_semantic, map_asset_to_semantic
         from hub.apps.semantic.service_client import SemanticServiceClient
         
-        # Check if semantic service is available
-        semantic_client = SemanticServiceClient()
-        try:
-            # SemanticServiceClient.health_check() returns Tuple[bool, str]
-            is_healthy, _ = semantic_client.health_check()
-            if not is_healthy:
-                raise ConnectionError("Semantic service is unavailable")
-        except ConnectionError:
-            raise  # Re-raise connection errors
-        except Exception as e:
-            raise ConnectionError(f"Semantic service health check failed: {str(e)}")
+        # Validate resource type first (before service health check)
+        if resource_type not in ['CONTRACT', 'ASSET']:
+            raise ValueError(f"Unknown resource type: {resource_type}")
         
+        # Validate resource exists before checking service health
         if resource_type == 'CONTRACT':
             from hub.apps.contracts.models import Contract
             try:
@@ -654,15 +678,6 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
                 raise ValueError(f"Contract {resource_id} not found")
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid contract ID format: {resource_id}") from e
-            
-            semantic_resource = map_contract_to_semantic(contract, tenant=contract.tenant)
-            
-            return {
-                'status': 'completed',
-                'resource_type': 'CONTRACT',
-                'resource_id': str(resource_id),
-                'semantic_resource_id': str(semantic_resource.id) if semantic_resource else None
-            }
         
         elif resource_type == 'ASSET':
             from hub.apps.assets.models import Asset
@@ -676,7 +691,31 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
                 raise ValueError(f"Asset {resource_id} not found")
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid asset ID format: {resource_id}") from e
+        
+        # Check if semantic service is available (after resource validation)
+        semantic_client = SemanticServiceClient()
+        try:
+            # SemanticServiceClient.health_check() returns Tuple[bool, str]
+            is_healthy, _ = semantic_client.health_check()
+            if not is_healthy:
+                raise ConnectionError("Semantic service is unavailable")
+        except ConnectionError:
+            raise  # Re-raise connection errors
+        except Exception as e:
+            raise ConnectionError(f"Semantic service health check failed: {str(e)}")
+        
+        # Execute mapping (resource already validated above)
+        if resource_type == 'CONTRACT':
+            semantic_resource = map_contract_to_semantic(contract, tenant=contract.tenant)
             
+            return {
+                'status': 'completed',
+                'resource_type': 'CONTRACT',
+                'resource_id': str(resource_id),
+                'semantic_resource_id': str(semantic_resource.id) if semantic_resource else None
+            }
+        
+        elif resource_type == 'ASSET':
             semantic_resource = map_asset_to_semantic(asset, tenant=asset.tenant)
             
             return {
@@ -685,9 +724,6 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
                 'resource_id': str(resource_id),
                 'semantic_resource_id': str(semantic_resource.id) if semantic_resource else None
             }
-        
-        else:
-            raise ValueError(f"Unknown resource type for semantic mapping: {resource_type}")
     
     except (ConnectionError, ValueError):
         raise  # Re-raise specific errors
@@ -764,6 +800,138 @@ def process_contract_migration_job(job_id: str):
         job_id: UUID of the job
     """
     process_job(job_id, JobType.CONTRACT_MIGRATION, timeout=600)
+
+
+def _execute_retention_policy_enforcement_job(job_obj: Job) -> dict:
+    """
+    Execute RETENTION_POLICY_ENFORCEMENT job.
+    
+    Enforces retention policies for assets, datasets, and files.
+    
+    Args:
+        job_obj: Job instance
+    
+    Returns:
+        Result dictionary with enforcement summary
+    
+    Raises:
+        ValueError: For validation errors
+        Exception: For other errors
+    """
+    from hub.apps.governance.retention import RetentionPolicyEnforcer
+    
+    tenant_id = job_obj.tenant_id
+    
+    logger.info("Starting retention policy enforcement", job_id=str(job_obj.id), tenant_id=str(tenant_id))
+    
+    try:
+        # Enforce all policies
+        results = RetentionPolicyEnforcer.enforce_all_policies(tenant_id=str(tenant_id) if tenant_id else None)
+        
+        logger.info(
+            "Retention policy enforcement completed",
+            job_id=str(job_obj.id),
+            total_policies=results['total_policies'],
+            enforced=results['enforced'],
+            failed=results['failed']
+        )
+        
+        return {
+            'success': True,
+            'summary': {
+                'total_policies': results['total_policies'],
+                'enforced': results['enforced'],
+                'failed': results['failed'],
+                'no_action': results['no_action']
+            },
+            'details': results['details']
+        }
+    
+    except Exception as e:
+        logger.error("Retention policy enforcement job failed", exc_info=True, job_id=str(job_obj.id), error=str(e))
+        raise
+
+
+def _execute_search_index_update_job(job_obj: Job) -> dict:
+    """
+    Execute SEARCH_INDEX_UPDATE job.
+    
+    Updates search index for a specific resource (contract, asset, or dataset).
+    
+    Args:
+        job_obj: Job instance
+    
+    Returns:
+        Result dictionary with indexing summary
+    
+    Raises:
+        ValueError: For validation errors
+        Exception: For other errors
+    """
+    from hub.apps.search.indexing import SearchIndexer
+    from hub.apps.contracts.models import Contract
+    from hub.apps.assets.models import Asset
+    from hub.apps.datasets.models import Dataset
+    
+    resource_type = job_obj.resource_type
+    resource_id = job_obj.resource_id
+    
+    logger.info(
+        "Starting search index update",
+        job_id=str(job_obj.id),
+        resource_type=resource_type,
+        resource_id=str(resource_id)
+    )
+    
+    try:
+        # Index based on resource type
+        if resource_type == "CONTRACT":
+            contract = Contract.objects.get(id=resource_id)
+            search_index = SearchIndexer.index_contract(contract)
+            indexed_type = "contract"
+        elif resource_type == "ASSET":
+            asset = Asset.objects.get(id=resource_id)
+            search_index = SearchIndexer.index_asset(asset)
+            indexed_type = "asset"
+        elif resource_type == "DATASET":
+            dataset = Dataset.objects.get(id=resource_id)
+            search_index = SearchIndexer.index_dataset(dataset)
+            indexed_type = "dataset"
+        else:
+            raise ValueError(f"Unknown resource type for indexing: {resource_type}")
+        
+        logger.info(
+            "Search index update completed",
+            job_id=str(job_obj.id),
+            resource_type=resource_type,
+            resource_id=str(resource_id),
+            search_index_id=str(search_index.id)
+        )
+        
+        return {
+            'success': True,
+            'indexed_type': indexed_type,
+            'search_index_id': str(search_index.id),
+            'resource_type': resource_type,
+            'resource_id': str(resource_id)
+        }
+    
+    except Contract.DoesNotExist:
+        raise ValueError(f"Contract {resource_id} not found")
+    except Asset.DoesNotExist:
+        raise ValueError(f"Asset {resource_id} not found")
+    except Dataset.DoesNotExist:
+        raise ValueError(f"Dataset {resource_id} not found")
+    except Exception as e:
+        logger.error(
+            "Search index update job failed",
+            exc_info=True,
+            job_id=str(job_obj.id),
+            resource_type=resource_type,
+            resource_id=str(resource_id),
+            error=str(e)
+        )
+        raise
 
 
 def check_job_timeouts():

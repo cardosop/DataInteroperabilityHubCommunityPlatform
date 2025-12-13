@@ -1,0 +1,9 @@
+Parallel Batched Test Execution Summary - Sat Dec  6 04:46:18 PM -03 2025
+===============================================
+
+Django version: 6.0
+Python version: Python 3.14.0
+Parallel workers: 4
+Max failures: 50
+
+Running Unit Tests (4 workers)...

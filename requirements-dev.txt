@@ -3,7 +3,7 @@
 
 # Development Tools
 pytest>=7.4.0
-pytest-django>=4.7.0
+pytest-django>=4.8.0
 pytest-cov>=4.1.0
 pytest-mock>=3.12.0
 pytest-asyncio>=0.21.0
@@ -12,17 +12,26 @@ pytest-asyncio>=0.21.0
 ruff>=0.1.0
 black>=23.12.0
 mypy>=1.7.0
-django-stubs>=4.2.0
+django-stubs>=5.0.0
+types-redis>=4.6.0
+types-requests>=2.31.0
+
+# Security Scanning
+bandit[toml]>=1.7.5
+safety>=2.3.5
+pip-audit>=2.6.1
 
 # Testing Utilities
 factory-boy>=3.3.0
 faker>=20.0.0
 freezegun>=1.4.0
 locust>=2.17.0
+moto>=5.0.0  # AWS service mocking (S3, SQS, SES, etc.)
+responses>=0.24.0  # HTTP/HTTPS request mocking
 
 # Development Server
-django-debug-toolbar>=4.2.0
-django-extensions>=3.2.0
+django-debug-toolbar>=4.4.0
+django-extensions>=3.3.0
 
 # Documentation
 sphinx>=7.2.0

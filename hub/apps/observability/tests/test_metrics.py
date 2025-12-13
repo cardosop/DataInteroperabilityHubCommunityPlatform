@@ -5,9 +5,7 @@ import pytest
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from hub.apps.tenants.models import Tenant
-from hub.apps.observability.metrics import (
-
-
+from hub.apps.observability.otel_metrics import (
     http_requests_total,
     http_request_duration_seconds,
     jobs_started_total,

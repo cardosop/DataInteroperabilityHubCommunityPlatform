@@ -71,13 +71,26 @@ class AuthManager:
             )
             
             if response.status_code == 200:
-                data = response.json()
+                try:
+                    data = response.json()
+                except ValueError as e:
+                    click.echo(f"Login failed: Invalid response from server: {e}", err=True)
+                    return False
+                
+                # Validate response contains required tokens
+                if 'access_token' not in data or 'refresh_token' not in data:
+                    click.echo("Login failed: Server response missing required tokens", err=True)
+                    return False
+                
                 self.config.set_access_token(data['access_token'])
                 self.config.set_refresh_token(data['refresh_token'])
                 click.echo("Login successful!")
                 return True
             else:
-                error_data = response.json() if response.content else {}
+                try:
+                    error_data = response.json() if response.content else {}
+                except ValueError:
+                    error_data = {}
                 error_msg = error_data.get('error', {}).get('message', 'Login failed')
                 click.echo(f"Login failed: {error_msg}", err=True)
                 return False

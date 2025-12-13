@@ -183,47 +183,139 @@ if LOCUST_AVAILABLE:
             
             try:
                 if method == 'GET':
-                    response = self.client.get(path, headers=self.headers, name=endpoint_name, catch_response=True)
+                    with self.client.get(path, headers=self.headers, name=endpoint_name, catch_response=True) as response:
+                        response_time = (time.time() - start_time) * 1000  # ms
+                        
+                        # Track response time
+                        if response_time > 300:  # P95 target
+                            events.request.fire(
+                                request_type="api_slow",
+                                name=f"{endpoint_name}_slow",
+                                response_time=response_time,
+                                response_length=0,
+                                exception=None
+                            )
+                        
+                        # Track error rates
+                        if response.status_code >= 500:
+                            # Server error - counts against availability
+                            if not allow_errors:
+                                response.failure(f"Server error: {response.status_code}")
+                            events.request.fire(
+                                request_type="api_error",
+                                name=f"{endpoint_name}_5xx",
+                                response_time=response_time,
+                                response_length=0,
+                                exception=None
+                            )
+                        elif response.status_code >= 400 and not allow_errors:
+                            # Client error - might be expected in some cases
+                            response.failure(f"Client error: {response.status_code}")
+                        else:
+                            response.success()
+                        
+                        return response
                 elif method == 'POST':
-                    response = self.client.post(path, json=json or {}, headers=self.headers, name=endpoint_name, catch_response=True)
+                    with self.client.post(path, json=json or {}, headers=self.headers, name=endpoint_name, catch_response=True) as response:
+                        response_time = (time.time() - start_time) * 1000  # ms
+                        
+                        # Track response time
+                        if response_time > 300:  # P95 target
+                            events.request.fire(
+                                request_type="api_slow",
+                                name=f"{endpoint_name}_slow",
+                                response_time=response_time,
+                                response_length=0,
+                                exception=None
+                            )
+                        
+                        # Track error rates
+                        if response.status_code >= 500:
+                            # Server error - counts against availability
+                            if not allow_errors:
+                                response.failure(f"Server error: {response.status_code}")
+                            events.request.fire(
+                                request_type="api_error",
+                                name=f"{endpoint_name}_5xx",
+                                response_time=response_time,
+                                response_length=0,
+                                exception=None
+                            )
+                        elif response.status_code >= 400 and not allow_errors:
+                            # Client error - might be expected in some cases
+                            response.failure(f"Client error: {response.status_code}")
+                        else:
+                            response.success()
+                        
+                        return response
                 elif method == 'PATCH':
-                    response = self.client.patch(path, json=json or {}, headers=self.headers, name=endpoint_name, catch_response=True)
+                    with self.client.patch(path, json=json or {}, headers=self.headers, name=endpoint_name, catch_response=True) as response:
+                        response_time = (time.time() - start_time) * 1000  # ms
+                        
+                        # Track response time
+                        if response_time > 300:  # P95 target
+                            events.request.fire(
+                                request_type="api_slow",
+                                name=f"{endpoint_name}_slow",
+                                response_time=response_time,
+                                response_length=0,
+                                exception=None
+                            )
+                        
+                        # Track error rates
+                        if response.status_code >= 500:
+                            # Server error - counts against availability
+                            if not allow_errors:
+                                response.failure(f"Server error: {response.status_code}")
+                            events.request.fire(
+                                request_type="api_error",
+                                name=f"{endpoint_name}_5xx",
+                                response_time=response_time,
+                                response_length=0,
+                                exception=None
+                            )
+                        elif response.status_code >= 400 and not allow_errors:
+                            # Client error - might be expected in some cases
+                            response.failure(f"Client error: {response.status_code}")
+                        else:
+                            response.success()
+                        
+                        return response
                 elif method == 'DELETE':
-                    response = self.client.delete(path, headers=self.headers, name=endpoint_name, catch_response=True)
+                    with self.client.delete(path, headers=self.headers, name=endpoint_name, catch_response=True) as response:
+                        response_time = (time.time() - start_time) * 1000  # ms
+                        
+                        # Track response time
+                        if response_time > 300:  # P95 target
+                            events.request.fire(
+                                request_type="api_slow",
+                                name=f"{endpoint_name}_slow",
+                                response_time=response_time,
+                                response_length=0,
+                                exception=None
+                            )
+                        
+                        # Track error rates
+                        if response.status_code >= 500:
+                            # Server error - counts against availability
+                            if not allow_errors:
+                                response.failure(f"Server error: {response.status_code}")
+                            events.request.fire(
+                                request_type="api_error",
+                                name=f"{endpoint_name}_5xx",
+                                response_time=response_time,
+                                response_length=0,
+                                exception=None
+                            )
+                        elif response.status_code >= 400 and not allow_errors:
+                            # Client error - might be expected in some cases
+                            response.failure(f"Client error: {response.status_code}")
+                        else:
+                            response.success()
+                        
+                        return response
                 else:
                     return None
-                
-                response_time = (time.time() - start_time) * 1000  # ms
-                
-                # Track response time
-                if response_time > 300:  # P95 target
-                    events.request.fire(
-                        request_type="api_slow",
-                        name=f"{endpoint_name}_slow",
-                        response_time=response_time,
-                        response_length=0,
-                        exception=None
-                    )
-                
-                # Track error rates
-                if response.status_code >= 500:
-                    # Server error - counts against availability
-                    if not allow_errors:
-                        response.failure(f"Server error: {response.status_code}")
-                    events.request.fire(
-                        request_type="api_error",
-                        name=f"{endpoint_name}_5xx",
-                        response_time=response_time,
-                        response_length=0,
-                        exception=None
-                    )
-                elif response.status_code >= 400 and not allow_errors:
-                    # Client error - might be expected in some cases
-                    response.failure(f"Client error: {response.status_code}")
-                else:
-                    response.success()
-                
-                return response
                 
             except Exception as e:
                 response_time = (time.time() - start_time) * 1000

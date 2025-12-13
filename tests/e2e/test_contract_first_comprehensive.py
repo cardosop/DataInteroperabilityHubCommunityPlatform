@@ -87,41 +87,6 @@ class ContractFirstFlowSuccessTests(E2ETestBase):
         self.assertTrue(asset.contracts.exists())
         self.assertTrue(asset.datasets.exists())
     
-    def test_contract_first_with_datacontract_com_format(self):
-        """Test contract-first flow with DataContract.com format"""
-        asset_id = self.create_asset(key='datacontract-format', name='DataContract Format')
-        
-        # Create contract in DataContract.com format
-        datacontract_raw = """
-        {
-            "dataContractSpecification": "0.9.0",
-            "id": "test-contract",
-            "info": {
-                "title": "Test Contract",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "name": {"type": "string"}
-                }
-            }
-        }
-        """
-        
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=datacontract_raw,
-            original_format='JSON',
-            original_spec_type='DATACONTRACT_COM'
-        )
-        
-        # Check DataContract service availability upfront
-        self.require_service('DataContract', self.datacontract_service_url, health_path='/health')
-        
-        # Validate contract
-        validate_response = self.validate_contract(contract_id)
         # Service is available, validation should have completed
         if isinstance(validate_response, dict) and 'validation_status' in validate_response:
             self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID'])

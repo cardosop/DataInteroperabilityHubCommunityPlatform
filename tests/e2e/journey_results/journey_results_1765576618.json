@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-004-1723e526",
+      "journey_name": "Explore Asset Lineage",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1765576618.4829,
+      "end_time": 1765576618.4829054,
+      "duration": 5.4836273193359375e-06,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "'Persona4DataConsumerJourneys' object has no attribute '_create_asset_with_contract'",
+      "error_type": "AttributeError",
+      "steps": [],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T21:56:58.482983"
+}

@@ -1,0 +1,98 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 61.27093529701233
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-002-cdf90171",
+      "journey_name": "External Compliance Scan",
+      "persona": "Data Engineer / Contract Author",
+      "status": "completed",
+      "start_time": 1765588678.9644303,
+      "end_time": 1765588740.2353656,
+      "duration": 61.27093529701233,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588678.9644368,
+          "end_time": 1765588680.1797316,
+          "duration": 1.2152948379516602,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Trigger External Compliance Scan",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588680.1797404,
+          "end_time": 1765588680.2047153,
+          "duration": 0.024974822998046875,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Wait for Scan Completion",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588680.2047234,
+          "end_time": 1765588740.2349777,
+          "duration": 60.03025436401367,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Retrieve Scan Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588740.234986,
+          "end_time": 1765588740.2353497,
+          "duration": 0.0003635883331298828,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Compliance Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588740.2353528,
+          "end_time": 1765588740.2353644,
+          "duration": 1.1682510375976562e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "a0a30f8d-260d-4781-8d59-7fda635b8b02",
+        "compliance_run_id": "3fc374d1-3c9b-49cd-9e7c-12fd92983d1d"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T01:19:00.235453"
+}

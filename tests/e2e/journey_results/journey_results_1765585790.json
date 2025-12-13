@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-003-e359541f",
+      "journey_name": "Configure Retention Policies",
+      "persona": "Compliance & Privacy Officer",
+      "status": "failed",
+      "start_time": 1765585790.114681,
+      "end_time": 1765585790.1240044,
+      "duration": 0.009323358535766602,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "{'__all__': ['At least one of asset, dataset, or file must be set']}",
+      "error_type": "ValidationError",
+      "steps": [
+        {
+          "step_name": "Create Retention Policy",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765585790.1146867,
+          "end_time": 1765585790.1239917,
+          "duration": 0.009305000305175781,
+          "error_message": "{'__all__': ['At least one of asset, dataset, or file must be set']}",
+          "error_type": "ValidationError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T00:29:50.124096"
+}

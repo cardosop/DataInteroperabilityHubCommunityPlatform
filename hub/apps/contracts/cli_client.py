@@ -28,6 +28,29 @@ class DataContractCLIClient:
     
     def __init__(self):
         """Initialize client with service URL from settings"""
+        import os
+        import sys
+        # In test environment, use localhost instead of service name
+        default_url = 'http://datacontract-service:8080'
+        if hasattr(settings, 'TESTING') and settings.TESTING:
+            if os.getenv('TEST_ENVIRONMENT') == 'staging':
+                default_url = 'http://localhost:8092'  # Staging uses port 8092
+            elif os.getenv('TEST_ENVIRONMENT') == 'default':
+                default_url = 'http://localhost:8080'
+        if 'pytest' in sys.modules or 'unittest' in sys.modules:
+            # Auto-detect staging vs default
+            import httpx
+            try:
+                # Check if staging port is accessible
+                response = httpx.get("http://localhost:8092/health", timeout=1)
+                if response.status_code == 200:
+                    default_url = 'http://localhost:8092'
+                else:
+                    default_url = 'http://localhost:8080'
+            except Exception:
+                # Default to standard port
+                default_url = 'http://localhost:8080'
+        
         # Support both variable names for compatibility
         self.base_url = getattr(
             settings,
@@ -35,7 +58,7 @@ class DataContractCLIClient:
             getattr(
                 settings,
                 'DATACONTRACT_CLI_SERVICE_URL',
-                'http://datacontract-service:8080'
+                default_url
             )
         )
         self.timeout = getattr(settings, 'DATACONTRACT_SERVICE_TIMEOUT', DEFAULT_TIMEOUT)

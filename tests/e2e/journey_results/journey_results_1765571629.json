@@ -1,0 +1,96 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-002-8603b090",
+      "journey_name": "Publish Asset to Marketplace",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1765571628.2944052,
+      "end_time": 1765571629.4193254,
+      "duration": 1.124920129776001,
+      "completion_rate": 80.0,
+      "success_rate": 80.0,
+      "error_message": "{'__all__': ['Tenant must have VERIFIED KYC status to publish listings']}",
+      "error_type": "ValidationError",
+      "steps": [
+        {
+          "step_name": "Create and Activate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765571628.2944107,
+          "end_time": 1765571629.4055982,
+          "duration": 1.11118745803833,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Check Marketplace Eligibility",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765571629.4056075,
+          "end_time": 1765571629.4060106,
+          "duration": 0.0004031658172607422,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Create Marketplace Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765571629.406015,
+          "end_time": 1765571629.4132335,
+          "duration": 0.007218599319458008,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Configure Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765571629.413242,
+          "end_time": 1765571629.4166746,
+          "duration": 0.0034325122833251953,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Publish Listing",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765571629.41668,
+          "end_time": 1765571629.4193108,
+          "duration": 0.0026307106018066406,
+          "error_message": "{'__all__': ['Tenant must have VERIFIED KYC status to publish listings']}",
+          "error_type": "ValidationError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "(UUID('9f144025-233c-4c28-87d6-b355a1ced35a'),)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T20:33:49.419496"
+}

@@ -1,17 +1,7 @@
 """
 Test Fixtures Package
 
-Real test fixtures (not mocks) for testing with actual service configurations.
+This package contains test fixtures for:
+- Prefect Server and Workers
+- External services (S3, GCS, Azure Blob, FTP/SFTP, HTTP/HTTPS)
 """
-from .email_service_fixtures import (
-    EmailServiceFixtures,
-    WorkerServiceFixtures,
-    RateLimitingFixtures
-)
-
-__all__ = [
-    'EmailServiceFixtures',
-    'WorkerServiceFixtures',
-    'RateLimitingFixtures',
-]
-

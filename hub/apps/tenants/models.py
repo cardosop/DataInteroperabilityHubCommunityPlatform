@@ -10,6 +10,16 @@ from django.core.validators import RegexValidator, MinValueValidator, MaxValueVa
 from django.core.exceptions import ValidationError
 
 
+def default_empty_list():
+    """Return a new empty list. Used as default for JSONField to avoid mutable default argument."""
+    return []
+
+
+def default_empty_dict():
+    """Return a new empty dict. Used as default for JSONField to avoid mutable default argument."""
+    return {}
+
+
 class TenantStatus(models.TextChoices):
     """Tenant status enumeration"""
     ACTIVE = "ACTIVE", "Active"
@@ -143,12 +153,12 @@ class TenantConfig(models.Model):
     
     # Compliance Configuration
     allowed_compliance_regimes = models.JSONField(
-        default=lambda: [],
+        default=default_empty_list,
         blank=True,
         help_text="List of compliance regimes available to this tenant (e.g., ['GDPR', 'LGPD', 'CCPA'])"
     )
     default_compliance_regimes = models.JSONField(
-        default=lambda: [],
+        default=default_empty_list,
         blank=True,
         help_text="Default compliance regimes applied to intake flows (subset of allowed_compliance_regimes)"
     )
@@ -166,7 +176,7 @@ class TenantConfig(models.Model):
     
     # Rate Limits (JSON structure)
     rate_limits = models.JSONField(
-        default=lambda: {},
+        default=default_empty_dict,
         null=True,
         blank=True,
         help_text="Per-endpoint category rate limits (JSON structure)"
@@ -192,6 +202,14 @@ class TenantConfig(models.Model):
         blank=True,
         validators=[MinValueValidator(1)],
         help_text="Maximum queued jobs for this tenant"
+    )
+    
+    # SSO Configuration (JSON structure)
+    sso_config = models.JSONField(
+        default=default_empty_dict,
+        null=True,
+        blank=True,
+        help_text="SSO configuration (SAML and OIDC settings)"
     )
     
     created_at = models.DateTimeField(auto_now_add=True)

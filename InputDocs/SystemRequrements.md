@@ -11,21 +11,18 @@ a platform centered on data contracts, data quality & compliance as services, se
 
 The platform **MUST** support and enforce the following data contract standards and versions:
 
-- Open Data Contract Standard (ODCS):
+- Open Data Contract Standard (ODCS) v3.0.2+:
   - https://bitol-io.github.io/open-data-contract-standard/v3.0.2  
   - https://bitol-io.github.io/open-data-contract-standard/v3.0.1  
   - https://bitol-io.github.io/open-data-contract-standard/v3.0.0  
   - https://bitol-io.github.io/open-data-contract-standard/v3.0.0-preview  
   - https://bitol-io.github.io/open-data-contract-standard/v2.2.2  
 
-- DataContract.com specification:
-  - https://datacontract.com  
-  - Versioned specs: https://github.com/datacontract/datacontract-specification/tree/main/versions  
+**Note:** The Data Contract Specification (DCS) has been deprecated. Only ODCS contracts are supported.  
 
 ### 1.2 Example Contracts
 
-- The system **MUST** be able to validate and work with the official example contracts:
-  - https://github.com/datacontract/datacontract-specification/tree/main/examples  
+- The system **MUST** be able to validate and work with ODCS example contracts conforming to the Open Data Contract Standard v3.0.2+  
 
 ### 1.3 Validation, Linting & Conversion
 
@@ -48,12 +45,11 @@ The platform **MUST** be able to receive, store, edit/manage, and export contrac
 - **Canonical internal model ("HubContract")**
   - Define a canonical JSON model able to represent all required fields from:
     - ODCS v2.2.2–v3.x
-    - DataContract.com specification
   - The **UI, APIs, semantic layer, search, and audits** operate on this canonical model.
 
 - **Preservation of original contract**
   - For every contract, the system MUST store:
-    - `original_spec_type` (e.g. `odcs`, `datacontract.com`)
+    - `original_spec_type` (e.g. `odcs`)
     - `original_spec_version` (e.g. `3.0.2`)
     - `original_raw` (original JSON/YAML as uploaded)
     - `normalized_contract` (canonical HubContract JSON)
@@ -66,16 +62,15 @@ The platform **MUST** be able to receive, store, edit/manage, and export contrac
     - Migrating/upgrading them via controlled migration scripts when required.
 
 - **Multi-version support**
-  - Multiple ODCS and DataContract.com versions MUST be supported in parallel.
-  - Internally, the canonical model SHOULD shield other components from spec/version differences.
+  - Multiple ODCS versions MUST be supported in parallel.
+  - Internally, the canonical model SHOULD shield other components from version differences.
 
-- **Spec/version selection for new contracts**
-  - For **new contracts created in the UI**, the default spec/version MUST be:
+- **Version selection for new contracts**
+  - For **new contracts created in the UI**, the default version MUST be:
     - The most recent supported ODCS version (e.g. currently `v3.0.2`).
   - Users MUST be able to choose:
-    - A different supported spec (ODCS vs DataContract.com).
-    - A different supported version, at creation time.
-  - Conversion between versions/specs MUST be mediated by DataContract CLI.
+    - A different supported ODCS version, at creation time.
+  - Conversion between versions MUST be mediated by DataContract CLI.
 
 - **Conversions**
   - Any conversion between:
@@ -95,7 +90,7 @@ The platform **MUST** perform complete normalization of all contract sections to
     - **Privacy/Compliance section**: contains_personal_data, personal_data_categories, jurisdictions, legal_bases, retention_policy (period, notes)
     - **Lifecycle section**: data_source, refresh_cadence, slas (availability, latency_ms_p95)
     - **Marketplace section**: license_summary, intended_use, restricted_use
-    - **Extensions section**: Unmappable fields preserved in extensions.odcs or extensions.datacontract_com
+    - **Extensions section**: Unmappable fields preserved in extensions.odcs
 
 - **Field-Level Property Extraction**
   - Normalization MUST extract ALL field properties from source contracts:
@@ -4252,7 +4247,7 @@ To avoid ambiguity, this glossary defines key terms used in this document:
   - Could be one or more files (CSV, Parquet, etc.) or references to tables/objects.
 
 - **Contract**  
-  The data contract describing a dataset, conforming to ODCS or DataContract.com specs, and represented internally as a `HubContract`.
+  The data contract describing a dataset, conforming to ODCS v3.0.2+ specs, and represented internally as a `HubContract`.
 
 - **HubContract**  
   The canonical internal JSON representation of a data contract used by UI, APIs, and semantic mapping.
@@ -5433,7 +5428,7 @@ This section defines how the platform evolves the **canonical HubContract model*
 
 - Allow the HubContract schema and related models to evolve safely.
 - Preserve:
-  - Original source contracts (ODCS/DataContract.com).
+  - Original source contracts (ODCS v3.0.2+).
   - Canonical HubContract representations for existing assets.
 - Avoid breaking changes for:
   - API consumers (v1 endpoints).
@@ -5448,7 +5443,7 @@ This section defines how the platform evolves the **canonical HubContract model*
 
 - Every stored contract MUST have:
 
-  - `source_spec` – e.g. `"ODCS"` or `"datacontract.com"`.
+  - `source_spec` – e.g. `"ODCS"`.
   - `source_spec_version` – e.g. `"3.0.2"`, `"2.2.2"`.
   - `hub_contract_version` – version of the canonical HubContract schema (e.g. `"1.0.0"`).
 
@@ -5463,7 +5458,7 @@ This section defines how the platform evolves the **canonical HubContract model*
 For each contract/asset, the platform MUST store:
 
 - `raw_contract`:
-  - Original file as uploaded (YAML/JSON) conforming to ODCS or DataContract.com.
+  - Original file as uploaded (YAML/JSON) conforming to ODCS v3.0.2+.
   - Preserved as-is for traceability and external interoperability.
 - `hub_contract`:
   - Canonical JSON representation used internally and for API responses.
@@ -5509,7 +5504,7 @@ When a new `hub_contract_version` is introduced:
     - Normalize from `raw_contract` → latest `hub_contract_version`.
     - Set `hub_contract_version` to the **current** canonical version.
   - DataContract CLI is used to:
-    - Validate and possibly convert between ODCS/DataContract.com versions.
+    - Validate and possibly convert between ODCS versions.
     - Ensure source contract is valid before building the HubContract.
 
 #### 19.4.2 On-Read “Lazy” Migration (Optional)
@@ -5727,7 +5722,7 @@ All migrations MUST be tracked in AuditEvents and internal change logs.
     - For each version:
       - Changelog.
       - Migration rules.
-      - Mapping rules to/from ODCS/DataContract.com versions.
+      - Mapping rules to/from ODCS versions.
 
 ## 20. SDKs (JavaScript & Python)
 
