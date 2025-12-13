@@ -619,13 +619,17 @@ class APIResponseTimesE2ETest(E2ETestBase):
 
     def test_concurrent_request_response_times(self):
         """Test that concurrent requests maintain acceptable response times"""
-        asset_id = self.create_asset("test-perf-concurrent", "Test")
+        # Use list endpoint instead of specific asset to avoid transaction isolation issues
+        # Create a few assets first
+        for i in range(3):
+            self.create_asset(f"test-perf-concurrent-{i}", f"Test {i}")
 
         import concurrent.futures
 
         def make_request():
             start = time.time()
-            response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+            # Use list endpoint which is more reliable in concurrent test scenarios
+            response = self.client.get("/api/v1/assets/assets/")
             elapsed = time.time() - start
             return response.status_code, elapsed
 
@@ -639,6 +643,15 @@ class APIResponseTimesE2ETest(E2ETestBase):
         self.assertTrue(
             all(code == status.HTTP_200_OK for code in status_codes),
             f"Not all concurrent requests succeeded: {status_codes}",
+        )
+
+        # Verify response times are reasonable
+        elapsed_times = [r[1] for r in results]
+        max_elapsed = max(elapsed_times)
+        self.assertLess(
+            max_elapsed,
+            5.0,
+            f"Concurrent requests max response time {max_elapsed:.3f}s exceeds 5s threshold",
         )
 
         # Verify response times are reasonable
@@ -730,9 +743,19 @@ class APIRateLimitsE2ETest(E2ETestBase):
             responses.append(response)
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 # Verify error format
-                if isinstance(response.data, dict):
-                    if "error" in response.data:
-                        error = response.data["error"]
+                # Handle both DRF Response (has .data) and JsonResponse (needs JSON parsing)
+                if hasattr(response, 'data'):
+                    error_data = response.data
+                else:
+                    import json
+                    try:
+                        error_data = json.loads(response.content)
+                    except (json.JSONDecodeError, AttributeError):
+                        error_data = None
+                
+                if isinstance(error_data, dict):
+                    if "error" in error_data:
+                        error = error_data["error"]
                         self.assertIn("code", error)
                         self.assertIn("message", error)
                         self.assertEqual(error.get("http_status"), 429)

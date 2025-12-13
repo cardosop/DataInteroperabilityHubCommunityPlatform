@@ -1,3 +1,8 @@
+openspec/
+InputDocs/
+AGENTS.md
+.cursor/
+
 # Python
 __pycache__/
 *.py[cod]

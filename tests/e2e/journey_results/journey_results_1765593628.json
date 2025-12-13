@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-003-ea4f531e",
+      "journey_name": "Download Purchased Data",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1765593627.2437737,
+      "end_time": 1765593628.3955576,
+      "duration": 1.1517839431762695,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "{'listing': ['This field cannot be null.']}",
+      "error_type": "ValidationError",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset with File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765593627.2437816,
+          "end_time": 1765593628.3933465,
+          "duration": 1.1495649814605713,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Create Entitlement",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765593628.3933573,
+          "end_time": 1765593628.395531,
+          "duration": 0.0021736621856689453,
+          "error_message": "{'listing': ['This field cannot be null.']}",
+          "error_type": "ValidationError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('a0d7d5c1-772e-4742-a1c9-b5bc2dac9bb8',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T02:40:28.395649"
+}

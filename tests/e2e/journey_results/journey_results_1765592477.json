@@ -1,0 +1,204 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 128.93061089515686
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-001-67bc5745",
+      "journey_name": "Onboard New Asset via Data-First Flow",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1765592348.4197443,
+      "end_time": 1765592477.3503551,
+      "duration": 128.93061089515686,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset (Draft)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592348.4197524,
+          "end_time": 1765592348.890638,
+          "duration": 0.4708857536315918,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Upload File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592348.8906581,
+          "end_time": 1765592348.9578023,
+          "duration": 0.06714415550231934,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Complete File Upload",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592348.9578106,
+          "end_time": 1765592348.9963942,
+          "duration": 0.03858351707458496,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Create Dataset (Schema Inference)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592348.9964023,
+          "end_time": 1765592349.0269918,
+          "duration": 0.030589580535888672,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Run Compliance Check",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592349.0269995,
+          "end_time": 1765592349.0572057,
+          "duration": 0.03020620346069336,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Wait for Compliance Check",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592349.0572128,
+          "end_time": 1765592409.0881608,
+          "duration": 60.03094792366028,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Run DQ Check",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592409.0881698,
+          "end_time": 1765592409.4182377,
+          "duration": 0.33006787300109863,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Wait for DQ Check",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592409.418245,
+          "end_time": 1765592469.4482775,
+          "duration": 60.03003239631653,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Prepare Asset for Activation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592469.4482872,
+          "end_time": 1765592469.4502068,
+          "duration": 0.0019195079803466797,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Create Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592469.4502113,
+          "end_time": 1765592470.0294108,
+          "duration": 0.5791995525360107,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592470.0294185,
+          "end_time": 1765592475.558105,
+          "duration": 5.5286865234375,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Attach Contract to Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592475.558121,
+          "end_time": 1765592475.7141924,
+          "duration": 0.15607142448425293,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        },
+        {
+          "step_name": "Activate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592475.7141995,
+          "end_time": 1765592477.350349,
+          "duration": 1.6361494064331055,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "fd9ffa10-675b-4d3d-9d19-4d521e05f4af",
+        "contract_id": "b5594bf3-56ac-469a-83e2-9b68a5d9f64e",
+        "dataset_id": "ec847ef7-8bd1-4e84-a817-46067a865c32",
+        "file_id": "051b60f1-4707-4caa-bd24-811855ae8437"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T02:21:17.350468"
+}

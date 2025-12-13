@@ -7,6 +7,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from rest_framework.filters import OrderingFilter, SearchFilter
 from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -31,66 +32,76 @@ class AssetViewSet(viewsets.ModelViewSet):
     serializer_class = AssetSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
+    filter_backends = [OrderingFilter, SearchFilter]
+    ordering_fields = ['name', 'key', 'created_at', 'updated_at']
+    ordering = ['-created_at']  # Default ordering
+    search_fields = ['name', 'key', 'description']
     
     def get_queryset(self):
-        """Filter queryset based on user permissions"""
+        """Filter queryset based on user permissions and query parameters"""
         user = self.request.user
         
         # Platform admins can see all assets
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return Asset.objects.all()
-        
-        # Get tenant from request (set by middleware/authentication) or user
-        # Priority: request.tenant_id (most reliable) > request.tenant > user.tenant_id > user.tenant
-        tenant_id = None
-        
-        # Try request.tenant_id first (set by authentication/middleware)
-        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-            tenant_id = self.request.tenant_id
-            # Convert to UUID if it's a string
-            if isinstance(tenant_id, str):
-                import uuid
+            queryset = Asset.objects.all()
+        else:
+            # Get tenant from request (set by middleware/authentication) or user
+            # Priority: request.tenant_id (most reliable) > request.tenant > user.tenant_id > user.tenant
+            tenant_id = None
+            
+            # Try request.tenant_id first (set by authentication/middleware)
+            if hasattr(self.request, "tenant_id") and self.request.tenant_id:
+                tenant_id = self.request.tenant_id
+                # Convert to UUID if it's a string
+                if isinstance(tenant_id, str):
+                    import uuid
+                    try:
+                        tenant_id = uuid.UUID(tenant_id)
+                    except (ValueError, TypeError):
+                        tenant_id = None
+            
+            # Fallback to request.tenant object
+            if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
+                tenant_id = self.request.tenant.id
+            
+            # Fallback to user.tenant_id (direct field access, most reliable)
+            # CRITICAL: Refresh user from DB to get fresh tenant_id (important for thread safety)
+            if not tenant_id and hasattr(user, "id") and user.id:
+                # Query user from database to get fresh tenant_id (works in LiveServerTestCase)
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
                 try:
-                    tenant_id = uuid.UUID(tenant_id)
-                except (ValueError, TypeError):
-                    tenant_id = None
+                    db_user = User.objects.only('tenant_id').get(id=user.id)
+                    if db_user.tenant_id:
+                        tenant_id = db_user.tenant_id
+                except User.DoesNotExist:
+                    pass
+            
+            # Last resort: get from user.tenant relationship
+            if not tenant_id and hasattr(user, "tenant") and user.tenant:
+                tenant_id = user.tenant.id
+            
+            # Regular users can only see assets in their tenant
+            if tenant_id:
+                # Use tenant_id for filtering (more reliable than tenant object)
+                # Ensure tenant_id is a UUID for proper filtering
+                if isinstance(tenant_id, str):
+                    import uuid
+                    try:
+                        tenant_id = uuid.UUID(tenant_id)
+                    except (ValueError, TypeError):
+                        return Asset.objects.none()
+                # Filter by tenant_id - this is the most reliable way
+                queryset = Asset.objects.filter(tenant_id=tenant_id)
+            else:
+                return Asset.objects.none()
         
-        # Fallback to request.tenant object
-        if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
-            tenant_id = self.request.tenant.id
+        # Apply name filter if provided (exact match)
+        name_filter = self.request.query_params.get('name')
+        if name_filter:
+            queryset = queryset.filter(name=name_filter)
         
-        # Fallback to user.tenant_id (direct field access, most reliable)
-        # CRITICAL: Refresh user from DB to get fresh tenant_id (important for thread safety)
-        if not tenant_id and hasattr(user, "id") and user.id:
-            # Query user from database to get fresh tenant_id (works in LiveServerTestCase)
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            try:
-                db_user = User.objects.only('tenant_id').get(id=user.id)
-                if db_user.tenant_id:
-                    tenant_id = db_user.tenant_id
-            except User.DoesNotExist:
-                pass
-        
-        # Last resort: get from user.tenant relationship
-        if not tenant_id and hasattr(user, "tenant") and user.tenant:
-            tenant_id = user.tenant.id
-        
-        # Regular users can only see assets in their tenant
-        if tenant_id:
-            # Use tenant_id for filtering (more reliable than tenant object)
-            # Ensure tenant_id is a UUID for proper filtering
-            if isinstance(tenant_id, str):
-                import uuid
-                try:
-                    tenant_id = uuid.UUID(tenant_id)
-                except (ValueError, TypeError):
-                    return Asset.objects.none()
-            # Filter by tenant_id - this is the most reliable way
-            queryset = Asset.objects.filter(tenant_id=tenant_id)
-            return queryset
-        
-        return Asset.objects.none()
+        return queryset
     
     @transaction.atomic
     def create(self, request):

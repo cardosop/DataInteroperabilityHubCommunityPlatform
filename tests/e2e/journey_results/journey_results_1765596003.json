@@ -1,0 +1,98 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.0898489952087402
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-004-73c7d4ee",
+      "journey_name": "Review Access Requests",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1765596002.8928108,
+      "end_time": 1765596003.9826598,
+      "duration": 1.0898489952087402,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765596002.892816,
+          "end_time": 1765596003.976045,
+          "duration": 1.0832288265228271,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Access Request",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765596003.9760563,
+          "end_time": 1765596003.9796407,
+          "duration": 0.0035843849182128906,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "List Access Requests",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765596003.9796464,
+          "end_time": 1765596003.9804072,
+          "duration": 0.0007607936859130859,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Review Request Details",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765596003.9804106,
+          "end_time": 1765596003.9808102,
+          "duration": 0.00039958953857421875,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Approve Request",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765596003.9808133,
+          "end_time": 1765596003.9826565,
+          "duration": 0.0018432140350341797,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "50a6d624-78f0-4f11-a0bc-3f48d4ea9c37",
+        "request_id": "56b91254-175e-4f4d-8994-17734a5b3c9e"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T03:20:03.982730"
+}

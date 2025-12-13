@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 2.2172927856445312e-05
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-004-6e04bf0a",
+      "journey_name": "Manage Tenant Billing",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1765621143.762271,
+      "end_time": 1765621143.762293,
+      "duration": 2.2172927856445312e-05,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Retrieve Billing Information",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765621143.7622766,
+          "end_time": 1765621143.7622826,
+          "duration": 5.9604644775390625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Review Invoices",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765621143.7622845,
+          "end_time": 1765621143.7622867,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Update Payment Method",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765621143.7622879,
+          "end_time": 1765621143.7622895,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Generate Billing Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765621143.7622907,
+          "end_time": 1765621143.7622921,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "report_id": null
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T10:19:03.762366"
+}

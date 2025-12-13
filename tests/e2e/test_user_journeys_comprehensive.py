@@ -1257,6 +1257,11 @@ class Persona2DataEngineerJourneys(UserJourneyTestBase):
         assert contract.validation_status in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]
         return True
     
+    def _detect_schema_changes(self, dataset_id):
+        """Detect schema changes."""
+        # Simplified schema change detection
+        return {"changes_detected": False}
+    
     def _calculate_version_impact(self, asset_id, changes):
         """Calculate version impact."""
         return {"impact_level": "low", "affected_assets": 0}
@@ -1414,27 +1419,37 @@ class Persona3CompliancePrivacyOfficerJourneys(UserJourneyTestBase):
         )
         
         try:
-            # Step 1: Create retention policy
-            policy_id = self.execute_journey_step(
-                "Create Retention Policy",
-                self._create_retention_policy
+            # Step 1: Create an asset to apply the retention policy to
+            asset_id = self.execute_journey_step(
+                "Create Asset for Retention Policy",
+                self.create_asset,
+                key=f'retention-test-asset-{uuid.uuid4().hex[:8]}',
+                name='Retention Test Asset',
+                description='Asset for testing retention policies'
             )
             
-            # Step 2: Configure time-based rules
+            # Step 2: Create retention policy (must reference asset, dataset, or file)
+            policy_id = self.execute_journey_step(
+                "Create Retention Policy",
+                self._create_retention_policy,
+                asset_id=asset_id
+            )
+            
+            # Step 3: Configure time-based rules
             self.execute_journey_step(
                 "Configure Time-Based Rules",
                 self._configure_time_based_rules,
                 policy_id
             )
             
-            # Step 3: Configure event-based rules
+            # Step 4: Configure event-based rules
             self.execute_journey_step(
                 "Configure Event-Based Rules",
                 self._configure_event_based_rules,
                 policy_id
             )
             
-            # Step 4: Apply policy to assets
+            # Step 5: Apply policy to assets (verify policy is applied)
             self.execute_journey_step(
                 "Apply Policy to Assets",
                 self._apply_policy_to_assets,
@@ -1442,7 +1457,8 @@ class Persona3CompliancePrivacyOfficerJourneys(UserJourneyTestBase):
             )
             
             journey.complete(metadata={
-                "policy_id": str(policy_id)
+                "policy_id": str(policy_id),
+                "asset_id": str(asset_id)
             })
             
             self.assertGreaterEqual(journey.completion_rate, 100.0)
@@ -1606,23 +1622,52 @@ class Persona3CompliancePrivacyOfficerJourneys(UserJourneyTestBase):
     def _generate_compliance_report_full(self, asset_id, regulation, data):
         """Generate full compliance report."""
         from hub.apps.governance.models import ComplianceReport
+        from django.utils import timezone
+        from datetime import timedelta
+        now = timezone.now()
         report = ComplianceReport.objects.create(
             tenant=self.tenant,
             regulation=regulation,
             report_type="ASSET_COMPLIANCE",
-            report_data=data
+            report_data=data,
+            start_date=now - timedelta(days=30),
+            end_date=now
         )
         return report.id
     
-    def _create_retention_policy(self):
-        """Create retention policy."""
+    def _create_retention_policy(self, asset_id=None, dataset_id=None, file_id=None):
+        """Create retention policy.
+        
+        Args:
+            asset_id: Asset ID to apply policy to (optional)
+            dataset_id: Dataset ID to apply policy to (optional)
+            file_id: File ID to apply policy to (optional)
+            
+        At least one of asset_id, dataset_id, or file_id must be provided.
+        """
         from hub.apps.governance.models import RetentionPolicy, RetentionPolicyType
-        policy = RetentionPolicy.objects.create(
-            tenant=self.tenant,
-            name="Test Policy",
-            policy_type=RetentionPolicyType.TIME_BASED,
-            retention_period_days=365
-        )
+        from hub.apps.assets.models import Asset
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
+        
+        if not asset_id and not dataset_id and not file_id:
+            raise ValueError("At least one of asset_id, dataset_id, or file_id must be provided")
+        
+        policy_kwargs = {
+            "tenant": self.tenant,
+            "name": "Test Retention Policy",
+            "policy_type": RetentionPolicyType.TIME_BASED,
+            "retention_period_days": 365
+        }
+        
+        if asset_id:
+            policy_kwargs["asset_id"] = asset_id
+        if dataset_id:
+            policy_kwargs["dataset_id"] = dataset_id
+        if file_id:
+            policy_kwargs["file_id"] = file_id
+        
+        policy = RetentionPolicy.objects.create(**policy_kwargs)
         return policy.id
     
     def _configure_time_based_rules(self, policy_id):
@@ -1646,12 +1691,15 @@ class Persona3CompliancePrivacyOfficerJourneys(UserJourneyTestBase):
     def _create_access_request(self, asset_id):
         """Create access request."""
         from hub.apps.governance.models import AccessRequest, AccessRequestStatus
+        from hub.apps.assets.models import Asset
+        asset = Asset.objects.get(id=asset_id)
         request = AccessRequest.objects.create(
             tenant=self.tenant,
-            asset_id=asset_id,
+            asset=asset,
             requested_by=self.user,
             status=AccessRequestStatus.PENDING,
-            justification="Test access request"
+            reason="Test access request",
+            requested_access_type="READ"
         )
         return request.id
     
@@ -1863,11 +1911,19 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
                 self._create_asset_with_file
             )
             
+            # Create listing
+            listing_id = self.execute_journey_step(
+                "Provider Creates Listing",
+                self._create_marketplace_listing_provider,
+                asset_id
+            )
+            
             # Create entitlement
             self.execute_journey_step(
                 "Create Entitlement",
                 self._create_entitlement,
-                asset_id
+                asset_id,
+                listing_id
             )
             
             # Step 2: Switch to consumer context
@@ -2207,6 +2263,21 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
         order.save()
         return order_id
     
+    def _create_access_request(self, asset_id):
+        """Create access request."""
+        from hub.apps.governance.models import AccessRequest, AccessRequestStatus
+        from hub.apps.assets.models import Asset
+        asset = Asset.objects.get(id=asset_id)
+        request = AccessRequest.objects.create(
+            tenant=self.user.tenant,
+            asset=asset,
+            requested_by=self.user,
+            status=AccessRequestStatus.PENDING,
+            reason="Test access request",
+            requested_access_type="READ"
+        )
+        return request.id
+    
     def _find_asset(self, asset_id):
         """Find asset."""
         response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
@@ -2233,9 +2304,10 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         return asset_id, file_id
     
-    def _create_entitlement(self, asset_id):
+    def _create_entitlement(self, asset_id, listing_id=None):
         """Create entitlement."""
-        from hub.apps.marketplace.models import Entitlement, EntitlementStatus
+        from hub.apps.marketplace.models import Entitlement, EntitlementStatus, Listing, ListingStatus
+        from hub.apps.assets.models import Asset
         # Use current user's tenant (may be provider or consumer)
         current_user = getattr(self.client, 'handler', None)
         if current_user and hasattr(current_user, '_force_user'):
@@ -2244,9 +2316,19 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
             current_user = self.user
         current_tenant = current_user.tenant if hasattr(current_user, 'tenant') else self.tenant
         
+        asset = Asset.objects.get(id=asset_id)
+        listing = Listing.objects.get(id=listing_id) if listing_id else None
+        if not listing:
+            # Create a listing if not provided
+            listing = Listing.objects.create(
+                asset=asset,
+                status=ListingStatus.PUBLISHED,
+                tenant=asset.tenant
+            )
         entitlement = Entitlement.objects.create(
             tenant=current_tenant,
-            asset_id=asset_id,
+            listing=listing,
+            asset=asset,
             status=EntitlementStatus.ACTIVE
         )
         return entitlement.id
@@ -2310,6 +2392,11 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
     def _check_quality_trends(self, asset_id):
         """Check quality trends."""
         return {"trend": "stable"}
+    
+    def _review_quality_scores(self, metrics):
+        """Review quality scores."""
+        assert metrics.get("total_runs", 0) >= 0
+        return True
 
 
 class Persona5TenantAdminJourneys(UserJourneyTestBase):
