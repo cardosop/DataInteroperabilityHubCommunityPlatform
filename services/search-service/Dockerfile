@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y \
 COPY services/search-service/requirements.txt .
 COPY requirements.txt ./requirements-root.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install Python dependencies globally (for volume mounts in dev)
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime stage
 FROM python:3.12-slim
@@ -31,11 +31,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
-
-# Add local bin to PATH for user-installed packages
-ENV PATH=/root/.local/bin:$PATH
+# Copy Python dependencies from builder (installed globally)
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy shared module
 COPY services/shared/ ./shared/

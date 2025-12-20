@@ -8,7 +8,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework.exceptions import PermissionDenied
+from drf_spectacular.utils import extend_schema, inline_serializer, OpenApiResponse
 from rest_framework import serializers
 from django.db import transaction
 from django.utils import timezone
@@ -545,6 +546,222 @@ class ScheduledIngestionViewSet(viewsets.ModelViewSet):
         )
         
         return Response(cost_report, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        operation_id='get_scheduled_ingestion_credentials',
+        responses={
+            200: inline_serializer(
+                name='CredentialsResponse',
+                fields={
+                    'scheduled_ingestion_id': serializers.UUIDField(),
+                    'source_type': serializers.CharField(),
+                    'credential_version': serializers.IntegerField(default=1),
+                    'last_tested_at': serializers.DateTimeField(allow_null=True),
+                    'last_test_result': serializers.CharField(allow_null=True),
+                    'masked_credentials': serializers.DictField(),
+                    'metadata': serializers.DictField(allow_null=True)
+                }
+            ),
+            401: OpenApiResponse(description='Unauthorized'),
+            403: OpenApiResponse(description='Forbidden'),
+            404: OpenApiResponse(description='Scheduled ingestion not found')
+        },
+        tags=['Scheduled Ingestion']
+    )
+    @action(detail=True, methods=['get'], url_path='credentials')
+    def credentials(self, request, id=None):
+        """
+        Get masked credentials for scheduled ingestion.
+        
+        GET /api/v1/scheduled-ingestions/{id}/credentials/
+        
+        Returns masked credentials (never exposes actual credentials).
+        Performance target: < 200ms p95
+        """
+        scheduled_ingestion = self.get_object()
+        
+        # Check permissions: User must own the scheduled ingestion or be a TENANT_ADMIN
+        if not (request.user.is_platform_admin or (scheduled_ingestion.tenant == request.user.tenant and request.user.has_role('DATA_PROVIDER', 'TENANT_ADMIN'))):
+            raise PermissionDenied("You do not have permission to access credentials for this scheduled ingestion.")
+        
+        from hub.apps.scheduled_ingestion.credential_manager import CredentialManager
+        
+        try:
+            # Get masked credentials
+            masked_credentials_data = CredentialManager.get_masked_credentials(scheduled_ingestion)
+            
+            response_data = {
+                'scheduled_ingestion_id': str(scheduled_ingestion.id),
+                'source_type': scheduled_ingestion.source_type,
+                'credential_version': getattr(scheduled_ingestion, 'credential_version', 1),
+                'last_tested_at': scheduled_ingestion.last_credential_test_at.isoformat() if hasattr(scheduled_ingestion, 'last_credential_test_at') and scheduled_ingestion.last_credential_test_at else None,
+                'last_test_result': getattr(scheduled_ingestion, 'last_credential_test_result', None),
+                'masked_credentials': masked_credentials_data,
+                'metadata': {k: v for k, v in (scheduled_ingestion.source_config or {}).items() if k not in CredentialManager.SENSITIVE_FIELDS}  # Include other non-sensitive metadata
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Failed to retrieve masked credentials for {scheduled_ingestion.id}: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'Failed to retrieve masked credentials', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+    
+    @extend_schema(
+        operation_id='test_scheduled_ingestion_credentials',
+        request=None,
+        responses={
+            200: inline_serializer(
+                name='ConnectionTestResponse',
+                fields={
+                    'success': serializers.BooleanField(),
+                    'message': serializers.CharField(),
+                    'tested_at': serializers.DateTimeField(),
+                    'connection_details': serializers.DictField(allow_null=True)
+                }
+            ),
+            400: OpenApiResponse(description='Bad Request'),
+            401: OpenApiResponse(description='Unauthorized'),
+            403: OpenApiResponse(description='Forbidden'),
+            404: OpenApiResponse(description='Scheduled ingestion not found'),
+            503: OpenApiResponse(description='Connector service unavailable')
+        },
+        tags=['Scheduled Ingestion']
+    )
+    @action(detail=True, methods=['post'], url_path='credentials/test')
+    def test_credentials(self, request, id=None):
+        """
+        Test connection with stored credentials.
+        
+        POST /api/v1/scheduled-ingestions/{id}/credentials/test/
+        
+        Tests connection to the data source using stored credentials.
+        Never exposes credentials in response.
+        Performance target: < 5000ms p95 (connection testing can be slow)
+        Timeout: 30 seconds
+        """
+        import time
+        scheduled_ingestion = self.get_object()
+        
+        start_time = time.time()
+        
+        try:
+            # Get source config with credentials
+            source_config = scheduled_ingestion.source_config or {}
+            
+            if not source_config:
+                return Response(
+                    {'success': False, 'message': 'No source configuration found'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Import connector factory
+            import sys
+            import os
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../services/prefect-integration'))
+            
+            try:
+                from connectors.factory import SourceConnectorFactory
+            except ImportError:
+                return Response(
+                    {'success': False, 'message': 'Connector service is not available'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            
+            # Get connector and test connection
+            connector = SourceConnectorFactory.get_connector(scheduled_ingestion.source_type)
+            
+            # Test connection with timeout (30 seconds)
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Connection test timed out after 30 seconds")
+            
+            # Set timeout (Unix only)
+            if hasattr(signal, 'SIGALRM'):
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(30)
+            
+            try:
+                # test_connection returns a boolean
+                test_result = connector.test_connection(source_config)
+                response_time_ms = int((time.time() - start_time) * 1000)
+                
+                # Clear alarm
+                if hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)
+                
+                # Update last_tested_at and last_test_result (if tracked)
+                # TODO: Add last_tested_at and last_test_result fields to ScheduledIngestion model
+                
+                # Log audit event
+                create_audit_event(
+                    resource_type="SCHEDULED_INGESTION",
+                    action="CREDENTIALS_TESTED",
+                    actor_user=request.user,
+                    tenant=scheduled_ingestion.tenant,
+                    resource_id=str(scheduled_ingestion.id),
+                    details={
+                        'source_type': scheduled_ingestion.source_type,
+                        'test_result': 'success' if test_result else 'failure',
+                        'response_time_ms': response_time_ms
+                    },
+                    request=request
+                )
+                
+                if test_result:
+                    return Response({
+                        'success': True,
+                        'message': 'Connection test successful',
+                        'tested_at': timezone.now().isoformat(),
+                        'connection_details': {
+                            'response_time_ms': response_time_ms
+                        }
+                    }, status=status.HTTP_200_OK)
+                else:
+                    return Response({
+                        'success': False,
+                        'message': 'Connection test failed - unable to connect to data source',
+                        'tested_at': timezone.now().isoformat(),
+                        'connection_details': {
+                            'response_time_ms': response_time_ms
+                        }
+                    }, status=status.HTTP_200_OK)  # Return 200 with success=False for connection failures
+            
+            except TimeoutError:
+                if hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)
+                return Response(
+                    {'success': False, 'message': 'Connection test timed out after 30 seconds'},
+                    status=status.HTTP_504_GATEWAY_TIMEOUT
+                )
+            except Exception as e:
+                if hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)
+                logger.error(
+                    f"Connection test failed for scheduled ingestion {scheduled_ingestion.id}: {str(e)}",
+                    exc_info=True
+                )
+                return Response({
+                    'success': False,
+                    'message': f'Connection test failed: {str(e)}',
+                    'tested_at': timezone.now().isoformat(),
+                    'connection_details': {
+                        'response_time_ms': int((time.time() - start_time) * 1000)
+                    }
+                }, status=status.HTTP_200_OK)  # Return 200 with success=False for connection failures
+        
+        except Exception as e:
+            logger.error(
+                f"Failed to test credentials for scheduled ingestion {scheduled_ingestion.id}: {str(e)}",
+                exc_info=True
+            )
+            return Response(
+                {'success': False, 'message': f'Failed to test credentials: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class ScheduledIngestionRunViewSet(viewsets.ReadOnlyModelViewSet):

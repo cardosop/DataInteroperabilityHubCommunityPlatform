@@ -29,6 +29,7 @@ class SearchResponseSerializer(serializers.Serializer):
     limit = serializers.IntegerField()
     offset = serializers.IntegerField()
     query = serializers.CharField()
+    analytics_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class SearchSuggestionSerializer(serializers.Serializer):

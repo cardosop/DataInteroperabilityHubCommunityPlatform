@@ -36,8 +36,14 @@ class NormalizationStatus(models.TextChoices):
 
 
 class OriginalSpecType(models.TextChoices):
-    """Original specification type enumeration"""
+    """Original specification type enumeration
+
+    Supported types:
+    - ODCS: Open Data Contract Standard (technical specification)
+    - ODPS: Open Data Product Standard (marketplace specification)
+    """
     ODCS = "ODCS", "ODCS"
+    ODPS = "ODPS", "ODPS"
 
 
 class OriginalFormat(models.TextChoices):
@@ -49,7 +55,7 @@ class OriginalFormat(models.TextChoices):
 class Contract(models.Model):
     """
     Contract model representing a data contract with HubContract normalization.
-    
+
     Stores original contract (ODCS) and normalized HubContract.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -77,12 +83,12 @@ class Contract(models.Model):
         default=ContractStatus.DRAFT,
         help_text="Contract lifecycle status: DRAFT, ACTIVE, RETIRED"
     )
-    
+
     # Original specification metadata
     original_spec_type = models.CharField(
         max_length=50,
         choices=OriginalSpecType.choices,
-        help_text="Original spec type: ODCS (Open Data Contract Standard)"
+        help_text="Original spec type: ODCS (Open Data Contract Standard) or ODPS (Open Data Product Standard)"
     )
     original_spec_version = models.CharField(
         max_length=20,
@@ -96,7 +102,12 @@ class Contract(models.Model):
     original_raw = models.TextField(
         help_text="Original contract file content (verbatim)"
     )
-    
+    original_raw_resolved = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Original contract content with all $ref references resolved (cached for performance)"
+    )
+
     # HubContract normalization
     hub_contract_version = models.CharField(
         max_length=20,
@@ -130,7 +141,7 @@ class Contract(models.Model):
         default=list,
         help_text="Normalization warnings (JSON array)"
     )
-    
+
     # CLI validation result
     validation_status = models.CharField(
         max_length=20,
@@ -162,7 +173,7 @@ class Contract(models.Model):
         blank=True,
         help_text="Last validation timestamp"
     )
-    
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -173,7 +184,7 @@ class Contract(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "contracts"
         ordering = ["-created_at"]
@@ -189,11 +200,11 @@ class Contract(models.Model):
                 name="unique_contract_version_per_asset"
             )
         ]
-    
+
     def __str__(self):
         asset_name = self.asset.name if self.asset else "No Asset"
         return f"{asset_name} - {self.original_spec_type} v{self.original_spec_version} ({self.status})"
-    
+
     def clean(self):
         """Validate contract status rules"""
         super().clean()
@@ -205,7 +216,7 @@ class Contract(models.Model):
             expected_version = get_default_version()
             if validated_contract and str(validated_contract.hub_contract_version) != expected_version:
                 raise ValidationError({"hub_contract_json": [f"hub_contract_version must be {expected_version}"]})
-        
+
         # Enforce ACTIVE status requirements
         if self.status == ContractStatus.ACTIVE:
             # Must have valid validation status
@@ -214,7 +225,7 @@ class Contract(models.Model):
                     f"Contract cannot be ACTIVE with validation_status={self.validation_status}. "
                     f"Required: VALID or WARNING_ONLY"
                 )
-            
+
             # Must have successful normalization
             if self.normalization_status not in [
                 NormalizationStatus.NORMALIZED_OK,
@@ -224,21 +235,21 @@ class Contract(models.Model):
                     f"Contract cannot be ACTIVE with normalization_status={self.normalization_status}. "
                     f"Required: NORMALIZED_OK or NORMALIZED_WITH_WARNINGS"
                 )
-    
+
     def can_activate(self) -> tuple[bool, str]:
         """
         Check if contract can be activated.
-        
+
         Returns:
             Tuple of (can_activate: bool, reason: str)
         """
         if self.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
             return False, f"validation_status must be VALID or WARNING_ONLY (current: {self.validation_status})"
-        
+
         if self.normalization_status not in [
             NormalizationStatus.NORMALIZED_OK,
             NormalizationStatus.NORMALIZED_WITH_WARNINGS
         ]:
             return False, f"normalization_status must be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS (current: {self.normalization_status})"
-        
+
         return True, ""

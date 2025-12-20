@@ -1,0 +1,17 @@
+{
+  "schema": "https://opendataproducts.org/schema/v2.9",
+  "version": "2.9",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-external-ref-v2.9",
+        "name": "Sample Data Product with External $ref v2.9",
+        "description": "A sample ODPS 2.x data product demonstrating external $ref usage."
+      }
+    },
+    "contract": {
+      "$ref": "https://example.com/schema.yaml#/contract"
+    }
+  }
+}
+

@@ -1,0 +1,36 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.0",
+  "version": "4.0",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-v4.0",
+        "name": "Sample Data Product v4.0",
+        "description": "A sample valid ODPS 4.0 data product for testing purposes. This product demonstrates all required and optional fields for version 4.0."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/sample-product-v4.0"
+    },
+    "dataQuality": {
+      "qualityScore": 92,
+      "completeness": 0.95
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "standard",
+          "name": "Standard Plan",
+          "price": 19.99,
+          "currency": "EUR"
+        }
+      ],
+      "accessMethods": {
+        "api": {
+          "endpoint": "https://api.example.com/v1/products/sample-product-v4.0"
+        }
+      }
+    }
+  }
+}
+

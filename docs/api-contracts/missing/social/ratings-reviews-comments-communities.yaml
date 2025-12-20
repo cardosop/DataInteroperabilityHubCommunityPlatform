@@ -1,0 +1,1110 @@
+openapi: 3.0.3
+info:
+  title: Social Features API
+  description: Social features including ratings, reviews, comments, and communities
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: api-support@datahub.example.com
+servers:
+- url: https://api.datahub.example.com/api/v1
+  description: Production server
+- url: https://staging-api.datahub.example.com/api/v1
+  description: Staging server
+- url: http://localhost:8000/api/v1
+  description: Local development server
+paths:
+  /social/ratings:
+    post:
+      operationId: submitRating
+      summary: Submit rating for an asset
+      description: 'Submit a rating (1-5 stars) for a data asset.
+
+
+        **Authentication**: Required (JWT token or API key)
+
+
+        **Rate Limiting**: 10 ratings per hour per user per asset
+
+
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus
+
+
+        **Authentication**: Required (JWT, API Key)
+
+
+        **Authorization**: Required role(s): Any authenticated; Required scope(s): social:rate
+
+
+        **Rate Limiting**: 10 requests per 3600 seconds per user per asset (10 per hour) (burst: 10 per 10 seconds) (daily:
+        1000 per day)
+
+
+        **Input Validation**: All request fields validated (types, formats, lengths, patterns, enums). See request schema
+        for details.
+
+
+        **Database Requirements:**
+
+        - Rating model: write operations - Create rating
+
+        - Asset model: read, write operations - Update asset quality score
+
+        **Event Publishing:**
+
+        - Publishes `social.rating.created` event: Rating creation event (Required)
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus'
+      tags:
+      - Social Features
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RatingRequest'
+            examples:
+              basic_rating:
+                summary: Basic rating
+                value:
+                  asset_id: 550e8400-e29b-41d4-a716-446655440000
+                  rating: 5
+      responses:
+        '201':
+          description: Rating submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingResponse'
+        '400':
+          description: Bad request - Invalid rating or asset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: VALIDATION_ERROR example
+                  value:
+                    error:
+                      code: INVALID_RATING
+                      message: Rating must be between 1 and 5
+                      http_status: 400
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+                      details: &id001
+                        field_errors:
+                        - field: email
+                          message: Invalid email format
+                          code: VALIDATION_ERROR
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_UNAUTHORIZED example
+                  value:
+                    error:
+                      code: AUTH_UNAUTHORIZED
+                      message: Authentication required
+                      http_status: 401
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '409':
+          description: Conflict - Rating already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: CONFLICT_ERROR example
+                  value:
+                    error:
+                      code: CONFLICT_ERROR
+                      message: Resource conflict
+                      http_status: 409
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_FORBIDDEN example
+                  value:
+                    error:
+                      code: AUTH_FORBIDDEN
+                      message: Permission denied
+                      http_status: 403
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '500':
+          description: Internal Server Error - Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: INTERNAL_ERROR example
+                  value:
+                    error:
+                      code: INTERNAL_ERROR
+                      message: An internal server error occurred
+                      http_status: 500
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '503':
+          description: Service Unavailable - Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: SERVICE_UNAVAILABLE example
+                  value:
+                    error:
+                      code: SERVICE_UNAVAILABLE
+                      message: Service temporarily unavailable. Please try again later.
+                      http_status: 503
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+      x-integration-requirements:
+        service_dependencies: []
+        database_requirements:
+        - model_name: Rating
+          operations:
+          - write
+          description: Create rating
+          indexes: []
+        - model_name: Asset
+          operations:
+          - read
+          - write
+          description: Update asset quality score
+          indexes: []
+        external_services: []
+        event_requirements:
+        - event_type: social.rating.created
+          event_data:
+            rating_id: uuid
+            asset_id: uuid
+          description: Rating creation event
+          required: true
+        infrastructure_dependencies:
+        - postgresql
+        - redis
+  /social/reviews:
+    post:
+      operationId: submitReview
+      summary: Submit review for an asset
+      description: 'Submit a written review for a data asset.
+
+
+        **Authentication**: Required (JWT token or API key)
+
+
+        **Moderation**: Reviews may be moderated before publication
+
+
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus
+
+
+        **Authentication**: Required (JWT, API Key)
+
+
+        **Authorization**: Required role(s): Any authenticated; Required scope(s): social:review
+
+
+        **Rate Limiting**: 20 requests per 60 seconds per user (burst: 5 per 10 seconds) (daily: 100 per day)
+
+
+        **Input Validation**: All request fields validated (types, formats, lengths, patterns, enums). See request schema
+        for details.
+
+
+        **Database Requirements:**
+
+        - Review model: write operations - Create review
+
+        - Asset model: read operations - Get asset information
+
+        **Event Publishing:**
+
+        - Publishes `social.review.created` event: Review creation event (Required)
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus'
+      tags:
+      - Social Features
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '201':
+          description: Review submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: VALIDATION_ERROR example
+                  value:
+                    error:
+                      code: INVALID_REVIEW
+                      message: Review text is required
+                      http_status: 400
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+                      details: *id001
+        '401':
+          description: Unauthorized - Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_UNAUTHORIZED example
+                  value:
+                    error:
+                      code: AUTH_UNAUTHORIZED
+                      message: Authentication required
+                      http_status: 401
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_FORBIDDEN example
+                  value:
+                    error:
+                      code: AUTH_FORBIDDEN
+                      message: Permission denied
+                      http_status: 403
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '409':
+          description: Conflict - Resource conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: CONFLICT_ERROR example
+                  value:
+                    error:
+                      code: CONFLICT_ERROR
+                      message: Resource conflict
+                      http_status: 409
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '500':
+          description: Internal Server Error - Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: INTERNAL_ERROR example
+                  value:
+                    error:
+                      code: INTERNAL_ERROR
+                      message: An internal server error occurred
+                      http_status: 500
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '503':
+          description: Service Unavailable - Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: SERVICE_UNAVAILABLE example
+                  value:
+                    error:
+                      code: SERVICE_UNAVAILABLE
+                      message: Service temporarily unavailable. Please try again later.
+                      http_status: 503
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+      x-integration-requirements:
+        service_dependencies: []
+        database_requirements:
+        - model_name: Review
+          operations:
+          - write
+          description: Create review
+          indexes: []
+        - model_name: Asset
+          operations:
+          - read
+          description: Get asset information
+          indexes: []
+        external_services: []
+        event_requirements:
+        - event_type: social.review.created
+          event_data:
+            review_id: uuid
+            asset_id: uuid
+          description: Review creation event
+          required: true
+        infrastructure_dependencies:
+        - postgresql
+        - redis
+  /social/comments:
+    post:
+      operationId: submitComment
+      summary: Submit comment
+      description: 'Submit a comment (supports threading for replies).
+
+
+        **Authentication**: Required (JWT token or API key)
+
+
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus
+
+
+        **Authentication**: Required (JWT, API Key)
+
+
+        **Authorization**: Required role(s): Any authenticated; Required scope(s): social:comment
+
+
+        **Rate Limiting**: 100 requests per 60 seconds per user (burst: 20 per 10 seconds) (daily: 5000 per day)
+
+
+        **Input Validation**: All request fields validated (types, formats, lengths, patterns, enums). See request schema
+        for details.
+
+
+        **Database Requirements:**
+
+        - Comment model: write operations - Create comment
+
+        - Asset model: read operations - Get asset information
+
+        **Event Publishing:**
+
+        - Publishes `social.comment.created` event: Comment creation event (Required)
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus'
+      tags:
+      - Social Features
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentRequest'
+      responses:
+        '201':
+          description: Comment submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: VALIDATION_ERROR example
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: Invalid request data
+                      http_status: 400
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+                      details: *id001
+        '401':
+          description: Unauthorized - Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_UNAUTHORIZED example
+                  value:
+                    error:
+                      code: AUTH_UNAUTHORIZED
+                      message: Authentication required
+                      http_status: 401
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_FORBIDDEN example
+                  value:
+                    error:
+                      code: AUTH_FORBIDDEN
+                      message: Permission denied
+                      http_status: 403
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '409':
+          description: Conflict - Resource conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: CONFLICT_ERROR example
+                  value:
+                    error:
+                      code: CONFLICT_ERROR
+                      message: Resource conflict
+                      http_status: 409
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '500':
+          description: Internal Server Error - Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: INTERNAL_ERROR example
+                  value:
+                    error:
+                      code: INTERNAL_ERROR
+                      message: An internal server error occurred
+                      http_status: 500
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '503':
+          description: Service Unavailable - Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: SERVICE_UNAVAILABLE example
+                  value:
+                    error:
+                      code: SERVICE_UNAVAILABLE
+                      message: Service temporarily unavailable. Please try again later.
+                      http_status: 503
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+      x-integration-requirements:
+        service_dependencies: []
+        database_requirements:
+        - model_name: Comment
+          operations:
+          - write
+          description: Create comment
+          indexes: []
+        - model_name: Asset
+          operations:
+          - read
+          description: Get asset information
+          indexes: []
+        external_services: []
+        event_requirements:
+        - event_type: social.comment.created
+          event_data:
+            comment_id: uuid
+            asset_id: uuid
+          description: Comment creation event
+          required: true
+        infrastructure_dependencies:
+        - postgresql
+        - redis
+  /social/communities:
+    post:
+      operationId: createOrJoinCommunity
+      summary: Create or join a community
+      description: 'Create a new data community or join an existing one.
+
+
+        **Authentication**: Required (JWT token or API key)
+
+
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus
+
+
+        **Authentication**: Required (JWT, API Key)
+
+
+        **Authorization**: Required role(s): Any authenticated; Required scope(s): social:community
+
+
+        **Rate Limiting**: 10 requests per 60 seconds per user (burst: 5 per 10 seconds) (daily: 100 per day)
+
+
+        **Input Validation**: All request fields validated (types, formats, lengths, patterns, enums). See request schema
+        for details.
+
+
+        **Database Requirements:**
+
+        - Community model: write operations - Create or join community
+
+        - User model: read operations - Get user information
+
+        **Event Publishing:**
+
+        - Publishes `social.community.created` event: Community creation event (Required)
+
+        - Publishes `social.community.joined` event: Community join event (Required)
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus'
+      tags:
+      - Social Features
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommunityRequest'
+      responses:
+        '201':
+          description: Community created or joined successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: VALIDATION_ERROR example
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: Invalid request data
+                      http_status: 400
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+                      details: *id001
+        '401':
+          description: Unauthorized - Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_UNAUTHORIZED example
+                  value:
+                    error:
+                      code: AUTH_UNAUTHORIZED
+                      message: Authentication required
+                      http_status: 401
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_FORBIDDEN example
+                  value:
+                    error:
+                      code: AUTH_FORBIDDEN
+                      message: Permission denied
+                      http_status: 403
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '409':
+          description: Conflict - Resource conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: CONFLICT_ERROR example
+                  value:
+                    error:
+                      code: CONFLICT_ERROR
+                      message: Resource conflict
+                      http_status: 409
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '500':
+          description: Internal Server Error - Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: INTERNAL_ERROR example
+                  value:
+                    error:
+                      code: INTERNAL_ERROR
+                      message: An internal server error occurred
+                      http_status: 500
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '503':
+          description: Service Unavailable - Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: SERVICE_UNAVAILABLE example
+                  value:
+                    error:
+                      code: SERVICE_UNAVAILABLE
+                      message: Service temporarily unavailable. Please try again later.
+                      http_status: 503
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+      x-integration-requirements:
+        service_dependencies: []
+        database_requirements:
+        - model_name: Community
+          operations:
+          - write
+          description: Create or join community
+          indexes: []
+        - model_name: User
+          operations:
+          - read
+          description: Get user information
+          indexes: []
+        external_services: []
+        event_requirements:
+        - event_type: social.community.created
+          event_data:
+            community_id: uuid
+          description: Community creation event
+          required: true
+        - event_type: social.community.joined
+          event_data:
+            community_id: uuid
+            user_id: uuid
+          description: Community join event
+          required: true
+        infrastructure_dependencies:
+        - postgresql
+        - redis
+components:
+  schemas:
+    RatingRequest:
+      type: object
+      required:
+      - asset_id
+      - rating
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+          description: Asset ID to rate
+          example: 550e8400-e29b-41d4-a716-446655440000
+          minLength: 36
+          maxLength: 36
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Rating value (1-5 stars)
+          example: 5
+    RatingResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Id (uuid)
+          minLength: 1
+          maxLength: 255
+        asset_id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Asset Id (uuid)
+          minLength: 36
+          maxLength: 36
+        rating:
+          type: integer
+          minimum: 0
+          example: 1
+          description: Rating (integer)
+        user_id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: User Id (uuid)
+          minLength: 36
+          maxLength: 36
+        created_at:
+          type: string
+          format: date-time
+          example: '2025-01-15T10:30:00Z'
+          description: Created At (date-time)
+          minLength: 1
+          maxLength: 255
+    ReviewRequest:
+      type: object
+      required:
+      - asset_id
+      - title
+      - content
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Asset Id (uuid)
+          minLength: 36
+          maxLength: 36
+        title:
+          type: string
+          maxLength: 255
+          minLength: 1
+          example: example_title
+          description: Title (string)
+        content:
+          type: string
+          maxLength: 5000
+          minLength: 1
+          example: example_content
+          description: Content (string)
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+          description: Rating (integer)
+    ReviewResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Id (uuid)
+          minLength: 1
+          maxLength: 255
+        asset_id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Asset Id (uuid)
+          minLength: 36
+          maxLength: 36
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: example_title
+          description: Title (string)
+        content:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: example_content
+          description: Content (string)
+        rating:
+          type: integer
+          minimum: 0
+          example: 1
+          description: Rating (integer)
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          minLength: 1
+          maxLength: 255
+          example: pending
+          description: Status (string)
+        created_at:
+          type: string
+          format: date-time
+          example: '2025-01-15T10:30:00Z'
+          description: Created At (date-time)
+          minLength: 1
+          maxLength: 255
+    CommentRequest:
+      type: object
+      required:
+      - asset_id
+      - content
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Asset Id (uuid)
+          minLength: 36
+          maxLength: 36
+        content:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          example: example_content
+          description: Content (string)
+        parent_comment_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Parent comment ID for threading
+          example: 550e8400-e29b-41d4-a716-446655440000
+          minLength: 36
+          maxLength: 36
+    CommentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Id (uuid)
+          minLength: 1
+          maxLength: 255
+        asset_id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Asset Id (uuid)
+          minLength: 36
+          maxLength: 36
+        content:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: example_content
+          description: Content (string)
+        parent_comment_id:
+          type: string
+          format: uuid
+          nullable: true
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Parent Comment Id (uuid)
+          minLength: 36
+          maxLength: 36
+        user_id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: User Id (uuid)
+          minLength: 36
+          maxLength: 36
+        created_at:
+          type: string
+          format: date-time
+          example: '2025-01-15T10:30:00Z'
+          description: Created At (date-time)
+          minLength: 1
+          maxLength: 255
+    CommunityRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          minLength: 1
+          pattern: ^[a-zA-Z0-9\s\-_\.]+$
+          example: John Doe
+          description: Name (string)
+        description:
+          type: string
+          maxLength: 1000
+          minLength: 1
+          example: example_description
+          description: Description (string)
+        community_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Community ID to join (if creating new, omit this)
+          example: 550e8400-e29b-41d4-a716-446655440000
+          minLength: 36
+          maxLength: 36
+    CommunityResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Id (uuid)
+          minLength: 1
+          maxLength: 255
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: example_name
+          description: Name (string)
+        description:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: example_description
+          description: Description (string)
+        member_count:
+          type: integer
+          minimum: 0
+          example: 1
+          description: Member Count (integer)
+        created_at:
+          type: string
+          format: date-time
+          example: '2025-01-15T10:30:00Z'
+          description: Created At (date-time)
+          minLength: 1
+          maxLength: 255
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              minLength: 1
+              maxLength: 255
+              example: example_code
+              description: Code (string)
+            message:
+              type: string
+              minLength: 1
+              maxLength: 255
+              example: example_message
+              description: Message (string)
+            http_status:
+              type: integer
+              minimum: 0
+              example: 1
+              description: Http Status (integer)
+            request_id:
+              type: string
+              format: uuid
+              example: 550e8400-e29b-41d4-a716-446655440000
+              description: Request Id (uuid)
+            timestamp:
+              type: string
+              format: date-time
+              example: '2025-01-15T10:30:00Z'
+              description: Timestamp (date-time)
+            details:
+              type: object
+              additionalProperties: true
+              nullable: true
+              example: {}
+              description: Details (object)
+          example: {}
+          description: Error (object)
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'JWT Bearer token authentication. Include token in Authorization header: "Bearer {token}". Tokens expire
+        after 1 hour and can be refreshed using refresh tokens.'
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: 'API key authentication. Include key in Authorization header: "ApiKey {key}" or in X-API-Key header. API
+        keys can have scopes to limit access and can be expired or revoked.'
+tags:
+- name: Social Features
+  description: Social features including ratings, reviews, comments, and communities

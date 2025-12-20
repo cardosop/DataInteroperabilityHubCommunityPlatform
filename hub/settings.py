@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     "hub.apps.semantic",
     "hub.apps.marketplace",
     # 'hub.apps.marketplace',
+    "hub.apps.developer",
     "hub.apps.api",
     "hub.apps.graphql",
     # hub.apps.graphql_graphene is optional - only add if graphene_django is available
@@ -83,6 +84,8 @@ INSTALLED_APPS = [
     "hub.apps.api.analytics",
     "hub.apps.orchestration",
     "hub.apps.websocket",  # WebSocket API
+    "hub.apps.ai",  # AI/ML features
+    "hub.apps.social",  # Social features
 ]
 
 # Conditionally add graphene_django and graphql_graphene app if available
@@ -116,9 +119,11 @@ except ImportError:
 MIDDLEWARE = [
     # django-prometheus middleware removed: Not compatible with Django 6.0
     # Migrated to OpenTelemetry metrics with Prometheus exporter
-    "hub.apps.observability.middleware.MetricsMiddleware",  # Custom metrics middleware (will be migrated to OpenTelemetry)
+    "hub.apps.observability.middleware.MetricsMiddleware",  # Custom metrics middleware (from middleware package)
     "django_structlog.middlewares.request.RequestMiddleware",
     "hub.apps.api.middleware.RequestIDMiddleware",  # Request ID generation
+    "hub.apps.api.middleware.tracing.TraceIDMiddleware",  # Trace ID extraction and propagation
+    "hub.apps.observability.middleware.span_middleware.SpanMiddleware",  # OpenTelemetry span instrumentation
     "hub.apps.api.standards.validation_middleware.APIValidationMiddleware",  # API validation middleware
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -129,6 +134,8 @@ MIDDLEWARE = [
     "hub.apps.auth.middleware.TenantScopingMiddleware",  # Tenant scoping after authentication
     "hub.apps.tenants.middleware.TenantSuspensionMiddleware",  # Tenant suspension enforcement
     "hub.apps.api.versioning.APIVersionMiddleware",  # API versioning and deprecation warnings
+    "hub.apps.api.middleware.idempotency.IdempotencyMiddleware",  # Idempotency key handling
+    "hub.apps.api.middleware.cache_headers.CacheHeadersMiddleware",  # HTTP cache headers (ETag, Last-Modified, Cache-Control)
     "hub.apps.rate_limiting.middleware.RateLimitMiddleware",  # Advanced rate limiting (replaces basic middleware)
     "hub.apps.api.analytics.middleware.APIAnalyticsMiddleware",  # API analytics tracking
     "hub.apps.governance.middleware.AccessLoggingMiddleware",  # Access logging for analytics
@@ -854,11 +861,25 @@ OPENTELEMETRY_METRICS_EXPORT_INTERVAL_MS = env.int(
 )  # 10 seconds
 
 # OpenTelemetry Tracing Configuration
+# Use the new unified configuration module
 OPENTELEMETRY_ENABLED = env.bool("OPENTELEMETRY_ENABLED", default=False)
-if OPENTELEMETRY_ENABLED:
-    from hub.apps.observability.tracing import setup_opentelemetry
+OPENTELEMETRY_EXPORTER = env.str("OPENTELEMETRY_EXPORTER", default="otlp")  # 'otlp' or 'jaeger'
+OTEL_SERVICE_NAME = env.str("OTEL_SERVICE_NAME", default="data-interoperability-hub-api")
+OTEL_EXPORTER_OTLP_ENDPOINT = env.str("OTEL_EXPORTER_OTLP_ENDPOINT", default="http://localhost:4317")
+OTEL_EXPORTER_OTLP_PROTOCOL = env.str("OTEL_EXPORTER_OTLP_PROTOCOL", default="grpc")  # 'grpc' or 'http/protobuf'
 
-    setup_opentelemetry()
+# Database query instrumentation threshold (milliseconds)
+OTEL_DB_SLOW_QUERY_THRESHOLD_MS = env.float("OTEL_DB_SLOW_QUERY_THRESHOLD_MS", default=100.0)
+
+# Trace Sampling Configuration
+# Base sampling rate for successful requests (default: 10% = 0.1)
+# Errors are always sampled (100%) via middleware
+# Critical endpoints are always sampled (100%) via adaptive sampler
+OTEL_TRACES_SAMPLER_ARG = env.float("OTEL_TRACES_SAMPLER_ARG", default=0.1)  # 10% for successful requests
+
+if OPENTELEMETRY_ENABLED:
+    from hub.apps.observability.otel_config import setup_opentelemetry_tracing
+    setup_opentelemetry_tracing()
 
 # OpenTelemetry Metrics Setup (will be initialized in hub/apps/observability/otel_metrics.py)
 # Metrics are exported to Prometheus format via /metrics endpoint
@@ -919,6 +940,10 @@ RATE_LIMIT_ENABLED = env.bool("RATE_LIMIT_ENABLED", default=True)
 RATE_LIMIT_PER_TENANT = env.int("RATE_LIMIT_PER_TENANT", default=100)  # requests per minute
 RATE_LIMIT_PER_USER = env.int("RATE_LIMIT_PER_USER", default=100)  # requests per minute
 RATE_LIMIT_WINDOW = env.int("RATE_LIMIT_WINDOW", default=60)  # seconds
+
+# Idempotency Configuration
+IDEMPOTENCY_ENABLED = env.bool("IDEMPOTENCY_ENABLED", default=True)
+IDEMPOTENCY_TTL_SECONDS = env.int("IDEMPOTENCY_TTL_SECONDS", default=86400)  # 24 hours
 FUSEKI_URL = env("FUSEKI_URL", default="http://fuseki:3030")
 FUSEKI_DATASET = env("FUSEKI_DATASET", default="hub")
 

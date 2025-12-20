@@ -191,4 +191,128 @@ class ContractValidationViewTest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
         self.assertIn('error', response.data)
+    
+    @patch('hub.apps.contracts.views.DataContractCLIClient')
+    def test_validate_contract_enhanced_response(self, mock_client_class):
+        """Test enhanced validation response with normalization status and field-level errors"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Set normalization status on contract
+        from hub.apps.contracts.models import NormalizationStatus
+        self.contract.normalization_status = NormalizationStatus.NORMALIZED_OK
+        self.contract.save()
+        
+        # Mock CLI client with field-level errors
+        mock_client = Mock()
+        mock_client.validate.return_value = {
+            'validation_status': 'INVALID',
+            'issues': [
+                {
+                    'severity': 'ERROR',
+                    'category': 'schema',
+                    'path': '$.name',
+                    'message': 'Name is required',
+                    'rule_id': 'required_field'
+                },
+                {
+                    'severity': 'ERROR',
+                    'category': 'schema',
+                    'path': '$.id',
+                    'message': 'ID must be unique',
+                    'rule_id': 'unique_id'
+                },
+                {
+                    'severity': 'WARNING',
+                    'category': 'style',
+                    'path': '$.description',
+                    'message': 'Consider adding description',
+                    'rule_id': 'missing_description'
+                }
+            ],
+            'cli_version': '1.0.0'
+        }
+        mock_client_class.return_value = mock_client
+        
+        # Use APIClient to make actual HTTP request
+        response = self.client.post(
+            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            {'async': False},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Check enhanced response fields
+        self.assertIn('validation_status', response.data)
+        self.assertIn('valid', response.data)
+        self.assertIn('errors', response.data)
+        self.assertIn('warnings', response.data)
+        self.assertIn('error_count', response.data)
+        self.assertIn('warning_count', response.data)
+        self.assertIn('schema_compliance', response.data)
+        self.assertIn('normalization_status', response.data)
+        self.assertIn('normalization_compliant', response.data)
+        self.assertIn('field_errors', response.data)
+        self.assertIn('cli_version', response.data)
+        self.assertIn('validated_at', response.data)
+        self.assertIn('contract_id', response.data)
+        
+        # Verify schema compliance
+        self.assertEqual(response.data['schema_compliance']['status'], 'NON_COMPLIANT')
+        self.assertFalse(response.data['valid'])
+        
+        # Verify normalization status
+        self.assertEqual(response.data['normalization_status'], NormalizationStatus.NORMALIZED_OK)
+        self.assertTrue(response.data['normalization_compliant'])
+        
+        # Verify field-level errors
+        self.assertIn('$.name', response.data['field_errors'])
+        self.assertIn('$.id', response.data['field_errors'])
+        self.assertEqual(len(response.data['field_errors']['$.name']), 1)
+        self.assertEqual(len(response.data['field_errors']['$.id']), 1)
+        
+        # Verify error counts
+        self.assertEqual(response.data['error_count'], 2)
+        self.assertEqual(response.data['warning_count'], 1)
+    
+    @patch('hub.apps.contracts.views.DataContractCLIClient')
+    def test_validate_contract_valid_with_normalization(self, mock_client_class):
+        """Test validation response for valid contract with normalization status"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Set normalization status on contract
+        from hub.apps.contracts.models import NormalizationStatus
+        self.contract.normalization_status = NormalizationStatus.NORMALIZED_WITH_WARNINGS
+        self.contract.save()
+        
+        # Mock CLI client with valid status
+        mock_client = Mock()
+        mock_client.validate.return_value = {
+            'validation_status': 'VALID',
+            'issues': [],
+            'cli_version': '1.0.0'
+        }
+        mock_client_class.return_value = mock_client
+        
+        # Use APIClient to make actual HTTP request
+        response = self.client.post(
+            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            {'async': False},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify schema compliance for valid contract
+        self.assertEqual(response.data['schema_compliance']['status'], 'COMPLIANT')
+        self.assertTrue(response.data['valid'])
+        
+        # Verify normalization status
+        self.assertEqual(response.data['normalization_status'], NormalizationStatus.NORMALIZED_WITH_WARNINGS)
+        self.assertTrue(response.data['normalization_compliant'])
+        
+        # Verify no field errors for valid contract
+        self.assertNotIn('field_errors', response.data)
+        self.assertEqual(response.data['error_count'], 0)
+        self.assertEqual(response.data['warning_count'], 0)
 

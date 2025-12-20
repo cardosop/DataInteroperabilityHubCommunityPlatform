@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opendataproducts.org/schema/v3.9/odps-schema.json",
+  "title": "Open Data Product Standard (ODPS) Schema Version 3.x",
+  "description": "JSON Schema for validating ODPS 3.x documents (latest 3.x version)",
+  "type": "object",
+  "required": ["schema", "product"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "description": "Schema URL identifying the ODPS version",
+      "pattern": "^https://opendataproducts.org/schema/v3\\."
+    },
+    "version": {
+      "type": "string",
+      "description": "ODPS version",
+      "pattern": "^3\\."
+    },
+    "product": {
+      "type": "object",
+      "required": ["details"],
+      "properties": {
+        "details": {
+          "type": "object",
+          "description": "Product details, keyed by language code (ISO 639-1)",
+          "patternProperties": {
+            "^[a-z]{2}$": {
+              "type": "object",
+              "properties": {
+                "productID": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "contract": {
+          "type": "object",
+          "properties": {
+            "contractURL": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        },
+        "dataQuality": {
+          "type": "object"
+        },
+        "marketplace": {
+          "type": "object",
+          "properties": {
+            "pricingPlans": {
+              "type": "array"
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}
+

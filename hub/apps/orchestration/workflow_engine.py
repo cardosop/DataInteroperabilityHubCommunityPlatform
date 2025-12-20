@@ -502,8 +502,21 @@ class WorkflowEngine(WorkflowEventPublisher):
                     "reason": "Condition evaluated to False",
                     "condition": condition
                 }
-        
+
         step.mark_started()
+
+        # Calculate progress percentage for the step that's starting
+        # Use a temporary instance state to calculate progress at this step index
+        progress_percentage = self._calculate_progress(instance)
+
+        # Store progress in WorkflowInstance.state_data
+        if instance.state_data is None:
+            instance.state_data = {}
+        instance.state_data["progress_percentage"] = progress_percentage
+        instance.state_data["current_step_index"] = step.step_index
+        instance.state_data["current_step_name"] = step.step_name
+        # Save the instance to persist progress in state_data
+        instance.save(update_fields=["state_data"])
 
         # Record step started metric
         tenant_id_str = get_tenant_id(instance.tenant_id)
@@ -524,6 +537,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                 step_index=step.step_index,
                 step_name=step.step_name,
                 step_type=step.step_type,
+                progress_percentage=progress_percentage,
                 tenant_id=tenant_id_str_for_event,
                 user_id=user_id_str,
             )
@@ -585,6 +599,19 @@ class WorkflowEngine(WorkflowEventPublisher):
                 tenant_id=tenant_id_str,
             ).observe(step_duration)
 
+            # Calculate progress percentage after step completion
+            # Refresh instance to get updated current_step_index after step completion
+            instance.refresh_from_db()
+            progress_percentage_after = self._calculate_progress(instance)
+
+            # Update progress in WorkflowInstance.state_data
+            if instance.state_data is None:
+                instance.state_data = {}
+            instance.state_data["progress_percentage"] = progress_percentage_after
+            instance.state_data["current_step_index"] = instance.current_step_index
+            instance.state_data["current_step_name"] = step.step_name
+            instance.save(update_fields=["state_data"])
+
             # Publish workflow.step.completed event
             try:
                 tenant_id_str_for_event = str(instance.tenant_id) if instance.tenant_id else None
@@ -595,6 +622,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                     step_name=step.step_name,
                     output_data=output,
                     duration_ms=step_duration_ms,
+                    progress_percentage=progress_percentage_after,
                     tenant_id=tenant_id_str_for_event,
                     user_id=user_id_str,
                 )
@@ -615,6 +643,7 @@ class WorkflowEngine(WorkflowEventPublisher):
 
             # Record step failed metrics
             step_duration = time.time() - step_start_time
+            step_duration_ms = int(step_duration * 1000)
             error_type = get_error_type(step.error_details)
             workflow_steps_failed_total.labels(
                 workflow_name=instance.workflow_name,
@@ -634,6 +663,20 @@ class WorkflowEngine(WorkflowEventPublisher):
                 tenant_id=tenant_id_str,
             ).observe(step_duration)
 
+            # Calculate progress percentage at failure point
+            # Refresh instance to get current state
+            instance.refresh_from_db()
+            progress_percentage_at_failure = self._calculate_progress(instance)
+
+            # Update progress in WorkflowInstance.state_data
+            if instance.state_data is None:
+                instance.state_data = {}
+            instance.state_data["progress_percentage"] = progress_percentage_at_failure
+            instance.state_data["current_step_index"] = step.step_index
+            instance.state_data["current_step_name"] = step.step_name
+            instance.state_data["last_error"] = str(e)
+            instance.save(update_fields=["state_data"])
+
             # Publish workflow.step.failed event
             try:
                 tenant_id_str_for_event = str(instance.tenant_id) if instance.tenant_id else None
@@ -645,6 +688,8 @@ class WorkflowEngine(WorkflowEventPublisher):
                     error_message=str(e),
                     error_details={"exception_type": type(e).__name__},
                     retry_count=step.retry_count,
+                    duration_ms=step_duration_ms,
+                    progress_percentage=progress_percentage_at_failure,
                     tenant_id=tenant_id_str_for_event,
                     user_id=user_id_str,
                 )
@@ -868,7 +913,7 @@ class WorkflowEngine(WorkflowEventPublisher):
             if "if" in condition:
                 if_str = condition["if"]
                 import re
-                
+
                 # Pattern 1: Equality comparison: "{{ auto_activate == true }}"
                 match = re.match(r'\{\{\s*(\w+)\s*==\s*(\w+)\s*\}\}', if_str)
                 if match:
@@ -891,14 +936,14 @@ class WorkflowEngine(WorkflowEventPublisher):
                         f"result={field_value == value}"
                     )
                     return field_value == value
-                
+
                 # Pattern 2: Not null check: "{{ field != null }}" or "{{ field != null && ... }}"
                 match = re.match(r'\{\{\s*(\w+)\s*!=\s*null\s*\}\}', if_str)
                 if match:
                     field_name = match.group(1)
                     field_value = state_data.get(field_name)
                     return field_value is not None and field_value != ""
-                
+
                 # Pattern 3: Complex condition with &&: "{{ field1 != null && field2 != 'VALUE' }}"
                 # For now, evaluate each part separately
                 if '&&' in if_str:
@@ -936,11 +981,11 @@ class WorkflowEngine(WorkflowEventPublisher):
                             results.append(field_value == value)
                     # All parts must be True
                     return all(results) if results else False
-                
+
                 # Fallback: unsupported format
                 logger.warning(f"Unsupported condition format: {if_str}")
                 return False
-            
+
             # Support operator-based format: {"operator": "equals", "field": "auto_activate", "value": True}
             operator = condition.get("operator")
             field = condition.get("field")
@@ -1133,3 +1178,57 @@ class WorkflowEngine(WorkflowEventPublisher):
 
         logger.info(f"Retrying workflow instance: {instance.id} (attempt {instance.retry_count})")
         return self.execute_instance(instance_id)
+
+    def _calculate_progress(
+        self, instance: WorkflowInstance
+    ) -> float:
+        """
+        Calculate workflow execution progress percentage.
+
+        Formula: progress_percentage = (current_step_index + 1) / total_steps * 100
+
+        Edge cases handled:
+        - If total_steps = 0: Returns 0.0 (no steps to execute)
+        - If current_step_index = -1: Returns 0.0 (not started)
+        - If current_step_index >= total_steps: Returns 100.0 (completed or beyond)
+
+        Args:
+            instance: WorkflowInstance to calculate progress for
+
+        Returns:
+            Progress percentage as float (0.0 to 100.0)
+
+        Example:
+            >>> progress = engine._calculate_progress(instance)
+            >>> print(f"Progress: {progress}%")
+            Progress: 50.0%
+        """
+        # Get total number of steps from workflow definition
+        dsl = instance.workflow_definition.dsl_json
+        steps = dsl.get("steps", [])
+        total_steps = len(steps)
+
+        # Handle edge case: no steps defined
+        if total_steps == 0:
+            return 0.0
+
+        # Get current step index (0-based)
+        current_step_index = instance.current_step_index
+
+        # Handle edge case: not started (current_step_index = -1 or 0 before any step)
+        # If current_step_index is -1, workflow hasn't started
+        if current_step_index < 0:
+            return 0.0
+
+        # Handle edge case: completed or beyond (current_step_index >= total_steps)
+        # When all steps are done, current_step_index equals total_steps
+        if current_step_index >= total_steps:
+            return 100.0
+
+        # Calculate progress: (current_step_index + 1) / total_steps * 100
+        # Adding 1 because current_step_index is 0-based, and we want to count
+        # the current step as progress (e.g., step 0 of 2 = 50%, not 0%)
+        progress_percentage = ((current_step_index + 1) / total_steps) * 100.0
+
+        # Ensure result is between 0.0 and 100.0
+        return max(0.0, min(100.0, progress_percentage))

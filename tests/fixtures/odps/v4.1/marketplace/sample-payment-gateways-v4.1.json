@@ -1,0 +1,101 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "marketplace-payment-product-v4.1",
+        "name": "Marketplace Product with Payment Gateways",
+        "description": "A comprehensive ODPS 4.1 sample demonstrating various payment gateway configurations including Stripe, PayPal, bank transfer, and cryptocurrency options."
+      }
+    },
+    "marketplace": {
+      "paymentGateways": {
+        "stripe": {
+          "enabled": true,
+          "mode": "production",
+          "publicKey": "pk_live_example123",
+          "supportedCurrencies": ["USD", "EUR", "GBP"],
+          "features": [
+            "Credit cards",
+            "Debit cards",
+            "Apple Pay",
+            "Google Pay"
+          ],
+          "description": "Primary payment gateway for card payments"
+        },
+        "paypal": {
+          "enabled": true,
+          "mode": "production",
+          "clientId": "paypal_client_id_example",
+          "supportedCurrencies": ["USD", "EUR", "GBP", "JPY"],
+          "features": [
+            "PayPal account",
+            "Credit cards via PayPal",
+            "PayPal Credit"
+          ],
+          "description": "PayPal integration for alternative payment method"
+        },
+        "bankTransfer": {
+          "enabled": true,
+          "accountDetails": {
+            "bankName": "Example Bank",
+            "accountNumber": "1234567890",
+            "routingNumber": "987654321",
+            "swiftCode": "EXAMUS33",
+            "iban": "US64EXAM1234567890"
+          },
+          "supportedCurrencies": ["USD", "EUR"],
+          "minimumAmount": 100.00,
+          "description": "Bank transfer for enterprise customers"
+        },
+        "cryptocurrency": {
+          "enabled": true,
+          "supportedCoins": [
+            {
+              "symbol": "BTC",
+              "name": "Bitcoin",
+              "network": "Bitcoin"
+            },
+            {
+              "symbol": "ETH",
+              "name": "Ethereum",
+              "network": "Ethereum"
+            },
+            {
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "network": "Ethereum"
+            }
+          ],
+          "walletAddress": "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+          "description": "Cryptocurrency payments for privacy-conscious users"
+        },
+        "applePay": {
+          "enabled": true,
+          "merchantId": "merchant.com.example.marketplace",
+          "supportedCurrencies": ["USD", "EUR", "GBP"],
+          "description": "Apple Pay for iOS users"
+        },
+        "googlePay": {
+          "enabled": true,
+          "merchantId": "example_merchant_id",
+          "supportedCurrencies": ["USD", "EUR", "GBP"],
+          "description": "Google Pay for Android users"
+        },
+        "invoice": {
+          "enabled": true,
+          "terms": "Net 30",
+          "minimumAmount": 500.00,
+          "requiredInfo": [
+            "Company name",
+            "Tax ID",
+            "Billing address"
+          ],
+          "description": "Invoice-based billing for enterprise customers"
+        }
+      }
+    }
+  }
+}
+

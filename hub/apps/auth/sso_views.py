@@ -20,24 +20,24 @@ class SSOViewSet(viewsets.ViewSet):
     ViewSet for SSO authentication.
     """
     permission_classes = [AllowAny]  # SSO endpoints are public
-    
+
     def _get_tenant_id(self, request):
         """Get tenant ID from request"""
         # For SSO, tenant might be in query params or subdomain
         tenant_id = request.query_params.get('tenant_id')
         if tenant_id:
             return tenant_id
-        
+
         # Try to get from request
         if hasattr(request, "tenant_id") and request.tenant_id:
             return str(request.tenant_id)
-        
+
         tenant = getattr(request, "tenant", None)
         if tenant and hasattr(tenant, "id"):
             return str(tenant.id)
-        
+
         return None
-    
+
     @extend_schema(
         summary="Get SAML login URL",
         description="Get SAML SSO login URL for redirect",
@@ -67,28 +67,28 @@ class SSOViewSet(viewsets.ViewSet):
     def saml_login_url(self, request):
         """
         Get SAML login URL.
-        
+
         GET /api/v1/auth/sso/saml/login-url/
         """
         tenant_id = self._get_tenant_id(request)
         redirect_uri = request.query_params.get('redirect_uri')
-        
+
         if not tenant_id:
             raise ValidationError("tenant_id is required")
-        
+
         if not redirect_uri:
             raise ValidationError("redirect_uri is required")
-        
+
         login_url = SSOService.get_sso_login_url(tenant_id, "SAML", redirect_uri)
-        
+
         if not login_url:
             return Response(
                 {"error": "SAML SSO not configured for this tenant"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         return Response({"login_url": login_url}, status=status.HTTP_200_OK)
-    
+
     @extend_schema(
         summary="SAML authentication callback",
         description="Handle SAML authentication callback",
@@ -111,29 +111,29 @@ class SSOViewSet(viewsets.ViewSet):
     def saml_callback(self, request):
         """
         Handle SAML callback.
-        
+
         POST /api/v1/auth/sso/saml/callback/
         """
         tenant_id = self._get_tenant_id(request) or request.data.get('tenant_id')
         saml_response = request.data.get('SAMLResponse')
-        
+
         if not tenant_id:
             raise ValidationError("tenant_id is required")
-        
+
         if not saml_response:
             raise ValidationError("SAMLResponse is required")
-        
+
         user, attributes = SSOService.authenticate_saml(tenant_id, saml_response)
-        
+
         if not user:
             return Response(
                 {"error": "SAML authentication failed"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Generate JWT token
         access_token = JWTTokenGenerator.generate_access_token(user)
-        
+
         return Response({
             'access_token': access_token,
             'token_type': 'Bearer',
@@ -142,7 +142,7 @@ class SSOViewSet(viewsets.ViewSet):
                 'email': user.email
             }
         }, status=status.HTTP_200_OK)
-    
+
     @extend_schema(
         summary="Get OIDC login URL",
         description="Get OIDC SSO login URL for redirect",
@@ -172,28 +172,28 @@ class SSOViewSet(viewsets.ViewSet):
     def oidc_login_url(self, request):
         """
         Get OIDC login URL.
-        
+
         GET /api/v1/auth/sso/oidc/login-url/
         """
         tenant_id = self._get_tenant_id(request)
         redirect_uri = request.query_params.get('redirect_uri')
-        
+
         if not tenant_id:
             raise ValidationError("tenant_id is required")
-        
+
         if not redirect_uri:
             raise ValidationError("redirect_uri is required")
-        
+
         login_url = SSOService.get_sso_login_url(tenant_id, "OIDC", redirect_uri)
-        
+
         if not login_url:
             return Response(
                 {"error": "OIDC SSO not configured for this tenant"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         return Response({"login_url": login_url}, status=status.HTTP_200_OK)
-    
+
     @extend_schema(
         summary="OIDC authentication callback",
         description="Handle OIDC authentication callback",
@@ -218,30 +218,56 @@ class SSOViewSet(viewsets.ViewSet):
     def oidc_callback(self, request):
         """
         Handle OIDC callback.
-        
+
         POST /api/v1/auth/sso/oidc/callback/
         """
         tenant_id = self._get_tenant_id(request) or request.data.get('tenant_id')
         id_token = request.data.get('id_token')
         access_token = request.data.get('access_token')
-        
+
         if not tenant_id:
             raise ValidationError("tenant_id is required")
-        
+
         if not id_token:
             raise ValidationError("id_token is required")
-        
+
         user, claims = SSOService.authenticate_oidc(tenant_id, id_token, access_token)
-        
+
         if not user:
             return Response(
                 {"error": "OIDC authentication failed"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Generate JWT token
         access_token_jwt = JWTTokenGenerator.generate_access_token(user)
-        
+
+        # Warm cache for tenant on login (async to avoid blocking login response)
+        if user.tenant_id:
+            try:
+                from hub.apps.core.caching.warming import warm_tenant_cache
+                import threading
+
+                # Warm cache in background thread to avoid blocking login
+                def warm_cache_async():
+                    try:
+                        tenant_id = str(user.tenant_id)
+                        warm_tenant_cache(tenant_id)
+                    except Exception as e:
+                        # Log error but don't fail login
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"Failed to warm cache on SSO login: {e}", exc_info=True)
+
+                # Start background thread for cache warming
+                thread = threading.Thread(target=warm_cache_async, daemon=True)
+                thread.start()
+            except Exception as e:
+                # Log error but don't fail login
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to start cache warming on SSO login: {e}", exc_info=True)
+
         return Response({
             'access_token': access_token_jwt,
             'token_type': 'Bearer',

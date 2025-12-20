@@ -1,0 +1,8 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": "This should be an object with language codes as keys, not a string"
+  }
+}
+

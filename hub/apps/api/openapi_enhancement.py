@@ -144,6 +144,10 @@ For API support, contact: support@datahub.example.com
                 # Add standard error responses
                 operation = OpenAPISpecEnhancer._add_error_responses(operation)
 
+                # Add idempotency headers for state-changing methods
+                if method in ["post", "patch", "put"]:
+                    operation = OpenAPISpecEnhancer._add_idempotency_headers(operation)
+
                 # Enhance descriptions
                 operation = OpenAPISpecEnhancer._enhance_operation_description(
                     operation, path_key, method
@@ -682,6 +686,103 @@ For API support, contact: support@datahub.example.com
         """Enhance operation descriptions."""
         # Descriptions are already set via extend_schema decorators
         # This method can add additional context if needed
+        return operation
+
+    @staticmethod
+    def _add_idempotency_headers(operation: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Add idempotency response headers to operation.
+
+        Adds Idempotency-Key and Idempotency-Replayed headers to all responses
+        for POST, PUT, and PATCH operations.
+
+        Args:
+            operation: OpenAPI operation dictionary
+
+        Returns:
+            Enhanced operation with idempotency headers
+        """
+        if "responses" not in operation:
+            operation["responses"] = {}
+
+        responses = operation["responses"]
+
+        # Idempotency headers definition
+        idempotency_headers = {
+            "Idempotency-Key": {
+                "description": (
+                    "Echoes back the idempotency key provided in the request header. "
+                    "Present when an Idempotency-Key header was included in the request."
+                ),
+                "schema": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            },
+            "Idempotency-Replayed": {
+                "description": (
+                    "Indicates whether the response was replayed from cache. "
+                    "Set to 'true' when a cached response is returned for a duplicate request. "
+                    "Not present for new requests."
+                ),
+                "schema": {
+                    "type": "string",
+                    "enum": ["true"],
+                    "example": "true"
+                }
+            }
+        }
+
+        # Add headers to all success responses (2xx)
+        for status_code in ["200", "201", "202", "204"]:
+            if status_code in responses:
+                response = responses[status_code]
+                if "headers" not in response:
+                    response["headers"] = {}
+
+                # Add idempotency headers
+                response["headers"].update(idempotency_headers)
+
+        # Add Idempotency-Key header to error responses (but not Idempotency-Replayed)
+        for status_code in ["400", "409"]:
+            if status_code in responses:
+                response = responses[status_code]
+                if "headers" not in response:
+                    response["headers"] = {}
+
+                # Only add Idempotency-Key header (not Idempotency-Replayed for errors)
+                if "Idempotency-Key" not in response["headers"]:
+                    response["headers"]["Idempotency-Key"] = idempotency_headers["Idempotency-Key"]
+
+        # Add parameters section for Idempotency-Key request header if not present
+        if "parameters" not in operation:
+            operation["parameters"] = []
+
+        # Check if Idempotency-Key parameter already exists
+        has_idempotency_param = any(
+            param.get("name") == "Idempotency-Key"
+            for param in operation["parameters"]
+        )
+
+        if not has_idempotency_param:
+            operation["parameters"].append({
+                "name": "Idempotency-Key",
+                "in": "header",
+                "description": (
+                    "Idempotency key for ensuring request idempotency. "
+                    "Provide a unique key (UUID or 8-256 alphanumeric characters) "
+                    "to prevent duplicate processing of the same request. "
+                    "The same key with the same request body will return the cached response. "
+                    "Required for POST, PUT, and PATCH operations."
+                ),
+                "required": False,  # Optional but recommended
+                "schema": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9\\-_/]{8,256}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            })
+
         return operation
 
     @staticmethod

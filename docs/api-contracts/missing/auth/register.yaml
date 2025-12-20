@@ -1,0 +1,462 @@
+openapi: 3.0.3
+info:
+  title: User Registration API
+  description: Register new user account endpoint
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: api-support@datahub.example.com
+servers:
+- url: https://api.datahub.example.com/api/v1
+  description: Production server
+- url: https://staging-api.datahub.example.com/api/v1
+  description: Staging server
+- url: http://localhost:8000/api/v1
+  description: Local development server
+paths:
+  /auth/register:
+    post:
+      operationId: registerUser
+      summary: Register new user account
+      description: 'Register a new user account with email, password, and name.
+
+
+        **Requirements**:
+
+        - Email must be unique
+
+        - Password must meet strength requirements (min 8 chars, uppercase, lowercase, number)
+
+        - Multi-tenant support (tenant_id optional)
+
+        - Welcome email sent (optional)
+
+
+        **Rate Limiting**: 10 requests per minute per IP address
+
+
+        **Performance Target**: < 500ms p95
+
+
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus
+
+
+        **Authentication**: Not required (public endpoint)
+
+
+        **Rate Limiting**: 10 requests per 60 seconds per IP address (burst: 10 per 10 seconds) (daily: 100 per day)
+
+
+        **Input Validation**: All request fields validated (types, formats, lengths, patterns, enums). See request schema
+        for details.
+
+
+        **Database Requirements:**
+
+        - User model: write operations - Create new user account
+
+        - Tenant model: read operations - Validate tenant if provided
+
+        - APIKey model: read operations - Check for existing API keys
+
+        **External Service Dependencies:**
+
+        - email-service: Send welcome email (optional) (Optional)
+
+        **Event Publishing:**
+
+        - Publishes `user.created` event: User registration event (Required)
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus'
+      tags:
+      - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              basic:
+                summary: Basic registration
+                value:
+                  email: user@example.com
+                  password: SecurePass123
+                  name: John Doe
+              with_tenant:
+                summary: Registration with tenant
+                value:
+                  email: user@example.com
+                  password: SecurePass123
+                  name: John Doe
+                  tenant_id: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '201':
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              examples:
+                success:
+                  summary: Successful registration
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    email: user@example.com
+                    name: John Doe
+                    tenant_id: 550e8400-e29b-41d4-a716-446655440001
+                    created_at: '2025-01-15T10:30:00Z'
+        '400':
+          description: Validation error or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validation_error:
+                  summary: Validation error
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: Invalid request data
+                      http_status: 400
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+                      details:
+                        email:
+                        - Email is required
+                        password:
+                        - Password must be at least 8 characters
+                        - Password must contain uppercase, lowercase, and number
+                email_exists:
+                  summary: Email already exists
+                  value:
+                    error:
+                      code: EMAIL_ALREADY_EXISTS
+                      message: Email address is already registered
+                      http_status: 400
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+                default:
+                  summary: VALIDATION_ERROR example
+                  value:
+                    error:
+                      code: EMAIL_ALREADY_EXISTS
+                      message: Email address is already registered
+                      http_status: 400
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+                      details:
+                        field_errors:
+                        - field: email
+                          message: Invalid email format
+                          code: VALIDATION_ERROR
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: RATE_LIMIT_EXCEEDED
+                  message: Rate limit exceeded. Maximum 10 requests per minute.
+                  http_status: 429
+                  request_id: 550e8400-e29b-41d4-a716-446655440000
+                  timestamp: '2025-01-15T10:30:00Z'
+                  details:
+                    retry_after: 30
+              examples:
+                default:
+                  summary: RATE_LIMIT_EXCEEDED example
+                  value:
+                    error:
+                      code: RATE_LIMIT_EXCEEDED
+                      message: Rate limit exceeded. Please retry after the specified time.
+                      http_status: 429
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+          headers:
+            Retry-After:
+              description: Number of seconds to wait before retrying
+              schema:
+                type: integer
+                example: 60
+            X-RateLimit-Limit:
+              description: Request limit per time window
+              schema:
+                type: integer
+                example: 1000
+            X-RateLimit-Remaining:
+              description: Remaining requests in current window
+              schema:
+                type: integer
+                example: 0
+            X-RateLimit-Reset:
+              description: Unix timestamp when rate limit resets
+              schema:
+                type: integer
+                example: 1642248000
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: INTERNAL_ERROR
+                  message: An internal server error occurred
+                  http_status: 500
+                  request_id: 550e8400-e29b-41d4-a716-446655440000
+                  timestamp: '2025-01-15T10:30:00Z'
+              examples:
+                default:
+                  summary: INTERNAL_ERROR example
+                  value:
+                    error:
+                      code: INTERNAL_ERROR
+                      message: An internal server error occurred
+                      http_status: 500
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '401':
+          description: Unauthorized - Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_UNAUTHORIZED example
+                  value:
+                    error:
+                      code: AUTH_UNAUTHORIZED
+                      message: Authentication required
+                      http_status: 401
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_FORBIDDEN example
+                  value:
+                    error:
+                      code: AUTH_FORBIDDEN
+                      message: Permission denied
+                      http_status: 403
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '409':
+          description: Conflict - Resource conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: CONFLICT_ERROR example
+                  value:
+                    error:
+                      code: CONFLICT_ERROR
+                      message: Resource conflict
+                      http_status: 409
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '503':
+          description: Service Unavailable - Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: SERVICE_UNAVAILABLE example
+                  value:
+                    error:
+                      code: SERVICE_UNAVAILABLE
+                      message: Service temporarily unavailable. Please try again later.
+                      http_status: 503
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+      x-integration-requirements:
+        service_dependencies: []
+        database_requirements:
+        - model_name: User
+          operations:
+          - write
+          description: Create new user account
+          indexes: []
+        - model_name: Tenant
+          operations:
+          - read
+          description: Validate tenant if provided
+          indexes: []
+        - model_name: APIKey
+          operations:
+          - read
+          description: Check for existing API keys
+          indexes: []
+        external_services:
+        - service_name: email-service
+          service_type: external
+          description: Send welcome email (optional)
+          required: false
+          timeout_ms: null
+        event_requirements:
+        - event_type: user.created
+          event_data:
+            user_id: uuid
+          description: User registration event
+          required: true
+        infrastructure_dependencies:
+        - postgresql
+        - redis
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+      - email
+      - password
+      - name
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address (must be unique)
+          example: user@example.com
+          maxLength: 255
+          pattern: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
+          minLength: 5
+        password:
+          type: string
+          format: password
+          description: User password (min 8 chars, must contain uppercase, lowercase, number)
+          example: SecurePass123
+          minLength: 8
+          pattern: ^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$
+          maxLength: 128
+        name:
+          type: string
+          description: User full name
+          example: John Doe
+          maxLength: 255
+          minLength: 1
+          pattern: ^[a-zA-Z0-9\s\-_\.]+$
+        tenant_id:
+          type: string
+          format: uuid
+          description: Tenant ID for multi-tenant registration (optional)
+          example: 550e8400-e29b-41d4-a716-446655440000
+          nullable: true
+          minLength: 36
+          maxLength: 36
+    RegisterResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: user@example.com
+          minLength: 5
+          maxLength: 255
+        name:
+          type: string
+          description: User full name
+          example: John Doe
+          minLength: 1
+          maxLength: 255
+        tenant_id:
+          type: string
+          format: uuid
+          description: Tenant ID
+          example: 550e8400-e29b-41d4-a716-446655440001
+          nullable: true
+          minLength: 36
+          maxLength: 36
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp (ISO 8601)
+          example: '2025-01-15T10:30:00Z'
+          minLength: 1
+          maxLength: 255
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+              example: VALIDATION_ERROR
+              minLength: 1
+              maxLength: 255
+            message:
+              type: string
+              description: Human-readable error message
+              example: Invalid request data
+              minLength: 1
+              maxLength: 255
+            http_status:
+              type: integer
+              description: HTTP status code
+              example: 400
+              minimum: 0
+            request_id:
+              type: string
+              format: uuid
+              description: Unique request identifier
+              example: 550e8400-e29b-41d4-a716-446655440000
+            timestamp:
+              type: string
+              format: date-time
+              description: Error timestamp (ISO 8601)
+              example: '2025-01-15T10:30:00Z'
+            details:
+              type: object
+              description: Additional error details
+              additionalProperties: true
+              nullable: true
+              example: {}
+          example: {}
+          description: Error (object)
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token authentication (not required for registration)
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: 'API key authentication. Include key in Authorization header: "ApiKey {key}" or in X-API-Key header. API
+        keys can have scopes to limit access and can be expired or revoked.'
+tags:
+- name: Authentication
+  description: User authentication and registration endpoints

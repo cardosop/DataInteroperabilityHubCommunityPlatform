@@ -388,10 +388,27 @@ def _get_user_from_api_key_sync(api_key: str) -> Optional[User]:
         # This is important for pytest-django async tests
         close_old_connections()
 
+        # Hash the provided API key before lookup (API keys are stored hashed)
+        key_hash = APIKey.hash_key(api_key)
+
         # Query API key - Django will open a fresh connection automatically
-        api_key_obj = APIKey.objects.select_related("user__tenant").get(key=api_key)
-        if api_key_obj.is_active:
+        api_key_obj = APIKey.objects.select_related("user__tenant").get(key_hash=key_hash)
+
+        # Check if API key is expired
+        if api_key_obj.is_expired():
+            logger.warning("websocket_api_key_expired", api_key_id=str(api_key_obj.id))
+            return None
+
+        # Update last used timestamp
+        api_key_obj.update_last_used()
+
+        # Return user if API key has a user (user-scoped key)
+        if api_key_obj.user:
             return api_key_obj.user
+
+        # If no user, return None (tenant-scoped keys don't have users)
+        logger.debug("websocket_api_key_no_user", api_key_id=str(api_key_obj.id))
+        return None
     except APIKey.DoesNotExist:
         logger.warning("websocket_api_key_not_found")
     except Exception as e:
@@ -423,39 +440,147 @@ class WebSocketAuthMiddleware(BaseMiddleware):
     WebSocket authentication middleware.
 
     Supports:
-    - JWT token authentication (via query parameter or subprotocol)
-    - API key authentication (via query parameter)
+    - JWT token authentication (via query parameter, Authorization header, or subprotocol)
+    - API key authentication (via query parameter or X-API-Key header)
+
+    Rejects connections if authentication fails (sends close message with code 4001).
     """
 
-    async def __call__(self, scope, receive, send):
-        """Process WebSocket connection and authenticate user."""
-        # Extract authentication from query string or subprotocol
-        query_string = scope.get("query_string", b"").decode("utf-8")
-        query_params = {}
-        for param in query_string.split("&"):
-            if "=" in param:
-                key, value = param.split("=", 1)
-                query_params[key] = value
+    def _extract_token_from_headers(self, headers: list) -> Optional[str]:
+        """
+        Extract JWT token from Authorization header.
 
-        # Try JWT token authentication
-        token = query_params.get("token") or query_params.get("access_token")
+        Args:
+            headers: List of (header_name, header_value) tuples
+
+        Returns:
+            Token string or None
+        """
+        for header_name, header_value in headers:
+            if header_name.lower() == b"authorization":
+                # Handle both bytes and string headers
+                if isinstance(header_value, bytes):
+                    header_value = header_value.decode("utf-8")
+
+                # Extract Bearer token
+                if header_value.startswith("Bearer "):
+                    return header_value[7:]  # Remove "Bearer " prefix
+                elif header_value.startswith("bearer "):
+                    return header_value[7:]  # Case-insensitive
+        return None
+
+    def _extract_api_key_from_headers(self, headers: list) -> Optional[str]:
+        """
+        Extract API key from X-API-Key header.
+
+        Args:
+            headers: List of (header_name, header_value) tuples
+
+        Returns:
+            API key string or None
+        """
+        for header_name, header_value in headers:
+            if header_name.lower() == b"x-api-key":
+                # Handle both bytes and string headers
+                if isinstance(header_value, bytes):
+                    return header_value.decode("utf-8")
+                return header_value
+        return None
+
+    def _parse_query_string(self, query_string: bytes) -> dict:
+        """
+        Parse query string into dictionary.
+
+        Args:
+            query_string: Query string bytes
+
+        Returns:
+            Dictionary of query parameters
+        """
+        query_params = {}
+        if query_string:
+            query_str = query_string.decode("utf-8")
+            for param in query_str.split("&"):
+                if "=" in param:
+                    key, value = param.split("=", 1)
+                    # URL decode the value
+                    import urllib.parse
+                    query_params[key] = urllib.parse.unquote(value)
+        return query_params
+
+    async def __call__(self, scope, receive, send):
+        """
+        Process WebSocket connection and authenticate user.
+
+        Rejects connection (sends close message) if authentication fails.
+        """
+        # Only process WebSocket connections
+        if scope.get("type") != "websocket":
+            return await super().__call__(scope, receive, send)
+
+        # Extract authentication from query string and headers
+        query_string = scope.get("query_string", b"")
+        headers = scope.get("headers", [])
+
+        query_params = self._parse_query_string(query_string)
+
         user = None
+        auth_method = None
+
+        # Try JWT token authentication (prefer query params, then headers)
+        token = (
+            query_params.get("token") or
+            query_params.get("access_token") or
+            self._extract_token_from_headers(headers)
+        )
 
         if token:
             user = await get_user_from_token(token)
+            if user:
+                auth_method = "jwt_token"
 
         # Try API key authentication if JWT failed
         if not user:
-            api_key = query_params.get("api_key") or query_params.get("X-API-Key")
+            api_key = (
+                query_params.get("api_key") or
+                query_params.get("X-API-Key") or
+                self._extract_api_key_from_headers(headers)
+            )
+
             if api_key:
                 user = await get_user_from_api_key(api_key)
+                if user:
+                    auth_method = "api_key"
 
-        # Set user in scope
+        # Set user and tenant in scope if authenticated
         if user:
             scope["user"] = user
             scope["tenant"] = user.tenant if hasattr(user, "tenant") else None
-        else:
-            scope["user"] = AnonymousUser()
-            scope["tenant"] = None
 
-        return await super().__call__(scope, receive, send)
+            logger.debug(
+                "websocket_authenticated",
+                user_id=str(user.id),
+                tenant_id=str(scope["tenant"].id) if scope["tenant"] else None,
+                auth_method=auth_method
+            )
+
+            return await super().__call__(scope, receive, send)
+        else:
+            # Authentication failed - reject connection
+            logger.warning(
+                "websocket_auth_failed",
+                path=scope.get("path"),
+                query_string=query_string.decode("utf-8") if query_string else "",
+                message="WebSocket connection rejected due to authentication failure"
+            )
+
+            # Send close message to reject connection
+            # WebSocket close code 4001 = Unauthorized
+            await send({
+                "type": "websocket.close",
+                "code": 4001,  # Unauthorized
+                "reason": "Authentication required"
+            })
+
+            # Don't call next middleware/consumer - connection is rejected
+            return

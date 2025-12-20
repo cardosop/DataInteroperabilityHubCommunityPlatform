@@ -36,7 +36,7 @@ class KYCStatus(models.TextChoices):
 class Tenant(models.Model):
     """
     Tenant model representing an organization or individual user.
-    
+
     Each tenant is isolated from others with row-level security.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -77,7 +77,7 @@ class Tenant(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "tenants"
         ordering = ["name"]
@@ -87,40 +87,40 @@ class Tenant(models.Model):
             models.Index(fields=["kyc_status"]),
             models.Index(fields=["region"]),
         ]
-    
+
     def __str__(self):
         return f"{self.name} ({self.slug})"
-    
+
     def is_active(self) -> bool:
         """Check if tenant is active"""
         return self.status == TenantStatus.ACTIVE
-    
+
     def is_suspended(self) -> bool:
         """Check if tenant is suspended"""
         return self.status == TenantStatus.SUSPENDED
-    
+
     def is_deleted(self) -> bool:
         """Check if tenant is deleted"""
         return self.status == TenantStatus.DELETED
-    
+
     def can_publish_to_marketplace(self) -> bool:
         """Check if tenant can publish to marketplace (requires KYC verification)"""
         return self.kyc_status == KYCStatus.VERIFIED and self.is_active()
-    
+
     def suspend(self):
         """Suspend the tenant (read-only mode)"""
         if self.status == TenantStatus.DELETED:
             raise ValueError("Cannot suspend a deleted tenant")
         self.status = TenantStatus.SUSPENDED
         self.save(update_fields=["status", "updated_at"])
-    
+
     def reactivate(self):
         """Reactivate a suspended tenant"""
         if self.status != TenantStatus.SUSPENDED:
             raise ValueError("Can only reactivate suspended tenants")
         self.status = TenantStatus.ACTIVE
         self.save(update_fields=["status", "updated_at"])
-    
+
     def soft_delete(self):
         """Mark tenant for deletion (soft delete)"""
         self.status = TenantStatus.DELETED
@@ -131,7 +131,7 @@ class Tenant(models.Model):
 class TenantConfig(models.Model):
     """
     Tenant Configuration model storing per-tenant configuration settings.
-    
+
     Includes DQ profiles, compliance regimes, data retention, rate limits,
     file size limits, and job concurrency limits.
     """
@@ -142,7 +142,7 @@ class TenantConfig(models.Model):
         related_name="config",
         help_text="Tenant this configuration belongs to"
     )
-    
+
     # DQ Profile Configuration
     default_dq_profile = models.CharField(
         max_length=100,
@@ -150,7 +150,7 @@ class TenantConfig(models.Model):
         blank=True,
         help_text="Default DQ profile key (e.g., intake_basic_gx, intake_basic_soda)"
     )
-    
+
     # Compliance Configuration
     allowed_compliance_regimes = models.JSONField(
         default=default_empty_list,
@@ -162,7 +162,7 @@ class TenantConfig(models.Model):
         blank=True,
         help_text="Default compliance regimes applied to intake flows (subset of allowed_compliance_regimes)"
     )
-    
+
     # Data Retention
     data_retention_days = models.IntegerField(
         null=True,
@@ -173,7 +173,7 @@ class TenantConfig(models.Model):
         ],
         help_text="Data retention period in days (90-3650)"
     )
-    
+
     # Rate Limits (JSON structure)
     rate_limits = models.JSONField(
         default=default_empty_dict,
@@ -181,7 +181,7 @@ class TenantConfig(models.Model):
         blank=True,
         help_text="Per-endpoint category rate limits (JSON structure)"
     )
-    
+
     # File Size Limits
     max_file_size_bytes = models.BigIntegerField(
         null=True,
@@ -189,7 +189,7 @@ class TenantConfig(models.Model):
         validators=[MinValueValidator(1)],
         help_text="Maximum file size for uploads in bytes"
     )
-    
+
     # Job Concurrency Limits
     max_job_concurrency = models.IntegerField(
         null=True,
@@ -203,7 +203,7 @@ class TenantConfig(models.Model):
         validators=[MinValueValidator(1)],
         help_text="Maximum queued jobs for this tenant"
     )
-    
+
     # SSO Configuration (JSON structure)
     sso_config = models.JSONField(
         default=default_empty_dict,
@@ -211,24 +211,38 @@ class TenantConfig(models.Model):
         blank=True,
         help_text="SSO configuration (SAML and OIDC settings)"
     )
-    
+
+    # ODPS $ref Resolver Configuration (JSON structure)
+    # Overrides global ODPS refs configuration for this tenant
+    # Structure:
+    # {
+    #   "url_allowlist": ["https://*.example.com", "https://schemas.trusted.com"],
+    #   "url_denylist": ["http://*", "https://*.malicious.com"]
+    # }
+    odps_refs_config = models.JSONField(
+        default=default_empty_dict,
+        null=True,
+        blank=True,
+        help_text="ODPS $ref resolver configuration (URL allowlist/denylist overrides)"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "tenant_configs"
         ordering = ["tenant"]
         indexes = [
             models.Index(fields=["tenant"]),
         ]
-    
+
     def __str__(self):
         return f"Config for {self.tenant.name}"
-    
+
     def clean(self):
         """Validate model-level constraints"""
         super().clean()
-        
+
         # Validate default_compliance_regimes is subset of allowed_compliance_regimes
         if self.default_compliance_regimes and self.allowed_compliance_regimes:
             default_set = set(self.default_compliance_regimes)
@@ -237,7 +251,7 @@ class TenantConfig(models.Model):
                 raise ValidationError({
                     'default_compliance_regimes': 'Default compliance regimes must be a subset of allowed compliance regimes.'
                 })
-    
+
     def save(self, *args, **kwargs):
         """Override save to run clean validation"""
         self.full_clean()

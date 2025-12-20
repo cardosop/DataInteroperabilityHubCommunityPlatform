@@ -2,6 +2,9 @@
 Caching utilities for contract queries and lineage resolution.
 
 Implements multi-level caching strategy for optimal performance.
+
+Enhanced caching features (tags, warming, metrics) are available in
+hub.apps.contracts.caching_enhanced module.
 """
 from typing import Any, Dict, List, Optional, Tuple
 from django.core.cache import cache
@@ -54,7 +57,7 @@ def get_query_result_cache_key(query_params: Dict[str, Any], tenant_id: str) -> 
 def cache_contract(contract_id: str, contract_data: Dict[str, Any], ttl: Optional[int] = None) -> None:
     """
     Cache contract data.
-    
+
     Args:
         contract_id: Contract UUID
         contract_data: Contract data dictionary
@@ -68,10 +71,10 @@ def cache_contract(contract_id: str, contract_data: Dict[str, Any], ttl: Optiona
 def get_cached_contract(contract_id: str) -> Optional[Dict[str, Any]]:
     """
     Get cached contract data.
-    
+
     Args:
         contract_id: Contract UUID
-    
+
     Returns:
         Cached contract data or None
     """
@@ -88,7 +91,7 @@ def cache_lineage(
 ) -> None:
     """
     Cache lineage data.
-    
+
     Args:
         contract_id: Contract UUID
         lineage_data: Lineage data dictionary
@@ -108,12 +111,12 @@ def get_cached_lineage(
 ) -> Optional[Dict[str, Any]]:
     """
     Get cached lineage data.
-    
+
     Args:
         contract_id: Contract UUID
         model_name: Optional model name
         field_name: Optional field name
-    
+
     Returns:
         Cached lineage data or None
     """
@@ -131,7 +134,7 @@ def cache_lineage_resolution(
 ) -> None:
     """
     Cache lineage reference resolution result.
-    
+
     Args:
         namespace: Contract namespace
         name: Contract name
@@ -153,13 +156,13 @@ def get_cached_lineage_resolution(
 ) -> Optional[Dict[str, Any]]:
     """
     Get cached lineage reference resolution result.
-    
+
     Args:
         namespace: Contract namespace
         name: Contract name
         model_name: Optional model name
         field: Optional field name
-    
+
     Returns:
         Cached resolution result or None
     """
@@ -176,7 +179,7 @@ def cache_query_result(
 ) -> None:
     """
     Cache query result.
-    
+
     Args:
         query_params: Query parameters dictionary
         tenant_id: Tenant UUID
@@ -199,11 +202,11 @@ def get_cached_query_result(
 ) -> Optional[Tuple[List[Dict[str, Any]], int]]:
     """
     Get cached query result.
-    
+
     Args:
         query_params: Query parameters dictionary
         tenant_id: Tenant UUID
-    
+
     Returns:
         Tuple of (results list, total_count) or None
     """
@@ -217,13 +220,13 @@ def get_cached_query_result(
 def invalidate_contract_cache(contract_id: str) -> None:
     """
     Invalidate contract cache.
-    
+
     Args:
         contract_id: Contract UUID
     """
     cache_key = get_contract_cache_key(contract_id)
     cache.delete(cache_key)
-    
+
     # Also invalidate related lineage caches
     # Pattern: lineage:{contract_id}:*
     # Note: Django cache doesn't support pattern deletion natively
@@ -233,7 +236,7 @@ def invalidate_contract_cache(contract_id: str) -> None:
 def invalidate_lineage_cache(contract_id: str, model_name: Optional[str] = None, field_name: Optional[str] = None) -> None:
     """
     Invalidate lineage cache.
-    
+
     Args:
         contract_id: Contract UUID
         model_name: Optional model name
@@ -241,7 +244,7 @@ def invalidate_lineage_cache(contract_id: str, model_name: Optional[str] = None,
     """
     cache_key = get_lineage_cache_key(contract_id, model_name, field_name)
     cache.delete(cache_key)
-    
+
     # If invalidating contract-level lineage, also invalidate model and field level
     if not model_name and not field_name:
         # Invalidate all lineage caches for this contract
@@ -252,7 +255,7 @@ def invalidate_lineage_cache(contract_id: str, model_name: Optional[str] = None,
 def invalidate_query_result_cache(tenant_id: Optional[str] = None) -> None:
     """
     Invalidate query result cache.
-    
+
     Args:
         tenant_id: Optional tenant UUID (if None, invalidates all)
     """
@@ -265,14 +268,14 @@ def invalidate_query_result_cache(tenant_id: Optional[str] = None) -> None:
 def warm_contract_cache(contract_ids: List[str]) -> None:
     """
     Warm cache with frequently accessed contracts.
-    
+
     Args:
         contract_ids: List of contract UUIDs to warm
     """
     from hub.apps.contracts.models import Contract
-    
+
     contracts = Contract.objects.filter(id__in=contract_ids).select_related('tenant', 'asset')
-    
+
     for contract in contracts:
         if contract.hub_contract_json:
             cache_contract(
@@ -289,7 +292,7 @@ def warm_contract_cache(contract_ids: List[str]) -> None:
 def get_cache_stats() -> Dict[str, Any]:
     """
     Get cache statistics (if supported by cache backend).
-    
+
     Returns:
         Dictionary with cache statistics
     """

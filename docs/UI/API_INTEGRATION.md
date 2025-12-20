@@ -1446,6 +1446,149 @@ export function renderWithProviders(
 
 ---
 
+## Workflow State Management
+
+### Overview
+
+The frontend tracks multi-step workflow execution through React Query and WebSocket integration.
+
+### Workflow Progress Components
+
+#### TransformationPipelineProgress
+
+Tracks transformation pipeline execution progress:
+
+```typescript
+import { useWorkflowProgress } from '@/hooks/useWorkflowProgress';
+
+function TransformationPipelineProgress({ pipelineId }: { pipelineId: string }) {
+  const { workflow, progress, currentStep, error } = useWorkflowProgress(
+    'transformation_pipeline',
+    pipelineId
+  );
+
+  return (
+    <WorkflowProgress
+      workflow={workflow}
+      progress={progress}
+      currentStep={currentStep}
+      error={error}
+    />
+  );
+}
+```
+
+#### AIMLOperationProgress
+
+Tracks AI/ML operation progress:
+
+```typescript
+function AIMLOperationProgress({ operationId }: { operationId: string }) {
+  const { workflow, progress, currentStep, error } = useWorkflowProgress(
+    'ai_ml_operation',
+    operationId
+  );
+
+  return (
+    <WorkflowProgress
+      workflow={workflow}
+      progress={progress}
+      currentStep={currentStep}
+      error={error}
+    />
+  );
+}
+```
+
+### React Query Integration
+
+Workflow state is cached in React Query:
+
+```typescript
+import { useQuery } from '@tanstack/react-query';
+
+function useWorkflowProgress(workflowName: string, instanceId: string) {
+  return useQuery({
+    queryKey: ['workflow', workflowName, instanceId],
+    queryFn: () => api.getWorkflowInstance(workflowName, instanceId),
+    refetchInterval: 2000, // Poll every 2 seconds
+  });
+}
+```
+
+### WebSocket Integration
+
+Real-time workflow updates via WebSocket:
+
+```typescript
+import { useWebSocket } from '@/hooks/useWebSocket';
+
+function useWorkflowUpdates(workflowName: string, instanceId: string) {
+  const { data, queryClient } = useWebSocket(`workflow.${workflowName}.${instanceId}`);
+
+  useEffect(() => {
+    if (data) {
+      // Update React Query cache
+      queryClient.setQueryData(
+        ['workflow', workflowName, instanceId],
+        data
+      );
+    }
+  }, [data, workflowName, instanceId, queryClient]);
+}
+```
+
+### State Reconciliation
+
+Handle conflicts between optimistic updates and server state:
+
+```typescript
+function useWorkflowMutation(workflowName: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: WorkflowInput) => 
+      api.startWorkflow(workflowName, input),
+    onMutate: async (input) => {
+      // Optimistic update
+      await queryClient.cancelQueries(['workflow', workflowName]);
+      const previous = queryClient.getQueryData(['workflow', workflowName]);
+      queryClient.setQueryData(['workflow', workflowName], {
+        ...previous,
+        status: 'running',
+      });
+      return { previous };
+    },
+    onError: (err, input, context) => {
+      // Rollback on error
+      queryClient.setQueryData(['workflow', workflowName], context.previous);
+    },
+    onSettled: () => {
+      // Refetch to reconcile
+      queryClient.invalidateQueries(['workflow', workflowName]);
+    },
+  });
+}
+```
+
+### Workflow Error Handling
+
+Handle workflow failures gracefully:
+
+```typescript
+function WorkflowError({ error, workflow }: { error: Error; workflow: Workflow }) {
+  if (error.type === 'COMPENSATION_FAILED') {
+    return <CompensationError workflow={workflow} />;
+  }
+  if (error.type === 'STEP_FAILED') {
+    return <StepError workflow={workflow} failedStep={error.step} />;
+  }
+  return <GenericError error={error} />;
+}
+```
+
+---
+
 ## Best Practices
 
 1. **Always use React Query for server state** - Don't use useState for API data

@@ -167,6 +167,25 @@ class User(AbstractBaseUser, PermissionsMixin):
         """Increment token version to invalidate existing sessions"""
         self.token_version += 1
         self.save(update_fields=["token_version", "updated_at"])
+    
+    def has_role(self, *role_names):
+        """
+        Check if user has any of the specified roles.
+        
+        Args:
+            *role_names: One or more role names to check
+            
+        Returns:
+            True if user has any of the specified roles, False otherwise
+        """
+        if self.is_platform_admin:
+            return True
+        
+        if hasattr(self, 'user_roles'):
+            user_role_names = [ur.role.name for ur in self.user_roles.all()]
+            return any(role_name in user_role_names for role_name in role_names)
+        
+        return False
 
 
 class Role(models.Model):

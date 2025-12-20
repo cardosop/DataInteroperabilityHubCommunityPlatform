@@ -141,23 +141,35 @@ if True:  # Always apply patches
     # Patch Django's database wrapper to disable thread validation for tests
     # This fixes the issue where pytest-django creates connections in one thread
     # but Django's TestCase uses them in another thread
-    import django.db.backends.base.base
+    try:
+        import django.db.backends.base.base
 
-    _original_validate = django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing
+        _original_validate = django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing
 
-    def _noop_validate(self):
-        """Disable thread validation for tests - safe because pytest-django manages connections"""
+        def _noop_validate(self):
+            """Disable thread validation for tests - safe because pytest-django manages connections"""
+            pass
+
+        django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing = _noop_validate
+    except ImportError:
+        # Django not available yet - will patch later when Django is loaded
+        _patch_logger.debug("Django not available yet, will patch thread validation later")
         pass
-
-    django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing = _noop_validate
 
     # Patch Django's migrate command to skip sync_apps entirely
     # This must be done before Django is fully initialized
     import types
 
-    import django.core.management.commands.migrate as migrate_module
-    import django.db.backends.postgresql.introspection as pg_introspection
-    import django.db.migrations.loader as migrations_loader
+    try:
+        import django.core.management.commands.migrate as migrate_module
+        import django.db.backends.postgresql.introspection as pg_introspection
+        import django.db.migrations.loader as migrations_loader
+    except ImportError:
+        # Django not available yet - will patch later when Django is loaded
+        _patch_logger.debug("Django not available yet, will patch migrate command later")
+        migrate_module = None
+        pg_introspection = None
+        migrations_loader = None
 
     # CRITICAL: Patch MigrationLoader.__init__ to ensure unmigrated_apps starts empty
     # ROOT CAUSE FIX: unmigrated_apps is a SET attribute that gets populated in load_disk()
@@ -213,7 +225,7 @@ if True:  # Always apply patches
     # CRITICAL: Patch table_names to return empty list ONLY when called from sync_apps
     # This prevents sync_apps from trying to query tables that don't exist yet
     # But allows Django's MigrationRecorder to check for django_migrations table
-    if not hasattr(pg_introspection.DatabaseIntrospection.table_names, "_patched"):
+    if pg_introspection and not hasattr(pg_introspection.DatabaseIntrospection.table_names, "_patched"):
         _original_table_names = pg_introspection.DatabaseIntrospection.table_names
 
         def _patched_table_names(self, cursor=None, include_views=False):
@@ -339,244 +351,252 @@ if True:  # Always apply patches
         _patch_logger.debug(traceback.format_exc())
 
     # Also patch sync_apps to catch errors and return early
-    _original_sync_apps_method = migrate_module.Command.sync_apps
-
-    def _patched_sync_apps(self, connection, apps):
-        """
-        Patched sync_apps - ROOT CAUSE FIX
-
-        Django's sync_apps tries to query tables that don't exist yet during test database creation.
-        This patch makes sync_apps a no-op that always returns immediately, preventing any table queries.
-        Migrations will create all tables, so sync_apps doesn't need to run.
-        """
-        _patch_logger.info("=" * 80)
-        _patch_logger.info(
-            f"✓ sync_apps (main): CALLED but suppressed (apps={len(apps) if apps else 0})"
-        )
-        _patch_logger.info(
-            f"✓ sync_apps (main): ROOT CAUSE FIX - returning immediately without SQL"
-        )
-        _patch_logger.info("=" * 80)
-        # Always return immediately - migrations will create tables
-        return
-
-    # Patch at class level using MethodType
-    migrate_module.Command.sync_apps = types.MethodType(_patched_sync_apps, migrate_module.Command)
-    _log_patch("Command.sync_apps (main - no-op)")
-
-    # CRITICAL: Also patch Command.__init__ to ensure sync_apps is patched on all instances
-    # This ensures that even if Django creates Command instances, they all have our patched sync_apps
-    try:
-        _original_command_init = migrate_module.Command.__init__
-
-        def _patched_command_init(self, *args, **kwargs):
-            """Patched Command.__init__ that ensures sync_apps is patched on this instance"""
-            result = _original_command_init(self, *args, **kwargs)
-            # Ensure sync_apps is patched on this instance
-            self.sync_apps = types.MethodType(_patched_sync_apps, self)
-            _patch_logger.debug(f"✓ Patched sync_apps on Command instance: {id(self)}")
-            return result
-
-        migrate_module.Command.__init__ = _patched_command_init
-        _log_patch("Command.__init__ (sync_apps patching)")
-    except Exception as e:
-        _patch_logger.debug(f"Could not patch Command.__init__: {e}")
-
-    # APPROACH 3: Patch handle method to intercept sync_apps calls BEFORE they execute
-    # This is the most reliable approach - we intercept sync_apps calls in handle
-    _original_handle = migrate_module.Command.handle
-
-    def _patched_handle(self, *args, **options):
-        """
-        Patched handle that intercepts sync_apps calls before they execute.
-        This ensures sync_apps never runs during test database creation.
-
-        ROOT CAUSE FIX: Django's create_test_db calls migrate with run_syncdb=True.
-        This patch ensures run_syncdb is ALWAYS False, preventing sync_apps from running.
-        """
-        _patch_logger.info("=" * 80)
-        _patch_logger.info("✓ Command.handle: CALLED! (ROOT CAUSE FIX)")
-        _patch_logger.info(f"✓ Command.handle: Original options = {options}")
-        _patch_logger.info("=" * 80)
-
-        # CRITICAL: Set run_syncdb=False to prevent sync_apps from being called
-        # Django reads this at the beginning of handle, so set it BEFORE calling original
-        # This is the ROOT CAUSE FIX - ensures sync_apps never runs
-        original_run_syncdb = options.get("run_syncdb", None)
-        options["run_syncdb"] = False
-        _patch_logger.info(
-            f"✓ Command.handle: Overriding run_syncdb={original_run_syncdb} -> False (ROOT CAUSE FIX)"
-        )
-
-        # Store original sync_apps method for this instance
-        original_sync_apps = getattr(self, "sync_apps", None)
-        if original_sync_apps is None:
-            original_sync_apps = getattr(
-                migrate_module.Command, "_original_sync_apps", migrate_module.Command.sync_apps
-            )
-
-        # Create a no-op sync_apps that always returns immediately
-        def _noop_sync_apps(self, connection, apps):
-            """No-op sync_apps that never executes - prevents table queries"""
-            _patch_logger.info("=" * 80)
-            _patch_logger.info(
-                f"✓ sync_apps (handle): CALLED but suppressed (apps={len(apps) if apps else 0})"
-            )
-            _patch_logger.info(
-                "✓ sync_apps (handle): ROOT CAUSE FIX - returning immediately without SQL"
-            )
-            _patch_logger.info("=" * 80)
-            return
-
-        # CRITICAL: Patch sync_apps on THIS instance using __dict__ to bypass method resolution
-        # This ensures that when handle calls self.sync_apps(), it calls our no-op
-        self.__dict__["sync_apps"] = types.MethodType(_noop_sync_apps, self)
-        _patch_logger.info(f"✓ Patched sync_apps on Command instance using __dict__: {id(self)}")
-
-        # Also ensure class-level patch is active
-        migrate_module.Command.sync_apps = types.MethodType(_noop_sync_apps, migrate_module.Command)
-
-        # CRITICAL: Patch MigrationLoader.load_disk() to prevent populating unmigrated_apps
-        # ROOT CAUSE FIX: unmigrated_apps is a SET that gets populated in load_disk()
-        # Line 266 in migrate.py: run_syncdb = options["run_syncdb"] and executor.loader.unmigrated_apps
-        # If unmigrated_apps is empty, sync_apps won't run even if run_syncdb=True
+    if migrate_module is None:
+        _patch_logger.debug("migrate_module not available, skipping sync_apps patch")
+    else:
         try:
-            from django.db.migrations.loader import MigrationLoader
+            _original_sync_apps_method = migrate_module.Command.sync_apps
 
-            if not hasattr(MigrationLoader.load_disk, "_patched_for_unmigrated"):
-                _original_load_disk = MigrationLoader.load_disk
+            def _patched_sync_apps(self, connection, apps):
+                """
+                Patched sync_apps - ROOT CAUSE FIX
 
-                def _patched_load_disk(self):
-                    """Patched load_disk that prevents populating unmigrated_apps - ROOT CAUSE FIX"""
-                    result = _original_load_disk(self)
-                    # Clear unmigrated_apps set after load_disk completes
-                    # This ensures sync_apps won't run even if run_syncdb=True
-                    if hasattr(self, "unmigrated_apps"):
-                        self.unmigrated_apps.clear()
-                        _patch_logger.info(
-                            "✓ MigrationLoader.load_disk: Cleared unmigrated_apps (prevents sync_apps)"
-                        )
-                    return result
-
-                _patched_load_disk._patched_for_unmigrated = True
-                MigrationLoader.load_disk = _patched_load_disk
-                _patch_logger.info("✓ Patched MigrationLoader.load_disk to clear unmigrated_apps")
-        except Exception as e:
-            _patch_logger.warning(f"✗ Could not patch MigrationLoader.load_disk: {e}")
-            import traceback
-
-            _patch_logger.debug(traceback.format_exc())
-
-        # CRITICAL: Patch MigrationExecutor.__init__ to clear loader.unmigrated_apps set
-        # ROOT CAUSE FIX: Line 266 in migrate.py checks executor.loader.unmigrated_apps
-        # unmigrated_apps is a SET attribute, not a method. Empty set evaluates to False.
-        # If it's empty, sync_apps won't run even if run_syncdb=True
-        # This patch MUST be applied in handle() because executor is created inside handle()
-        try:
-            from django.db.migrations.executor import MigrationExecutor
-
-            if not hasattr(MigrationExecutor.__init__, "_patched_for_unmigrated_in_handle"):
-                _original_executor_init = MigrationExecutor.__init__
-
-                def _patched_executor_init(self, connection, progress_callback=None):
-                    _patch_logger.info("=" * 80)
-                    _patch_logger.info("✓ MigrationExecutor.__init__ (handle): CALLED!")
-                    _patch_logger.info("=" * 80)
-                    result = _original_executor_init(self, connection, progress_callback)
-                    # CRITICAL: Clear unmigrated_apps set - this is the ROOT CAUSE FIX
-                    # Line 266: run_syncdb = options["run_syncdb"] and executor.loader.unmigrated_apps
-                    # Empty set evaluates to False, so sync_apps won't run
-                    if hasattr(self, "loader") and hasattr(self.loader, "unmigrated_apps"):
-                        before_clear = len(self.loader.unmigrated_apps)
-                        self.loader.unmigrated_apps.clear()
-                        after_clear = len(self.loader.unmigrated_apps)
-                        _patch_logger.info(
-                            f"✓ executor.loader.unmigrated_apps (handle): Cleared {before_clear} -> {after_clear} (prevents sync_apps)"
-                        )
-                        if before_clear > 0:
-                            _patch_logger.info(
-                                f"✓ unmigrated_apps before clear: {list(self.loader.unmigrated_apps)}"
-                            )
-
-                        # CRITICAL: Also patch loader.load_disk to prevent repopulating unmigrated_apps
-                        if hasattr(self.loader, "load_disk"):
-                            original_load_disk = self.loader.load_disk
-
-                            def _patched_loader_load_disk():
-                                """Patched load_disk that prevents repopulating unmigrated_apps"""
-                                result = original_load_disk()
-                                # Clear unmigrated_apps after load_disk completes
-                                if hasattr(self.loader, "unmigrated_apps"):
-                                    before_load = len(self.loader.unmigrated_apps)
-                                    self.loader.unmigrated_apps.clear()
-                                    after_load = len(self.loader.unmigrated_apps)
-                                    _patch_logger.info(
-                                        f"✓ executor.loader.load_disk (handle): Cleared {before_load} -> {after_load} (prevents sync_apps)"
-                                    )
-                                return result
-
-                            self.loader.load_disk = _patched_loader_load_disk
-                            _patch_logger.info(
-                                "✓ Patched executor.loader.load_disk in handle to prevent repopulating unmigrated_apps"
-                            )
-                    else:
-                        _patch_logger.warning("✗ executor.loader.unmigrated_apps not found!")
-                    return result
-
-                _patched_executor_init._patched_for_unmigrated_in_handle = True
-                MigrationExecutor.__init__ = _patched_executor_init
+                Django's sync_apps tries to query tables that don't exist yet during test database creation.
+                This patch makes sync_apps a no-op that always returns immediately, preventing any table queries.
+                Migrations will create all tables, so sync_apps doesn't need to run.
+                """
+                _patch_logger.info("=" * 80)
                 _patch_logger.info(
-                    "✓ Patched MigrationExecutor.__init__ in handle to clear unmigrated_apps"
+                    f"✓ sync_apps (main): CALLED but suppressed (apps={len(apps) if apps else 0})"
                 )
-        except Exception as e:
-            _patch_logger.warning(f"✗ Could not patch MigrationExecutor.__init__ in handle: {e}")
-            import traceback
-
-            _patch_logger.debug(traceback.format_exc())
-
-        # CRITICAL: Before calling original handle, ensure executor.loader.unmigrated_apps is empty
-        # We need to intercept executor creation and clear unmigrated_apps BEFORE line 266 checks it
-        # The executor is created inside handle(), so we need to patch MigrationExecutor.__init__
-        # to clear unmigrated_apps when the executor is created
-
-        # The patch above should handle this, but let's also ensure it's cleared right before
-        # the check at line 266 by intercepting the executor creation
-        try:
-            # Call original handle - our MigrationExecutor.__init__ patch should clear unmigrated_apps
-            # when the executor is created inside handle()
-            _patch_logger.info(
-                "✓ Command.handle: Calling original handle (executor will be created)"
-            )
-            result = _original_handle(self, *args, **options)
-            _patch_logger.info("✓ Command.handle: Original handle completed")
-            return result
-        except Exception as e:
-            # If we get a table error, it means our patches didn't work properly
-            # Log it and re-raise - we should fix the root cause, not suppress errors
-            error_str = str(e).lower() if e else ""
-            error_type = type(e).__name__
-            is_table_error = (
-                ("relation" in error_str and "does not exist" in error_str)
-                or "undefinedtable" in error_type.lower()
-                or ("programmingerror" in error_type.lower() and "relation" in error_str)
-            )
-            if is_table_error:
-                _patch_logger.error(
-                    f"✗ Table error caught in handle patch - patches didn't prevent sync_apps: {error_str[:150]}"
+                _patch_logger.info(
+                    f"✓ sync_apps (main): ROOT CAUSE FIX - returning immediately without SQL"
                 )
-                _patch_logger.error(
-                    "✗ This indicates that run_syncdb=False or unmigrated_apps clearing didn't work"
-                )
-            raise
-        finally:
-            # Restore original sync_apps on this instance (for cleanup)
+                _patch_logger.info("=" * 80)
+                # Always return immediately - migrations will create tables
+                return
+
+            # Patch at class level using MethodType
+            migrate_module.Command.sync_apps = types.MethodType(_patched_sync_apps, migrate_module.Command)
+            _log_patch("Command.sync_apps (main - no-op)")
+
+            # CRITICAL: Also patch Command.__init__ to ensure sync_apps is patched on all instances
+            # This ensures that even if Django creates Command instances, they all have our patched sync_apps
             try:
-                if original_sync_apps:
-                    self.__dict__["sync_apps"] = original_sync_apps
-            except:
-                pass
+                _original_command_init = migrate_module.Command.__init__
 
-    migrate_module.Command.handle = _patched_handle
+                def _patched_command_init(self, *args, **kwargs):
+                    """Patched Command.__init__ that ensures sync_apps is patched on this instance"""
+                    result = _original_command_init(self, *args, **kwargs)
+                    # Ensure sync_apps is patched on this instance
+                    self.sync_apps = types.MethodType(_patched_sync_apps, self)
+                    _patch_logger.debug(f"✓ Patched sync_apps on Command instance: {id(self)}")
+                    return result
+
+                migrate_module.Command.__init__ = _patched_command_init
+                _log_patch("Command.__init__ (sync_apps patching)")
+            except Exception as e:
+                _patch_logger.debug(f"Could not patch Command.__init__: {e}")
+
+            # APPROACH 3: Patch handle method to intercept sync_apps calls BEFORE they execute
+            # This is the most reliable approach - we intercept sync_apps calls in handle
+            _original_handle = migrate_module.Command.handle
+
+            def _patched_handle(self, *args, **options):
+                """
+                Patched handle that intercepts sync_apps calls before they execute.
+                This ensures sync_apps never runs during test database creation.
+
+                ROOT CAUSE FIX: Django's create_test_db calls migrate with run_syncdb=True.
+                This patch ensures run_syncdb is ALWAYS False, preventing sync_apps from running.
+                """
+                _patch_logger.info("=" * 80)
+                _patch_logger.info("✓ Command.handle: CALLED! (ROOT CAUSE FIX)")
+                _patch_logger.info(f"✓ Command.handle: Original options = {options}")
+                _patch_logger.info("=" * 80)
+
+                # CRITICAL: Set run_syncdb=False to prevent sync_apps from being called
+                # Django reads this at the beginning of handle, so set it BEFORE calling original
+                # This is the ROOT CAUSE FIX - ensures sync_apps never runs
+                original_run_syncdb = options.get("run_syncdb", None)
+                options["run_syncdb"] = False
+                _patch_logger.info(
+                    f"✓ Command.handle: Overriding run_syncdb={original_run_syncdb} -> False (ROOT CAUSE FIX)"
+                )
+
+                # Store original sync_apps method for this instance
+                original_sync_apps = getattr(self, "sync_apps", None)
+                if original_sync_apps is None:
+                    original_sync_apps = getattr(
+                        migrate_module.Command, "_original_sync_apps", migrate_module.Command.sync_apps
+                    )
+
+                # Create a no-op sync_apps that always returns immediately
+                def _noop_sync_apps(self, connection, apps):
+                    """No-op sync_apps that never executes - prevents table queries"""
+                    _patch_logger.info("=" * 80)
+                    _patch_logger.info(
+                        f"✓ sync_apps (handle): CALLED but suppressed (apps={len(apps) if apps else 0})"
+                    )
+                    _patch_logger.info(
+                        "✓ sync_apps (handle): ROOT CAUSE FIX - returning immediately without SQL"
+                    )
+                    _patch_logger.info("=" * 80)
+                    return
+
+                # CRITICAL: Patch sync_apps on THIS instance using __dict__ to bypass method resolution
+                # This ensures that when handle calls self.sync_apps(), it calls our no-op
+                self.__dict__["sync_apps"] = types.MethodType(_noop_sync_apps, self)
+                _patch_logger.info(f"✓ Patched sync_apps on Command instance using __dict__: {id(self)}")
+
+                # Also ensure class-level patch is active
+                migrate_module.Command.sync_apps = types.MethodType(_noop_sync_apps, migrate_module.Command)
+
+                # CRITICAL: Patch MigrationLoader.load_disk() to prevent populating unmigrated_apps
+                # ROOT CAUSE FIX: unmigrated_apps is a SET that gets populated in load_disk()
+                # Line 266 in migrate.py: run_syncdb = options["run_syncdb"] and executor.loader.unmigrated_apps
+                # If unmigrated_apps is empty, sync_apps won't run even if run_syncdb=True
+                try:
+                    from django.db.migrations.loader import MigrationLoader
+
+                    if not hasattr(MigrationLoader.load_disk, "_patched_for_unmigrated"):
+                        _original_load_disk = MigrationLoader.load_disk
+
+                        def _patched_load_disk(self):
+                            """Patched load_disk that prevents populating unmigrated_apps - ROOT CAUSE FIX"""
+                            result = _original_load_disk(self)
+                            # Clear unmigrated_apps set after load_disk completes
+                            # This ensures sync_apps won't run even if run_syncdb=True
+                            if hasattr(self, "unmigrated_apps"):
+                                self.unmigrated_apps.clear()
+                                _patch_logger.info(
+                                    "✓ MigrationLoader.load_disk: Cleared unmigrated_apps (prevents sync_apps)"
+                                )
+                            return result
+
+                        _patched_load_disk._patched_for_unmigrated = True
+                        MigrationLoader.load_disk = _patched_load_disk
+                        _patch_logger.info("✓ Patched MigrationLoader.load_disk to clear unmigrated_apps")
+                except Exception as e:
+                    _patch_logger.warning(f"✗ Could not patch MigrationLoader.load_disk: {e}")
+                    import traceback
+
+                    _patch_logger.debug(traceback.format_exc())
+
+                # CRITICAL: Patch MigrationExecutor.__init__ to clear loader.unmigrated_apps set
+                # ROOT CAUSE FIX: Line 266 in migrate.py checks executor.loader.unmigrated_apps
+                # unmigrated_apps is a SET attribute, not a method. Empty set evaluates to False.
+                # If it's empty, sync_apps won't run even if run_syncdb=True
+                # This patch MUST be applied in handle() because executor is created inside handle()
+                try:
+                    from django.db.migrations.executor import MigrationExecutor
+
+                    if not hasattr(MigrationExecutor.__init__, "_patched_for_unmigrated_in_handle"):
+                        _original_executor_init = MigrationExecutor.__init__
+
+                        def _patched_executor_init(self, connection, progress_callback=None):
+                            _patch_logger.info("=" * 80)
+                            _patch_logger.info("✓ MigrationExecutor.__init__ (handle): CALLED!")
+                            _patch_logger.info("=" * 80)
+                            result = _original_executor_init(self, connection, progress_callback)
+                            # CRITICAL: Clear unmigrated_apps set - this is the ROOT CAUSE FIX
+                            # Line 266: run_syncdb = options["run_syncdb"] and executor.loader.unmigrated_apps
+                            # Empty set evaluates to False, so sync_apps won't run
+                            if hasattr(self, "loader") and hasattr(self.loader, "unmigrated_apps"):
+                                before_clear = len(self.loader.unmigrated_apps)
+                                self.loader.unmigrated_apps.clear()
+                                after_clear = len(self.loader.unmigrated_apps)
+                                _patch_logger.info(
+                                    f"✓ executor.loader.unmigrated_apps (handle): Cleared {before_clear} -> {after_clear} (prevents sync_apps)"
+                                )
+                                if before_clear > 0:
+                                    _patch_logger.info(
+                                        f"✓ unmigrated_apps before clear: {list(self.loader.unmigrated_apps)}"
+                                    )
+
+                                # CRITICAL: Also patch loader.load_disk to prevent repopulating unmigrated_apps
+                                if hasattr(self.loader, "load_disk"):
+                                    original_load_disk = self.loader.load_disk
+
+                                    def _patched_loader_load_disk():
+                                        """Patched load_disk that prevents repopulating unmigrated_apps"""
+                                        result = original_load_disk()
+                                        # Clear unmigrated_apps after load_disk completes
+                                        if hasattr(self.loader, "unmigrated_apps"):
+                                            before_load = len(self.loader.unmigrated_apps)
+                                            self.loader.unmigrated_apps.clear()
+                                            after_load = len(self.loader.unmigrated_apps)
+                                            _patch_logger.info(
+                                                f"✓ executor.loader.load_disk (handle): Cleared {before_load} -> {after_load} (prevents sync_apps)"
+                                            )
+                                        return result
+
+                                    self.loader.load_disk = _patched_loader_load_disk
+                                    _patch_logger.info(
+                                        "✓ Patched executor.loader.load_disk in handle to prevent repopulating unmigrated_apps"
+                                    )
+                            else:
+                                _patch_logger.warning("✗ executor.loader.unmigrated_apps not found!")
+                            return result
+
+                        _patched_executor_init._patched_for_unmigrated_in_handle = True
+                        MigrationExecutor.__init__ = _patched_executor_init
+                        _patch_logger.info(
+                            "✓ Patched MigrationExecutor.__init__ in handle to clear unmigrated_apps"
+                        )
+                except Exception as e:
+                    _patch_logger.warning(f"✗ Could not patch MigrationExecutor.__init__ in handle: {e}")
+                    import traceback
+
+                    _patch_logger.debug(traceback.format_exc())
+
+                # CRITICAL: Before calling original handle, ensure executor.loader.unmigrated_apps is empty
+                # We need to intercept executor creation and clear unmigrated_apps BEFORE line 266 checks it
+                # The executor is created inside handle(), so we need to patch MigrationExecutor.__init__
+                # to clear unmigrated_apps when the executor is created
+
+                # The patch above should handle this, but let's also ensure it's cleared right before
+                # the check at line 266 by intercepting the executor creation
+                try:
+                    # Call original handle - our MigrationExecutor.__init__ patch should clear unmigrated_apps
+                    # when the executor is created inside handle()
+                    _patch_logger.info(
+                        "✓ Command.handle: Calling original handle (executor will be created)"
+                    )
+                    result = _original_handle(self, *args, **options)
+                    _patch_logger.info("✓ Command.handle: Original handle completed")
+                    return result
+                except Exception as e:
+                    # If we get a table error, it means our patches didn't work properly
+                    # Log it and re-raise - we should fix the root cause, not suppress errors
+                    error_str = str(e).lower() if e else ""
+                    error_type = type(e).__name__
+                    is_table_error = (
+                        ("relation" in error_str and "does not exist" in error_str)
+                        or "undefinedtable" in error_type.lower()
+                        or ("programmingerror" in error_type.lower() and "relation" in error_str)
+                    )
+                    if is_table_error:
+                        _patch_logger.error(
+                            f"✗ Table error caught in handle patch - patches didn't prevent sync_apps: {error_str[:150]}"
+                        )
+                        _patch_logger.error(
+                            "✗ This indicates that run_syncdb=False or unmigrated_apps clearing didn't work"
+                        )
+                    raise
+                finally:
+                    # Restore original sync_apps on this instance (for cleanup)
+                    try:
+                        if original_sync_apps:
+                            self.__dict__["sync_apps"] = original_sync_apps
+                    except:
+                        pass
+
+            migrate_module.Command.handle = _patched_handle
+        except Exception as e:
+            _patch_logger.debug(f"Could not patch migrate_module.Command: {e}")
+            import traceback
+            _patch_logger.debug(traceback.format_exc())
 
     # CRITICAL: Also patch call_command to ensure run_syncdb=False
     # This ensures that even if Django creates Command instances directly, run_syncdb is False
@@ -795,23 +815,40 @@ if True:  # Always apply patches
 
     # APPROACH 2: Patch __init__ to patch sync_apps at instance level when Command is created
     # This ensures every new Command instance has the patched sync_apps
-    _original_init = migrate_module.Command.__init__
+    if migrate_module is not None:
+        try:
+            _original_init = migrate_module.Command.__init__
 
-    def _patched_init(self, *args, **kwargs):
-        """Patched __init__ that applies sync_apps patch to each new instance"""
-        result = _original_init(self, *args, **kwargs)
+            def _patched_init(self, *args, **kwargs):
+                """Patched __init__ that applies sync_apps patch to each new instance"""
+                result = _original_init(self, *args, **kwargs)
 
-        # Ensure sync_apps is patched on this instance (no-op version)
-        self.sync_apps = types.MethodType(_patched_sync_apps, self)
+                # Ensure sync_apps is patched on this instance (no-op version)
+                # Note: _patched_sync_apps is defined earlier in the file
+                if hasattr(migrate_module.Command, "_patched_sync_apps_func"):
+                    self.sync_apps = types.MethodType(migrate_module.Command._patched_sync_apps_func, self)
 
-        return result
+                return result
 
-    migrate_module.Command.__init__ = _patched_init
+            migrate_module.Command.__init__ = _patched_init
+        except Exception as e:
+            _patch_logger.debug(f"Could not patch Command.__init__ (approach 2): {e}")
 
 import os
 import time
 
 import pytest
+
+# Import test environment validation (lazy import to avoid Django dependency)
+def _get_test_env_validator():
+    """Lazy import of EnvironmentValidator"""
+    from tests.utils.test_environment_validation import EnvironmentValidator
+    return EnvironmentValidator
+
+def _get_validate_test_env():
+    """Lazy import of validate_test_environment"""
+    from tests.utils.test_environment_validation import validate_test_environment
+    return validate_test_environment
 
 
 # Lazy import Django modules - don't import at module level to allow patches to be applied first
@@ -1120,6 +1157,9 @@ def pytest_configure(config):
 
     _patch_logger.info("pytest_configure: All patches applied")
 
+    # Validate test environment configuration
+    _validate_test_environment_config(config)
+
 
 def pytest_sessionstart(session):
     """
@@ -1286,6 +1326,93 @@ def authenticated_client(api_client, test_user):
     return api_client
 
 
+def _validate_test_environment_config(config):
+    """
+    Validate test environment configuration.
+    Runs validation checks and reports errors/warnings.
+    """
+    # Skip validation if explicitly disabled
+    if os.getenv("SKIP_TEST_ENV_VALIDATION", "").lower() == "1":
+        _patch_logger.info("Skipping test environment validation (SKIP_TEST_ENV_VALIDATION=1)")
+        return
+
+    # Skip validation for Docker Compose runtime tests
+    if os.getenv("PYTEST_DOCKER_COMPOSE_RUNTIME") == "1":
+        _patch_logger.info("Skipping test environment validation for Docker Compose runtime tests")
+        return
+
+    _patch_logger.info("=" * 80)
+    _patch_logger.info("Validating test environment configuration...")
+    _patch_logger.info("=" * 80)
+
+    try:
+        # Use non-strict mode to avoid failing tests - warnings are logged
+        EnvironmentValidator = _get_test_env_validator()
+        validator = EnvironmentValidator(strict=False)
+        is_valid, errors, warnings = validator.validate_all()
+
+        if warnings:
+            _patch_logger.warning("Test environment validation warnings:")
+            for warning in warnings:
+                _patch_logger.warning(f"  ⚠ {warning}")
+
+        if errors:
+            _patch_logger.error("Test environment validation errors:")
+            for error in errors:
+                _patch_logger.error(f"  ✗ {error}")
+            _patch_logger.error(
+                "Some tests may fail due to missing or invalid configuration. "
+                "Set SKIP_TEST_ENV_VALIDATION=1 to skip validation."
+            )
+        else:
+            _patch_logger.info("✓ Test environment validation passed")
+
+        # Optionally validate connectivity (can be slow, so optional)
+        if os.getenv("VALIDATE_SERVICE_CONNECTIVITY", "").lower() == "1":
+            _patch_logger.info("Validating service connectivity...")
+            _validate_service_connectivity(validator)
+
+        _patch_logger.info("=" * 80)
+    except Exception as e:
+        _patch_logger.warning(f"Test environment validation failed with exception: {e}")
+        _patch_logger.warning("Continuing with tests - validation errors may cause test failures")
+
+
+def _validate_service_connectivity(validator):
+    """Validate connectivity to services"""
+    # Database connectivity
+    db_connected, db_error = validator.validate_database_connectivity(timeout=5)
+    if db_connected:
+        _patch_logger.info("✓ Database connectivity: OK")
+    else:
+        _patch_logger.warning(f"⚠ Database connectivity: FAILED - {db_error}")
+
+    # Redis connectivity
+    redis_connected, redis_error = validator.validate_redis_connectivity(timeout=5)
+    if redis_connected:
+        _patch_logger.info("✓ Redis connectivity: OK")
+    else:
+        _patch_logger.warning(f"⚠ Redis connectivity: FAILED - {redis_error}")
+
+    # Service URLs connectivity (with Docker auto-detection)
+    service_mappings = {
+        "DataContract": "DATACONTRACT_SERVICE_URL",
+        "DQ": "DQ_SERVICE_URL",
+        "Compliance": "COMPLIANCE_SERVICE_URL",
+        "Semantic": "SEMANTIC_SERVICE_URL",
+    }
+
+    for service_name, var_name in service_mappings.items():
+        service_url = validator.get_service_url(var_name)
+        if not service_url:
+            continue
+        connected, error = validator.validate_service_connectivity(service_url, timeout=5)
+        if connected:
+            _patch_logger.info(f"✓ {service_name} service connectivity: OK ({service_url})")
+        else:
+            _patch_logger.warning(f"⚠ {service_name} service connectivity: FAILED - {error} ({service_url})")
+
+
 def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) -> bool:
     """
     Wait for a service to become healthy.
@@ -1422,3 +1549,88 @@ def check_service_health(service_url: str, service_name: str, timeout: int = 10)
     """
     health_url = f"{service_url}/health"
     return wait_for_service_health(health_url, timeout=timeout)
+
+
+# Test Environment Validation Fixtures
+@pytest.fixture(scope="session")
+def test_env_validator():
+    """
+    Pytest fixture providing EnvironmentValidator instance.
+    Use this fixture to access environment validation in tests.
+    """
+    EnvironmentValidator = _get_test_env_validator()
+    return EnvironmentValidator(strict=False)
+
+
+@pytest.fixture(scope="session")
+def validate_test_env(test_env_validator):
+    """
+    Pytest fixture that validates test environment before tests run.
+    Skips tests if validation fails (unless SKIP_TEST_ENV_VALIDATION=1).
+    """
+    # Skip validation if explicitly disabled
+    if os.getenv("SKIP_TEST_ENV_VALIDATION", "").lower() == "1":
+        return
+
+    is_valid, errors, warnings = test_env_validator.validate_all()
+
+    if not is_valid and errors:
+        pytest.skip(
+            f"Test environment validation failed: {'; '.join(errors)}. "
+            "Set SKIP_TEST_ENV_VALIDATION=1 to skip validation."
+        )
+
+    return is_valid
+
+
+@pytest.fixture(scope="session")
+def validate_database_connectivity(test_env_validator):
+    """
+    Pytest fixture that validates database connectivity.
+    Skips tests if database is not accessible.
+    """
+    connected, error = test_env_validator.validate_database_connectivity(timeout=10)
+    if not connected:
+        pytest.skip(f"Database connectivity check failed: {error}")
+    return connected
+
+
+@pytest.fixture(scope="session")
+def validate_redis_connectivity(test_env_validator):
+    """
+    Pytest fixture that validates Redis connectivity.
+    Skips tests if Redis is not accessible.
+    """
+    connected, error = test_env_validator.validate_redis_connectivity(timeout=10)
+    if not connected:
+        pytest.skip(f"Redis connectivity check failed: {error}")
+    return connected
+
+
+@pytest.fixture(scope="session")
+def validate_service_connectivity(test_env_validator):
+    """
+    Pytest fixture that validates all service URLs are accessible.
+    Skips tests if services are not accessible.
+    Uses Docker auto-detection if running in Docker environment.
+    """
+    service_mappings = {
+        "DataContract": "DATACONTRACT_SERVICE_URL",
+        "DQ": "DQ_SERVICE_URL",
+        "Compliance": "COMPLIANCE_SERVICE_URL",
+        "Semantic": "SEMANTIC_SERVICE_URL",
+    }
+
+    failed_services = []
+    for service_name, var_name in service_mappings.items():
+        service_url = test_env_validator.get_service_url(var_name)
+        if not service_url:
+            continue
+        connected, error = test_env_validator.validate_service_connectivity(service_url, timeout=10)
+        if not connected:
+            failed_services.append(f"{service_name}: {error}")
+
+    if failed_services:
+        pytest.skip(f"Service connectivity check failed: {'; '.join(failed_services)}")
+
+    return True

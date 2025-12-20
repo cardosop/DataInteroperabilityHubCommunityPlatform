@@ -1,0 +1,39 @@
+# ODPS $ref Resolver Security Configuration
+#
+# This configuration file defines security settings for the ODPS $ref resolver,
+# which handles resolution of internal, local, and external references in ODPS documents.
+#
+# Configuration can be overridden via environment variables:
+# - ODPS_REFS_DIR: Additional directory to allow for local $ref resolution
+#
+# Security Features:
+# - Directory whitelist: Only allows local $ref resolution from whitelisted directories
+# - Path traversal prevention: Prevents accessing files outside whitelisted directories
+# - URL validation: Validates external $ref URLs (configured separately)
+
+# Allowed base directories for local $ref resolution
+# These directories are relative to the project root or can be absolute paths
+# Only files within these directories (or subdirectories) can be referenced via local $ref
+allowed_base_dirs:
+  - "./contracts/refs"
+  - "./odps-refs"
+
+# URL allowlist/denylist for external $ref resolution
+# Patterns can be:
+# - Full URLs: "https://example.com/schemas/"
+# - Domain patterns: "https://*.example.com"
+# - Host patterns: "example.com"
+# - Wildcard patterns: "https://*"
+#
+# Denylist takes precedence over allowlist.
+# If allowlist is empty, all URLs are allowed (unless in denylist).
+# If allowlist is not empty, URL must match at least one pattern.
+url_allowlist: []  # List of allowed URL patterns for external $ref
+url_denylist: []    # List of denied URL patterns for external $ref
+
+# Additional configuration options (for future use)
+# max_ref_size: 1048576  # Maximum size per $ref file (1MB in bytes)
+# max_total_size: 10485760  # Maximum total size for all resolved refs (10MB in bytes)
+# timeout_per_ref: 5  # Timeout per $ref fetch in seconds
+# timeout_total: 30   # Total timeout for all $ref resolution in seconds
+

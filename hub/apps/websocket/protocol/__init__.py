@@ -15,12 +15,14 @@ class WebSocketMessageType(str, Enum):
     # Client to server
     SUBSCRIBE = "subscribe"
     UNSUBSCRIBE = "unsubscribe"
+    LIST_SUBSCRIPTIONS = "list_subscriptions"
     PING = "ping"
 
     # Server to client
     EVENT = "event"
     SUBSCRIPTION_CONFIRMED = "subscription_confirmed"
     SUBSCRIPTION_ERROR = "subscription_error"
+    SUBSCRIPTIONS_LIST = "subscriptions_list"
     ERROR = "error"
     PONG = "pong"
 

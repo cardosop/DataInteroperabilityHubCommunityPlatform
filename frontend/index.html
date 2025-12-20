@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      // Fix for Vite _interopRequireDefault2 issue
+      // Inject interop helpers before any modules load
+      // These helpers are used by Vite's pre-bundled CommonJS dependencies
+      // Use IIFE to avoid polluting global scope and ensure helpers are available
+      (function() {
+        'use strict';
+        var helper = function(obj) {
+          return obj && obj.__esModule ? obj : { default: obj };
+        };
+        // Define on all global objects for maximum compatibility
+        var g = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : this;
+        if (g && !g._interopRequireDefault) {
+          g._interopRequireDefault = helper;
+          g._interopRequireDefault2 = helper;
+        }
+        if (typeof window !== 'undefined' && window && !window._interopRequireDefault) {
+          window._interopRequireDefault = helper;
+          window._interopRequireDefault2 = helper;
+        }
+        if (typeof globalThis !== 'undefined' && globalThis && !globalThis._interopRequireDefault) {
+          globalThis._interopRequireDefault = helper;
+          globalThis._interopRequireDefault2 = helper;
+        }
+        // For pre-bundled modules that reference bare identifiers in non-strict mode
+        // We need to make them available as bare identifiers
+        // This is tricky in strict mode (which ES modules use), so we rely on global object access
+        // The modules should reference window._interopRequireDefault2 or globalThis._interopRequireDefault2
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

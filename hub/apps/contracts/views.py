@@ -81,20 +81,20 @@ from .services import ContractService
         summary="List contracts",
         description="""
         List contracts with enhanced filtering and sorting.
-        
+
         **Filtering:**
         - `owner_email`: Filter by owner email (case-insensitive)
         - `owner_name`: Filter by owner name (case-insensitive partial match)
         - `tag`: Filter by tags (can specify multiple tags)
         - `quality_profile`: Filter by quality profile key
         - `compliance_regime`: Filter by compliance jurisdiction (e.g., GDPR, LGPD)
-        
+
         **Sorting:**
         - `ordering`: Comma-separated list of fields to sort by
         - Supported fields: `created_at`, `updated_at`, `quality_score`, `compliance_risk`
         - Prefix with `-` for descending order (e.g., `-created_at`)
         - Default: `-created_at` (newest first)
-        
+
         **Response includes computed fields:**
         - `owners`: Array of owner objects (name, email) from `info.owners`
         - `tags`: Array of tags from `info.tags`
@@ -203,7 +203,7 @@ from .services import ContractService
         summary="Retrieve contract",
         description="""
         Retrieve a contract by ID.
-        
+
         **Response includes all HubContract sections:**
         - `hub_contract_json`: Complete normalized HubContract with all sections
         - `owners`: Computed array of owners from `info.owners`
@@ -213,13 +213,13 @@ from .services import ContractService
         - `lifecycle_policy`: Computed lifecycle policy from `lifecycle`
         - `marketplace_policy`: Computed marketplace policy from `marketplace`
         - `schema_fields`: Computed array of schema fields with all properties
-        
+
         **Normalization Status:**
         - `NORMALIZED_OK`: Contract normalized successfully
         - `NORMALIZED_WITH_WARNINGS`: Normalized with warnings
         - `NORMALIZATION_FAILED`: Normalization failed
         - `NOT_NORMALIZED`: Not yet normalized
-        
+
         **Validation Status:**
         - `VALID`: Contract is valid
         - `INVALID`: Contract has errors
@@ -232,18 +232,18 @@ from .services import ContractService
         summary="Create contract",
         description="""
         Create a new contract from original contract content.
-        
+
         The contract will be automatically normalized to HubContract format.
         All sections (owners, tags, quality, compliance, lifecycle, marketplace) will be extracted
         from the original contract and stored in `hub_contract_json`.
-        
+
         **Supported Formats:**
         - JSON (original_format: "JSON")
         - YAML (original_format: "YAML")
-        
+
         **Supported Spec Types:**
         - ODCS (original_spec_type: "ODCS") - Open Data Contract Standard v3.0.2+
-        
+
         If `original_spec_type` is not provided, it will be auto-detected.
         Note: Only ODCS is supported. The Data Contract Specification (DCS) has been deprecated.
         """,
@@ -258,7 +258,7 @@ from .services import ContractService
         summary="Update contract",
         description="""
         Update a contract (partial update supported).
-        
+
         If `original_raw` is updated, the contract will be re-normalized.
         All sections will be re-extracted and stored in `hub_contract_json`.
         """,
@@ -296,7 +296,7 @@ class ContractViewSet(viewsets.ModelViewSet):
     pagination_class = ContractPageNumberPagination
     """
     ViewSet for contract management.
-    
+
     Tenant-scoped: users can only see/manage contracts in their tenant.
     """
     queryset = Contract.objects.all()
@@ -408,7 +408,7 @@ class ContractViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": e.message, "code": e.code, "details": e.details}, status=e.http_status
             )
-        except NotFoundError as e:
+        except ServiceNotFoundError as e:
             return Response(
                 {"error": e.message, "code": e.code, "details": e.details}, status=e.http_status
             )
@@ -1010,14 +1010,27 @@ class ContractViewSet(viewsets.ModelViewSet):
 
         # Build ordering list
         ordering_list = []
+        invalid_fields = []
+        # Valid database fields (in addition to computed fields in sort_mapping)
+        valid_db_fields = {'id', 'created_at', 'updated_at', 'status', 'version'}
+
         for field in order_fields:
+            field_name = field.lstrip('-')  # Remove leading minus for comparison
             if field in sort_mapping:
                 ordering_list.append(sort_mapping[field])
             elif field.startswith("-") and field[1:] in sort_mapping:
                 ordering_list.append(sort_mapping[field])
-            else:
-                # Default fallback
+            elif field_name in valid_db_fields:
+                # Allow valid database fields
                 ordering_list.append(field)
+            else:
+                # Track invalid fields
+                invalid_fields.append(field)
+
+        # If invalid fields were provided, raise FieldError to be caught by error handler
+        if invalid_fields:
+            from django.core.exceptions import FieldError
+            raise FieldError(f"Invalid ordering field(s): {', '.join(invalid_fields)}. Valid fields are: {', '.join(sorted(set(sort_mapping.keys()) | valid_db_fields))}")
 
         # Annotate queryset with computed fields for sorting (GAP-9.2.2)
         # Quality score: extract from hub_contract_json if available
@@ -1066,76 +1079,88 @@ class ContractViewSet(viewsets.ModelViewSet):
         - Optimized pagination
         - Performance optimizations
         """
-        # Get tenant ID for caching
-        tenant_id = None
-        if hasattr(request, "user") and request.user and hasattr(request.user, "tenant_id"):
-            tenant_id = str(request.user.tenant_id)
+        # Handle invalid ordering fields gracefully
+        from django.core.exceptions import FieldError
+        try:
+            # Get tenant ID for caching
+            tenant_id = None
+            if hasattr(request, "user") and request.user and hasattr(request.user, "tenant_id"):
+                tenant_id = str(request.user.tenant_id)
 
-        # Build query parameters dict for cache key
-        query_params = dict(request.query_params.items())
+            # Build query parameters dict for cache key
+            query_params = dict(request.query_params.items())
 
-        # Check cache for query results
-        if tenant_id:
-            cached_result = get_cached_query_result(query_params, tenant_id)
-            if cached_result:
-                results, total_count = cached_result
-                # Return cached results with pagination metadata
-                pagination_params = get_pagination_params(request)
-                page = pagination_params["page"]
-                page_size = pagination_params["page_size"]
+            # Check cache for query results
+            if tenant_id:
+                cached_result = get_cached_query_result(query_params, tenant_id)
+                if cached_result:
+                    results, total_count = cached_result
+                    # Return cached results with pagination metadata
+                    pagination_params = get_pagination_params(request)
+                    page = pagination_params["page"]
+                    page_size = pagination_params["page_size"]
 
-                # Calculate pagination metadata
-                start_idx = (page - 1) * page_size
-                end_idx = start_idx + page_size
-                paginated_results = results[start_idx:end_idx]
+                    # Calculate pagination metadata
+                    start_idx = (page - 1) * page_size
+                    end_idx = start_idx + page_size
+                    paginated_results = results[start_idx:end_idx]
 
+                    return Response(
+                        {
+                            "count": total_count,
+                            "page": page,
+                            "page_size": page_size,
+                            "total_pages": (total_count + page_size - 1) // page_size,
+                            "results": paginated_results,
+                            "_cached": True,
+                        }
+                    )
+
+            # Optimize queryset for pagination
+            queryset = self.filter_queryset(self.get_queryset())
+            queryset = optimize_queryset_for_pagination(queryset)
+
+            # Get pagination parameters
+            pagination_params = get_pagination_params(request)
+
+            # Paginate queryset
+            results, pagination_meta = paginate_queryset(
+                queryset,
+                page=pagination_params["page"],
+                page_size=pagination_params["page_size"],
+                max_page_size=pagination_params["max_page_size"],
+            )
+
+            # Serialize results
+            serializer = self.get_serializer(results, many=True)
+
+            # Cache query results if tenant_id is available
+            if tenant_id:
+                cache_query_result(query_params, tenant_id, serializer.data, pagination_meta["count"])
+
+            # Return paginated response
+            return Response(
+                {
+                    "count": pagination_meta["count"],
+                    "page": pagination_meta["page"],
+                    "page_size": pagination_meta["page_size"],
+                    "total_pages": pagination_meta["total_pages"],
+                    "has_next": pagination_meta["has_next"],
+                    "has_previous": pagination_meta["has_previous"],
+                    "next_page": pagination_meta.get("next_page"),
+                    "previous_page": pagination_meta.get("previous_page"),
+                    "results": serializer.data,
+                }
+            )
+        except FieldError as e:
+            # Handle invalid ordering fields gracefully
+            if 'ordering' in str(e).lower() or 'order' in str(e).lower():
                 return Response(
-                    {
-                        "count": total_count,
-                        "page": page,
-                        "page_size": page_size,
-                        "total_pages": (total_count + page_size - 1) // page_size,
-                        "results": paginated_results,
-                        "_cached": True,
-                    }
+                    {"error": f"Invalid ordering field: {str(e)}", "code": "INVALID_ORDERING"},
+                    status=status.HTTP_400_BAD_REQUEST
                 )
-
-        # Optimize queryset for pagination
-        queryset = self.filter_queryset(self.get_queryset())
-        queryset = optimize_queryset_for_pagination(queryset)
-
-        # Get pagination parameters
-        pagination_params = get_pagination_params(request)
-
-        # Paginate queryset
-        results, pagination_meta = paginate_queryset(
-            queryset,
-            page=pagination_params["page"],
-            page_size=pagination_params["page_size"],
-            max_page_size=pagination_params["max_page_size"],
-        )
-
-        # Serialize results
-        serializer = self.get_serializer(results, many=True)
-
-        # Cache query results if tenant_id is available
-        if tenant_id:
-            cache_query_result(query_params, tenant_id, serializer.data, pagination_meta["count"])
-
-        # Return paginated response
-        return Response(
-            {
-                "count": pagination_meta["count"],
-                "page": pagination_meta["page"],
-                "page_size": pagination_meta["page_size"],
-                "total_pages": pagination_meta["total_pages"],
-                "has_next": pagination_meta["has_next"],
-                "has_previous": pagination_meta["has_previous"],
-                "next_page": pagination_meta.get("next_page"),
-                "previous_page": pagination_meta.get("previous_page"),
-                "results": serializer.data,
-            }
-        )
+            # Re-raise other FieldErrors
+            raise
 
     def retrieve(self, request, *args, **kwargs):
         """
@@ -1220,17 +1245,17 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Validate contract",
         description="""
         Validate a contract using DataContract CLI.
-        
+
         **Validation Modes:**
         - **Synchronous** (default): Returns validation result immediately
         - **Asynchronous**: Creates a job and returns job ID (for large contracts)
-        
+
         **Validation Status:**
         - `VALID`: Contract is valid
         - `INVALID`: Contract has errors
         - `WARNING_ONLY`: Contract has warnings but no errors
         - `ERROR`: Validation error occurred
-        
+
         **Response includes:**
         - `validation_status`: Overall validation status
         - `errors`: Array of validation errors
@@ -1296,39 +1321,49 @@ class ContractViewSet(viewsets.ModelViewSet):
         if contract_size > sync_size_limit:
             use_async = True
 
+        # Try async validation if requested
         if use_async:
             # Create async validation job
-            job = create_job(
-                job_type=JobType.CONTRACT_VALIDATION,
-                resource_type="CONTRACT",
-                resource_id=str(contract.id),
-                tenant=contract.tenant,
-                created_by=request.user,
-                details_json={"contract_id": str(contract.id), "validation_type": "async"},
-                queue_name="default",
-            )
+            try:
+                job = create_job(
+                    job_type=JobType.CONTRACT_VALIDATION,
+                    resource_type="CONTRACT",
+                    resource_id=str(contract.id),
+                    tenant=contract.tenant,
+                    created_by=request.user,
+                    details_json={"contract_id": str(contract.id), "validation_type": "async"},
+                    queue_name="default",
+                )
 
-            # Log audit event
-            create_audit_event(
-                resource_type="CONTRACT",
-                action="CONTRACT_VALIDATION_STARTED",
-                actor_user=request.user,
-                tenant=contract.tenant,
-                resource_id=str(contract.id),
-                details={"job_id": str(job.id), "validation_type": "async"},
-                request=request,
-            )
+                # Log audit event
+                create_audit_event(
+                    resource_type="CONTRACT",
+                    action="CONTRACT_VALIDATION_STARTED",
+                    actor_user=request.user,
+                    tenant=contract.tenant,
+                    resource_id=str(contract.id),
+                    details={"job_id": str(job.id), "validation_type": "async"},
+                    request=request,
+                )
 
-            return Response(
-                {
-                    "job_id": str(job.id),
-                    "status": "pending",
-                    "message": "Validation job created. Poll /jobs/{job_id} for status.",
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
-        else:
-            # Synchronous validation
+                return Response(
+                    {
+                        "job_id": str(job.id),
+                        "status": "pending",
+                        "message": "Validation job created. Poll /jobs/{job_id} for status.",
+                    },
+                    status=status.HTTP_202_ACCEPTED,
+                )
+            except Exception as e:
+                # If async job creation fails, fall back to sync validation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to create async validation job: {e}. Falling back to sync validation.")
+                # Fall through to sync validation below
+                use_async = False
+
+        # Synchronous validation (default or fallback from async failure)
+        if not use_async:
             try:
                 cli_client = DataContractCLIClient()
 
@@ -1380,19 +1415,61 @@ class ContractViewSet(viewsets.ModelViewSet):
                     request=request,
                 )
 
-                return Response(
-                    {
-                        "validation_status": validation_status,
-                        "errors": errors,
-                        "warnings": warnings,
-                        "grouped_errors": grouped_errors,
-                        "cli_version": contract.cli_version,
-                        "validated_at": contract.last_validated_at.isoformat(),
+                # Build enhanced response with field-level details
+                response_data = {
+                    "validation_status": validation_status,
+                    "valid": validation_status in ["VALID", "WARNING_ONLY"],
+                    "errors": errors,
+                    "warnings": warnings,
+                    "grouped_errors": grouped_errors,
+                    "error_count": len(errors),
+                    "warning_count": len(warnings),
+                    "schema_compliance": {
+                        "status": "COMPLIANT" if validation_status == "VALID" else "NON_COMPLIANT",
+                        "details": "Schema validation passed" if validation_status == "VALID" else "Schema validation failed or has warnings"
                     },
+                    "normalization_status": contract.normalization_status,
+                    "normalization_compliant": contract.normalization_status in [
+                        "NORMALIZED_OK",
+                        "NORMALIZED_WITH_WARNINGS"
+                    ],
+                    "cli_version": contract.cli_version,
+                    "validated_at": contract.last_validated_at.isoformat(),
+                    "contract_id": str(contract.id),
+                }
+
+                # Add field-level error summary if errors exist
+                if errors:
+                    field_errors = {}
+                    for error in errors:
+                        field_path = error.get("path", "")
+                        if field_path:
+                            if field_path not in field_errors:
+                                field_errors[field_path] = []
+                            field_errors[field_path].append({
+                                "message": error.get("message", ""),
+                                "severity": error.get("severity", "ERROR"),
+                                "rule_id": error.get("rule_id", ""),
+                                "category": error.get("category", "unknown")
+                            })
+                    response_data["field_errors"] = field_errors
+
+                return Response(
+                    response_data,
                     status=status.HTTP_200_OK,
                 )
 
             except Exception as e:
+                # Check if error is from DataContract service (service unavailable)
+                error_str = str(e).lower()
+                is_service_error = (
+                    "datacontract service" in error_str
+                    or "service server error" in error_str
+                    or "service timeout" in error_str
+                    or "service error" in error_str
+                    or "connection" in error_str
+                )
+
                 # Mark validation as ERROR
                 contract.validation_status = ValidationStatus.ERROR
                 contract.validation_errors = [{"message": str(e), "severity": "ERROR"}]
@@ -1417,16 +1494,23 @@ class ContractViewSet(viewsets.ModelViewSet):
                     request=request,
                 )
 
+                # Return 503 for service unavailable, 500 for other errors
+                http_status = (
+                    status.HTTP_503_SERVICE_UNAVAILABLE
+                    if is_service_error
+                    else status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
                 return Response(
                     {"error": f"Validation failed: {str(e)}"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    status=http_status,
                 )
 
     @extend_schema(
         summary="Lint contract",
         description="""
         Lint a contract using DataContract CLI.
-        
+
         Returns linting issues and recommendations for improving the contract.
         """,
         responses={
@@ -1490,7 +1574,7 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Convert contract format",
         description="""
         Convert a contract between JSON and YAML formats.
-        
+
         **Supported Formats:**
         - `JSON`: Convert to JSON format
         - `YAML`: Convert to YAML format
@@ -1583,12 +1667,12 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Migrate contract",
         description="""
         Migrate contract to a new HubContract version.
-        
+
         **Migration Strategies:**
         - `ON_WRITE`: Migrate immediately and persist to database
         - `ON_READ`: Migrate in-memory only (lazy migration, not persisted)
         - `BACKGROUND`: Queue background job for migration
-        
+
         **Response:**
         - For `ON_WRITE` and `ON_READ`: Returns migrated contract
         - For `BACKGROUND`: Returns job ID to poll for status
@@ -1803,7 +1887,7 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Get field-level lineage",
         description="""
         Get lineage for a specific field in a contract.
-        
+
         Returns lineage information including input fields and transformations.
         """,
         parameters=[
@@ -1907,7 +1991,7 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Get model-level lineage",
         description="""
         Get lineage for a specific model in a contract.
-        
+
         Returns lineage information including model references and entries.
         """,
         parameters=[
@@ -1995,7 +2079,7 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Get contract-level lineage",
         description="""
         Get contract-level lineage including contract references.
-        
+
         Returns contract references and lineage entries.
         """,
         responses={
@@ -2057,7 +2141,7 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Get hierarchical lineage",
         description="""
         Get complete hierarchical lineage (contract, model, and field levels).
-        
+
         Returns full lineage traversal with all levels.
         """,
         parameters=[
@@ -2119,7 +2203,7 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Get lineage visualization",
         description="""
         Get lineage graph in various visualization formats.
-        
+
         Supports JSON (D3.js), DOT (Graphviz), and Mermaid formats.
         """,
         parameters=[
@@ -2200,17 +2284,17 @@ class ContractViewSet(viewsets.ModelViewSet):
         summary="Get impact analysis",
         description="""
         Analyze impact of changes to a contract, model, or field.
-        
+
         Performs reverse lineage traversal to find all resources that depend on
         the specified contract/model/field.
-        
+
         **Query Parameters:**
         - `depth`: Maximum traversal depth (default: 10)
         - `model_name`: Optional model name for model-level impact
         - `field_name`: Optional field name for field-level impact
         - `include_fields`: Include field-level dependencies (default: true)
         - `format`: Response format (json, csv, dot, mermaid, paths) (default: json)
-        
+
         **Response includes:**
         - Source contract/model/field information
         - Impact graph with all affected resources

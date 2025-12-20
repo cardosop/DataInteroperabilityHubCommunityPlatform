@@ -1,0 +1,179 @@
+/**
+ * Mobile-First Responsive CSS Utilities
+ *
+ * Base styles for mobile, enhanced for larger screens.
+ * All styles follow mobile-first approach.
+ */
+
+/* Base mobile styles (320px+) */
+* {
+  box-sizing: border-box;
+}
+
+/* Touch-friendly minimum sizes */
+button,
+a,
+input,
+select,
+textarea {
+  min-height: 44px; /* iOS minimum touch target */
+  min-width: 44px;
+}
+
+/* Mobile-first container */
+.container {
+  width: 100%;
+  padding: 16px;
+  margin: 0 auto;
+}
+
+/* Mobile-first typography */
+body {
+  font-size: 16px; /* Base font size for mobile */
+  line-height: 1.5;
+}
+
+/* Mobile-first spacing */
+.section {
+  padding: 16px 0;
+}
+
+/* Responsive images - mobile first */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Tablet styles (768px+) */
+@media (min-width: 768px) {
+  .container {
+    padding: 24px;
+    max-width: 1023px;
+  }
+
+  .section {
+    padding: 24px 0;
+  }
+
+  /* Larger touch targets on tablet */
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    min-height: 48px; /* Material Design minimum */
+  }
+}
+
+/* Desktop styles (1024px+) */
+@media (min-width: 1024px) {
+  .container {
+    padding: 32px;
+    max-width: 1280px;
+  }
+
+  .section {
+    padding: 32px 0;
+  }
+
+  /* Optimal line length for readability */
+  .container {
+    max-width: 75ch; /* 75 characters optimal for readability */
+  }
+}
+
+/* Large desktop styles (1280px+) */
+@media (min-width: 1280px) {
+  .container {
+    max-width: 1400px;
+  }
+}
+
+/* Utility classes for show/hide based on breakpoint */
+.mobile-only {
+  display: block;
+}
+
+.tablet-only,
+.desktop-only {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none;
+  }
+
+  .tablet-only {
+    display: block;
+  }
+}
+
+@media (min-width: 1024px) {
+  .tablet-only {
+    display: none;
+  }
+
+  .desktop-only {
+    display: block;
+  }
+}
+
+/* Responsive grid utilities */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr; /* Single column on mobile */
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr); /* 2 columns on tablet */
+    gap: 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr); /* 3 columns on desktop */
+    gap: 32px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .grid {
+    grid-template-columns: repeat(4, 1fr); /* 4 columns on large desktop */
+  }
+}
+
+/* Responsive flex utilities */
+.flex-responsive {
+  flex-direction: column; /* Stack on mobile */
+}
+
+@media (min-width: 768px) {
+  .flex-responsive {
+    flex-direction: row; /* Side-by-side on tablet+ */
+  }
+}
+
+/* Safe area insets for devices with notches */
+@supports (padding: max(0px)) {
+  .safe-area-top {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+
+  .safe-area-bottom {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .safe-area-left {
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+
+  .safe-area-right {
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+}
+

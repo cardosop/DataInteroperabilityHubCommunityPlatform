@@ -9,6 +9,11 @@ import time
 from typing import Dict, Any, Optional, Tuple
 from django.conf import settings
 
+from hub.apps.core.resilience.circuit_breaker import (
+    CircuitBreaker,
+    get_redis_client,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +21,7 @@ class ComplianceServiceClient:
     """
     Client for interacting with the Compliance service.
     """
-    
+
     def __init__(self):
         # In test environment, use localhost instead of service name
         default_url = 'http://compliance-service:8082'
@@ -29,7 +34,7 @@ class ComplianceServiceClient:
             import sys
             if 'pytest' in sys.modules or 'unittest' in sys.modules:
                 default_url = 'http://localhost:8082'
-        
+
         self.base_url = getattr(settings, 'COMPLIANCE_SERVICE_URL', default_url)
         self.timeout = getattr(settings, 'COMPLIANCE_SERVICE_TIMEOUT', 1800)  # 30 minutes default
         if not self.base_url.endswith('/'):
@@ -37,9 +42,29 @@ class ComplianceServiceClient:
         self.client = httpx.Client(base_url=self.base_url, timeout=self.timeout)
         self.max_retries = 2
         self.backoff_factor = 1
-    
+
+        # Initialize circuit breaker
+        self._circuit_breaker = CircuitBreaker(
+            service_name="compliance-service",
+            failure_threshold=5,
+            timeout_seconds=60,
+            success_threshold=2,
+            redis_client=get_redis_client()
+        )
+
     def _request_with_retry(self, method: str, endpoint: str, **kwargs) -> httpx.Response:
         """Helper to make HTTP requests with retry logic"""
+        # Add trace headers if available
+        from hub.apps.api.middleware.trace_propagation import get_trace_headers
+
+        trace_headers = get_trace_headers()
+        if trace_headers:
+            # Merge trace headers into existing headers
+            if 'headers' in kwargs:
+                kwargs['headers'].update(trace_headers)
+            else:
+                kwargs['headers'] = trace_headers
+
         for attempt in range(self.max_retries + 1):
             try:
                 response = self.client.request(method, endpoint, **kwargs)
@@ -64,7 +89,7 @@ class ComplianceServiceClient:
                     continue
                 raise
         raise Exception("Max retries exceeded for Compliance service.")
-    
+
     def health_check(self) -> Tuple[bool, str]:
         """Checks the health of the Compliance service"""
         try:
@@ -74,7 +99,7 @@ class ComplianceServiceClient:
         except Exception as e:
             logger.error(f"Compliance service health check failed: {e}")
             return False, "unknown"
-    
+
     def scan_file(
         self,
         file_content: bytes,
@@ -85,18 +110,33 @@ class ComplianceServiceClient:
     ) -> Dict[str, Any]:
         """
         Scan file for PII and compliance issues.
-        
+
         Args:
             file_content: File content as bytes
             file_format: File format (csv, json, parquet)
             scan_mode: Scan mode ('internal' or 'external' for scan-only)
             applicable_regulations: Optional list of regulations to check (e.g., ['GDPR', 'HIPAA'])
             contract: Optional Contract instance to extract compliance policy from (GAP-8.2.2)
-            
+
         Returns:
             Compliance scan result dictionary
         """
-        try:
+        # Define fallback response
+        def fallback_response(*args, **kwargs) -> Dict[str, Any]:
+            """Fallback response when circuit breaker is open or service fails."""
+            return {
+                "overall_status": "UNKNOWN",
+                "risk_level": "UNKNOWN",
+                "allowed_to_store": None,
+                "detected_categories": {},
+                "column_findings": [],
+                "regulation_mapping": {},
+                "error": "Compliance service unavailable (circuit breaker open)"
+            }
+
+        # Execute with circuit breaker protection
+        def execute_scan() -> Dict[str, Any]:
+            """Execute compliance scan operation."""
             # Extract compliance policy from contract if provided (GAP-8.2.2)
             effective_regulations = applicable_regulations or []
             targeted_categories = None
@@ -109,10 +149,10 @@ class ComplianceServiceClient:
                 if contract_jurisdictions:
                     # Merge with provided regulations (contract takes precedence)
                     effective_regulations = list(set(contract_jurisdictions + (applicable_regulations or [])))
-                
+
                 # Get targeted PII categories for focused detection
                 targeted_categories = ContractCompliancePolicyExtractor.get_targeted_pii_categories(contract)
-            
+
             # Prepare file for upload
             files = {
                 'file': (f'data.{file_format}', file_content, f'application/{file_format}')
@@ -126,7 +166,7 @@ class ComplianceServiceClient:
             if targeted_categories:
                 import json
                 data['targeted_categories'] = json.dumps(targeted_categories) if isinstance(targeted_categories, list) else targeted_categories
-            
+
             response = self._request_with_retry(
                 "POST",
                 "/scan-file",
@@ -134,15 +174,14 @@ class ComplianceServiceClient:
                 data=data
             )
             return response.json()
+
+        try:
+            result = self._circuit_breaker.call(
+                execute_scan,
+                fallback=fallback_response
+            )
+            return result
         except Exception as e:
             logger.error(f"Error scanning file with Compliance service: {e}")
-            return {
-                "overall_status": "UNKNOWN",
-                "risk_level": "UNKNOWN",
-                "allowed_to_store": None,
-                "detected_categories": {},
-                "column_findings": [],
-                "regulation_mapping": {},
-                "error": f"Failed to connect to Compliance service: {e}"
-            }
+            return fallback_response()
 

@@ -1,0 +1,241 @@
+import { Meta } from '@storybook/blocks'
+
+<Meta title="Guidelines/Component Usage Guidelines" />
+
+# Component Usage Guidelines
+
+This document provides comprehensive guidelines for using and developing components in the Data Interoperability Hub frontend.
+
+## Table of Contents
+
+1. [Component Development Standards](#component-development-standards)
+2. [Story Creation Guidelines](#story-creation-guidelines)
+3. [Accessibility Requirements](#accessibility-requirements)
+4. [Responsive Design](#responsive-design)
+5. [Testing in Storybook](#testing-in-storybook)
+6. [Best Practices](#best-practices)
+
+## Component Development Standards
+
+### Component Structure
+
+All components should follow this structure:
+
+```tsx
+/**
+ * Component Name
+ *
+ * Brief description of what the component does.
+ *
+ * @example
+ * ```tsx
+ * <ComponentName prop1="value1" prop2="value2" />
+ * ```
+ */
+export const ComponentName = ({ prop1, prop2 }: Props) => {
+  // Component implementation
+}
+```
+
+### Props Documentation
+
+- All props must be documented with TypeScript types
+- Use JSDoc comments for complex props
+- Provide default values where appropriate
+- Mark required props clearly
+
+### Naming Conventions
+
+- Component names: PascalCase (e.g., `UserProfile`)
+- File names: Match component name (e.g., `UserProfile.tsx`)
+- Story files: Component name + `.stories.tsx` (e.g., `UserProfile.stories.tsx`)
+- Story titles: Use forward slashes for grouping (e.g., `Components/UserProfile`)
+
+## Story Creation Guidelines
+
+### Story File Structure
+
+Every component should have a corresponding story file with:
+
+1. **Meta Configuration**
+   - Component title and description
+   - Autodocs enabled
+   - Comprehensive argTypes
+
+2. **Default Story**
+   - Shows the component in its default state
+   - Includes usage documentation
+
+3. **Variant Stories**
+   - Different states (loading, error, success)
+   - Different sizes (small, medium, large)
+   - Different configurations
+
+4. **Interactive Stories**
+   - Stories that demonstrate user interactions
+   - Stories with controls for all props
+
+### Story Naming
+
+- Use descriptive names: `Primary`, `WithError`, `LoadingState`
+- Avoid generic names: `Story1`, `Test`, `Example`
+- Group related stories: `Small`, `Medium`, `Large`
+
+### Story Documentation
+
+Each story should include:
+
+```tsx
+export const StoryName: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story: 'Clear description of what this story demonstrates.',
+      },
+    },
+  },
+}
+```
+
+## Accessibility Requirements
+
+### ARIA Attributes
+
+- Use semantic HTML elements
+- Add ARIA labels where needed
+- Ensure proper role attributes
+- Test with screen readers
+
+### Keyboard Navigation
+
+- All interactive elements must be keyboard accessible
+- Tab order should be logical
+- Focus indicators must be visible
+- Use Storybook's accessibility addon to test
+
+### Color Contrast
+
+- Minimum contrast ratio: 4.5:1 for normal text
+- Minimum contrast ratio: 3:1 for large text
+- Test with Storybook's accessibility addon
+
+### Testing Accessibility
+
+Use Storybook's accessibility addon to:
+
+1. Run automated accessibility checks
+2. Test keyboard navigation
+3. Verify ARIA attributes
+4. Check color contrast
+
+## Responsive Design
+
+### Breakpoints
+
+The application uses the following breakpoints:
+
+- **Mobile**: 320px - 767px
+- **Tablet**: 768px - 1023px
+- **Desktop**: 1024px+
+
+### Viewport Testing
+
+Always test components at multiple viewports:
+
+1. Create stories for each breakpoint
+2. Use Storybook's viewport addon
+3. Test touch interactions on mobile
+4. Verify layout doesn't break
+
+### Mobile-First Approach
+
+- Design for mobile first
+- Use progressive enhancement
+- Test on actual devices when possible
+- Use Storybook's mobile viewport
+
+## Testing in Storybook
+
+### Interactive Testing
+
+Use Storybook's controls to:
+
+- Test different prop combinations
+- Verify component behavior
+- Test edge cases
+- Validate prop types
+
+### Visual Testing
+
+- Use Chromatic for visual regression testing
+- Capture screenshots at different viewports
+- Test with different themes (light/dark)
+- Verify responsive layouts
+
+### Accessibility Testing
+
+- Run accessibility checks on every story
+- Test keyboard navigation
+- Verify screen reader compatibility
+- Check color contrast
+
+## Best Practices
+
+### Component Design
+
+1. **Single Responsibility**: Each component should do one thing well
+2. **Composition**: Build complex components from simple ones
+3. **Reusability**: Design components to be reusable
+4. **Consistency**: Follow design system patterns
+
+### Story Design
+
+1. **Coverage**: Create stories for all component states
+2. **Clarity**: Make stories self-documenting
+3. **Interactivity**: Use controls for dynamic testing
+4. **Documentation**: Include usage examples
+
+### Performance
+
+1. **Lazy Loading**: Use code splitting for large components
+2. **Memoization**: Memoize expensive computations
+3. **Optimization**: Profile components in Storybook
+4. **Bundle Size**: Monitor component bundle size
+
+### Documentation
+
+1. **Purpose**: Clearly document component purpose
+2. **Props**: Document all props with examples
+3. **Usage**: Provide usage examples
+4. **Accessibility**: Document accessibility features
+
+## Component Checklist
+
+Before considering a component complete:
+
+- [ ] Component has TypeScript types
+- [ ] All props are documented
+- [ ] Story file created with all variants
+- [ ] Accessibility tested
+- [ ] Responsive design tested
+- [ ] Interactive controls configured
+- [ ] Usage examples provided
+- [ ] Documentation complete
+- [ ] Visual regression tests added (if applicable)
+
+## Resources
+
+- [Storybook Documentation](https://storybook.js.org/docs)
+- [Material-UI Components](https://mui.com/components/)
+- [WCAG Guidelines](https://www.w3.org/WAI/WCAG21/quickref/)
+- [React TypeScript Cheatsheet](https://react-typescript-cheatsheet.netlify.app/)
+
+## Getting Help
+
+If you need help with component development:
+
+1. Check existing components for examples
+2. Review Storybook documentation
+3. Ask the team for code review
+4. Consult design system guidelines
+

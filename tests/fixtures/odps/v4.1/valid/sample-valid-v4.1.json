@@ -1,0 +1,60 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-v4.1",
+        "name": "Sample Data Product v4.1",
+        "description": "A sample valid ODPS 4.1 data product for testing purposes. This product demonstrates all required and optional fields for version 4.1."
+      },
+      "fi": {
+        "productID": "sample-product-v4.1",
+        "name": "Esimerkki datatuote v4.1",
+        "description": "Esimerkki kelvollisesta ODPS 4.1 datatuotteesta testausta varten."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/sample-product-v4.1"
+    },
+    "dataQuality": {
+      "qualityScore": 95,
+      "completeness": 0.98,
+      "accuracy": 0.97
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "basic",
+          "name": "Basic Plan",
+          "price": 9.99,
+          "currency": "USD"
+        },
+        {
+          "planID": "premium",
+          "name": "Premium Plan",
+          "price": 29.99,
+          "currency": "USD"
+        }
+      ],
+      "accessMethods": {
+        "api": {
+          "endpoint": "https://api.example.com/v1/products/sample-product-v4.1"
+        },
+        "download": {
+          "url": "https://download.example.com/products/sample-product-v4.1"
+        }
+      },
+      "paymentGateways": {
+        "stripe": {
+          "enabled": true,
+          "publicKey": "pk_test_example"
+        },
+        "paypal": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}
+

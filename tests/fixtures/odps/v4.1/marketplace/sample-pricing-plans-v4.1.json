@@ -1,0 +1,105 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "marketplace-pricing-product-v4.1",
+        "name": "Marketplace Product with Pricing Plans",
+        "description": "A comprehensive ODPS 4.1 sample demonstrating various pricing plan configurations including free, tiered, usage-based, and subscription models."
+      }
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "free",
+          "name": "Free Plan",
+          "description": "Free tier with basic access",
+          "price": 0,
+          "currency": "USD",
+          "billingPeriod": "monthly",
+          "features": [
+            "Basic API access",
+            "100 requests per day",
+            "Community support"
+          ]
+        },
+        {
+          "planID": "starter",
+          "name": "Starter Plan",
+          "description": "Entry-level paid plan",
+          "price": 9.99,
+          "currency": "USD",
+          "billingPeriod": "monthly",
+          "trialDays": 14,
+          "features": [
+            "1,000 requests per day",
+            "Email support",
+            "Basic analytics"
+          ]
+        },
+        {
+          "planID": "professional",
+          "name": "Professional Plan",
+          "description": "For professional users",
+          "price": 49.99,
+          "currency": "USD",
+          "billingPeriod": "monthly",
+          "features": [
+            "10,000 requests per day",
+            "Priority support",
+            "Advanced analytics",
+            "Custom integrations"
+          ]
+        },
+        {
+          "planID": "enterprise",
+          "name": "Enterprise Plan",
+          "description": "For large organizations",
+          "price": 299.99,
+          "currency": "USD",
+          "billingPeriod": "monthly",
+          "features": [
+            "Unlimited requests",
+            "24/7 dedicated support",
+            "Custom SLA",
+            "On-premise deployment option"
+          ]
+        },
+        {
+          "planID": "usage-based",
+          "name": "Usage-Based Plan",
+          "description": "Pay per API call",
+          "pricingModel": "usage-based",
+          "currency": "USD",
+          "unitPrice": 0.01,
+          "unit": "API call",
+          "minimumCharge": 10.00,
+          "features": [
+            "Pay only for what you use",
+            "No monthly commitment",
+            "Scalable pricing"
+          ]
+        },
+        {
+          "planID": "annual-discount",
+          "name": "Annual Subscription",
+          "description": "Annual plan with discount",
+          "price": 999.99,
+          "currency": "USD",
+          "billingPeriod": "annually",
+          "discount": {
+            "percentage": 20,
+            "description": "20% discount for annual subscription"
+          },
+          "features": [
+            "All Professional features",
+            "20% savings",
+            "Priority onboarding"
+          ]
+        }
+      ]
+    }
+  }
+}
+

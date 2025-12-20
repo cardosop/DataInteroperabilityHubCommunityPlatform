@@ -1,0 +1,22 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "multilingual-product-en-v4.1",
+        "name": "Multilingual Data Product - English",
+        "description": "A sample ODPS 4.1 data product with English language details only. This demonstrates single-language product documentation for English-speaking markets."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/multilingual-product-en"
+    },
+    "dataQuality": {
+      "qualityScore": 92,
+      "completeness": 0.95,
+      "accuracy": 0.94
+    }
+  }
+}
+

@@ -172,7 +172,9 @@ class SearchEngine:
             # Default to relevance
             queryset = queryset.order_by("-final_relevance", "-indexed_at")
         
-        # Get total count
+        # Optimize count query - use approximate count for large datasets
+        # For exact count, we can optimize by avoiding the count if not needed
+        # In production, consider using approximate counts for very large result sets
         total_count = queryset.count()
         
         # Pagination

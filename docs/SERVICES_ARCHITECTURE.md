@@ -656,6 +656,98 @@ Data Consumer (UI)
 
 ---
 
+## Service Layer Coordination
+
+### Service Layer Pattern
+
+All business logic is coordinated through service layer classes that extend `BaseService`:
+
+#### TransformationService
+- **Location**: `hub/apps/transformation/services.py`
+- **Responsibilities**:
+  - Coordinate pipeline execution with asset lifecycle
+  - Manage pipeline-to-asset relationships
+  - Handle pipeline result synchronization
+  - Validate pipeline compatibility with assets
+- **Integration**: Integrates with AssetCreationWorkflow, TransformationPipelineWorkflow
+
+#### AIService
+- **Location**: `hub/apps/ai/services.py`
+- **Responsibilities**:
+  - Coordinate ML operations with workflows
+  - Manage ML model lifecycle
+  - Handle ML result validation
+  - Coordinate schema matching with contract creation
+- **Integration**: Integrates with AssetCreationWorkflow, ContractCreationWorkflow
+
+#### SocialService
+- **Location**: `hub/apps/social/services.py`
+- **Responsibilities**:
+  - Coordinate ratings/reviews with asset updates
+  - Manage review moderation workflows
+  - Handle social feature events
+  - Coordinate activity feeds with asset operations
+- **Integration**: Integrates with SocialFeatureWorkflow, AssetUpdateWorkflow
+
+#### MarketplaceService (Enhanced)
+- **Location**: `hub/apps/marketplace/services.py`
+- **Responsibilities**:
+  - Coordinate publishing with transformation/quality
+  - Manage purchase workflows
+  - Handle pricing model validation
+  - Coordinate marketplace events with asset updates
+- **Integration**: Integrates with MarketplacePublishingWorkflow, TransformationPipelineWorkflow
+
+#### DataMeshService
+- **Location**: `hub/apps/mesh/services.py`
+- **Responsibilities**:
+  - Coordinate domain operations
+  - Manage domain-to-asset relationships
+  - Handle federated governance
+  - Coordinate mesh topology updates
+- **Integration**: Integrates with DataMeshWorkflow, AssetUpdateWorkflow
+
+### Service Communication Patterns
+
+Services communicate through:
+1. **Direct Service Calls**: For synchronous coordination
+2. **Event Bus**: For asynchronous coordination
+3. **Workflow Engine**: For multi-step orchestration
+
+### Service Dependencies
+
+```
+TransformationService
+  ├── AssetService (for asset updates)
+  ├── WorkflowEngine (for pipeline orchestration)
+  └── EventBus (for event publishing)
+
+AIService
+  ├── ContractService (for schema matching)
+  ├── AssetService (for asset updates)
+  ├── WorkflowEngine (for ML orchestration)
+  └── EventBus (for event publishing)
+
+SocialService
+  ├── AssetService (for quality score updates)
+  ├── WorkflowEngine (for moderation orchestration)
+  └── EventBus (for event publishing)
+
+MarketplaceService
+  ├── TransformationService (for pipeline validation)
+  ├── AssetService (for asset updates)
+  ├── WorkflowEngine (for publishing orchestration)
+  └── EventBus (for event publishing)
+
+DataMeshService
+  ├── AssetService (for ownership updates)
+  ├── GovernanceService (for policy application)
+  ├── WorkflowEngine (for domain orchestration)
+  └── EventBus (for event publishing)
+```
+
+---
+
 ## Deployment Architecture
 
 ### Development Environment

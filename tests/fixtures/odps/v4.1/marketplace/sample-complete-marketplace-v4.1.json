@@ -1,0 +1,51 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "complete-marketplace-product-v4.1",
+        "name": "Complete Marketplace Product",
+        "description": "A comprehensive ODPS 4.1 sample demonstrating all marketplace features including pricing plans, access methods, and payment gateways together."
+      }
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "basic",
+          "name": "Basic Plan",
+          "price": 9.99,
+          "currency": "USD",
+          "billingPeriod": "monthly"
+        },
+        {
+          "planID": "premium",
+          "name": "Premium Plan",
+          "price": 29.99,
+          "currency": "USD",
+          "billingPeriod": "monthly"
+        }
+      ],
+      "accessMethods": {
+        "api": {
+          "endpoint": "https://api.example.com/v1/products/complete-marketplace-product",
+          "version": "v1"
+        },
+        "download": {
+          "url": "https://download.example.com/products/complete-marketplace-product",
+          "format": "zip"
+        }
+      },
+      "paymentGateways": {
+        "stripe": {
+          "enabled": true,
+          "publicKey": "pk_test_example"
+        },
+        "paypal": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}
+

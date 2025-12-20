@@ -38,6 +38,12 @@ flags:
     paths:
       - tests/e2e/
     carryforward: true
+  frontend:
+    paths:
+      - frontend/src/
+    carryforward: true
+    target: 80%
+    threshold: 1%
 
 comment:
   layout: "reach, diff, flags, files, footer"

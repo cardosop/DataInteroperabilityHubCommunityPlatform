@@ -16,20 +16,20 @@ class FileInitSerializer(serializers.Serializer):
         default="browser",
         help_text="Upload method: browser or sdk"
     )
-    
+
     def validate(self, data):
         """Validate file size and type"""
         size = data['size']
         upload_method = data.get('upload_method', 'browser')
         name = data['name']
         content_type = data.get('content_type')
-        
+
         # Validate file size
         validate_file_size(size, upload_method)
-        
+
         # Validate file type
         validate_file_type(name, content_type)
-        
+
         return data
 
 
@@ -41,6 +41,7 @@ class FileInitResponseSerializer(serializers.Serializer):
     chunk_size = serializers.IntegerField(required=False, help_text="Recommended chunk size for multipart upload")
     chunk_count = serializers.IntegerField(required=False, help_text="Number of chunks for multipart upload")
     requires_multipart = serializers.BooleanField(help_text="Whether multipart upload is required")
+    upload_id = serializers.CharField(required=False, help_text="Multipart upload ID (for multipart uploads only)")
 
 
 class FileCompleteSerializer(serializers.Serializer):
@@ -58,7 +59,7 @@ class FileCompleteSerializer(serializers.Serializer):
 
 class FileSerializer(serializers.ModelSerializer):
     """Serializer for File model"""
-    
+
     class Meta:
         model = File
         fields = [

@@ -1,0 +1,2 @@
+export { TenantAdminPage } from './TenantAdminPage'
+

@@ -1,0 +1,5 @@
+# Contract Definition
+# This file is referenced by local $ref in ODPS files
+
+contractURL: "https://example.com/contracts/sample-product-v2.9"
+

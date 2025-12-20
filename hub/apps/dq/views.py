@@ -3,13 +3,14 @@ DQ Views
 
 REST API views for DQ run management.
 """
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from drf_spectacular.utils import extend_schema, inline_serializer, OpenApiResponse
 from django.db import transaction
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 from .models import DQRun, DQRunStatus, DQEngine
 from .serializers import DQRunSerializer, DQRunCreateSerializer
@@ -52,18 +53,52 @@ class DQRunViewSet(viewsets.ModelViewSet):
         return True
     
     def get_queryset(self):
-        """Filter queryset based on user permissions"""
+        """Filter queryset based on user permissions and query parameters"""
         user = self.request.user
         
         # Platform admins can see all DQ runs
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return DQRun.objects.all()
+            queryset = DQRun.objects.all()
+        else:
+            # Regular users can only see DQ runs in their tenant
+            if hasattr(user, "tenant") and user.tenant:
+                queryset = DQRun.objects.filter(tenant=user.tenant)
+            else:
+                return DQRun.objects.none()
         
-        # Regular users can only see DQ runs in their tenant
-        if hasattr(user, "tenant") and user.tenant:
-            return DQRun.objects.filter(tenant=user.tenant)
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
         
-        return DQRun.objects.none()
+        # Filter by dataset_id
+        dataset_id = self.request.query_params.get('dataset_id')
+        if dataset_id:
+            try:
+                queryset = queryset.filter(dataset_id=dataset_id)
+            except ValueError:
+                # Invalid UUID format
+                pass
+        
+        # Filter by date range
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        
+        if date_from:
+            try:
+                date_from_dt = timezone.make_aware(datetime.fromisoformat(date_from.replace('Z', '+00:00')))
+                queryset = queryset.filter(created_at__gte=date_from_dt)
+            except (ValueError, AttributeError):
+                pass
+        
+        if date_to:
+            try:
+                date_to_dt = timezone.make_aware(datetime.fromisoformat(date_to.replace('Z', '+00:00')))
+                queryset = queryset.filter(created_at__lte=date_to_dt)
+            except (ValueError, AttributeError):
+                pass
+        
+        return queryset.order_by('-created_at')
     
     @transaction.atomic
     def create(self, request):
@@ -244,6 +279,210 @@ class DQRunViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         """Retrieve DQ run by ID"""
         return super().retrieve(request, *args, **kwargs)
+    
+    @extend_schema(
+        operation_id='get_dq_run_results',
+        responses={
+            200: inline_serializer(
+                name='DQRunResultsResponse',
+                fields={
+                    'dq_run_id': serializers.UUIDField(),
+                    'overall_status': serializers.CharField(),
+                    'quality_score': serializers.FloatField(allow_null=True),
+                    'score_breakdown': serializers.DictField(),
+                    'checks': serializers.ListField(),
+                    'check_details': serializers.ListField(),
+                    'trend_analysis': serializers.DictField(allow_null=True),
+                    'anomalies': serializers.ListField(),
+                    'recommendations': serializers.ListField(),
+                    'engine_type': serializers.CharField(),
+                    'engine_version': serializers.CharField(allow_null=True),
+                    'profile_key': serializers.CharField(),
+                    'metadata': serializers.DictField(),
+                    'started_at': serializers.DateTimeField(allow_null=True),
+                    'completed_at': serializers.DateTimeField(allow_null=True)
+                }
+            ),
+            404: OpenApiResponse(description='DQ run not found')
+        },
+        tags=['Data Quality']
+    )
+    @action(detail=True, methods=['get'], url_path='results')
+    def results(self, request, id=None):
+        """
+        Get enhanced DQ run results with detailed check information.
+        
+        GET /api/v1/dq/dq-runs/{id}/results/
+        
+        Returns detailed DQ results including:
+        - Detailed check results with pass/fail status
+        - Quality score breakdown by check category
+        - Trend analysis (if available)
+        - Anomaly detection results (if available)
+        - Recommendations for improvement
+        """
+        dq_run = self.get_object()
+        
+        # Extract data from DQ run
+        checks = dq_run.checks_json or []
+        details = dq_run.details_json or {}
+        metadata = details.get('metadata', {})
+        
+        # Build check details with enhanced information
+        check_details = []
+        passed_checks = 0
+        failed_checks = 0
+        warning_checks = 0
+        
+        for check in checks:
+            check_name = check.get('name', 'Unknown Check')
+            check_type = check.get('type', 'unknown')
+            check_status = check.get('status', 'UNKNOWN')
+            check_result = check.get('result', {})
+            
+            # Count checks by status
+            if check_status == 'PASS':
+                passed_checks += 1
+            elif check_status == 'FAIL':
+                failed_checks += 1
+            elif check_status == 'WARN':
+                warning_checks += 1
+            
+            # Build detailed check information
+            check_detail = {
+                'name': check_name,
+                'type': check_type,
+                'status': check_status,
+                'result': check_result,
+                'expectation': check.get('expectation'),
+                'observed_value': check_result.get('observed_value'),
+                'expected_value': check_result.get('expected_value'),
+                'message': check_result.get('message'),
+                'severity': 'HIGH' if check_status == 'FAIL' else 'MEDIUM' if check_status == 'WARN' else 'LOW'
+            }
+            check_details.append(check_detail)
+        
+        # Calculate quality score breakdown
+        total_checks = len(checks) if checks else 1
+        score_breakdown = {
+            'total_checks': total_checks,
+            'passed_checks': passed_checks,
+            'failed_checks': failed_checks,
+            'warning_checks': warning_checks,
+            'pass_rate': passed_checks / total_checks if total_checks > 0 else 0,
+            'overall_score': dq_run.quality_score or 0.0,
+            'by_category': {}
+        }
+        
+        # Group checks by category/type
+        for check in checks:
+            check_type = check.get('type', 'unknown')
+            if check_type not in score_breakdown['by_category']:
+                score_breakdown['by_category'][check_type] = {
+                    'total': 0,
+                    'passed': 0,
+                    'failed': 0,
+                    'warnings': 0
+                }
+            score_breakdown['by_category'][check_type]['total'] += 1
+            if check.get('status') == 'PASS':
+                score_breakdown['by_category'][check_type]['passed'] += 1
+            elif check.get('status') == 'FAIL':
+                score_breakdown['by_category'][check_type]['failed'] += 1
+            elif check.get('status') == 'WARN':
+                score_breakdown['by_category'][check_type]['warnings'] += 1
+        
+        # Get trend analysis (if available from DQAnomaly or DQTrend models)
+        trend_analysis = None
+        try:
+            from .models import DQTrend
+            # Get latest trend for this asset/dataset
+            if dq_run.asset:
+                trend = DQTrend.objects.filter(
+                    tenant=dq_run.tenant,
+                    asset=dq_run.asset,
+                    metric_type='quality_score'
+                ).order_by('-created_at').first()
+                
+                if trend:
+                    trend_analysis = {
+                        'direction': trend.direction,
+                        'change_percentage': trend.change_percentage,
+                        'previous_value': trend.previous_value,
+                        'current_value': trend.current_value,
+                        'period_days': trend.period_days,
+                        'created_at': trend.created_at.isoformat()
+                    }
+        except Exception:
+            # Trend analysis not available
+            pass
+        
+        # Get anomalies (if available)
+        anomalies = []
+        try:
+            from .models import DQAnomaly
+            anomaly_queryset = DQAnomaly.objects.filter(
+                tenant=dq_run.tenant,
+                dq_run=dq_run
+            ).order_by('-severity', '-created_at')
+            
+            for anomaly in anomaly_queryset:
+                anomalies.append({
+                    'metric_type': anomaly.metric_type,
+                    'expected_value': float(anomaly.expected_value),
+                    'actual_value': float(anomaly.actual_value),
+                    'deviation': float(anomaly.deviation),
+                    'severity': anomaly.severity,
+                    'detected_at': anomaly.created_at.isoformat()
+                })
+        except Exception:
+            # Anomaly detection not available
+            pass
+        
+        # Generate recommendations based on failed checks
+        recommendations = []
+        for check in checks:
+            if check.get('status') == 'FAIL':
+                check_name = check.get('name', 'Unknown')
+                check_type = check.get('type', 'unknown')
+                message = check.get('result', {}).get('message', '')
+                
+                recommendations.append({
+                    'check_name': check_name,
+                    'check_type': check_type,
+                    'issue': message,
+                    'priority': 'HIGH',
+                    'suggestion': f'Review and fix {check_type} check: {check_name}'
+                })
+        
+        # Log audit event
+        create_audit_event(
+            resource_type="DQ_RUN",
+            action="RESULTS_ACCESSED",
+            actor_user=request.user,
+            tenant=dq_run.tenant,
+            resource_id=str(dq_run.id),
+            details={},
+            request=request
+        )
+        
+        return Response({
+            'dq_run_id': str(dq_run.id),
+            'overall_status': dq_run.overall_status,
+            'quality_score': dq_run.quality_score,
+            'score_breakdown': score_breakdown,
+            'checks': checks,
+            'check_details': check_details,
+            'trend_analysis': trend_analysis,
+            'anomalies': anomalies,
+            'recommendations': recommendations,
+            'engine_type': dq_run.engine,
+            'engine_version': details.get('engine_version'),
+            'profile_key': dq_run.profile_key,
+            'metadata': metadata,
+            'started_at': dq_run.started_at.isoformat() if dq_run.started_at else None,
+            'completed_at': dq_run.completed_at.isoformat() if dq_run.completed_at else None
+        }, status=status.HTTP_200_OK)
 
 
 def execute_dq_run(dq_run_id: str) -> None:

@@ -45,3 +45,14 @@ repos:
         args: ['-c', '.bandit', '-r', 'hub/', 'services/']
         exclude: ^(migrations/|tests/|venv/|\.venv/)
 
+  - repo: local
+    hooks:
+      - id: validate-odps-schemas
+        name: Validate ODPS Schema Files
+        entry: python scripts/validate_odps_schemas.py --strict
+        language: system
+        types: [file]
+        files: ^hub/apps/contracts/schemas/odps/.*\.json$
+        pass_filenames: false
+        always_run: true
+

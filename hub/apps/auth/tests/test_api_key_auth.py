@@ -135,6 +135,57 @@ class APIKeyAuthenticationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data["results"]), 1)
     
+    def test_list_api_keys_pagination(self):
+        """Test API keys list pagination"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Create multiple API keys
+        for i in range(15):
+            plaintext_key = APIKey.generate_key()
+            key_hash = APIKey.hash_key(plaintext_key)
+            APIKey.objects.create(
+                tenant=self.tenant,
+                user=self.user,
+                key_hash=key_hash,
+                name=f"Test API Key {i}",
+                scopes=["assets:read"]
+            )
+        
+        # Test default pagination (page 1, page_size 50)
+        response = self.client.get("/api/v1/auth/api-keys/")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("count", response.data)
+        self.assertIn("page", response.data)
+        self.assertIn("page_size", response.data)
+        self.assertIn("total_pages", response.data)
+        self.assertIn("next", response.data)
+        self.assertIn("previous", response.data)
+        self.assertIn("results", response.data)
+        self.assertGreaterEqual(response.data["count"], 16)  # 15 new + 1 from setUp
+        self.assertEqual(response.data["page"], 1)
+        self.assertEqual(response.data["page_size"], 50)
+        
+        # Test custom page size
+        response = self.client.get("/api/v1/auth/api-keys/?page_size=10")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["page_size"], 10)
+        self.assertLessEqual(len(response.data["results"]), 10)
+        
+        # Test page 2
+        response = self.client.get("/api/v1/auth/api-keys/?page=2&page_size=10")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["page"], 2)
+        self.assertLessEqual(len(response.data["results"]), 10)
+        
+        # Test max page size limit (should be capped at 100)
+        response = self.client.get("/api/v1/auth/api-keys/?page_size=200")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertLessEqual(response.data["page_size"], 100)
+    
     def test_revoke_api_key(self):
         """Test API key revocation"""
         self.client.force_authenticate(user=self.user)

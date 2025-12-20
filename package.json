@@ -11,7 +11,8 @@
     "format": "prettier --write .",
     "test": "jest",
     "build": "tsc",
-    "generate-sdk": "openapi-generator-cli generate -i api/openapi-hub-v1.yaml -g typescript-axios -o sdk/typescript"
+    "generate-sdk": "openapi-generator-cli generate -i api/openapi-hub-v1.yaml -g typescript-axios -o sdk/typescript",
+    "prepare": "husky"
   },
   "dependencies": {
     "axios": "^1.6.0"
@@ -39,4 +40,3 @@
   "author": "",
   "license": "UNLICENSED"
 }
-

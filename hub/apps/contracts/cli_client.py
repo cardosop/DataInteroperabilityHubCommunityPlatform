@@ -11,6 +11,11 @@ from django.core.cache import cache
 from django.utils import timezone
 import structlog
 
+from hub.apps.core.resilience.circuit_breaker import (
+    CircuitBreaker,
+    get_redis_client,
+)
+
 logger = structlog.get_logger(__name__)
 
 # Default timeout for CLI operations
@@ -22,10 +27,10 @@ ASYNC_TIMEOUT = 300  # For asynchronous validation (via jobs)
 class DataContractCLIClient:
     """
     Client for DataContract CLI service.
-    
+
     Handles validation, linting, and conversion operations.
     """
-    
+
     def __init__(self):
         """Initialize client with service URL from settings"""
         import os
@@ -50,7 +55,7 @@ class DataContractCLIClient:
             except Exception:
                 # Default to standard port
                 default_url = 'http://localhost:8080'
-        
+
         # Support both variable names for compatibility
         self.base_url = getattr(
             settings,
@@ -62,7 +67,16 @@ class DataContractCLIClient:
             )
         )
         self.timeout = getattr(settings, 'DATACONTRACT_SERVICE_TIMEOUT', DEFAULT_TIMEOUT)
-    
+
+        # Initialize circuit breaker with 30-second timeout
+        self._circuit_breaker = CircuitBreaker(
+            service_name="datacontract-service",
+            failure_threshold=5,
+            timeout_seconds=30,  # 30 seconds as specified
+            success_threshold=2,
+            redis_client=get_redis_client()
+        )
+
     def _make_request(
         self,
         endpoint: str,
@@ -72,25 +86,25 @@ class DataContractCLIClient:
     ) -> Dict[str, Any]:
         """
         Make HTTP request to DataContract service with retry logic.
-        
+
         Args:
             endpoint: API endpoint (e.g., '/validate')
             data: Request payload
             timeout: Request timeout in seconds
             max_retries: Maximum number of retries for transient failures
-        
+
         Returns:
             Response JSON as dictionary
-        
+
         Raises:
             Exception: On HTTP errors or timeout after retries
         """
         url = f"{self.base_url}{endpoint}"
         timeout = timeout or self.timeout
-        
+
         # Retry logic with exponential backoff
         backoff_delays = [1, 3]  # 1s, 3s
-        
+
         for attempt in range(max_retries + 1):
             try:
                 with httpx.Client(timeout=timeout) as client:
@@ -149,9 +163,9 @@ class DataContractCLIClient:
                     continue
                 logger.error("datacontract_service_error", endpoint=endpoint, error=str(e))
                 raise Exception(f"DataContract service error: {str(e)}") from e
-        
+
         raise Exception(f"DataContract service failed after {max_retries} retries")
-    
+
     def _compute_contract_hash(
         self,
         raw_contract: str,
@@ -159,17 +173,17 @@ class DataContractCLIClient:
     ) -> str:
         """
         Compute hash for contract caching.
-        
+
         Args:
             raw_contract: Raw contract content
             format: Contract format (JSON or YAML)
-        
+
         Returns:
             SHA-256 hash as hex string
         """
         content = f"{format}:{raw_contract}".encode('utf-8')
         return hashlib.sha256(content).hexdigest()
-    
+
     def _get_cache_key(
         self,
         contract_hash: str,
@@ -178,7 +192,7 @@ class DataContractCLIClient:
     ) -> str:
         """Generate cache key for validation result"""
         return f"datacontract:{operation}:{contract_hash}:{cli_version}"
-    
+
     def validate(
         self,
         raw_contract: str,
@@ -189,20 +203,20 @@ class DataContractCLIClient:
     ) -> Dict[str, Any]:
         """
         Validate a contract.
-        
+
         Args:
             raw_contract: Raw contract content
             format: Contract format (JSON or YAML)
             tenant_id: Tenant ID for caching
             use_cache: Whether to use cached results
             timeout: Request timeout in seconds
-        
+
         Returns:
             Validation result with status, issues, cli_version
         """
         # Compute contract hash
         contract_hash = self._compute_contract_hash(raw_contract, format)
-        
+
         # Check cache if enabled
         if use_cache:
             # Get CLI version first (for cache key)
@@ -216,25 +230,52 @@ class DataContractCLIClient:
                     return cached_result
             except Exception:
                 pass  # Continue with validation if cache check fails
-        
-        # Make validation request
-        request_data = {
-            "raw_contract": raw_contract,
-            "format": format.lower(),
-            "timeout": timeout or SYNC_TIMEOUT,
-            "tenant_id": tenant_id,
-            "use_cache": use_cache
-        }
-        
-        result = self._make_request("/validate", request_data, timeout=timeout or SYNC_TIMEOUT)
-        
-        # Cache result if enabled
-        if use_cache and 'cli_version' in result:
-            cache_key = self._get_cache_key(contract_hash, result['cli_version'], 'validate')
-            cache.set(cache_key, result, timeout=3600)  # Cache for 1 hour
-        
-        return result
-    
+
+        # Define fallback response
+        def fallback_response(*args, **kwargs) -> Dict[str, Any]:
+            """Fallback response when circuit breaker is open or service fails."""
+            return {
+                "validation_status": "ERROR",
+                "issues": [],
+                "cli_version": "unknown",
+                "error": "DataContract service unavailable (circuit breaker open)"
+            }
+
+        # Execute with circuit breaker protection
+        def execute_validation() -> Dict[str, Any]:
+            """Execute validation operation."""
+            # Make validation request
+            request_data = {
+                "raw_contract": raw_contract,
+                "format": format.lower(),
+                "timeout": timeout or SYNC_TIMEOUT,
+                "tenant_id": tenant_id,
+                "use_cache": use_cache
+            }
+
+            result = self._make_request("/validate", request_data, timeout=timeout or SYNC_TIMEOUT)
+
+            # Cache result if enabled
+            if use_cache and 'cli_version' in result:
+                cache_key = self._get_cache_key(contract_hash, result['cli_version'], 'validate')
+                cache.set(cache_key, result, timeout=3600)  # Cache for 1 hour
+
+            return result
+
+        try:
+            result = self._circuit_breaker.call(
+                execute_validation,
+                fallback=fallback_response
+            )
+            return result
+        except Exception as e:
+            logger.error(
+                "datacontract_validation_error",
+                error=str(e),
+                endpoint="/validate"
+            )
+            return fallback_response()
+
     def lint(
         self,
         raw_contract: str,
@@ -243,12 +284,12 @@ class DataContractCLIClient:
     ) -> Dict[str, Any]:
         """
         Lint a contract.
-        
+
         Args:
             raw_contract: Raw contract content
             format: Contract format (JSON or YAML)
             timeout: Request timeout in seconds
-        
+
         Returns:
             Linting result with issues
         """
@@ -257,9 +298,9 @@ class DataContractCLIClient:
             "format": format.lower(),
             "timeout": timeout or SYNC_TIMEOUT
         }
-        
+
         return self._make_request("/lint", request_data, timeout=timeout or SYNC_TIMEOUT)
-    
+
     def convert(
         self,
         raw_contract: str,
@@ -269,13 +310,13 @@ class DataContractCLIClient:
     ) -> Dict[str, Any]:
         """
         Convert a contract between formats.
-        
+
         Args:
             raw_contract: Raw contract content
             source_format: Source format (JSON or YAML)
             target_format: Target format (JSON or YAML)
             timeout: Request timeout in seconds
-        
+
         Returns:
             Conversion result with converted contract
         """
@@ -285,13 +326,13 @@ class DataContractCLIClient:
             "target_format": target_format.lower(),
             "timeout": timeout or SYNC_TIMEOUT
         }
-        
+
         return self._make_request("/convert", request_data, timeout=timeout or SYNC_TIMEOUT)
-    
+
     def health_check(self) -> Dict[str, Any]:
         """
         Check service health and get CLI version.
-        
+
         Returns:
             Health status and CLI version
         """
@@ -311,19 +352,19 @@ def interpret_validation_status(
 ) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Interpret validation result into status and structured errors/warnings.
-    
+
     Args:
         validation_result: Result from DataContract CLI service
-    
+
     Returns:
         Tuple of (validation_status, errors, warnings)
     """
     validation_status = validation_result.get('validation_status', 'ERROR')
     issues = validation_result.get('issues', [])
-    
+
     errors = []
     warnings = []
-    
+
     for issue in issues:
         severity = issue.get('severity', 'INFO')
         structured_issue = {
@@ -333,22 +374,22 @@ def interpret_validation_status(
             'message': issue.get('message', ''),
             'rule_id': issue.get('rule_id', '')
         }
-        
+
         if severity in ['ERROR', 'CRITICAL']:
             errors.append(structured_issue)
         elif severity in ['WARNING', 'INFO']:
             warnings.append(structured_issue)
-    
+
     return validation_status, errors, warnings
 
 
 def group_errors_by_category(errors: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     """
     Group validation errors by category.
-    
+
     Args:
         errors: List of error dictionaries
-    
+
     Returns:
         Dictionary mapping category to list of errors
     """

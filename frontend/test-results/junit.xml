@@ -1,0 +1,554 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="15" failures="1" errors="0" time="15.627580486">
+    <testsuite name="src/pages/auth/__tests__/auth.integration.test.tsx" timestamp="2025-12-16T01:09:50.431Z" hostname="ph-B650M-GAMING-WIFI" tests="15" failures="1" errors="0" skipped="0" time="15.627580486">
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Login Flow &gt; should complete full login flow: form submission → API call → token storage → user data → navigation" time="0.230078847">
+            <system-out>
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/login/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/login/&apos;,
+  status: 200,
+  requestId: undefined
+}
+
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxmsc-txg61aq&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token-123&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxmsc-txg61aq&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  status: 200,
+  requestId: &apos;mj7vxmsc-txg61aq&apos;
+}
+
+            </system-out>
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Login Flow &gt; should handle login errors and display error message" time="0.108658823">
+            <system-out>
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/login/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/login/&apos;,
+  status: 401,
+  requestId: undefined
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Login Flow &gt; should validate form fields before submission" time="0.028776017">
+            <system-err>
+Warning: The current testing environment is not configured to support act(...)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Login Flow &gt; should handle remember me option" time="0.104791978">
+            <system-out>
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/login/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/login/&apos;,
+  status: 200,
+  requestId: undefined
+}
+
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxmz5-n9ml7yg&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token-123&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxmz5-n9ml7yg&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  status: 200,
+  requestId: &apos;mj7vxmz5-n9ml7yg&apos;
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Login Flow &gt; should handle redirect parameter" time="0.085398416">
+            <system-out>
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/login/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/login/&apos;,
+  status: 200,
+  requestId: undefined
+}
+
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxn1o-nu9brj6&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token-123&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxn1o-nu9brj6&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  status: 200,
+  requestId: &apos;mj7vxn1o-nu9brj6&apos;
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Registration Flow &gt; should complete full registration flow: form submission → API call → navigation to login" time="0.149465415">
+            <system-out>
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/register/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/register/&apos;,
+  status: 200,
+  requestId: undefined
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Registration Flow &gt; should validate password requirements" time="0.357579205">
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Registration Flow &gt; should validate password confirmation match" time="0.141178189">
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Registration Flow &gt; should handle registration errors and display error message" time="0.161336801">
+            <system-out>
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/register/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/register/&apos;,
+  status: 400,
+  requestId: undefined
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Registration Flow &gt; should handle optional tenant_id field" time="0.199000103">
+            <system-out>
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/register/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/register/&apos;,
+  status: 200,
+  requestId: undefined
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Token Refresh Flow &gt; should automatically refresh token when it expires" time="0.026885431">
+            <system-out>
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuf-w21f9r6&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer expired-token&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnuf-w21f9r6&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  status: 200,
+  requestId: &apos;mj7vxnuf-w21f9r6&apos;
+}
+
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/refresh/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/refresh/&apos;,
+  status: 200,
+  requestId: undefined
+}
+
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnui-2xshwws&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer new-access-token&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnui-2xshwws&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  status: 200,
+  requestId: &apos;mj7vxnui-2xshwws&apos;
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Token Refresh Flow &gt; should clear auth data when refresh token is invalid" time="0.007792018">
+            <system-out>
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuo-q5atlie&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer expired-token&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnuo-q5atlie&apos;
+  }
+}
+
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/refresh/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: undefined,
+  headers: { accept: &apos;application/json&apos;, &apos;content-type&apos;: &apos;application/json&apos; }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/refresh/&apos;,
+  status: 401,
+  requestId: undefined
+}
+
+            </system-out>
+            <system-err>
+[MSW] Warning: intercepted a request without a matching request handler:
+
+  • GET http://localhost:8000/api/v1/auth/me/
+
+If you still wish to intercept this unhandled request, please create a request handler for it.
+Read more: https://mswjs.io/docs/http/intercepting-requests
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Logout Flow &gt; should complete full logout flow: API call → token invalidation → storage cleanup → navigation" time="0.00462919">
+            <system-out>
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuv-pdxyv0v&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnuv-pdxyv0v&apos;
+  }
+}
+
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuw-02kcrez&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token&apos;,
+    &apos;content-type&apos;: &apos;application/json&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnuw-02kcrez&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 200,
+  requestId: &apos;mj7vxnuw-02kcrez&apos;
+}
+
+            </system-out>
+            <system-err>
+[MSW] Warning: intercepted a request without a matching request handler:
+
+  • GET http://localhost:8000/api/v1/auth/me/
+
+If you still wish to intercept this unhandled request, please create a request handler for it.
+Read more: https://mswjs.io/docs/http/intercepting-requests
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Logout Flow &gt; should clear auth data even if server logout fails" time="10.004840192">
+            <system-out>
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuz-veqwp6a&apos;,
+  headers: { accept: &apos;application/json&apos;, &apos;x-request-id&apos;: &apos;mj7vxnuz-veqwp6a&apos; }
+}
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuz-19tdy7n&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token&apos;,
+    &apos;content-type&apos;: &apos;application/json&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnuz-19tdy7n&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 500,
+  requestId: &apos;mj7vxnuz-19tdy7n&apos;
+}
+
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxoms-ib2zdsv&apos;,
+  headers: { accept: &apos;application/json&apos;, &apos;x-request-id&apos;: &apos;mj7vxoms-ib2zdsv&apos; }
+}
+
+[API Retry] {
+  attempt: 1,
+  delay: 2000,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 500
+}
+
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuz-19tdy7n&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token&apos;,
+    &apos;content-type&apos;: &apos;application/json&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnuz-19tdy7n&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 500,
+  requestId: &apos;mj7vxnuz-19tdy7n&apos;
+}
+
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxq6e-s2tulqh&apos;,
+  headers: { accept: &apos;application/json&apos;, &apos;x-request-id&apos;: &apos;mj7vxq6e-s2tulqh&apos; }
+}
+
+[API Retry] {
+  attempt: 2,
+  delay: 4000,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 500
+}
+
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuz-19tdy7n&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token&apos;,
+    &apos;content-type&apos;: &apos;application/json&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnuz-19tdy7n&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 500,
+  requestId: &apos;mj7vxnuz-19tdy7n&apos;
+}
+
+            </system-out>
+            <system-err>
+[MSW] Warning: intercepted a request without a matching request handler:
+
+  • GET http://localhost:8000/api/v1/auth/me/
+
+If you still wish to intercept this unhandled request, please create a request handler for it.
+Read more: https://mswjs.io/docs/http/intercepting-requests
+
+[MSW] Warning: intercepted a request without a matching request handler:
+
+  • GET http://localhost:8000/api/v1/auth/me/
+
+If you still wish to intercept this unhandled request, please create a request handler for it.
+Read more: https://mswjs.io/docs/http/intercepting-requests
+
+[MSW] Warning: intercepted a request without a matching request handler:
+
+  • GET http://localhost:8000/api/v1/auth/me/
+
+If you still wish to intercept this unhandled request, please create a request handler for it.
+Read more: https://mswjs.io/docs/http/intercepting-requests
+
+            </system-err>
+            <failure message="Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with &quot;testTimeout&quot;." type="Error">
+Error: Test timed out in 10000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with &quot;testTimeout&quot;.
+ ❯ src/pages/auth/__tests__/auth.integration.test.tsx:872:5
+            </failure>
+        </testcase>
+        <testcase classname="src/pages/auth/__tests__/auth.integration.test.tsx" name="Authentication Flow Integration Tests &gt; Logout Flow &gt; should invalidate all tokens when invalidateAll is true" time="4.014672755">
+            <system-out>
+[API Retry] {
+  attempt: 3,
+  delay: 8000,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 500
+}
+
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxnuz-19tdy7n&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token&apos;,
+    &apos;content-type&apos;: &apos;application/json&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxnuz-19tdy7n&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 200,
+  requestId: &apos;mj7vxnuz-19tdy7n&apos;
+}
+
+[API Request] {
+  method: &apos;GET&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/me/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxyo3-5t8g3yi&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxyo3-5t8g3yi&apos;
+  }
+}
+
+[API Request] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  baseURL: &apos;http://localhost:8000&apos;,
+  requestId: &apos;mj7vxyoc-9aeenp1&apos;,
+  headers: {
+    accept: &apos;application/json&apos;,
+    authorization: &apos;Bearer test-access-token&apos;,
+    &apos;content-type&apos;: &apos;application/json&apos;,
+    &apos;x-request-id&apos;: &apos;mj7vxyoc-9aeenp1&apos;
+  }
+}
+
+[API Response] {
+  method: &apos;POST&apos;,
+  url: &apos;http://localhost:8000/api/v1/auth/logout/&apos;,
+  status: 200,
+  requestId: &apos;mj7vxyoc-9aeenp1&apos;
+}
+
+            </system-out>
+            <system-err>
+[MSW] Warning: intercepted a request without a matching request handler:
+
+  • GET http://localhost:8000/api/v1/auth/me/
+
+If you still wish to intercept this unhandled request, please create a request handler for it.
+Read more: https://mswjs.io/docs/http/intercepting-requests
+
+            </system-err>
+        </testcase>
+    </testsuite>
+</testsuites>

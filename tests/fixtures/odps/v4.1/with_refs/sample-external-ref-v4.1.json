@@ -1,0 +1,35 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-external-ref-v4.1",
+        "name": "Sample Data Product with External $ref v4.1",
+        "description": "A sample ODPS 4.1 data product demonstrating external $ref usage. The schema definition is referenced from an external URL."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/sample-product-external-ref-v4.1"
+    },
+    "dataQuality": {
+      "qualityScore": 95,
+      "completeness": 0.98,
+      "accuracy": 0.97
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "basic",
+          "name": "Basic Plan",
+          "price": 9.99,
+          "currency": "USD"
+        }
+      ],
+      "accessMethods": {
+        "$ref": "https://example.com/schema.yaml#/accessMethods"
+      }
+    }
+  }
+}
+

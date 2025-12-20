@@ -1,0 +1,14 @@
+{
+  "schema": "https://opendataproducts.org/schema/v3.9",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-v4.1",
+        "name": "Sample Data Product v4.1",
+        "description": "This is invalid because the schema URL points to v3.9 instead of v4.1"
+      }
+    }
+  }
+}
+

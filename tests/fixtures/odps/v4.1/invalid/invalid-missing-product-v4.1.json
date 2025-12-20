@@ -1,0 +1,6 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "description": "This is invalid because the required 'product' field is missing"
+}
+

@@ -10,7 +10,11 @@ from .views import (
     password_reset_request,
     password_reset_confirm,
     accept_invitation,
-    APIKeyViewSet
+    register,
+    me,
+    APIKeyViewSet,
+    list_active_sessions,
+    revoke_session
 )
 from .sso_views import SSOViewSet
 
@@ -20,11 +24,15 @@ router.register(r"sso", SSOViewSet, basename="sso")
 
 urlpatterns = [
     path("login/", login, name="login"),
+    path("register/", register, name="register"),
+    path("me/", me, name="me"),
     path("refresh/", refresh_token, name="refresh-token"),
     path("logout/", logout, name="logout"),
     path("password-reset/", password_reset_request, name="password-reset-request"),
     path("password-reset/confirm/", password_reset_confirm, name="password-reset-confirm"),
     path("accept-invitation/", accept_invitation, name="accept-invitation"),
+    path("sessions/", list_active_sessions, name="list-active-sessions"),
+    path("sessions/<uuid:session_id>/revoke/", revoke_session, name="revoke-session"),
     path("", include(router.urls)),
 ]
 

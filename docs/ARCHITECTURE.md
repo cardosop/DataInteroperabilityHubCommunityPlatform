@@ -265,6 +265,80 @@ User → API Service → DQ Service
               Notifications
 ```
 
+## Business Logic Integration
+
+### Service Layer Architecture
+
+The platform uses a service layer pattern to coordinate business logic across features:
+
+- **TransformationService**: Coordinates transformation pipelines with asset lifecycle
+- **AIService**: Coordinates ML operations with workflows
+- **SocialService**: Coordinates social features with asset operations
+- **MarketplaceService**: Coordinates marketplace operations with transformation/quality
+- **DataMeshService**: Coordinates domain operations with asset ownership
+
+All service classes extend `BaseService` and provide:
+- Business logic coordination
+- Event publishing
+- Transaction management
+- Error handling
+- Audit logging
+
+### Workflow Integration
+
+All multi-step operations are orchestrated through the workflow engine:
+
+- **AssetCreationWorkflow**: Extended with AI schema matching and auto-classification
+- **TransformationPipelineWorkflow**: Orchestrates pipeline execution
+- **MarketplacePublishingWorkflow**: Orchestrates marketplace publishing with validation
+- **SocialFeatureWorkflow**: Orchestrates review moderation and asset updates
+- **DataMeshWorkflow**: Orchestrates domain operations
+
+Workflows provide:
+- State management
+- Retry logic
+- Compensation (Saga pattern)
+- Progress tracking
+- Event publishing
+
+### Event-Driven Coordination
+
+Features coordinate asynchronously through the event bus:
+
+- **Transformation Events**: `pipeline_started`, `pipeline_completed`, `pipeline_failed`
+- **AI/ML Events**: `schema_matching_completed`, `classification_completed`, `recommendation_updated`
+- **Social Events**: `review_created`, `rating_updated`, `comment_created`
+- **Marketplace Events**: `purchase_completed`, `pricing_changed`, `listing_updated`
+- **Data Mesh Events**: `domain_created`, `policy_applied`, `topology_updated`
+
+Event handlers subscribe to events and trigger workflows or update state.
+
+### Business Rules Framework
+
+Centralized business rules framework (`hub/apps/core/business_rules/`) enforces:
+
+- **TransformationBusinessRules**: Pipeline compatibility, schema validation
+- **AIBusinessRules**: ML result validation, schema alignment
+- **MarketplaceBusinessRules**: Publishing validation, pricing validation
+- **SocialBusinessRules**: Review moderation, rating validation
+- **DataMeshBusinessRules**: Domain ownership, policy compliance
+
+### Data Consistency
+
+Event-driven data consistency maintains consistency across features:
+
+- **Transformation → Asset**: Pipeline results automatically synced
+- **AI → Asset**: Recommendations updated when assets change
+- **Social → Asset**: Ratings reflected in quality scores
+- **Marketplace → Transformation**: Listings updated when pipelines change
+- **Data Mesh → Asset**: Topology updated when assets move domains
+
+Consistency is maintained through:
+- Event handlers
+- Scheduled consistency checks
+- Consistency validation rules
+- Consistency metrics and monitoring
+
 ## Service Communication
 
 ### Synchronous Communication

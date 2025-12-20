@@ -10,6 +10,11 @@ from typing import Dict, Any, Optional, Tuple
 from django.conf import settings
 from django.core.cache import cache
 
+from hub.apps.core.resilience.circuit_breaker import (
+    CircuitBreaker,
+    get_redis_client,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,7 +22,7 @@ class DQServiceClient:
     """
     Client for interacting with the DQ service.
     """
-    
+
     def __init__(self):
         # In test environment, use localhost instead of service name
         default_url = 'http://dq-service:8083'
@@ -32,7 +37,7 @@ class DQServiceClient:
             import sys
             if 'pytest' in sys.modules or 'unittest' in sys.modules:
                 default_url = 'http://localhost:8083'
-        
+
         self.base_url = getattr(settings, 'DQ_SERVICE_URL', default_url)
         self.timeout = getattr(settings, 'DQ_SERVICE_TIMEOUT', 1800)  # 30 minutes default
         if not self.base_url.endswith('/'):
@@ -40,9 +45,29 @@ class DQServiceClient:
         self.client = httpx.Client(base_url=self.base_url, timeout=self.timeout)
         self.max_retries = 2
         self.backoff_factor = 1
-    
+
+        # Initialize circuit breaker
+        self._circuit_breaker = CircuitBreaker(
+            service_name="dq-service",
+            failure_threshold=5,
+            timeout_seconds=60,
+            success_threshold=2,
+            redis_client=get_redis_client()
+        )
+
     def _request_with_retry(self, method: str, endpoint: str, **kwargs) -> httpx.Response:
         """Helper to make HTTP requests with retry logic"""
+        # Add trace headers if available
+        from hub.apps.api.middleware.trace_propagation import get_trace_headers
+
+        trace_headers = get_trace_headers()
+        if trace_headers:
+            # Merge trace headers into existing headers
+            if 'headers' in kwargs:
+                kwargs['headers'].update(trace_headers)
+            else:
+                kwargs['headers'] = trace_headers
+
         for attempt in range(self.max_retries + 1):
             try:
                 response = self.client.request(method, endpoint, **kwargs)
@@ -67,7 +92,7 @@ class DQServiceClient:
                     continue
                 raise
         raise Exception("Max retries exceeded for DQ service.")
-    
+
     def health_check(self) -> Tuple[bool, str]:
         """Checks the health of the DQ service"""
         try:
@@ -77,7 +102,7 @@ class DQServiceClient:
         except Exception as e:
             logger.error(f"DQ service health check failed: {e}")
             return False, "unknown"
-    
+
     def run_dq(
         self,
         file_content: bytes,
@@ -88,14 +113,14 @@ class DQServiceClient:
     ) -> Dict[str, Any]:
         """
         Run DQ checks on file content.
-        
+
         Args:
             file_content: File content as bytes
             file_format: File format (csv, json, parquet)
             profile_key: DQ profile key (default: intake_basic_gx)
             use_cache: Whether to use cached results
             contract: Optional Contract instance to extract quality rules from
-            
+
         Returns:
             DQ result dictionary
         """
@@ -107,8 +132,25 @@ class DQServiceClient:
             if cached_result:
                 logger.info(f"Using cached DQ result for profile {profile_key}")
                 return cached_result
-        
-        try:
+
+        # Define fallback response
+        def fallback_response(*args, **kwargs) -> Dict[str, Any]:
+            """Fallback response when circuit breaker is open or service fails."""
+            return {
+                "overall_status": "UNKNOWN",
+                "quality_score": 0.0,
+                "checks": [],
+                "engine_type": "UNKNOWN",
+                "engine_version": "unknown",
+                "profile_key": profile_key,
+                "metadata": {
+                    "error": "DQ service unavailable (circuit breaker open)"
+                }
+            }
+
+        # Execute with circuit breaker protection
+        def execute_dq_check() -> Dict[str, Any]:
+            """Execute DQ check operation."""
             # Extract quality rules from contract if provided (GAP-8.2.1)
             custom_checks = None
             effective_profile_key = profile_key
@@ -122,7 +164,7 @@ class DQServiceClient:
                 )
                 # Get contract quality checks
                 custom_checks = ContractQualityRulesExtractor.get_contract_quality_checks(contract)
-            
+
             # Prepare file for upload
             files = {
                 'file': (f'data.{file_format}', file_content, f'application/{file_format}')
@@ -130,7 +172,7 @@ class DQServiceClient:
             data = {
                 'profile_key': effective_profile_key
             }
-            
+
             # Add custom checks if available (will be passed to DQ service as JSON string)
             if custom_checks:
                 # Convert DQCheck objects to serializable format
@@ -150,7 +192,7 @@ class DQServiceClient:
                 ]
                 import json
                 data['custom_checks'] = json.dumps(custom_checks_list)
-            
+
             response = self._request_with_retry(
                 "POST",
                 "/run",
@@ -158,23 +200,20 @@ class DQServiceClient:
                 data=data
             )
             result = response.json()
-            
+
             # Cache result if enabled
             if use_cache:
                 cache.set(cache_key, result, timeout=getattr(settings, 'DQ_RESULT_CACHE_TTL', 3600))
-            
+
+            return result
+
+        try:
+            result = self._circuit_breaker.call(
+                execute_dq_check,
+                fallback=fallback_response
+            )
             return result
         except Exception as e:
             logger.error(f"Error running DQ check with DQ service: {e}")
-            return {
-                "overall_status": "UNKNOWN",
-                "quality_score": 0.0,
-                "checks": [],
-                "engine_type": "UNKNOWN",
-                "engine_version": "unknown",
-                "profile_key": profile_key,
-                "metadata": {
-                    "error": f"Failed to connect to DQ service: {e}"
-                }
-            }
+            return fallback_response()
 

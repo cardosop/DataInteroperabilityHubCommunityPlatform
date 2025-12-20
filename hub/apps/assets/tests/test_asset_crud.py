@@ -213,4 +213,182 @@ class AssetCRUDTest(TestCase):
         # Should only see assets in own tenant
         self.assertIn(str(my_asset.id), asset_ids)
         self.assertNotIn(str(other_asset.id), asset_ids)
+    
+    def test_list_assets_filter_by_domain(self):
+        """Test filtering assets by domain"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Create assets with different domains
+        marketing_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="marketing-asset",
+            name="Marketing Asset",
+            domain="marketing",
+            created_by=self.user
+        )
+        finance_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="finance-asset",
+            name="Finance Asset",
+            domain="finance",
+            created_by=self.user
+        )
+        
+        # Filter by marketing domain
+        response = self.client.get("/api/v1/assets/assets/?domain=marketing")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        asset_ids = [a["id"] for a in response.data["results"]]
+        self.assertIn(str(marketing_asset.id), asset_ids)
+        self.assertNotIn(str(finance_asset.id), asset_ids)
+    
+    def test_list_assets_filter_by_status(self):
+        """Test filtering assets by status"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Create assets with different statuses
+        draft_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="draft-asset",
+            name="Draft Asset",
+            status=AssetStatus.DRAFT,
+            created_by=self.user
+        )
+        active_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="active-asset",
+            name="Active Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user
+        )
+        
+        # Filter by DRAFT status
+        response = self.client.get("/api/v1/assets/assets/?status=DRAFT")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        asset_ids = [a["id"] for a in response.data["results"]]
+        self.assertIn(str(draft_asset.id), asset_ids)
+        self.assertNotIn(str(active_asset.id), asset_ids)
+        
+        # Filter by ACTIVE status
+        response = self.client.get("/api/v1/assets/assets/?status=ACTIVE")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        asset_ids = [a["id"] for a in response.data["results"]]
+        self.assertIn(str(active_asset.id), asset_ids)
+        self.assertNotIn(str(draft_asset.id), asset_ids)
+    
+    def test_list_assets_filter_by_invalid_status(self):
+        """Test filtering assets by invalid status returns empty results"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Create an asset
+        Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset",
+            name="Test Asset",
+            created_by=self.user
+        )
+        
+        # Filter by invalid status
+        response = self.client.get("/api/v1/assets/assets/?status=INVALID_STATUS")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 0)
+    
+    def test_list_assets_ordering(self):
+        """Test ordering assets"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Create assets with different names
+        asset_a = Asset.objects.create(
+            tenant=self.tenant,
+            key="asset-a",
+            name="Asset A",
+            created_by=self.user
+        )
+        asset_b = Asset.objects.create(
+            tenant=self.tenant,
+            key="asset-b",
+            name="Asset B",
+            created_by=self.user
+        )
+        
+        # Order by name ascending
+        response = self.client.get("/api/v1/assets/assets/?ordering=name")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [a["name"] for a in response.data["results"]]
+        # Should be ordered by name (A before B)
+        asset_a_index = names.index("Asset A")
+        asset_b_index = names.index("Asset B")
+        self.assertLess(asset_a_index, asset_b_index)
+        
+        # Order by name descending
+        response = self.client.get("/api/v1/assets/assets/?ordering=-name")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [a["name"] for a in response.data["results"]]
+        # Should be ordered by name descending (B before A)
+        asset_a_index = names.index("Asset A")
+        asset_b_index = names.index("Asset B")
+        self.assertGreater(asset_a_index, asset_b_index)
+    
+    def test_list_assets_search(self):
+        """Test searching assets"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Create assets with different names
+        searchable_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="searchable-asset",
+            name="Searchable Asset",
+            description="This asset can be found",
+            created_by=self.user
+        )
+        other_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="other-asset",
+            name="Other Asset",
+            description="This asset cannot be found",
+            created_by=self.user
+        )
+        
+        # Search for "Searchable"
+        response = self.client.get("/api/v1/assets/assets/?search=Searchable")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        asset_ids = [a["id"] for a in response.data["results"]]
+        self.assertIn(str(searchable_asset.id), asset_ids)
+        self.assertNotIn(str(other_asset.id), asset_ids)
+    
+    def test_list_assets_combined_filters(self):
+        """Test combining multiple filters"""
+        self.client.force_authenticate(user=self.user)
+        
+        # Create assets with different combinations
+        matching_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="matching-asset",
+            name="Matching Asset",
+            domain="marketing",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user
+        )
+        non_matching_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="non-matching-asset",
+            name="Non Matching Asset",
+            domain="finance",
+            status=AssetStatus.DRAFT,
+            created_by=self.user
+        )
+        
+        # Filter by domain and status
+        response = self.client.get("/api/v1/assets/assets/?domain=marketing&status=ACTIVE")
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        asset_ids = [a["id"] for a in response.data["results"]]
+        self.assertIn(str(matching_asset.id), asset_ids)
+        self.assertNotIn(str(non_matching_asset.id), asset_ids)
 

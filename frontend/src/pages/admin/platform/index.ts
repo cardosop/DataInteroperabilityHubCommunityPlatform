@@ -1,0 +1,2 @@
+export { PlatformAdminPage } from './PlatformAdminPage'
+

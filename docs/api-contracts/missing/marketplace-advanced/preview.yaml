@@ -1,0 +1,478 @@
+openapi: 3.0.3
+info:
+  title: Data Preview API
+  description: Preview data before purchase
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: api-support@datahub.example.com
+servers:
+- url: https://api.datahub.example.com/api/v1
+  description: Production server
+- url: https://staging-api.datahub.example.com/api/v1
+  description: Staging server
+- url: http://localhost:8000/api/v1
+  description: Local development server
+paths:
+  /marketplace/listings/{id}/preview:
+    get:
+      operationId: previewMarketplaceListing
+      summary: Preview data before purchase
+      description: 'Get a preview of data from a marketplace listing before purchase.
+
+
+        **Features**:
+
+        - Sample data generation
+
+        - Quality metrics preview
+
+        - Schema preview
+
+        - Access control (entitlement check)
+
+
+        **Authentication**: Required (JWT token or API key)
+
+
+        **Authorization**: User must have preview access (may require entitlement)
+
+
+        **Performance Target**: < 2000ms p95
+
+
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - redis: Job queue, caching, and event bus
+
+
+        **Authentication**: Required (JWT, API Key)
+
+
+        **Authorization**: Required role(s): Any authenticated; Required scope(s): marketplace:preview
+
+
+        **Rate Limiting**: 50 requests per 60 seconds per user (burst: 20 per 10 seconds) (daily: 2000 per day)
+
+
+        **Input Validation**: All request fields validated (types, formats, lengths, patterns, enums). See request schema
+        for details.
+
+
+        **Service Dependencies:**
+
+        - dq-service: Get data quality metrics for preview
+
+        **Database Requirements:**
+
+        - MarketplaceListing model: read operations - Get marketplace listing
+
+        - Asset model: read operations - Get asset information
+
+        - Dataset model: read operations - Get dataset for preview
+
+        **Infrastructure Dependencies:**
+
+        - postgresql: Primary database for all data persistence
+
+        - minio: S3-compatible object storage for files and datasets'
+      tags:
+      - Advanced Marketplace
+      security:
+      - BearerAuth: []
+      - ApiKeyAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Marketplace listing ID
+        schema:
+          type: string
+          format: uuid
+        example: 550e8400-e29b-41d4-a716-446655440000
+      - name: sample_size
+        in: query
+        description: Number of sample rows to return
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+        example: 10
+      - name: include_quality_metrics
+        in: query
+        description: Include data quality metrics in response
+        schema:
+          type: boolean
+          default: true
+        example: true
+      - name: include_schema
+        in: query
+        description: Include schema information in response
+        schema:
+          type: boolean
+          default: true
+        example: true
+      responses:
+        '200':
+          description: Data preview retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPreviewResponse'
+              examples:
+                success:
+                  summary: Successful preview
+                  value:
+                    listing_id: 550e8400-e29b-41d4-a716-446655440000
+                    asset_id: 550e8400-e29b-41d4-a716-446655440001
+                    sample_data:
+                      rows:
+                      - customer_id: '12345'
+                        customer_name: John Doe
+                        email: john@example.com
+                      - customer_id: '12346'
+                        customer_name: Jane Smith
+                        email: jane@example.com
+                      total_rows: 10000
+                      sample_size: 10
+                    quality_metrics:
+                      completeness: 0.98
+                      accuracy: 0.95
+                      freshness: 0.9
+                      overall_score: 0.94
+                    schema:
+                      fields:
+                      - name: customer_id
+                        type: string
+                        nullable: false
+                      - name: customer_name
+                        type: string
+                        nullable: false
+                      - name: email
+                        type: string
+                        nullable: false
+                    preview_expires_at: '2025-01-15T11:30:00Z'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: AUTH_UNAUTHORIZED example
+                  value:
+                    error:
+                      code: AUTH_UNAUTHORIZED
+                      message: Authentication required
+                      http_status: 401
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '403':
+          description: Forbidden - Preview access not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: PREVIEW_ACCESS_DENIED
+                  message: Preview access is not available for this listing
+                  http_status: 403
+                  request_id: 550e8400-e29b-41d4-a716-446655440000
+                  timestamp: '2025-01-15T10:30:00Z'
+              examples:
+                default:
+                  summary: AUTH_FORBIDDEN example
+                  value:
+                    error:
+                      code: PREVIEW_NOT_ALLOWED
+                      message: Preview not available for this listing
+                      http_status: 403
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '404':
+          description: Listing not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: NOT_FOUND example
+                  value:
+                    error:
+                      code: LISTING_NOT_FOUND
+                      message: Marketplace listing not found
+                      http_status: 404
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: INTERNAL_ERROR example
+                  value:
+                    error:
+                      code: INTERNAL_ERROR
+                      message: An internal server error occurred
+                      http_status: 500
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+        '400':
+          description: Bad Request - Validation error or invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: VALIDATION_ERROR example
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: Invalid request data
+                      http_status: 400
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+                      details:
+                        field_errors:
+                        - field: email
+                          message: Invalid email format
+                          code: VALIDATION_ERROR
+        '503':
+          description: Service Unavailable - Service temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                default:
+                  summary: SERVICE_UNAVAILABLE example
+                  value:
+                    error:
+                      code: SERVICE_UNAVAILABLE
+                      message: Service temporarily unavailable. Please try again later.
+                      http_status: 503
+                      request_id: 550e8400-e29b-41d4-a716-446655440000
+                      timestamp: '2025-01-15T10:30:00Z'
+      x-integration-requirements:
+        service_dependencies:
+        - service_name: dq-service
+          service_type: internal
+          endpoint: /run
+          description: Get data quality metrics for preview
+          required: false
+          timeout_ms: null
+        database_requirements:
+        - model_name: MarketplaceListing
+          operations:
+          - read
+          description: Get marketplace listing
+          indexes: []
+        - model_name: Asset
+          operations:
+          - read
+          description: Get asset information
+          indexes: []
+        - model_name: Dataset
+          operations:
+          - read
+          description: Get dataset for preview
+          indexes: []
+        external_services: []
+        event_requirements: []
+        infrastructure_dependencies:
+        - postgresql
+        - minio
+components:
+  schemas:
+    DataPreviewResponse:
+      type: object
+      properties:
+        listing_id:
+          type: string
+          format: uuid
+          description: Marketplace listing ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+          minLength: 36
+          maxLength: 36
+        asset_id:
+          type: string
+          format: uuid
+          description: Associated asset ID
+          example: 550e8400-e29b-41d4-a716-446655440001
+          minLength: 36
+          maxLength: 36
+        sample_data:
+          type: object
+          properties:
+            rows:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+                example: {}
+                description: Item (object)
+              description: Sample data rows
+              minItems: 0
+              maxItems: 1000
+              example: []
+            total_rows:
+              type: integer
+              description: Total number of rows in dataset
+              example: 10000
+              minimum: 0
+            sample_size:
+              type: integer
+              description: Number of sample rows returned
+              example: 10
+              minimum: 0
+          example: {}
+          description: Sample Data (object)
+        quality_metrics:
+          type: object
+          nullable: true
+          properties:
+            completeness:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              description: Data completeness score
+              example: 0.98
+            accuracy:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              description: Data accuracy score
+              example: 0.95
+            freshness:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              description: Data freshness score
+              example: 0.9
+            overall_score:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              description: Overall quality score
+              example: 0.94
+          example: {}
+          description: Quality Metrics (object)
+        schema:
+          type: object
+          nullable: true
+          properties:
+            fields:
+              type: array
+              items:
+                $ref: '#/components/schemas/SchemaField'
+              description: Schema fields
+              minItems: 0
+              maxItems: 1000
+              example: []
+          example: {}
+          description: Schema (object)
+        preview_expires_at:
+          type: string
+          format: date-time
+          description: Preview expiration timestamp (ISO 8601)
+          example: '2025-01-15T11:30:00Z'
+          minLength: 1
+          maxLength: 255
+    SchemaField:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Field name
+          example: customer_id
+          minLength: 1
+          maxLength: 255
+        type:
+          type: string
+          description: Field data type
+          example: string
+          minLength: 1
+          maxLength: 255
+        nullable:
+          type: boolean
+          description: Whether field is nullable
+          example: false
+        description:
+          type: string
+          description: Field description
+          nullable: true
+          minLength: 1
+          maxLength: 255
+          example: example_description
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+              example: PREVIEW_ACCESS_DENIED
+              minLength: 1
+              maxLength: 255
+            message:
+              type: string
+              description: Human-readable error message
+              example: Preview access is not available
+              minLength: 1
+              maxLength: 255
+            http_status:
+              type: integer
+              description: HTTP status code
+              example: 403
+              minimum: 0
+            request_id:
+              type: string
+              format: uuid
+              description: Unique request identifier
+              example: 550e8400-e29b-41d4-a716-446655440000
+            timestamp:
+              type: string
+              format: date-time
+              description: Error timestamp (ISO 8601)
+              example: '2025-01-15T10:30:00Z'
+            details:
+              type: object
+              description: Additional error details
+              additionalProperties: true
+              nullable: true
+              example: {}
+          example: {}
+          description: Error (object)
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'JWT Bearer token authentication. Include token in Authorization header: "Bearer {token}". Tokens expire
+        after 1 hour and can be refreshed using refresh tokens.'
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: 'API key authentication. Include key in Authorization header: "ApiKey {key}" or in X-API-Key header. API
+        keys can have scopes to limit access and can be expired or revoked.'
+tags:
+- name: Advanced Marketplace
+  description: Advanced marketplace features including data preview

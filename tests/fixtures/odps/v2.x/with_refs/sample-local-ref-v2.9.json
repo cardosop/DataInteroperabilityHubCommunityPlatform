@@ -1,0 +1,17 @@
+{
+  "schema": "https://opendataproducts.org/schema/v2.9",
+  "version": "2.9",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-local-ref-v2.9",
+        "name": "Sample Data Product with Local $ref v2.9",
+        "description": "A sample ODPS 2.x data product demonstrating local $ref usage."
+      }
+    },
+    "contract": {
+      "$ref": "./contract-definition.yaml"
+    }
+  }
+}
+

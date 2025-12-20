@@ -1,0 +1,47 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "multilingual-product-multi-v4.1",
+        "name": "Multilingual Data Product",
+        "description": "A comprehensive ODPS 4.1 data product with multiple language support. This product demonstrates internationalization capabilities with English, French, and German translations for global market reach."
+      },
+      "fr": {
+        "productID": "multilingual-product-multi-v4.1",
+        "name": "Produit de données multilingue",
+        "description": "Un produit de données ODPS 4.1 complet avec support multilingue. Ce produit démontre les capacités d'internationalisation avec des traductions en anglais, français et allemand pour une portée mondiale."
+      },
+      "de": {
+        "productID": "multilingual-product-multi-v4.1",
+        "name": "Mehrsprachiges Datenprodukt",
+        "description": "Ein umfassendes ODPS 4.1 Datenprodukt mit mehrsprachiger Unterstützung. Dieses Produkt demonstriert Internationalisierungsfähigkeiten mit englischen, französischen und deutschen Übersetzungen für globale Marktreichweite."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/multilingual-product-multi"
+    },
+    "dataQuality": {
+      "qualityScore": 92,
+      "completeness": 0.95,
+      "accuracy": 0.94
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "basic",
+          "name": "Basic Plan",
+          "price": 9.99,
+          "currency": "EUR"
+        }
+      ],
+      "accessMethods": {
+        "api": {
+          "endpoint": "https://api.example.com/v1/products/multilingual-product-multi"
+        }
+      }
+    }
+  }
+}
+

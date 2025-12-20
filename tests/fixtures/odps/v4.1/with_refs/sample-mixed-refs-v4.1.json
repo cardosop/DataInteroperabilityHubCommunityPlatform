@@ -1,0 +1,38 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-mixed-refs-v4.1",
+        "name": "Sample Data Product with Mixed $ref Types v4.1",
+        "description": "A sample ODPS 4.1 data product demonstrating all three types of $ref: internal, local, and external."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/sample-product-mixed-refs-v4.1"
+    },
+    "dataQuality": {
+      "$ref": "./quality-rules.yaml"
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "basic",
+          "name": "Basic Plan",
+          "price": 9.99,
+          "currency": "USD"
+        }
+      ],
+      "accessMethods": {
+        "$ref": "https://example.com/schema.yaml#/accessMethods"
+      }
+    }
+  },
+  "$defs": {
+    "internalDataQualityRef": {
+      "$ref": "#/product/dataQuality"
+    }
+  }
+}
+

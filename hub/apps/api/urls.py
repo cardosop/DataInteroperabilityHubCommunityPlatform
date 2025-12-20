@@ -25,13 +25,16 @@ urlpatterns = [
     path('marketplace/', include('hub.apps.marketplace.urls')),
     path('scheduled-ingestions/', include('hub.apps.scheduled_ingestion.urls')),
     path('search/', include('hub.apps.search.urls')),
+    path('developer/', include('hub.apps.developer.urls')),
     path('webhooks/', include('hub.apps.webhooks.urls')),
     path('', include('hub.apps.api.analytics.urls')),
     path('governance/', include('hub.apps.governance.urls')),
     path('', include('hub.apps.observability.urls')),
+    path('ai/', include('hub.apps.ai.urls')),
+    path('', include('hub.apps.social.urls')),
     
     # Catch-all for non-existent API endpoints (must be last)
     # This will only match if none of the above patterns matched
     # Use a more specific pattern that doesn't interfere with router actions
-    re_path(r'^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|search/|webhooks/).*$', api_not_found, name='api-not-found'),
+    re_path(r'^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|search/|developer/|webhooks/).*$', api_not_found, name='api-not-found'),
 ]

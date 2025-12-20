@@ -1,0 +1,17 @@
+{
+  "schema": "https://opendataproducts.org/schema/v1.9",
+  "version": "1.9",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-v1.9",
+        "name": "Sample Data Product v1.9",
+        "description": "A sample valid ODPS 1.x data product for testing purposes. This product demonstrates all required and optional fields for version 1.x."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/sample-product-v1.9"
+    }
+  }
+}
+

@@ -1,0 +1,6 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": "This should be an object, not a string"
+}
+
