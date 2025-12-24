@@ -130,6 +130,245 @@ class NetworkError(DataHubError):
         super().__init__(message, "NETWORK_ERROR", 0)
 
 
+# ODPS-specific error classes
+class ODPSError(DataHubError):
+    """
+    Base exception class for all ODPS-related errors in the SDK.
+
+    Maps to backend ODPSError hierarchy with structured error information.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        recoverable: bool = False,
+        recovery_strategy: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize ODPS error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            recoverable: Whether the error can be recovered from
+            recovery_strategy: Suggested recovery strategy
+            context: Additional context information
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+        self.recoverable = recoverable
+        self.recovery_strategy = recovery_strategy
+        self.context = context or {}
+        # Extract context from details if available
+        if details and isinstance(details, dict):
+            if "context" in details:
+                self.context.update(details["context"])
+            if "recoverable" in details:
+                self.recoverable = details["recoverable"]
+            if "recovery_strategy" in details:
+                self.recovery_strategy = details["recovery_strategy"]
+
+
+class ODPSValidationError(ODPSError):
+    """
+    Exception raised when ODPS document validation fails.
+
+    Used for schema validation, required field validation, and data type validation.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        field_path: Optional[str] = None,
+        expected: Optional[Any] = None,
+        actual: Optional[Any] = None,
+    ):
+        """
+        Initialize ODPS validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=False,
+            recovery_strategy="fail",
+            context=context,
+        )
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class ODPSRefResolutionError(ODPSError):
+    """
+    Exception raised when ODPS $ref resolution fails.
+
+    Used for internal, local, and external reference resolution errors.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_REF_RESOLUTION_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        ref_path: Optional[str] = None,
+        ref_type: Optional[str] = None,
+    ):
+        """
+        Initialize ODPS ref resolution error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            ref_path: The $ref path that failed to resolve
+            ref_type: Type of reference (internal, local, external)
+        """
+        context = {}
+        if ref_path:
+            context["ref_path"] = ref_path
+        if ref_type:
+            context["ref_type"] = ref_type
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        # Determine recoverability based on error code
+        recoverable = error_code in {
+            "ODPS_REF_RATE_LIMIT_EXCEEDED",
+            "ODPS_REF_TIMEOUT",
+            "ODPS_REF_RESOLUTION_FAILED",
+        }
+        recovery_strategy = "retry" if recoverable else "fail"
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=recoverable,
+            recovery_strategy=recovery_strategy,
+            context=context,
+        )
+        self.ref_path = ref_path
+        self.ref_type = ref_type
+
+
+class ODPSExportError(ODPSError):
+    """
+    Exception raised when ODPS export/generation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_EXPORT_ERROR",
+        http_status: int = 500,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        field_path: Optional[str] = None,
+    ):
+        """
+        Initialize ODPS export error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that caused the error
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=True,  # Export errors are typically recoverable
+            recovery_strategy="retry",
+            context=context,
+        )
+        self.field_path = field_path
+
+
+class ODPSLinkingError(ODPSError):
+    """
+    Exception raised when ODPS/ODCS linking operations fail.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_LINKING_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize ODPS linking error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=False,
+            recovery_strategy="fail",
+        )
+
+
 def parse_error(response_data: Any) -> DataHubError:
     """
     Parse API error response and return appropriate error class
@@ -147,6 +386,30 @@ def parse_error(response_data: Any) -> DataHubError:
     # Handle case where response_data is not a dict
     if not isinstance(response_data, dict):
         return ServerError(f"Unexpected error: {response_data}", "UNEXPECTED_ERROR", 500)
+
+    # Handle FastAPI/DRF style {"detail": "..."} format
+    if "detail" in response_data and "error" not in response_data:
+        detail = response_data["detail"]
+        http_status = response_data.get("http_status", 500)
+        # Convert detail to error format for consistent handling
+        if isinstance(detail, str):
+            response_data = {
+                "error": {
+                    "message": detail,
+                    "code": "ERROR",
+                    "http_status": http_status,
+                }
+            }
+        elif isinstance(detail, dict):
+            response_data = {"error": detail}
+        else:
+            response_data = {
+                "error": {
+                    "message": str(detail),
+                    "code": "ERROR",
+                    "http_status": http_status,
+                }
+            }
 
     if "error" not in response_data:
         return ServerError("Unexpected error format", "UNKNOWN_ERROR", 500)
@@ -197,3 +460,115 @@ def parse_error(response_data: Any) -> DataHubError:
         return ServerError(message, code, http_status, request_id)
     else:
         return DataHubError(message, code, http_status, request_id, timestamp, details)
+
+
+def parse_odps_error(response_data: Any) -> ODPSError:
+    """
+    Parse ODPS-specific error response and return appropriate ODPS error class.
+
+    Maps backend ODPS error codes to SDK ODPS error classes.
+
+    Args:
+        response_data: Error response from API (dict, str, or other)
+
+    Returns:
+        Appropriate ODPSError subclass
+    """
+    # First parse as standard error
+    base_error = parse_error(response_data)
+
+    # If not a dict or doesn't have error structure, return base error wrapped as ODPS error
+    if not isinstance(response_data, dict) or "error" not in response_data:
+        return ODPSError(
+            base_error.message,
+            base_error.code,
+            base_error.http_status,
+            base_error.request_id,
+            base_error.details,
+        )
+
+    error = response_data["error"]
+    if not isinstance(error, dict):
+        return ODPSError(
+            base_error.message,
+            base_error.code,
+            base_error.http_status,
+            base_error.request_id,
+            base_error.details,
+        )
+
+    code = error.get("code", base_error.code)
+    http_status = error.get("http_status", base_error.http_status)
+    message = error.get("message", base_error.message)
+    request_id = error.get("request_id", base_error.request_id)
+    details = error.get("details", base_error.details or {})
+    context = error.get("context", {})
+
+    # Map ODPS error codes to specific error classes
+    code_upper = code.upper()
+
+    # ODPS Validation Errors
+    if "VALIDATION" in code_upper or "SCHEMA" in code_upper or "REQUIRED_FIELD" in code_upper:
+        field_path = context.get("field_path") if isinstance(context, dict) else None
+        expected = context.get("expected") if isinstance(context, dict) else None
+        actual = context.get("actual") if isinstance(context, dict) else None
+        return ODPSValidationError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            field_path=field_path,
+            expected=expected,
+            actual=actual,
+        )
+
+    # ODPS Ref Resolution Errors
+    if "REF" in code_upper or "RESOLUTION" in code_upper:
+        ref_path = context.get("ref_path") if isinstance(context, dict) else None
+        ref_type = context.get("ref_type") if isinstance(context, dict) else None
+        return ODPSRefResolutionError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            ref_path=ref_path,
+            ref_type=ref_type,
+        )
+
+    # ODPS Export Errors
+    if "EXPORT" in code_upper or "SERIALIZATION" in code_upper or "FORMAT" in code_upper:
+        field_path = context.get("field_path") if isinstance(context, dict) else None
+        return ODPSExportError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            field_path=field_path,
+        )
+
+    # ODPS Linking Errors
+    if "LINK" in code_upper or "LINKING" in code_upper:
+        return ODPSLinkingError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+        )
+
+    # Default to base ODPSError
+    recoverable = error.get("recoverable", False) if isinstance(error, dict) else False
+    recovery_strategy = error.get("recovery_strategy") if isinstance(error, dict) else None
+    return ODPSError(
+        message,
+        code,
+        http_status,
+        request_id,
+        details,
+        recoverable=recoverable,
+        recovery_strategy=recovery_strategy,
+        context=context if isinstance(context, dict) else {},
+    )

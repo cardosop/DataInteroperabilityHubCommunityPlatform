@@ -1155,3 +1155,953 @@ class AssetCreationWorkflowStepEventsTest(TestCase):
         self.assertIn("progress_percentage", workflow_instance.state_data)
         self.assertEqual(workflow_instance.state_data["progress_percentage"], 100.0)
 
+
+class AssetCreationWorkflowODPSLinkingTest(TestCase):
+    """Unit tests for ODPS linking in asset creation workflow"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        unique_id = str(uuid.uuid4())[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant ODPS {unique_id}",
+            slug=f"test-tenant-odps-{unique_id}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED"
+        )
+        self.user = User.objects.create_user(
+            email=f"test-odps-{unique_id}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            display_name="Test User"
+        )
+        self.engine = WorkflowEngine()
+        self.registry = WorkflowRegistry()
+        AssetCreationWorkflow.register_workflow(self.registry)
+        AssetCreationWorkflow.register_tasks(self.engine)
+
+        # Create sample ODCS contract
+        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat, NormalizationStatus
+        self.odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test-contract", "name": "Test Contract", "version": "3.0.2"}',
+            hub_contract_json={
+                "id": "test-contract",
+                "info": {
+                    "name": "Test Contract",
+                    "description": "Test description",
+                    "version": "1.0.0"
+                },
+                "schema": {
+                    "fields": [{"name": "id", "type": "string"}]
+                },
+                "marketplace": {
+                    "license_summary": "Test license",
+                    "intended_use": ["analytics"]
+                }
+            },
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.DRAFT,
+            created_by=self.user
+        )
+
+        # Create sample ODPS document
+        self.sample_odps = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-product",
+                        "name": "Test Product",
+                        "description": "Test product description"
+                    }
+                }
+            }
+        }
+
+        # Create asset
+        self.asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-odps",
+            name="Test Asset ODPS",
+            status=AssetStatus.DRAFT,
+            created_by=self.user
+        )
+
+    def test_link_odps_task_skip_no_action(self):
+        """Test ODPS linking task skips when no action is provided"""
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id)
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.save()
+
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        result = AssetCreationWorkflow._link_odps_task(
+            {}, instance, step
+        )
+
+        self.assertTrue(result.get("odps_linking_skipped"))
+        self.assertEqual(result.get("reason"), "No ODPS action specified")
+
+    def test_link_odps_task_upload(self):
+        """Test ODPS linking task with upload action"""
+        import json
+        from hub.apps.contracts.models import OriginalSpecType
+
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id),
+                "odps_action": "upload",
+                "odps_raw": json.dumps(self.sample_odps),
+                "odps_format": "JSON"
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.save()
+
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        input_data = {
+            "odps_action": "upload",
+            "odps_raw": json.dumps(self.sample_odps),
+            "odps_format": "JSON"
+        }
+
+        result = AssetCreationWorkflow._link_odps_task(
+            input_data, instance, step
+        )
+
+        self.assertTrue(result.get("odps_linked"))
+        self.assertIn("odps_contract_id", result)
+
+        # Verify ODPS contract was created and attached to asset
+        odps_contract = Contract.objects.get(id=result["odps_contract_id"])
+        self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
+        self.assertEqual(odps_contract.tenant, self.tenant)
+        self.assertEqual(odps_contract.asset, self.asset)
+
+        # Verify state_data was updated
+        self.assertEqual(instance.state_data.get("odps_contract_id"), result["odps_contract_id"])
+
+    def test_link_odps_task_generate_with_contract(self):
+        """Test ODPS linking task with generate action when ODCS contract is attached"""
+        import json
+        from hub.apps.contracts.models import OriginalSpecType
+
+        # Attach ODCS contract to asset
+        self.odcs_contract.asset = self.asset
+        self.odcs_contract.version = 1
+        self.odcs_contract.save()
+
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id),
+                "odps_action": "generate"
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.state_data["contract_id"] = str(self.odcs_contract.id)
+        instance.save()
+
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        input_data = {
+            "odps_action": "generate"
+        }
+
+        result = AssetCreationWorkflow._link_odps_task(
+            input_data, instance, step
+        )
+
+        self.assertTrue(result.get("odps_linked"))
+        self.assertIn("odps_contract_id", result)
+
+        # Verify ODPS contract was created
+        odps_contract = Contract.objects.get(id=result["odps_contract_id"])
+        self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
+        self.assertEqual(odps_contract.tenant, self.tenant)
+        self.assertEqual(odps_contract.asset, self.asset)
+
+        # Verify bidirectional link between ODPS and ODCS contracts
+        self.odcs_contract.refresh_from_db()
+        self.assertIn("extensions", self.odcs_contract.hub_contract_json)
+        self.assertIn("x_odps", self.odcs_contract.hub_contract_json["extensions"])
+        self.assertEqual(
+            self.odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
+            result["odps_contract_id"]
+        )
+
+        odps_contract.refresh_from_db()
+        self.assertIn("extensions", odps_contract.hub_contract_json)
+        self.assertIn("x_odps", odps_contract.hub_contract_json["extensions"])
+        self.assertEqual(
+            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"],
+            str(self.odcs_contract.id)
+        )
+
+    def test_link_odps_task_generate_without_contract(self):
+        """Test ODPS linking task with generate action when no ODCS contract is attached"""
+        import json
+        from hub.apps.contracts.models import OriginalSpecType
+
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id),
+                "odps_action": "generate"
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.save()
+
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        input_data = {
+            "odps_action": "generate"
+        }
+
+        # Should raise error when no contract is available
+        with self.assertRaises(ValueError) as context:
+            AssetCreationWorkflow._link_odps_task(
+                input_data, instance, step
+            )
+
+        self.assertIn("No contract available", str(context.exception))
+
+    def test_link_odps_task_link_existing(self):
+        """Test ODPS linking task with link action (existing ODPS)"""
+        import json
+        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat, NormalizationStatus
+
+        # Create existing ODPS contract
+        existing_odps_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="4.1",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odps),
+            hub_contract_json={"id": "test-product", "info": {"name": "Test Product"}},
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.DRAFT,
+            created_by=self.user
+        )
+
+        # Attach ODCS contract to asset
+        self.odcs_contract.asset = self.asset
+        self.odcs_contract.version = 1
+        self.odcs_contract.save()
+
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id),
+                "odps_action": "link",
+                "odps_contract_id": str(existing_odps_contract.id)
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.state_data["contract_id"] = str(self.odcs_contract.id)
+        instance.save()
+
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        input_data = {
+            "odps_action": "link",
+            "odps_contract_id": str(existing_odps_contract.id)
+        }
+
+        result = AssetCreationWorkflow._link_odps_task(
+            input_data, instance, step
+        )
+
+        self.assertTrue(result.get("odps_linked"))
+        self.assertEqual(result["odps_contract_id"], str(existing_odps_contract.id))
+
+        # Verify ODPS contract is attached to asset
+        existing_odps_contract.refresh_from_db()
+        self.assertEqual(existing_odps_contract.asset, self.asset)
+
+        # Verify bidirectional link
+        self.odcs_contract.refresh_from_db()
+        self.assertIn("extensions", self.odcs_contract.hub_contract_json)
+        self.assertIn("x_odps", self.odcs_contract.hub_contract_json["extensions"])
+        self.assertEqual(
+            self.odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
+            str(existing_odps_contract.id)
+        )
+
+        existing_odps_contract.refresh_from_db()
+        self.assertIn("extensions", existing_odps_contract.hub_contract_json)
+        self.assertIn("x_odps", existing_odps_contract.hub_contract_json["extensions"])
+        self.assertEqual(
+            existing_odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"],
+            str(self.odcs_contract.id)
+        )
+
+    def test_link_odps_task_link_existing_without_contract(self):
+        """Test ODPS linking task with link action when no ODCS contract is attached"""
+        import json
+        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat, NormalizationStatus
+
+        # Create existing ODPS contract
+        existing_odps_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="4.1",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odps),
+            hub_contract_json={"id": "test-product", "info": {"name": "Test Product"}},
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.DRAFT,
+            created_by=self.user
+        )
+
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id),
+                "odps_action": "link",
+                "odps_contract_id": str(existing_odps_contract.id)
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.save()
+
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        input_data = {
+            "odps_action": "link",
+            "odps_contract_id": str(existing_odps_contract.id)
+        }
+
+        result = AssetCreationWorkflow._link_odps_task(
+            input_data, instance, step
+        )
+
+        self.assertTrue(result.get("odps_linked"))
+        self.assertEqual(result["odps_contract_id"], str(existing_odps_contract.id))
+
+        # Verify ODPS contract is attached to asset (but no bidirectional link since no ODCS contract)
+        existing_odps_contract.refresh_from_db()
+        self.assertEqual(existing_odps_contract.asset, self.asset)
+
+    def test_link_odps_task_publishes_events(self):
+        """Test that ODPS linking task publishes odps.created and odps.linked events"""
+        import json
+        from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.core.events.models import Event
+
+        # Attach ODCS contract to asset
+        self.odcs_contract.asset = self.asset
+        self.odcs_contract.version = 1
+        self.odcs_contract.save()
+
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id),
+                "odps_action": "generate"
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.state_data["contract_id"] = str(self.odcs_contract.id)
+        instance.save()
+
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        input_data = {
+            "odps_action": "generate"
+        }
+
+        result = AssetCreationWorkflow._link_odps_task(
+            input_data, instance, step
+        )
+
+        self.assertTrue(result.get("odps_linked"))
+        self.assertIn("odps_contract_id", result)
+
+        # Verify events were published
+        odps_created_events = Event.objects.filter(
+            event_type="odps.created",
+            data__contract_id=result["odps_contract_id"]
+        )
+        self.assertGreater(odps_created_events.count(), 0, "odps.created event should be published")
+
+        odps_linked_events = Event.objects.filter(
+            event_type="odps.linked",
+            data__odps_contract_id=result["odps_contract_id"],
+            data__odcs_contract_id=str(self.odcs_contract.id)
+        )
+        self.assertGreater(odps_linked_events.count(), 0, "odps.linked event should be published")
+
+        # Verify event data
+        linked_event = odps_linked_events.first()
+        self.assertEqual(linked_event.data["link_type"], "bidirectional")
+
+    def test_rollback_odps_linking_task_deletes_created_contract(self):
+        """Test that rollback task deletes ODPS contract created during workflow"""
+        import json
+        from hub.apps.contracts.models import OriginalSpecType, OriginalFormat, NormalizationStatus
+
+        # Attach ODCS contract to asset
+        self.odcs_contract.asset = self.asset
+        self.odcs_contract.version = 1
+        self.odcs_contract.save()
+
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id),
+                "odps_action": "generate"
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.state_data["contract_id"] = str(self.odcs_contract.id)
+        instance.save()
+
+        # First, create ODPS contract via linking task
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        input_data = {
+            "odps_action": "generate"
+        }
+
+        result = AssetCreationWorkflow._link_odps_task(
+            input_data, instance, step
+        )
+
+        odps_contract_id = result["odps_contract_id"]
+        self.assertIsNotNone(odps_contract_id)
+
+        # Verify ODPS contract exists
+        from hub.apps.contracts.models import Contract
+        odps_contract = Contract.objects.get(id=odps_contract_id)
+        self.assertIsNotNone(odps_contract)
+
+        # Now test rollback
+        rollback_step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=6,
+            step_name="rollback_odps_linking",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        rollback_result = AssetCreationWorkflow._rollback_odps_linking_task(
+            {}, instance, rollback_step
+        )
+
+        self.assertTrue(rollback_result.get("rolled_back"))
+
+        # Verify ODPS contract was deleted (since it was created via "generate")
+        with self.assertRaises(Contract.DoesNotExist):
+            Contract.objects.get(id=odps_contract_id)
+
+        # Verify links were removed from ODCS contract
+        self.odcs_contract.refresh_from_db()
+        if self.odcs_contract.hub_contract_json and "extensions" in self.odcs_contract.hub_contract_json:
+            x_odps = self.odcs_contract.hub_contract_json.get("extensions", {}).get("x_odps", {})
+            self.assertNotIn("odps_link", x_odps, "ODPS link should be removed from ODCS contract")
+
+    def test_rollback_odps_linking_task_keeps_existing_contract(self):
+        """Test that rollback task keeps existing ODPS contract when action is 'link'"""
+        import json
+        from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, NormalizationStatus
+
+        # Create existing ODPS contract
+        existing_odps_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="4.1",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odps),
+            hub_contract_json={"id": "test-product", "info": {"name": "Test Product"}},
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.DRAFT,
+            created_by=self.user
+        )
+
+        # Attach ODCS contract to asset
+        self.odcs_contract.asset = self.asset
+        self.odcs_contract.version = 1
+        self.odcs_contract.save()
+
+        instance = self.engine.create_instance(
+            workflow_name=AssetCreationWorkflow.WORKFLOW_NAME,
+            input_data={
+                "tenant_id": str(self.tenant.id),
+                "key": "test-asset",
+                "name": "Test Asset",
+                "created_by_id": str(self.user.id),
+                "odps_action": "link",
+                "odps_contract_id": str(existing_odps_contract.id)
+            },
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id)
+        )
+        instance.state_data["asset_id"] = str(self.asset.id)
+        instance.state_data["contract_id"] = str(self.odcs_contract.id)
+        instance.save()
+
+        # First, link ODPS contract
+        from hub.apps.orchestration.models import WorkflowStep
+        step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=5,
+            step_name="link_odps",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        input_data = {
+            "odps_action": "link",
+            "odps_contract_id": str(existing_odps_contract.id)
+        }
+
+        result = AssetCreationWorkflow._link_odps_task(
+            input_data, instance, step
+        )
+
+        self.assertTrue(result.get("odps_linked"))
+
+        # Now test rollback
+        rollback_step = WorkflowStep(
+            workflow_instance=instance,
+            step_index=6,
+            step_name="rollback_odps_linking",
+            step_type="task",
+            status=StepStatus.PENDING
+        )
+
+        rollback_result = AssetCreationWorkflow._rollback_odps_linking_task(
+            {}, instance, rollback_step
+        )
+
+        self.assertTrue(rollback_result.get("rolled_back"))
+
+        # Verify ODPS contract still exists (since it was linked, not created)
+        from hub.apps.contracts.models import Contract
+        existing_odps_contract.refresh_from_db()
+        self.assertIsNotNone(existing_odps_contract)
+
+        # Verify links were removed
+        self.odcs_contract.refresh_from_db()
+        if self.odcs_contract.hub_contract_json and "extensions" in self.odcs_contract.hub_contract_json:
+            x_odps = self.odcs_contract.hub_contract_json.get("extensions", {}).get("x_odps", {})
+            self.assertNotIn("odps_link", x_odps, "ODPS link should be removed from ODCS contract")
+
+        existing_odps_contract.refresh_from_db()
+        if existing_odps_contract.hub_contract_json and "extensions" in existing_odps_contract.hub_contract_json:
+            x_odps = existing_odps_contract.hub_contract_json.get("extensions", {}).get("x_odps", {})
+            self.assertNotIn("odcs_link", x_odps, "ODCS link should be removed from ODPS contract")
+
+
+class AssetCreationWorkflowDataFirstFlowE2ETest(TestCase):
+    """E2E tests for Data-First flow in asset creation workflow"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        unique_id = str(uuid.uuid4())[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant Data First {unique_id}",
+            slug=f"test-tenant-data-first-{unique_id}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED"
+        )
+        self.user = User.objects.create_user(
+            email=f"test-data-first-{unique_id}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            display_name="Test User"
+        )
+
+        # Create test CSV file content
+        self.csv_content = b'id,name,email,age\n1,John Doe,john@example.com,30\n2,Jane Smith,jane@example.com,25\n3,Bob Johnson,bob@example.com,35\n'
+
+        # Create file record
+        from hub.apps.files.models import File, FileStatus
+        from hub.apps.files.storage import S3StorageClient
+        from django.core.files.base import ContentFile
+
+        self.file_obj = File.objects.create(
+            tenant=self.tenant,
+            name="test_data.csv",
+            content_type="text/csv",
+            size=len(self.csv_content),
+            status=FileStatus.ACTIVE,
+            created_by=self.user
+        )
+
+        # Upload file to storage
+        try:
+            storage = S3StorageClient()
+            storage_path = storage.save_file(
+                tenant_id=str(self.tenant.id),
+                file_id=str(self.file_obj.id),
+                file_content=ContentFile(self.csv_content, name="test_data.csv")
+            )
+            self.file_obj.storage_path = storage_path
+            self.file_obj.save(update_fields=['storage_path'])
+        except Exception as e:
+            # If S3 is not available, we'll handle it in the test
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not upload file to S3: {e}")
+
+        self.engine = WorkflowEngine()
+        self.registry = WorkflowRegistry()
+        AssetCreationWorkflow.register_workflow(self.registry)
+        AssetCreationWorkflow.register_tasks(self.engine)
+
+    @patch('hub.apps.orchestration.workflows.data_quality.DataQualityCheckWorkflow')
+    @patch('hub.apps.compliance.views.execute_compliance_run')
+    @patch('hub.apps.search.indexing.SearchIndexer')
+    @patch('hub.apps.notifications.tasks.send_email_async')
+    @patch('hub.apps.audit.utils.create_audit_event')
+    @patch('hub.apps.semantic.utils.map_asset_to_semantic')
+    def test_data_first_flow_complete(self, mock_semantic, mock_audit, mock_email, mock_indexer, mock_compliance, mock_dq_workflow):
+        """Test complete Data-First flow: file → schema → ODCS → contract → asset → ODPS (optional)"""
+        mock_audit.return_value = MagicMock(id="audit-123")
+        mock_email.return_value = {"success": True}
+        mock_search_index = MagicMock()
+        mock_search_index.id = "search-index-123"
+        mock_indexer.index_asset.return_value = mock_search_index
+
+        from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
+
+        # Mock compliance run execution to update the run created by workflow
+        def mock_execute_side_effect(compliance_run_id):
+            try:
+                compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
+                compliance_run.status = ComplianceRunStatus.SUCCEEDED
+                compliance_run.overall_status = "PASS"
+                compliance_run.risk_level = "LOW"
+                compliance_run.save()
+            except ComplianceRun.DoesNotExist:
+                pass
+
+        mock_compliance.side_effect = mock_execute_side_effect
+
+        # Mock DQ workflow
+        mock_dq_workflow.execute.return_value = {
+            "success": True,
+            "workflow_instance_id": "dq-workflow-123"
+        }
+
+        # Mock WorkflowInstance for DQ workflow
+        # Note: DQRun will be created by the workflow with proper asset/dataset reference
+        # We just need to mock the workflow instance lookup
+        from hub.apps.orchestration.models import WorkflowInstance
+
+        def mock_get_side_effect(*args, **kwargs):
+            from hub.apps.orchestration.models import WorkflowInstance as RealWorkflowInstance
+            if 'dq-workflow-123' in str(args) or 'dq-workflow-123' in str(kwargs):
+                # Create a real DQRun when the workflow needs it
+                from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
+                from hub.apps.jobs.utils import create_job
+                from hub.apps.jobs.models import JobType
+                from hub.apps.assets.models import Asset
+
+                # Get asset from workflow instance if available
+                asset_id = None
+                dataset_id = None
+                try:
+                    # Try to get the actual workflow instance to extract asset_id
+                    if hasattr(kwargs, 'get') or isinstance(kwargs, dict):
+                        # This is a mock, so we'll create DQRun later when we have the asset
+                        pass
+                except:
+                    pass
+
+                # Try to find an actual DQRun and return its workflow instance
+                from hub.apps.dq.models import DQRun
+                dq_runs = DQRun.objects.filter(tenant=self.tenant).order_by('-created_at')
+                if dq_runs.exists():
+                    dq_run = dq_runs.first()
+                    mock_wi_instance = MagicMock()
+                    mock_wi_instance.state_data = {"dq_run_id": str(dq_run.id)}
+                    return mock_wi_instance
+                else:
+                    mock_wi_instance = MagicMock()
+                    mock_wi_instance.state_data = {}
+                    return mock_wi_instance
+            return RealWorkflowInstance.objects.get(*args, **kwargs)
+
+        # Mock the DQ workflow to create a proper DQRun when executed
+        def mock_dq_execute(*args, **kwargs):
+            from hub.apps.dq.models import DQRun, DQRunStatus, DQEngine
+            from hub.apps.jobs.utils import create_job
+            from hub.apps.jobs.models import JobType
+            from hub.apps.assets.models import Asset
+            from hub.apps.datasets.models import Dataset
+
+            # Extract asset_id and dataset_id from input
+            input_data = args[0] if args else kwargs.get('input_data', {})
+            asset_id = input_data.get('asset_id')
+            dataset_id = input_data.get('dataset_id')
+
+            if asset_id:
+                asset = Asset.objects.get(id=asset_id)
+                dataset = None
+                if dataset_id:
+                    dataset = Dataset.objects.get(id=dataset_id)
+
+                dq_job = create_job(
+                    tenant=asset.tenant,
+                    user=self.user,
+                    job_type=JobType.DQ_RUN.value,
+                    resource_type="DQ_RUN",
+                    resource_id=str(asset.id)
+                )
+                dq_run = DQRun.objects.create(
+                    tenant=asset.tenant,
+                    asset=asset,
+                    dataset=dataset,
+                    job=dq_job,
+                    profile_key="intake_basic_gx",
+                    engine=DQEngine.GREAT_EXPECTATIONS,
+                    status=DQRunStatus.SUCCEEDED,
+                    overall_status="PASS",
+                    quality_score=0.95
+                )
+
+                return {
+                    "success": True,
+                    "workflow_instance_id": "dq-workflow-123",
+                    "dq_run_id": str(dq_run.id)
+                }
+            return {
+                "success": True,
+                "workflow_instance_id": "dq-workflow-123"
+            }
+
+        mock_dq_workflow.execute.side_effect = mock_dq_execute
+
+        with patch.object(WorkflowInstance.objects, 'get', side_effect=mock_get_side_effect):
+            # Execute Data-First workflow
+            result = AssetCreationWorkflow.execute(
+                tenant_id=str(self.tenant.id),
+                key=f"test-asset-data-first-{uuid.uuid4().hex[:8]}",
+                name="Test Asset Data First",
+                description="Test description",
+                file_id=str(self.file_obj.id),
+                file_format="CSV",
+                contract_name="Generated Contract",
+                contract_description="Contract generated from data",
+                auto_activate=False,
+                send_notifications=False,
+                created_by_id=str(self.user.id),
+                engine=self.engine,
+                registry=self.registry
+            )
+
+        # Verify workflow completed successfully
+        self.assertTrue(result["success"])
+        self.assertIn("workflow_instance_id", result)
+
+        # Get workflow instance
+        workflow_instance_id = result["workflow_instance_id"]
+        workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
+
+        # Verify all steps completed
+        self.assertEqual(workflow_instance.status, WorkflowStatus.COMPLETED)
+
+        # Verify asset was created
+        asset_id = workflow_instance.state_data.get("asset_id")
+        self.assertIsNotNone(asset_id)
+        asset = Asset.objects.get(id=asset_id)
+        self.assertEqual(asset.tenant, self.tenant)
+        self.assertEqual(asset.created_by, self.user)
+
+        # Verify contract was created from schema
+        contract_id = workflow_instance.state_data.get("contract_id")
+        self.assertIsNotNone(contract_id)
+        from hub.apps.contracts.models import Contract, OriginalSpecType
+        contract = Contract.objects.get(id=contract_id)
+        self.assertEqual(contract.original_spec_type, OriginalSpecType.ODCS)
+        self.assertEqual(contract.tenant, self.tenant)
+        self.assertEqual(contract.asset, asset)
+
+        # Verify dataset was created
+        dataset_id = workflow_instance.state_data.get("dataset_id")
+        self.assertIsNotNone(dataset_id)
+        from hub.apps.datasets.models import Dataset
+        dataset = Dataset.objects.get(id=dataset_id)
+        self.assertEqual(dataset.asset, asset)
+        self.assertEqual(dataset.file, self.file_obj)
+
+        # Verify schema was inferred
+        schema_json = workflow_instance.state_data.get("schema_json")
+        self.assertIsNotNone(schema_json)
+        self.assertIn("fields", schema_json)
+        self.assertGreater(len(schema_json["fields"]), 0)
+
+        # Verify ODCS contract was generated
+        odcs_contract_json = workflow_instance.state_data.get("odcs_contract_json")
+        self.assertIsNotNone(odcs_contract_json)
+        self.assertEqual(odcs_contract_json.get("name"), "Generated Contract")
+
+        # Verify HubContract was created
+        hub_contract_json = workflow_instance.state_data.get("hub_contract_json")
+        self.assertIsNotNone(hub_contract_json)
+        self.assertIn("schema", hub_contract_json)
+
+    @patch('hub.apps.search.indexing.SearchIndexer')
+    @patch('hub.apps.notifications.tasks.send_email_async')
+    @patch('hub.apps.audit.utils.create_audit_event')
+    def test_data_first_flow_with_odps_generation(self, mock_audit, mock_email, mock_indexer):
+        """Test Data-First flow with ODPS generation"""
+        mock_audit.return_value = MagicMock(id="audit-123")
+        mock_email.return_value = {"success": True}
+        mock_search_index = MagicMock()
+        mock_search_index.id = "search-index-123"
+        mock_indexer.index_asset.return_value = mock_search_index
+
+        # Execute Data-First workflow with ODPS generation
+        result = AssetCreationWorkflow.execute(
+            tenant_id=str(self.tenant.id),
+            key=f"test-asset-data-first-odps-{uuid.uuid4().hex[:8]}",
+            name="Test Asset Data First with ODPS",
+            description="Test description",
+            file_id=str(self.file_obj.id),
+            file_format="CSV",
+            contract_name="Generated Contract",
+            odps_action="generate",
+            auto_activate=False,
+            send_notifications=False,
+            created_by_id=str(self.user.id),
+            engine=self.engine,
+            registry=self.registry
+        )
+
+        # Verify workflow completed successfully
+        self.assertTrue(result["success"])
+
+        # Get workflow instance
+        workflow_instance_id = result["workflow_instance_id"]
+        workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
+
+        # Verify ODPS contract was created
+        odps_contract_id = workflow_instance.state_data.get("odps_contract_id")
+        self.assertIsNotNone(odps_contract_id)
+
+        from hub.apps.contracts.models import Contract, OriginalSpecType
+        odps_contract = Contract.objects.get(id=odps_contract_id)
+        self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
+
+        # Verify bidirectional link
+        contract_id = workflow_instance.state_data.get("contract_id")
+        odcs_contract = Contract.objects.get(id=contract_id)
+        self.assertIn("extensions", odcs_contract.hub_contract_json)
+        self.assertIn("x_odps", odcs_contract.hub_contract_json["extensions"])
+        self.assertEqual(
+            odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"],
+            odps_contract_id
+        )
+

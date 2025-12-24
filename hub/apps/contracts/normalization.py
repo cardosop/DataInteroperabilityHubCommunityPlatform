@@ -70,10 +70,83 @@ def register_normalizer(normalizer: SpecNormalizer) -> None:
 
 
 def get_normalizer(spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> Optional[SpecNormalizer]:
-    """Retrieve a normalizer that supports the given spec type/version."""
-    for normalizer in _NORMALIZER_REGISTRY.get(spec_type, []):
+    """
+    Retrieve a normalizer that supports the given spec type/version.
+
+    Prefers version-specific normalizers over default normalizers that support all versions.
+    This ensures that version-specific implementations are used when available.
+
+    Strategy: Check normalizers in reverse order (most recently registered first) since
+    version-specific normalizers are registered after default normalizers.
+
+    For ODCS, if no normalizer is found for the specified version, falls back to the
+    latest version (3.0.2) to ensure backward compatibility and graceful handling of
+    unknown or future versions.
+
+    Args:
+        spec_type: Specification type (e.g., "ODCS", "ODPS")
+        spec_version: Specification version (e.g., "3.0.2", "3.0.1")
+        contract_data: Contract data dictionary
+
+    Returns:
+        SpecNormalizer instance if found, None otherwise
+    """
+    normalizers = _NORMALIZER_REGISTRY.get(spec_type, [])
+    if not normalizers:
+        return None
+
+    # Check in reverse order to prefer version-specific normalizers
+    # (they are registered after default normalizers)
+    # For ODCS, we need to skip the default wrapper (ODCSNormalizer) when looking
+    # for version-specific normalizers
+    from hub.apps.contracts.normalization.odcs_normalizer_default import ODCSNormalizerDefault
+
+    version_specific_normalizer = None
+    default_normalizer = None
+
+    for normalizer in reversed(normalizers):
         if normalizer.supports(spec_type, spec_version, contract_data):
+            # Check if this is the default wrapper or default implementation
+            normalizer_class_name = normalizer.__class__.__name__
+            if normalizer_class_name == "ODCSNormalizer" or isinstance(normalizer, ODCSNormalizerDefault):
+                # Store default normalizer but continue looking for version-specific
+                if default_normalizer is None:
+                    default_normalizer = normalizer
+                continue
+            # This is a version-specific normalizer - return it immediately
             return normalizer
+
+    # If we found a version-specific normalizer above, it would have been returned
+    # For ODCS with unknown versions, try fallback to 3.0.2 before using default
+    # For other cases, use default normalizer if found
+    if spec_type == OriginalSpecType.ODCS and spec_version != "3.0.2":
+        # Don't use default normalizer yet - try fallback first (handled below)
+        pass
+    elif default_normalizer is not None:
+        return default_normalizer
+
+    # Fallback: For ODCS, if no normalizer found for the specified version,
+    # try to find the latest version normalizer (3.0.2) to ensure backward
+    # compatibility and graceful handling of unknown or future versions.
+    # This allows the system to handle contracts with versions that don't
+    # have a specific normalizer yet (e.g., future patch versions).
+    if spec_type == OriginalSpecType.ODCS and spec_version != "3.0.2":
+        # Try to find 3.0.2 normalizer (latest version)
+        # Skip default normalizer wrapper - we want version-specific normalizers
+        for normalizer in reversed(normalizers):
+            # Skip default normalizer wrapper (ODCSNormalizer) and default implementation
+            normalizer_class_name = normalizer.__class__.__name__
+            if normalizer_class_name == "ODCSNormalizer" or isinstance(normalizer, ODCSNormalizerDefault):
+                continue
+            # Check if this is a version-specific 3.0.2 normalizer
+            if isinstance(normalizer, ODCSNormalizerV3_0_2):
+                return normalizer
+            # Also check via supports() and class name to ensure it's version-specific
+            if normalizer.supports(spec_type, "3.0.2", contract_data):
+                # Double-check it's not a default normalizer by checking class name
+                if normalizer_class_name.startswith("ODCSNormalizerV"):
+                    return normalizer
+
     return None
 
 
@@ -89,37 +162,37 @@ def _reset_normalizer_registry(registry: Optional[Dict[str, List[SpecNormalizer]
 def _determine_normalization_status(hub_contract: Optional[Dict[str, Any]], errors: list, warnings: list) -> NormalizationStatus:
     """
     Determine normalization status based on completeness and errors.
-    
+
     Args:
         hub_contract: Normalized HubContract JSON (None if normalization failed)
         errors: List of errors encountered during normalization
         warnings: List of warnings encountered during normalization
-    
+
     Returns:
         NormalizationStatus enum value
     """
     # If normalization failed (errors or no contract), return FAILED
     if errors or hub_contract is None:
         return NormalizationStatus.NORMALIZATION_FAILED
-    
+
             # Check if critical sections are present
     info = hub_contract.get('info', {})
     # Empty string name should cause FAILED status (test expects this)
     if 'info' not in hub_contract or 'name' not in info or not info.get('name'):
         return NormalizationStatus.NORMALIZATION_FAILED
-    
+
     schema = hub_contract.get('schema', {})
     if 'schema' not in hub_contract or 'fields' not in schema:
         return NormalizationStatus.NORMALIZATION_FAILED
-    
+
     if not schema.get('fields'):
         return NormalizationStatus.NORMALIZATION_FAILED
-    
+
     # If warnings present, status is WITH_WARNINGS
     # Extensions also indicate WITH_WARNINGS (they represent unmappable fields)
     if warnings or hub_contract.get('extensions'):
         return NormalizationStatus.NORMALIZED_WITH_WARNINGS
-    
+
     # All critical sections present, no warnings
     return NormalizationStatus.NORMALIZED_OK
 
@@ -127,10 +200,10 @@ def _determine_normalization_status(hub_contract: Optional[Dict[str, Any]], erro
 def _calculate_normalization_coverage(hub_contract: Dict[str, Any]) -> float:
     """
     Calculate normalization coverage as percentage of sections mapped.
-    
+
     Args:
         hub_contract: Normalized HubContract JSON
-    
+
     Returns:
         Coverage percentage (0.0 to 1.0)
     """
@@ -249,7 +322,7 @@ def _map_service_levels(contract_data: Dict[str, Any]) -> Optional[list]:
 def _map_contacts(contract_data: Dict[str, Any]) -> Optional[list]:
     """
     Map ODCS support[] channels into canonical contact list.
-    
+
     Separates contact info (name, email) from support channels (tool, url, scope).
     Entries with name/email are treated as contacts, others as support channels.
     """
@@ -262,7 +335,7 @@ def _map_contacts(contract_data: Dict[str, Any]) -> Optional[list]:
             mapped = {}
             # Check if this is a contact (has name or email) or support channel
             has_contact_info = 'name' in entry or 'email' in entry or 'address' in entry
-            
+
             if has_contact_info:
                 # Map as contact
                 for target, aliases in {
@@ -289,9 +362,9 @@ def _map_contacts(contract_data: Dict[str, Any]) -> Optional[list]:
 def _map_support_channels(contract_data: Dict[str, Any]) -> Optional[list]:
     """
     Map ODCS support[] channels into canonical support channel list.
-    
+
     Preserves unmappable fields in extensions.
-    
+
     Extracts support channels (tool, url, description, scope) separate from contacts.
     """
     support = contract_data.get('support')
@@ -304,7 +377,7 @@ def _map_support_channels(contract_data: Dict[str, Any]) -> Optional[list]:
             has_contact_info = 'name' in entry or 'email' in entry or 'address' in entry
             if has_contact_info:
                 continue  # Skip contacts, they're handled by _map_contacts
-            
+
             mapped = {}
             for target, aliases in {
                 'tool': ['tool'],
@@ -316,18 +389,18 @@ def _map_support_channels(contract_data: Dict[str, Any]) -> Optional[list]:
                     if alias in entry and entry.get(alias) is not None:
                         mapped[target] = entry[alias]
                         break
-            
+
             # Preserve unmappable fields in extensions
             known_fields = {'tool', 'url', 'description', 'scope', 'name', 'email', 'address'}
             unmappable_fields = {}
             for key, value in entry.items():
                 if key not in known_fields and not key.startswith('_'):
                     unmappable_fields[key] = value
-            
+
             if unmappable_fields:
                 mapped.setdefault('extensions', {})
                 mapped['extensions'].update(unmappable_fields)
-            
+
             if mapped:
                 channels.append(mapped)
             else:
@@ -417,40 +490,40 @@ def _map_servers(contract_data: Dict[str, Any]) -> Optional[list]:
 def _map_definitions(contract_data: Dict[str, Any]) -> Optional[list]:
     """
     Map ODCS authoritativeDefinitions into canonical definitions array.
-    
+
     ODCS authoritativeDefinitions can be:
     - A dictionary mapping definition names to field definitions
     - A list of definition objects with 'name' property
     - Nested in description.authoritativeDefinitions
-    
+
     Returns:
         List of definition entries, or None if no definitions found
     """
     definitions = []
-    
+
     # Check top-level authoritativeDefinitions
     auth_defs = contract_data.get('authoritativeDefinitions')
-    
+
     # Also check description.authoritativeDefinitions
     description = contract_data.get('description', {})
     if isinstance(description, dict):
         desc_auth_defs = description.get('authoritativeDefinitions')
         if desc_auth_defs:
             auth_defs = auth_defs or desc_auth_defs
-    
+
     if not auth_defs:
         return None
-    
+
     # Handle dictionary format: { "Address": { "type": "object", ... }, ... }
     if isinstance(auth_defs, dict):
         for def_name, def_data in auth_defs.items():
             if not isinstance(def_data, dict):
                 continue
-            
+
             definition = {
                 'name': def_name,
             }
-            
+
             # Map field definition properties
             field_property_map = {
                 'type': 'type',
@@ -465,38 +538,38 @@ def _map_definitions(contract_data: Dict[str, Any]) -> Optional[list]:
                 'minimum': 'minimum',
                 'maximum': 'maximum',
             }
-            
+
             for odcs_key, hub_key in field_property_map.items():
                 if odcs_key in def_data and def_data[odcs_key] is not None:
                     definition[hub_key] = def_data[odcs_key]
-            
+
             # Handle nested properties (for object types)
             if 'properties' in def_data:
                 definition['properties'] = def_data['properties']
-            
+
             # Preserve any unmappable fields
-            extra = {k: v for k, v in def_data.items() 
+            extra = {k: v for k, v in def_data.items()
                     if k not in field_property_map and k != 'properties'}
             if extra:
                 definition.setdefault('extensions', extra)
-            
+
             definitions.append(definition)
-    
+
     # Handle list format: [ { "name": "Address", "type": "object", ... }, ... ]
     elif isinstance(auth_defs, list):
         for def_entry in auth_defs:
             if not isinstance(def_entry, dict):
                 continue
-            
+
             # Extract name (required)
             def_name = def_entry.get('name') or def_entry.get('$id', '').split('/')[-1]
             if not def_name:
                 continue
-            
+
             definition = {
                 'name': def_name,
             }
-            
+
             # Map field definition properties
             field_property_map = {
                 'type': 'type',
@@ -511,23 +584,23 @@ def _map_definitions(contract_data: Dict[str, Any]) -> Optional[list]:
                 'minimum': 'minimum',
                 'maximum': 'maximum',
             }
-            
+
             for odcs_key, hub_key in field_property_map.items():
                 if odcs_key in def_entry and def_entry[odcs_key] is not None:
                     definition[hub_key] = def_entry[odcs_key]
-            
+
             # Handle nested properties
             if 'properties' in def_entry:
                 definition['properties'] = def_entry['properties']
-            
+
             # Preserve any unmappable fields
-            extra = {k: v for k, v in def_entry.items() 
+            extra = {k: v for k, v in def_entry.items()
                     if k not in field_property_map and k != 'properties' and k != 'name' and k != '$id'}
             if extra:
                 definition.setdefault('extensions', extra)
-            
+
             definitions.append(definition)
-    
+
     return definitions if definitions else None
 
 
@@ -702,13 +775,13 @@ def _build_model_from_schema(schema_data: Dict[str, Any], fallback_name: str = "
         model_entry['data_granularity_description'] = schema_data.get('dataGranularityDescription')
     if schema_data.get('tags'):
         model_entry['tags'] = schema_data.get('tags')
-    
+
     # Extract model-level lineage
     from hub.apps.contracts.lineage import extract_model_level_lineage
     model_lineage = extract_model_level_lineage(schema_data)
     if model_lineage:
         model_entry['lineage'] = model_lineage
-    
+
     # Preserve unmappable fields in extensions
     known_fields = {
         'name', 'description', 'fields', 'primary_key', 'unique_constraints', 'indexes',
@@ -723,7 +796,7 @@ def _build_model_from_schema(schema_data: Dict[str, Any], fallback_name: str = "
     if unmappable_fields:
         model_entry.setdefault('extensions', {})
         model_entry['extensions'].update(unmappable_fields)
-    
+
     # Validate and enrich advanced schema attributes
     enriched_model, model_errors = validate_and_enrich_advanced_schema_attributes(model_entry)
     # Note: model_errors are warnings, not blocking errors
@@ -731,7 +804,7 @@ def _build_model_from_schema(schema_data: Dict[str, Any], fallback_name: str = "
         # Store validation warnings in model extensions for traceability
         enriched_model.setdefault('extensions', {})
         enriched_model['extensions']['_validation_warnings'] = model_errors
-    
+
     return enriched_model
 
 
@@ -754,12 +827,12 @@ def _derive_schema_from_model(model_entry: Dict[str, Any]) -> Dict[str, Any]:
 def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
     """
     Detect contract specification type and version from contract data.
-    
+
     Uses enhanced detection logic from spec_detection module.
-    
+
     Args:
         contract_data: Parsed contract data (dict)
-    
+
     Returns:
         Tuple of (spec_type, spec_version)
     """
@@ -769,11 +842,11 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
 def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
     """
     Parse contract from raw string.
-    
+
     Args:
         raw_contract: Raw contract content
         format: Format (JSON or YAML)
-    
+
     Returns:
         Parsed contract as dictionary
     """
@@ -784,7 +857,7 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
             raise ValueError("PyYAML is required for YAML parsing. Install with: pip install pyyaml")
         # Strip leading/trailing whitespace
         cleaned_contract = raw_contract.strip()
-        
+
         # Handle YAML strings with leading indentation from multi-line strings
         # Find the minimum indentation across all non-empty lines
         lines = cleaned_contract.split('\n')
@@ -794,7 +867,7 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
             if non_empty_lines:
                 indent_lengths = [len(line) - len(line.lstrip()) for line in non_empty_lines]
                 min_indent = min(indent_lengths) if indent_lengths else 0
-                
+
                 # Special case: if first line has no indentation (min_indent = 0) but other lines do,
                 # find the minimum indentation of the other lines and remove that
                 if min_indent == 0 and len(non_empty_lines) > 1:
@@ -804,7 +877,7 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
                     if other_indent_lengths and min(other_indent_lengths) > 0:
                         # Use the minimum indent from other lines
                         min_indent = min(other_indent_lengths)
-                
+
                 # If there's common indentation, remove it while preserving relative indentation
                 if min_indent > 0:
                     dedented_lines = []
@@ -822,7 +895,7 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
                         else:  # Empty line
                             dedented_lines.append('')
                     cleaned_contract = '\n'.join(dedented_lines)
-        
+
         return yaml.safe_load(cleaned_contract)
     else:
         raise ValueError(f"Unsupported format: {format}")
@@ -831,334 +904,132 @@ def parse_contract(raw_contract: str, format: str) -> Dict[str, Any]:
 def normalize_odcs_to_hubcontract(odcs_contract: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], NormalizationStatus, list, list]:
     """
     Normalize ODCS contract to HubContract format.
-    
+
+    This function is maintained for backward compatibility. It delegates to
+    ODCSNormalizerBase internally. The normalization logic has been refactored
+    into ODCSNormalizerBase to support version-specific normalizers.
+
     Args:
         odcs_contract: ODCS contract data
-    
+
     Returns:
         Tuple of (hub_contract_json, normalization_status, errors, warnings)
     """
-    errors = []
-    warnings = []
-    
-    try:
-        # Initialize source path tracker
-        path_tracker = SourcePathTracker()
-        
-        # Basic HubContract structure with version
-        # Only set info.description if it's a string (not a dict, which maps to terms)
-        description = odcs_contract.get('description')
-        info_description = description if isinstance(description, str) else None
-        
-        hub_contract = {
-            'hub_contract_version': get_default_version(),
-            'id': odcs_contract.get('id', ''),
-            'info': {
-                'name': odcs_contract.get('name', ''),
-                'description': info_description,
-                'version': odcs_contract.get('version'),
-            },
-            'schema': {}
-        }
-        
-        # Track basic field mappings (ODCS fields are at root level)
-        track_field_mapping(path_tracker, 'info', 'name', '', 'name')
-        track_field_mapping(path_tracker, 'info', 'description', '', 'description')
-        track_field_mapping(path_tracker, 'info', 'version', '', 'version')
-        
-        # Extract info section with owners and tags
-        info = odcs_contract.get('info', {})
-        if isinstance(info, dict):
-            if 'owners' in info:
-                hub_contract['info']['owners'] = info['owners']
-            if 'tags' in info:
-                hub_contract['info']['tags'] = info['tags']
-        # Also check top-level for owners/tags (ODCS may have them at root)
-        if 'owners' in odcs_contract:
-            hub_contract['info']['owners'] = odcs_contract['owners']
-        if 'tags' in odcs_contract:
-            hub_contract['info']['tags'] = odcs_contract['tags']
-        
-        # Map schema into canonical models[] (complete extraction)
-        models = []
-        if 'schema' in odcs_contract:
-            odcs_schema = odcs_contract['schema']
-            if isinstance(odcs_schema, list):
-                # ODCS schema[] array - map each to a model
-                for idx, schema_entry in enumerate(odcs_schema):
-                    if not isinstance(schema_entry, dict):
-                        continue
-                    model_entry = _build_model_from_schema(schema_entry, fallback_name=f"model_{idx+1}")
-                    if model_entry:
-                        models.append(model_entry)
-            elif isinstance(odcs_schema, dict):
-                # Single schema object - map to single model
-                model_entry = _build_model_from_schema(
-                    odcs_schema,
-                    fallback_name=odcs_schema.get('name') or odcs_contract.get('name') or "default"
-                )
-                if model_entry:
-                    models.append(model_entry)
-        elif isinstance(odcs_contract.get('models'), list):
-            # If models already present (rare), normalize them
-            for idx, model_entry in enumerate(odcs_contract.get('models', [])):
-                if isinstance(model_entry, dict):
-                    normalized = _build_model_from_schema(
-                        model_entry,
-                        fallback_name=model_entry.get('name') or f"model_{idx+1}"
-                    )
-                    if normalized:
-                        models.append(normalized)
-        
-        # Always set models[] if we have any
-        if models:
-            hub_contract['models'] = models
-            # Derived schema view for backward compatibility (from first model)
-            # Check if schema is empty or missing fields (not just falsy, since {} is truthy)
-            schema = hub_contract.get('schema', {})
-            if not schema or not schema.get('fields'):
-                derived_schema = _derive_schema_from_model(models[0])
-                hub_contract['schema'] = derived_schema
-        
-        # If no schema provided but models already present, derive schema
-        schema = hub_contract.get('schema', {})
-        if (not schema or not schema.get('fields')) and hub_contract.get('models'):
-            hub_contract['schema'] = _derive_schema_from_model(hub_contract['models'][0])
-        
-        # Extract quality section
-        if 'quality' in odcs_contract:
-            quality_data = odcs_contract['quality']
-            hub_contract['quality'] = {}
-            if 'default_profile_key' in quality_data:
-                hub_contract['quality']['default_profile_key'] = quality_data['default_profile_key']
-            mapped_rules = _map_quality_rules(quality_data)
-            if mapped_rules is not None:
-                hub_contract['quality']['rules'] = mapped_rules
-            contract_level_quality = _map_quality_contract_level(quality_data)
-            if contract_level_quality:
-                hub_contract['quality'].update(contract_level_quality)
-        
-        # Extract privacy_compliance section
-        # Check for privacy_compliance, compliance, or privacy at top level
-        compliance_data = None
-        if 'privacy_compliance' in odcs_contract:
-            compliance_data = odcs_contract.get('privacy_compliance', {})
-        elif 'compliance' in odcs_contract:
-            compliance_data = odcs_contract.get('compliance', {})
-        elif 'privacy' in odcs_contract:
-            compliance_data = odcs_contract.get('privacy', {})
-        
-        if compliance_data:
-            hub_contract['privacy_compliance'] = {}
-            if 'contains_personal_data' in compliance_data:
-                hub_contract['privacy_compliance']['contains_personal_data'] = compliance_data['contains_personal_data']
-            if 'personal_data_categories' in compliance_data:
-                hub_contract['privacy_compliance']['personal_data_categories'] = compliance_data['personal_data_categories']
-            if 'jurisdictions' in compliance_data:
-                hub_contract['privacy_compliance']['jurisdictions'] = compliance_data['jurisdictions']
-            if 'legal_bases' in compliance_data:
-                hub_contract['privacy_compliance']['legal_bases'] = compliance_data['legal_bases']
-            if 'retention_policy' in compliance_data:
-                hub_contract['privacy_compliance']['retention_policy'] = compliance_data['retention_policy']
-        
-        # Extract lifecycle section
-        if 'lifecycle' in odcs_contract:
-            lifecycle_data = odcs_contract['lifecycle']
-            hub_contract['lifecycle'] = {}
-            if 'data_source' in lifecycle_data:
-                hub_contract['lifecycle']['data_source'] = lifecycle_data['data_source']
-            if 'refresh_cadence' in lifecycle_data:
-                hub_contract['lifecycle']['refresh_cadence'] = lifecycle_data['refresh_cadence']
-            if 'slas' in lifecycle_data:
-                hub_contract['lifecycle']['slas'] = lifecycle_data['slas']
-        
-        # Extract servicelevels (canonical from ODCS slaProperties)
-        servicelevels = _map_service_levels(odcs_contract)
-        if servicelevels:
-            enriched_servicelevels, sl_errors = validate_and_enrich_servicelevels(servicelevels)
-            if sl_errors:
-                warnings.extend([f"ServiceLevel validation: {e}" for e in sl_errors])
-            hub_contract['servicelevels'] = enriched_servicelevels
-
-        # Extract contact (from support[] entries with name/email)
-        contacts = _map_contacts(odcs_contract)
-        if contacts:
-            enriched_contacts, contact_errors = validate_and_enrich_contacts(contacts)
-            if contact_errors:
-                warnings.extend([f"Contact validation: {e}" for e in contact_errors])
-            hub_contract['contact'] = enriched_contacts
-        
-        # Extract support channels (from support[] entries without name/email)
-        support_channels = _map_support_channels(odcs_contract)
-        if support_channels:
-            hub_contract['support'] = support_channels
-
-        # Extract servers
-        servers = _map_servers(odcs_contract)
-        if servers:
-            hub_contract['servers'] = servers
-
-        # Extract terms
-        terms = _map_terms(odcs_contract)
-        if terms:
-            # Validate/enrich pricing if present in terms
-            if 'pricing' in terms:
-                enriched_pricing, pricing_errors = validate_and_enrich_pricing(terms['pricing'])
-                if pricing_errors:
-                    warnings.extend([f"Pricing validation: {e}" for e in pricing_errors])
-                terms['pricing'] = enriched_pricing
-            hub_contract['terms'] = terms
-
-        # Map authoritativeDefinitions into definitions
-        definitions = _map_definitions(odcs_contract)
-        if definitions:
-            hub_contract['definitions'] = definitions
-
-        # Extract roles, team, and pricing
-        if isinstance(odcs_contract.get('roles'), list):
-            enriched_roles, role_errors = validate_and_enrich_roles(odcs_contract.get('roles'))
-            if role_errors:
-                warnings.extend([f"Role validation: {e}" for e in role_errors])
-            hub_contract['roles'] = enriched_roles
-        if isinstance(odcs_contract.get('team'), list):
-            enriched_team, team_errors = validate_and_enrich_team(odcs_contract.get('team'))
-            if team_errors:
-                warnings.extend([f"Team validation: {e}" for e in team_errors])
-            hub_contract['team'] = enriched_team
-        if isinstance(odcs_contract.get('price'), dict):
-            enriched_pricing, pricing_errors = validate_and_enrich_pricing(odcs_contract.get('price'))
-            if pricing_errors:
-                warnings.extend([f"Pricing validation: {e}" for e in pricing_errors])
-            hub_contract['pricing'] = enriched_pricing
-
-        # Extract multi-level lineage
-        from hub.apps.contracts.lineage import (
-            extract_contract_level_lineage,
-            extract_field_level_lineage,
-            extract_model_level_lineage,
-        )
-
-        # Contract-level lineage
-        contract_lineage = extract_contract_level_lineage(odcs_contract)
-        if contract_lineage:
-            entries = contract_lineage.get('entries', [])
-            enriched_lineage, lineage_errors = validate_and_enrich_lineage(entries)
-            if lineage_errors:
-                warnings.extend([f"Lineage validation: {e}" for e in lineage_errors])
-            # Set lineage as LineageSection structure (entries list + contracts if present)
-            if enriched_lineage:
-                lineage_section = {'entries': enriched_lineage}
-                # Add contract references if present
-                if contract_lineage.get('contracts'):
-                    lineage_section['contracts'] = contract_lineage['contracts']
-                hub_contract['lineage'] = lineage_section
-        
-        # Extract marketplace section
-        if 'marketplace' in odcs_contract:
-            marketplace_data = odcs_contract['marketplace']
-            hub_contract['marketplace'] = {}
-            if 'license_summary' in marketplace_data:
-                hub_contract['marketplace']['license_summary'] = marketplace_data['license_summary']
-            if 'intended_use' in marketplace_data:
-                hub_contract['marketplace']['intended_use'] = marketplace_data['intended_use']
-            if 'restricted_use' in marketplace_data:
-                hub_contract['marketplace']['restricted_use'] = marketplace_data['restricted_use']
-        
-        # Preserve unmappable fields in extensions
-        extensions = {}
-        odcs_extensions = {}
-        
-        # Known mappable fields (already mapped above)
-        known_fields = {
-            'id', 'name', 'description', 'version', 'schema', 'info',
-            'quality', 'privacy_compliance', 'compliance', 'lifecycle', 'marketplace',
-            'owners', 'tags', 'support', 'servers', 'slaProperties', 'terms',
-            'servicelevels', 'models', 'roles', 'team', 'price',
-            'transformSourceObjects', 'transformLogic'
-        }
-        
-        # Copy fields that don't map directly
-        for key, value in odcs_contract.items():
-            if key not in known_fields:
-                odcs_extensions[key] = value
-        
-        if odcs_extensions:
-            # Store extensions directly at top level for easy access
-            extensions.update(odcs_extensions)
-            # Also store under 'odcs' for backward compatibility and namespacing
-            extensions['odcs'] = odcs_extensions
-            # Add informational warning about extensions (they're preserved but indicate unmappable fields)
-            warnings.append("Some ODCS fields preserved in extensions")
-        
-        if extensions:
-            hub_contract['extensions'] = extensions
-        
-        # Promote context fields into info
-        hub_contract = promote_context_fields(hub_contract, odcs_contract)
-        
-        # Check for required fields and add errors if missing
-        info = hub_contract.get('info', {})
-        if 'name' not in info or not info.get('name'):
-            errors.append("Contract must have a 'name' field")
-        
-        schema = hub_contract.get('schema', {})
-        if 'fields' not in schema:
-            errors.append("Contract must have a 'fields' array in schema")
-        elif not schema.get('fields'):
-            # Empty fields array is allowed but should be a warning, not an error
-            warnings.append("Schema has no fields")
-        
-        # Validate against typed HubContract models for structural safety
-        validated_contract, validation_errors = validate_hub_contract_dict(hub_contract)
-        if validation_errors:
-            errors.extend(validation_errors)
-        elif validated_contract:
-            hub_contract = validated_contract.model_dump(exclude_none=True)
-        
-        # Determine status based on completeness
-        status = _determine_normalization_status(hub_contract, errors, warnings)
-        
-        # Attach coverage metrics for observability
-        if isinstance(hub_contract, dict):
-            coverage_result = calculate_coverage(hub_contract, spec_type=OriginalSpecType.ODCS)
-            hub_contract.setdefault('normalization', {})
-            hub_contract['normalization']['coverage'] = coverage_result.to_dict()
-        
-        # Always return hub_contract even with errors (for debugging/traceability)
-        # Status will be NORMALIZATION_FAILED if critical sections are missing
-        return hub_contract, status, errors, warnings
-    
-    except Exception as e:
-        errors.append(f"Normalization failed: {str(e)}")
-        return None, NormalizationStatus.NORMALIZATION_FAILED, errors, warnings
+    # Delegate to the default normalizer for backward compatibility
+    from hub.apps.contracts.normalization.odcs_normalizer_default import ODCSNormalizerDefault
+    normalizer = ODCSNormalizerDefault()
+    result = normalizer.normalize(odcs_contract, spec_version=None)
+    return result.hub_contract, result.status, result.errors, result.warnings
 
 
 class ODCSNormalizer:
-    """SpecNormalizer implementation for ODCS contracts."""
+    """
+    SpecNormalizer implementation for ODCS contracts.
+
+    This class now uses ODCSNormalizerBase internally for backward compatibility.
+    The normalization logic has been refactored into ODCSNormalizerBase to support
+    version-specific normalizers while maintaining the existing API.
+    """
 
     spec_type = OriginalSpecType.ODCS
 
+    def __init__(self):
+        """Initialize ODCSNormalizer with default implementation."""
+        # Lazy import to avoid circular import
+        self._normalizer = None
+
+    def _get_normalizer(self):
+        """Get the default normalizer, initializing it if necessary."""
+        if self._normalizer is None:
+            # Use the default normalizer that supports all versions for backward compatibility
+            from hub.apps.contracts.normalization.odcs_normalizer_default import ODCSNormalizerDefault
+            self._normalizer = ODCSNormalizerDefault()
+        return self._normalizer
+
     def supports(self, spec_type: str, spec_version: str, contract_data: Dict[str, Any]) -> bool:
-        return spec_type == self.spec_type
+        """Check if this normalizer supports the given spec type and version."""
+        return self._get_normalizer().supports(spec_type, spec_version, contract_data)
 
     def normalize(self, contract_data: Dict[str, Any], spec_version: Optional[str] = None) -> NormalizationResult:
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(contract_data)
-        coverage = None
-        if isinstance(hub_contract, dict):
-            coverage = hub_contract.get('normalization', {}).get('coverage')
-        return NormalizationResult(
-            hub_contract=hub_contract,
-            status=status,
-            errors=errors,
-            warnings=warnings,
-            spec_type=self.spec_type,
-            spec_version=spec_version or contract_data.get('version') or "3.0.2",
-            coverage=coverage
-        )
+        """Normalize ODCS contract data to HubContract format."""
+        return self._get_normalizer().normalize(contract_data, spec_version)
 
 
-# Register default normalizer
+# Register default normalizers
 register_normalizer(ODCSNormalizer())
+
+# Register ODCS version-specific normalizers
+try:
+    from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
+    register_normalizer(ODCSNormalizerV3_0_2())
+except ImportError:
+    # ODCS 3.0.2 normalizer not available (should not happen in production)
+    pass
+
+try:
+    from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import ODCSNormalizerV3_0_0_Preview
+    register_normalizer(ODCSNormalizerV3_0_0_Preview())
+except ImportError:
+    # ODCS 3.0.0-preview normalizer not available (should not happen in production)
+    pass
+
+# Register ODPS normalizers
+try:
+    from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+    register_normalizer(ODPSNormalizer())
+except ImportError:
+    # ODPS normalizer not available (should not happen in production)
+    pass
+
+# Register ODPS version-specific normalizers (backward compatibility)
+try:
+    from hub.apps.contracts.normalization.odps_normalizer_v4_1 import ODPSNormalizerV4_1
+    register_normalizer(ODPSNormalizerV4_1())
+except ImportError:
+    pass
+
+try:
+    from hub.apps.contracts.normalization.odps_normalizer_v4_0 import ODPSNormalizerV4_0
+    register_normalizer(ODPSNormalizerV4_0())
+except ImportError:
+    pass
+
+try:
+    from hub.apps.contracts.normalization.odps_normalizer_v3_x import ODPSNormalizerV3_X
+    register_normalizer(ODPSNormalizerV3_X())
+except ImportError:
+    pass
+
+try:
+    from hub.apps.contracts.normalization.odps_normalizer_v2_x import ODPSNormalizerV2_X
+    register_normalizer(ODPSNormalizerV2_X())
+except ImportError:
+    pass
+
+# Register ODCS version-specific normalizers
+try:
+    from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
+    register_normalizer(ODCSNormalizerV3_0_1())
+except ImportError:
+    pass
+
+try:
+    from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
+    register_normalizer(ODCSNormalizerV3_0_0())
+except ImportError:
+    pass
+
+try:
+    from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
+    register_normalizer(ODCSNormalizerV2_2_2())
+except ImportError:
+    pass
+
+try:
+    from hub.apps.contracts.normalization.odps_normalizer_v1_x import ODPSNormalizerV1_X
+    register_normalizer(ODPSNormalizerV1_X())
+except ImportError:
+    pass
 
 
 def normalize_contract(
@@ -1168,21 +1039,21 @@ def normalize_contract(
 ) -> Tuple[Optional[Dict[str, Any]], str, str, NormalizationStatus, list, list]:
     """
     Normalize contract to HubContract format.
-    
+
     Only supports Open Data Contract Standard (ODCS) v3.0.2+ contracts.
-    
+
     Args:
         raw_contract: Raw contract content
         format: Format (JSON or YAML)
         spec_type: Optional spec type (ODCS only). If None, will be detected.
-    
+
     Returns:
         Tuple of (hub_contract_json, detected_spec_type, detected_spec_version, normalization_status, errors, warnings)
     """
     try:
         # Parse contract
         contract_data = parse_contract(raw_contract, format)
-        
+
         # Check for DCS contracts FIRST (before spec detection)
         # DCS contracts have 'dataContractSpecification' field
         if isinstance(contract_data, dict) and 'dataContractSpecification' in contract_data:
@@ -1194,13 +1065,13 @@ def normalize_contract(
             # Return ODCS as spec_type (since enum no longer has DATACONTRACT_COM)
             # but normalization will fail with clear error message
             return None, OriginalSpecType.ODCS, "3.0.2", NormalizationStatus.NORMALIZATION_FAILED, errors, []
-        
+
         # Detect spec type if not provided
         if not spec_type:
             spec_type, spec_version = detect_spec_type(contract_data)
         else:
             spec_version = contract_data.get('version', '1.0')
-        
+
         normalizer = get_normalizer(spec_type, spec_version, contract_data)
         if not normalizer:
             errors = [
@@ -1208,8 +1079,19 @@ def normalize_contract(
                 "Ensure a SpecNormalizer is registered for this spec type."
             ]
             return None, spec_type, spec_version, NormalizationStatus.NORMALIZATION_FAILED, errors, []
-        
-        result = normalizer.normalize(contract_data, spec_version=spec_version)
+
+        # For ODCS fallback: if we got a 3.0.2 normalizer for an unknown version,
+        # use "3.0.2" as the spec_version for normalization
+        from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
+        if (spec_type == OriginalSpecType.ODCS and
+            spec_version != "3.0.2" and
+            isinstance(normalizer, ODCSNormalizerV3_0_2)):
+            # Use 3.0.2 as the version for normalization when using fallback
+            normalization_version = "3.0.2"
+        else:
+            normalization_version = spec_version
+
+        result = normalizer.normalize(contract_data, spec_version=normalization_version)
         hub_contract, status, errors, warnings = (
             result.hub_contract,
             result.status,
@@ -1217,19 +1099,19 @@ def normalize_contract(
             result.warnings,
         )
         spec_version = result.spec_version or spec_version
-        
+
         # Store original spec metadata in HubContract
         if hub_contract:
             hub_contract = store_original_spec_metadata(hub_contract, contract_data)
-        
+
         # Ensure all contracts have version "1.0.0" during development
         if hub_contract:
             hub_contract = ensure_version(hub_contract)
             if not hub_contract.get('hub_contract_version'):
                 hub_contract['hub_contract_version'] = get_default_version()
-        
+
         return hub_contract, spec_type, spec_version, status, errors, warnings
-    
+
     except Exception as e:
         errors = [f"Failed to normalize contract: {str(e)}"]
         # Return ODCS as default spec type
@@ -1239,22 +1121,22 @@ def normalize_contract(
 def validate_hubcontract_schema(hub_contract: Dict[str, Any]) -> Tuple[bool, list]:
     """
     Validate HubContract JSON against schema.
-    
+
     Args:
         hub_contract: HubContract JSON
-    
+
     Returns:
         Tuple of (is_valid: bool, errors: list)
     """
     validated_contract, validation_errors = validate_hub_contract_dict(hub_contract)
     if validation_errors:
         return False, validation_errors
-    
+
     errors = []
     expected_version = get_default_version()
     if validated_contract and validated_contract.hub_contract_version != expected_version:
         errors.append(
             f"Invalid hub_contract_version: {validated_contract.hub_contract_version} (expected: \"{expected_version}\")"
         )
-    
+
     return len(errors) == 0, errors

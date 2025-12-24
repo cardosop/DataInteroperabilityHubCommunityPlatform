@@ -5,7 +5,7 @@ WebSocket consumer for real-time event updates.
 """
 import json
 import asyncio
-from typing import Set, Optional
+from typing import Set, Optional, Dict
 from datetime import datetime, timedelta
 from django.conf import settings
 
@@ -61,6 +61,11 @@ class EventConsumer(AsyncWebsocketConsumer):
         self.ping_task: Optional[asyncio.Task] = None
         self.health_check_task: Optional[asyncio.Task] = None
         self._connection_closed = False
+
+        # Event replay tracking - track last event timestamp per event type for replay on reconnection
+        self.last_event_timestamps: Dict[str, datetime] = {}  # event_type -> last timestamp
+        self.replay_enabled = getattr(settings, 'WEBSOCKET_EVENT_REPLAY_ENABLED', True)
+        self.replay_window_seconds = getattr(settings, 'WEBSOCKET_EVENT_REPLAY_WINDOW_SECONDS', 3600)  # 1 hour default
 
         # Configuration from settings
         self.ping_interval = getattr(settings, 'WEBSOCKET_PING_INTERVAL', DEFAULT_PING_INTERVAL)
@@ -228,6 +233,10 @@ class EventConsumer(AsyncWebsocketConsumer):
         # Subscribe to event bus
         await self._subscribe_to_events()
 
+        # Replay missed ODPS events on subscription (if replay is enabled)
+        if self.replay_enabled:
+            await self._replay_missed_odps_events()
+
         # Send confirmation
         await self.send_json_message(
             WebSocketMessage(
@@ -346,6 +355,197 @@ class EventConsumer(AsyncWebsocketConsumer):
             # Close Redis subscription
             self.redis_subscriber = None
 
+    async def _replay_missed_odps_events(self):
+        """
+        Replay missed ODPS events on reconnection.
+
+        Queries the database for ODPS events that occurred since the last connection
+        and replays them to the client. This ensures clients don't miss events during
+        disconnections.
+        """
+        try:
+            # Get tenant for filtering
+            tenant = self.scope.get("tenant")
+            if not tenant:
+                return  # Can't replay without tenant context
+
+            # Get subscribed ODPS event types
+            odps_event_types = [
+                event_type for event_type in self.subscribed_event_types
+                if event_type.startswith("odps.") or event_type == "odps.*"
+            ]
+
+            if not odps_event_types:
+                return  # No ODPS events subscribed
+
+            # Calculate replay window
+            replay_start_time = None
+            if self.last_event_timestamps:
+                # Use the most recent timestamp across all ODPS event types
+                odps_timestamps = [
+                    ts for event_type, ts in self.last_event_timestamps.items()
+                    if event_type.startswith("odps.")
+                ]
+                if odps_timestamps:
+                    replay_start_time = max(odps_timestamps)
+            else:
+                # No previous events - use replay window
+                replay_start_time = datetime.utcnow() - timedelta(seconds=self.replay_window_seconds)
+
+            # Replay events for each subscribed ODPS event type
+            event_bus = self._get_event_bus()
+            replayed_count = 0
+
+            for event_type_pattern in odps_event_types:
+                # Determine actual event types to query
+                if event_type_pattern == "odps.*":
+                    # Query all ODPS events
+                    event_types_to_query = None  # None means all ODPS events
+                elif event_type_pattern.endswith(".*"):
+                    # Pattern like "odps.workflow.*" - query events matching the prefix
+                    prefix = event_type_pattern[:-2]  # Remove '.*'
+                    # Query events that start with this prefix
+                    event_types_to_query = None  # We'll filter in the query
+                else:
+                    # Exact event type
+                    event_types_to_query = [event_type_pattern]
+
+                # Query events from database
+                try:
+                    # Use event bus replay_events method
+                    # For patterns, we need to query ODPS events and filter
+                    # Query events from database based on pattern type
+                    from hub.apps.core.events.models import Event as EventModel
+
+                    # Use sync_to_async for database queries in async context
+                    from asgiref.sync import sync_to_async
+
+                    if event_type_pattern == "odps.*":
+                        # Query all ODPS events - use a query that gets all ODPS event types
+                        # Query all ODPS events from database
+                        def _query_odps_events():
+                            return list(EventModel.objects.filter(
+                                event_type__startswith="odps.",
+                                tenant_id=tenant.id,
+                                timestamp__gte=replay_start_time
+                            ).order_by('timestamp')[:1000])
+
+                        odps_events_list = await sync_to_async(_query_odps_events)()
+
+                        # Convert to event dictionaries
+                        events_to_replay = []
+                        for event_obj in odps_events_list:
+                            event_dict = {
+                                "event_id": str(event_obj.event_id),
+                                "event_type": event_obj.event_type,
+                                "event_version": event_obj.event_version,
+                                "timestamp": event_obj.timestamp.isoformat() + "Z",
+                                "source": {
+                                    "service": event_obj.source_service,
+                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
+                                },
+                                "data": event_obj.data,
+                                "metadata": event_obj.metadata or {}
+                            }
+                            if event_obj.user_id:
+                                event_dict["source"]["user_id"] = str(event_obj.user_id)
+                            if event_obj.request_id:
+                                event_dict["source"]["request_id"] = event_obj.request_id
+                            events_to_replay.append(event_dict)
+                    elif event_type_pattern.endswith(".*"):
+                        # Pattern like "odps.workflow.*" - query events matching the prefix
+                        prefix = event_type_pattern[:-2]  # Remove '.*'
+
+                        def _query_pattern_events():
+                            return list(EventModel.objects.filter(
+                                event_type__startswith=prefix + ".",
+                                tenant_id=tenant.id,
+                                timestamp__gte=replay_start_time
+                            ).order_by('timestamp')[:1000])
+
+                        pattern_events_list = await sync_to_async(_query_pattern_events)()
+
+                        # Convert to event dictionaries
+                        events_to_replay = []
+                        for event_obj in pattern_events_list:
+                            event_dict = {
+                                "event_id": str(event_obj.event_id),
+                                "event_type": event_obj.event_type,
+                                "event_version": event_obj.event_version,
+                                "timestamp": event_obj.timestamp.isoformat() + "Z",
+                                "source": {
+                                    "service": event_obj.source_service,
+                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
+                                },
+                                "data": event_obj.data,
+                                "metadata": event_obj.metadata or {}
+                            }
+                            if event_obj.user_id:
+                                event_dict["source"]["user_id"] = str(event_obj.user_id)
+                            if event_obj.request_id:
+                                event_dict["source"]["request_id"] = event_obj.request_id
+                            events_to_replay.append(event_dict)
+                    else:
+                        # Exact event type - use sync_to_async for replay_events
+                        events_to_replay = await sync_to_async(event_bus.replay_events)(
+                            event_type=event_type_pattern,
+                            tenant_id=str(tenant.id),
+                            start_time=replay_start_time,
+                            limit=1000
+                        )
+
+                    # Apply filters and send events
+                    for event in events_to_replay:
+                        event_source = event.get("source", {})
+                        # Apply the same filtering logic as real-time events
+                        if self._should_send_event(event, event_source):
+                            # Check deduplication before replaying
+                            event_id = event.get("event_id")
+                            event_type = event.get("event_type", "unknown")
+                            event_data = event.get("data", {})
+
+                            if event_id and event_type != "unknown":
+                                redis_client = self._get_deduplication_redis_client()
+                                if redis_client:
+                                    deduplication_key = generate_deduplication_key(event_type, event_data)
+                                    is_duplicate, _ = check_event_duplicate(
+                                        deduplication_key,
+                                        redis_client=redis_client
+                                    )
+                                    if is_duplicate:
+                                        # Skip duplicate events during replay
+                                        continue
+
+                            # Send replayed event
+                            await self.send_event(event)
+                            replayed_count += 1
+
+                except Exception as replay_error:
+                    logger.warning(
+                        "websocket_odps_event_replay_error",
+                        event_type_pattern=event_type_pattern,
+                        error=str(replay_error),
+                        exc_info=True
+                    )
+                    # Continue with other event types even if one fails
+
+            if replayed_count > 0:
+                logger.info(
+                    "websocket_odps_events_replayed",
+                    count=replayed_count,
+                    event_types=list(odps_event_types),
+                    tenant_id=str(tenant.id),
+                    replay_start_time=replay_start_time.isoformat() if replay_start_time else None
+                )
+
+        except Exception as e:
+            # Log error but don't fail subscription if replay fails
+            logger.error(
+                "websocket_odps_event_replay_failed",
+                error=str(e),
+                exc_info=True
+            )
+
     async def send_event(self, event: dict):
         """Send event to WebSocket client with deduplication and filtering."""
         try:
@@ -416,6 +616,50 @@ class EventConsumer(AsyncWebsocketConsumer):
                         event_id,
                         redis_client=redis_client
                     )
+
+                # Track last event timestamp for replay (ODPS events and all events)
+                # Update last timestamp for this event type
+                try:
+                    event_timestamp_str = event.get("timestamp")
+                    if event_timestamp_str:
+                        # Parse timestamp (ISO format with Z or timezone)
+                        # Handle ISO format: "2024-01-01T12:00:00Z" or "2024-01-01T12:00:00+00:00"
+                        timestamp_str = event_timestamp_str.replace('Z', '+00:00')
+                        try:
+                            # Try parsing with datetime.fromisoformat (Python 3.7+)
+                            if timestamp_str.endswith('+00:00'):
+                                timestamp_str = timestamp_str[:-6] + '+00:00'
+                            event_timestamp = datetime.fromisoformat(timestamp_str)
+                            # If timezone-naive, assume UTC
+                            if event_timestamp.tzinfo is None:
+                                from django.utils import timezone as django_timezone
+                                event_timestamp = django_timezone.make_aware(event_timestamp)
+                        except (ValueError, AttributeError):
+                            # Fallback: use django timezone parsing
+                            from django.utils.dateparse import parse_datetime
+                            event_timestamp = parse_datetime(event_timestamp_str)
+                            if event_timestamp:
+                                from django.utils import timezone as django_timezone
+                                if django_timezone.is_naive(event_timestamp):
+                                    event_timestamp = django_timezone.make_aware(event_timestamp)
+
+                        if event_timestamp:
+                            self.last_event_timestamps[event_type] = event_timestamp
+
+                            # Also track for wildcard patterns (e.g., 'odps.*' -> track all odps.* events)
+                            if event_type.startswith("odps."):
+                                self.last_event_timestamps["odps.*"] = event_timestamp
+                                # Track for nested patterns (e.g., 'odps.workflow.*')
+                                if event_type.startswith("odps.workflow."):
+                                    self.last_event_timestamps["odps.workflow.*"] = event_timestamp
+                except Exception as timestamp_error:
+                    # Log but don't fail event delivery if timestamp tracking fails
+                    logger.warning(
+                        "websocket_event_timestamp_tracking_failed",
+                        event_id=event_id,
+                        event_type=event_type,
+                        error=str(timestamp_error)
+                    )
         except Exception as e:
             logger.error("websocket_send_event_error", error=str(e))
 
@@ -424,6 +668,7 @@ class EventConsumer(AsyncWebsocketConsumer):
         Check if event type matches any subscribed event type pattern.
 
         Supports wildcard patterns (e.g., 'contract.*' matches 'contract.created').
+        Enhanced to support ODPS events and nested patterns (e.g., 'odps.workflow.*').
 
         Args:
             event_type: Event type to check
@@ -444,6 +689,30 @@ class EventConsumer(AsyncWebsocketConsumer):
                 prefix = subscribed_type[:-2]  # Remove '.*'
                 if event_type.startswith(prefix + '.'):
                     return True
+
+            # ODPS-specific pattern matching
+            # Support patterns like 'odps.*' matching all ODPS events
+            # Support patterns like 'odps.workflow.*' matching workflow events
+            if subscribed_type.startswith('odps.'):
+                if event_type.startswith('odps.'):
+                    # Check if it's a nested pattern (e.g., 'odps.workflow.*')
+                    if '.' in subscribed_type[5:]:  # After 'odps.'
+                        # Nested pattern: 'odps.workflow.*'
+                        pattern_parts = subscribed_type.split('.')
+                        event_parts = event_type.split('.')
+                        if len(pattern_parts) <= len(event_parts):
+                            # Check if all pattern parts (except the last '*') match
+                            match = True
+                            for i, pattern_part in enumerate(pattern_parts[:-1]):  # Exclude last '*'
+                                if i < len(event_parts) and pattern_part != event_parts[i]:
+                                    match = False
+                                    break
+                            if match:
+                                return True
+                    else:
+                        # Simple 'odps.*' pattern - matches all ODPS events
+                        if subscribed_type == 'odps.*' and event_type.startswith('odps.'):
+                            return True
 
         return False
 
@@ -499,15 +768,42 @@ class EventConsumer(AsyncWebsocketConsumer):
             filter_resource_id = str(self.filters["resource_id"])
             # Check multiple possible field names for resource ID
             event_data = event.get("data", {})
-            event_resource_id = (
-                str(event_data.get("resource_id", "")) or
-                str(event_data.get("contract_id", "")) or
-                str(event_data.get("asset_id", "")) or
-                str(event_data.get("id", ""))
-            )
+            event_type = event.get("event_type", "")
 
-            if filter_resource_id and event_resource_id != filter_resource_id:
-                return False
+            # ODPS-specific resource ID fields
+            if event_type.startswith("odps."):
+                # For ODPS events, check all possible resource ID fields
+                # The filter should match if ANY of these IDs match
+                possible_resource_ids = [
+                    str(event_data.get("resource_id", "")),
+                    str(event_data.get("odps_contract_id", "")),
+                    str(event_data.get("odcs_contract_id", "")),
+                    str(event_data.get("contract_id", "")),
+                    str(event_data.get("asset_id", "")),
+                    str(event_data.get("id", ""))
+                ]
+                # Filter out empty strings
+                possible_resource_ids = [rid for rid in possible_resource_ids if rid and rid != "None"]
+
+                # Check if filter matches any of the resource IDs
+                if filter_resource_id:
+                    if filter_resource_id not in possible_resource_ids:
+                        return False
+            else:
+                # For non-ODPS events, use standard fields
+                possible_resource_ids = [
+                    str(event_data.get("resource_id", "")),
+                    str(event_data.get("contract_id", "")),
+                    str(event_data.get("asset_id", "")),
+                    str(event_data.get("id", ""))
+                ]
+                # Filter out empty strings
+                possible_resource_ids = [rid for rid in possible_resource_ids if rid and rid != "None"]
+
+                # Check if filter matches any of the resource IDs
+                if filter_resource_id:
+                    if filter_resource_id not in possible_resource_ids:
+                        return False
 
         # Filter by user_id
         if "user_id" in self.filters:
@@ -533,7 +829,7 @@ class EventConsumer(AsyncWebsocketConsumer):
 
         return True
 
-    async def send_error(self, error_message: str, request_id: str = None):
+    async def send_error(self, error_message: str, request_id: Optional[str] = None):
         """Send error message to WebSocket client."""
         await self.send_json_message(
             WebSocketMessage(

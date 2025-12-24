@@ -12,6 +12,7 @@ Security Event Types:
 - SIZE_LIMIT_EXCEEDED: File size limit exceeded
 - TIMEOUT: Request timeout
 - INVALID_URL: Invalid URL format
+- INVALID_FILE_TYPE: Invalid file type/extension for local $ref
 - SUSPICIOUS_PATTERN: Suspicious activity pattern detected
 """
 import time
@@ -33,6 +34,7 @@ class SecurityEventType(str, Enum):
     SIZE_LIMIT_EXCEEDED = "SIZE_LIMIT_EXCEEDED"
     TIMEOUT = "TIMEOUT"
     INVALID_URL = "INVALID_URL"
+    INVALID_FILE_TYPE = "INVALID_FILE_TYPE"
     SUSPICIOUS_PATTERN = "SUSPICIOUS_PATTERN"
 
 

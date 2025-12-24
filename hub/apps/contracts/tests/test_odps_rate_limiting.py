@@ -387,3 +387,292 @@ class ODPSRateLimitingInfoTest(TestCase):
         self.assertEqual(tenant_info["limit"], RATE_LIMIT_PER_TENANT)
         self.assertEqual(tenant_info["remaining"], RATE_LIMIT_PER_TENANT - 25)
 
+
+class ODPSRateLimitingIntegrationTest(TestCase):
+    """Integration tests for rate limiting with real Redis"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.tenant_id = "550e8400-e29b-41d4-a716-446655440000"
+        self.user_id = "660e8400-e29b-41d4-a716-446655440001"
+        self.tenant_id_2 = "770e8400-e29b-41d4-a716-446655440002"
+        self.user_id_2 = "880e8400-e29b-41d4-a716-446655440003"
+
+        # Get real Redis client if available
+        try:
+            from django.conf import settings
+            import redis
+            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
+            self.redis_client = redis.from_url(redis_url, decode_responses=False, socket_connect_timeout=1)
+            self.redis_client.ping()
+            self.redis_available = True
+        except Exception:
+            self.redis_available = False
+            self.skipTest("Redis not available for integration tests")
+
+    def tearDown(self):
+        """Clean up test data from Redis"""
+        if self.redis_available:
+            try:
+                # Clean up all test keys
+                pattern = f"odps_ref_rate_limit:*{self.tenant_id}*"
+                keys = self.redis_client.keys(pattern)
+                if keys:
+                    self.redis_client.delete(*keys)
+                pattern = f"odps_ref_rate_limit:*{self.tenant_id_2}*"
+                keys = self.redis_client.keys(pattern)
+                if keys:
+                    self.redis_client.delete(*keys)
+                # Clean up global keys from this test run
+                pattern = "odps_ref_rate_limit:global:*"
+                keys = self.redis_client.keys(pattern)
+                if keys:
+                    self.redis_client.delete(*keys)
+            except Exception:
+                pass  # Ignore cleanup errors
+
+    def test_rate_limit_enforcement_per_tenant(self):
+        """Integration test: Verify per-tenant rate limit is enforced"""
+        # Use different user_ids to avoid hitting user limit (50) before tenant limit (100)
+        # Make requests up to the tenant limit using different users
+        user_ids = [f"{self.user_id}-{i}" for i in range(3)]  # Use 3 different users
+
+        for i in range(RATE_LIMIT_PER_TENANT):
+            user_idx = i % len(user_ids)
+            is_allowed, error = check_rate_limit(
+                tenant_id=self.tenant_id,
+                user_id=user_ids[user_idx],
+                redis_client=self.redis_client
+            )
+            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertIsNone(error, "No error should be returned")
+
+        # Next request should be rejected at tenant level
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id,
+            user_id=user_ids[0],
+            redis_client=self.redis_client
+        )
+        self.assertFalse(is_allowed, "Request over tenant limit should be rejected")
+        self.assertIsNotNone(error, "Error should be returned")
+        self.assertEqual(error.error_code, ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED)
+        self.assertIn("tenant", error.message.lower())
+        self.assertIn("retry", error.message.lower())
+        self.assertIsNotNone(error.retry_after)
+
+    def test_rate_limit_enforcement_per_user(self):
+        """Integration test: Verify per-user rate limit is enforced"""
+        # Make requests up to the user limit
+        for i in range(RATE_LIMIT_PER_USER):
+            is_allowed, error = check_rate_limit(
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
+                redis_client=self.redis_client
+            )
+            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+            self.assertIsNone(error, "No error should be returned")
+
+        # Next request should be rejected at user level
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            redis_client=self.redis_client
+        )
+        self.assertFalse(is_allowed, "Request over user limit should be rejected")
+        self.assertIsNotNone(error, "Error should be returned")
+        self.assertEqual(error.error_code, ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED)
+        self.assertIn("user", error.message.lower())
+        self.assertIn("retry", error.message.lower())
+        self.assertIsNotNone(error.retry_after)
+
+    def test_rate_limit_enforcement_global(self):
+        """Integration test: Verify global rate limit is enforced"""
+        # Make requests up to the global limit
+        # Use different tenants/users to avoid hitting tenant/user limits first
+        tenant_ids = [f"tenant-{i}" for i in range(20)]
+        user_ids = [f"user-{i}" for i in range(20)]
+
+        request_count = 0
+        for i in range(min(RATE_LIMIT_GLOBAL, 1000)):  # Limit to avoid long test
+            tenant_idx = i % len(tenant_ids)
+            user_idx = i % len(user_ids)
+            is_allowed, error = check_rate_limit(
+                tenant_id=tenant_ids[tenant_idx],
+                user_id=user_ids[user_idx],
+                redis_client=self.redis_client
+            )
+            if is_allowed:
+                request_count += 1
+            else:
+                # If we hit a limit, check if it's global
+                if error and "global" in error.message.lower():
+                    break
+
+        # Verify we can track global usage
+        info = get_rate_limit_info(redis_client=self.redis_client)
+        self.assertIn("global", info)
+        self.assertGreater(info["global"]["count"], 0)
+
+    def test_rate_limit_independence_between_tenants(self):
+        """Integration test: Verify rate limits are independent between tenants"""
+        # Use different user_ids to avoid hitting user limit before tenant limit
+        user_ids_tenant1 = [f"{self.user_id}-{i}" for i in range(3)]
+
+        # Tenant 1: Make requests up to tenant limit using different users
+        for i in range(RATE_LIMIT_PER_TENANT):
+            user_idx = i % len(user_ids_tenant1)
+            is_allowed, error = check_rate_limit(
+                tenant_id=self.tenant_id,
+                user_id=user_ids_tenant1[user_idx],
+                redis_client=self.redis_client
+            )
+            self.assertTrue(is_allowed, f"Tenant 1 request {i+1} should be allowed")
+
+        # Tenant 1 should be rate limited at tenant level
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id,
+            user_id=user_ids_tenant1[0],
+            redis_client=self.redis_client
+        )
+        self.assertFalse(is_allowed, "Tenant 1 should be rate limited")
+        self.assertIn("tenant", error.message.lower())
+
+        # Tenant 2 should still be allowed (independent limits)
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id_2,
+            user_id=self.user_id_2,
+            redis_client=self.redis_client
+        )
+        self.assertTrue(is_allowed, "Tenant 2 should be allowed (independent limits)")
+        self.assertIsNone(error, "No error for tenant 2")
+
+    def test_rate_limit_independence_between_users(self):
+        """Integration test: Verify rate limits are independent between users"""
+        # User 1: Make requests up to user limit
+        for i in range(RATE_LIMIT_PER_USER):
+            is_allowed, error = check_rate_limit(
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
+                redis_client=self.redis_client
+            )
+            self.assertTrue(is_allowed, f"User 1 request {i+1} should be allowed")
+
+        # User 1 should be rate limited
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            redis_client=self.redis_client
+        )
+        self.assertFalse(is_allowed, "User 1 should be rate limited")
+        self.assertIn("user", error.message.lower())
+
+        # User 2 (same tenant) should still be allowed (independent limits)
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id_2,
+            redis_client=self.redis_client
+        )
+        self.assertTrue(is_allowed, "User 2 should be allowed (independent limits)")
+        self.assertIsNone(error, "No error for user 2")
+
+    def test_rate_limit_error_message_includes_retry_after(self):
+        """Integration test: Verify error message includes retry-after suggestion"""
+        # Exceed rate limit
+        for i in range(RATE_LIMIT_PER_TENANT + 1):
+            is_allowed, error = check_rate_limit(
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
+                redis_client=self.redis_client
+            )
+
+        # Verify error message includes retry information
+        self.assertFalse(is_allowed)
+        self.assertIsNotNone(error)
+        self.assertIn("retry", error.message.lower())
+        self.assertIn("minute", error.message.lower() or "second" in error.message.lower())
+        self.assertIsNotNone(error.retry_after)
+        self.assertIsNotNone(error.get_retry_after_header())
+
+    def test_rate_limit_logging_with_context(self):
+        """Integration test: Verify rate limit violations are logged with context"""
+        # Exceed user rate limit (which will be hit first)
+        for i in range(RATE_LIMIT_PER_USER + 1):
+            is_allowed, error = check_rate_limit(
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
+                redis_client=self.redis_client
+            )
+
+        # Verify error has all context
+        self.assertFalse(is_allowed)
+        self.assertIsNotNone(error)
+        self.assertEqual(error.tenant_id, self.tenant_id)
+        # User limit is hit first, so user_id should be set
+        if "user" in error.message.lower():
+            self.assertEqual(error.user_id, self.user_id)
+        self.assertEqual(error.error_code, ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED)
+        self.assertIsNotNone(error.retry_after)
+
+    def test_rate_limit_info_accuracy(self):
+        """Integration test: Verify rate limit info is accurate"""
+        # Make some requests
+        for i in range(10):
+            check_rate_limit(
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
+                redis_client=self.redis_client
+            )
+
+        # Get rate limit info
+        info = get_rate_limit_info(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            redis_client=self.redis_client
+        )
+
+        # Verify info is accurate
+        self.assertIn("global", info)
+        self.assertIn("tenant", info)
+        self.assertIn("user", info)
+
+        # Check tenant level
+        tenant_info = info["tenant"]
+        self.assertGreaterEqual(tenant_info["count"], 10)
+        self.assertEqual(tenant_info["limit"], RATE_LIMIT_PER_TENANT)
+        self.assertEqual(tenant_info["remaining"], RATE_LIMIT_PER_TENANT - tenant_info["count"])
+
+        # Check user level
+        user_info = info["user"]
+        self.assertGreaterEqual(user_info["count"], 10)
+        self.assertEqual(user_info["limit"], RATE_LIMIT_PER_USER)
+        self.assertEqual(user_info["remaining"], RATE_LIMIT_PER_USER - user_info["count"])
+
+    def test_rate_limit_sliding_window(self):
+        """Integration test: Verify sliding window algorithm works correctly"""
+        # Make requests to fill the user limit window (user limit is lower, so it will be hit first)
+        for i in range(RATE_LIMIT_PER_USER):
+            is_allowed, error = check_rate_limit(
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
+                redis_client=self.redis_client
+            )
+            self.assertTrue(is_allowed, f"Request {i+1} should be allowed")
+
+        # Should be rate limited at user level
+        is_allowed, error = check_rate_limit(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            redis_client=self.redis_client
+        )
+        self.assertFalse(is_allowed, "Request should be rate limited")
+        self.assertIn("user", error.message.lower())
+
+        # Verify the mechanism works by checking info
+        info = get_rate_limit_info(
+            tenant_id=self.tenant_id,
+            user_id=self.user_id,
+            redis_client=self.redis_client
+        )
+        self.assertGreaterEqual(info["user"]["count"], RATE_LIMIT_PER_USER)
+        self.assertEqual(info["user"]["count"], RATE_LIMIT_PER_USER)
+

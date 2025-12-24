@@ -128,14 +128,34 @@ contract_convert_operations_total = Counter(
     ['service', 'status', 'source_format', 'target_format', 'tenant_id']
 )
 
+# ODPS Semantic Mapping Metrics (Task 6.6.3)
+odps_semantic_mapping_duration_seconds = Histogram(
+    'odps_semantic_mapping_duration_seconds',
+    'ODPS semantic mapping duration in seconds',
+    ['service', 'status'],
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0)
+)
+
+odps_semantic_mapping_total = Counter(
+    'odps_semantic_mapping_total',
+    'Total number of ODPS semantic mapping operations',
+    ['service', 'status', 'tenant_id']
+)
+
+odps_semantic_mapping_success_rate = Gauge(
+    'odps_semantic_mapping_success_rate',
+    'ODPS semantic mapping success rate (0-1)',
+    ['service', 'tenant_id']
+)
+
 
 def get_status_class(status_code: int) -> str:
     """
     Get status class from HTTP status code.
-    
+
     Args:
         status_code: HTTP status code
-        
+
     Returns:
         Status class string (2xx, 4xx, 5xx)
     """
@@ -152,10 +172,10 @@ def get_status_class(status_code: int) -> str:
 def normalize_route(route: str) -> str:
     """
     Normalize route by replacing UUIDs and IDs with placeholders.
-    
+
     Args:
         route: Request path
-        
+
     Returns:
         Normalized route
     """
@@ -170,7 +190,7 @@ def normalize_route(route: str) -> str:
 def track_request_metrics(service_name: str):
     """
     Decorator to track HTTP request metrics for FastAPI endpoints.
-    
+
     Args:
         service_name: Name of the service (e.g., 'semantic-service', 'dq-service')
     """
@@ -183,31 +203,31 @@ def track_request_metrics(service_name: str):
                 if hasattr(arg, 'method') and hasattr(arg, 'url'):
                     request = arg
                     break
-            
+
             start_time = time.time()
             status_code = 200
             status_class = '2xx'
-            
+
             try:
                 # Call the actual endpoint
                 response = await func(*args, **kwargs)
-                
+
                 # Extract status code from response
                 if hasattr(response, 'status_code'):
                     status_code = response.status_code
                 elif isinstance(response, dict) and 'status' in response:
                     # Health check endpoints return dict with status
                     status_code = 200
-                
+
                 status_class = get_status_class(status_code)
-                
+
                 # Get route
                 route = '/'
                 if request:
                     route = normalize_route(str(request.url.path))
-                
+
                 method = request.method if request else 'UNKNOWN'
-                
+
                 # Record metrics
                 http_requests_total.labels(
                     service=service_name,
@@ -215,7 +235,7 @@ def track_request_metrics(service_name: str):
                     route=route,
                     status_class=status_class
                 ).inc()
-                
+
                 duration = time.time() - start_time
                 http_request_duration_seconds.labels(
                     service=service_name,
@@ -223,7 +243,7 @@ def track_request_metrics(service_name: str):
                     route=route,
                     status_class=status_class
                 ).observe(duration)
-                
+
                 # Record errors
                 if status_code >= 400:
                     http_errors_total.labels(
@@ -232,36 +252,36 @@ def track_request_metrics(service_name: str):
                         route=route,
                         status_code=status_code
                     ).inc()
-                
+
                 return response
-                
+
             except Exception as e:
                 # Record error metrics
                 status_code = 500
                 status_class = '5xx'
-                
+
                 route = '/'
                 if request:
                     route = normalize_route(str(request.url.path))
-                
+
                 method = request.method if request else 'UNKNOWN'
-                
+
                 http_errors_total.labels(
                     service=service_name,
                     method=method,
                     route=route,
                     status_code=500
                 ).inc()
-                
+
                 http_requests_total.labels(
                     service=service_name,
                     method=method,
                     route=route,
                     status_class='5xx'
                 ).inc()
-                
+
                 raise
-        
+
         return wrapper
     return decorator
 
@@ -269,7 +289,7 @@ def track_request_metrics(service_name: str):
 def get_metrics_response():
     """
     Get Prometheus metrics response.
-    
+
     Returns:
         Tuple of (metrics_data, content_type)
     """

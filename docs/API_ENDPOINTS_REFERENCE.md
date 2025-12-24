@@ -151,6 +151,422 @@ Delete a contract (soft delete: sets status to RETIRED).
 
 ---
 
+## ODPS (Open Data Product Standard) Endpoints
+
+### Create ODPS Product (Product-First Flow)
+
+**POST** `/api/v1/contracts/products/`
+
+Create an ODPS product contract using the Product-First flow. This automatically extracts an ODCS contract from the ODPS product.contract field and creates both contracts with bidirectional linking.
+
+**Request Body:**
+```json
+{
+  "original_raw": "ODPS document content (JSON or YAML string)",
+  "original_format": "JSON" | "YAML",
+  "resolve_external_refs": true,
+  "asset_id": "optional-asset-uuid",
+  "odps_version": "4.1"
+}
+```
+
+**Request Body Fields:**
+- `original_raw` (string, required): ODPS document content as JSON or YAML string
+- `original_format` (string, required): Format of ODPS document - "JSON" or "YAML"
+- `resolve_external_refs` (boolean, optional): Whether to resolve external $ref references (default: true)
+- `asset_id` (UUID, optional): Asset ID to attach contracts to
+- `odps_version` (string, optional): ODPS version (e.g., "4.1"). Used for validation/documentation. Version in document takes precedence
+
+**Response (201 Created):**
+```json
+{
+  "odps_contract": {
+    "id": "odps-contract-uuid",
+    "original_spec_type": "ODPS",
+    "original_spec_version": "4.1",
+    "status": "DRAFT",
+    "normalization_status": "NORMALIZED_OK",
+    "hub_contract_json": {...},
+    "created_at": "2025-01-15T10:30:00Z"
+  },
+  "odcs_contract": {
+    "id": "odcs-contract-uuid",
+    "original_spec_type": "ODCS",
+    "original_spec_version": "3.0.2",
+    "status": "DRAFT",
+    "normalization_status": "NORMALIZED_OK",
+    "hub_contract_json": {...},
+    "created_at": "2025-01-15T10:30:00Z"
+  },
+  "workflow_instance_id": "workflow-instance-uuid"
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST https://api.example.com/api/v1/contracts/products/ \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "original_raw": "{\"schema\":\"https://opendataproducts.org/schema/v4.1\",\"version\":\"4.1\",\"product\":{\"details\":{\"en\":{\"productID\":\"my-product\",\"name\":\"My Data Product\"},\"contract\":{\"spec\":{\"apiVersion\":\"odcs/v3\",\"kind\":\"DataContract\",\"id\":\"my-contract\"}}}}",
+    "original_format": "JSON",
+    "resolve_external_refs": true
+  }'
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid ODPS document or missing required fields
+- `500 Internal Server Error`: Workflow execution failed
+
+**Notes:**
+- The Product-First flow automatically extracts the ODCS contract from `product.contract.spec` in the ODPS document
+- Both contracts are created with bidirectional linking stored in `hub_contract_json.extensions.x_odps`
+- The workflow instance ID can be used to track the creation process
+
+---
+
+## Export Endpoints
+
+### Export Contract
+
+**GET** `/api/v1/contracts/{id}/export/`
+
+Export a contract in various formats (ODPS, ODCS, or HubContract).
+
+**Path Parameters:**
+- `id` (UUID): Contract UUID
+
+**Query Parameters:**
+- `format` (string, optional): Export format - `odps`, `odcs`, or `hubcontract` (default: `hubcontract`)
+- `output_format` (string, optional): Output format - `json` or `yaml` (default: `json`)
+- `version` (string, optional): ODPS version (e.g., `4.1`). Only used for ODPS format export (default: `4.1`)
+
+**Response (200 OK):**
+
+The response format depends on the requested format:
+
+**HubContract Format (JSON):**
+```json
+{
+  "hub_contract_version": "1.0.0",
+  "id": "contract-1",
+  "info": {"name": "Contract 1"},
+  "schema": {"fields": [...]},
+  ...
+}
+```
+
+**HubContract Format (YAML):**
+Content-Type: `application/x-yaml`
+```
+hub_contract_version: 1.0.0
+id: contract-1
+info:
+  name: Contract 1
+schema:
+  fields: []
+...
+```
+
+**ODPS Format (JSON):**
+```json
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "customer-analytics",
+        "name": "Customer Analytics Dataset"
+      }
+    },
+    "marketplace": {
+      "pricingPlans": [...]
+    }
+  }
+}
+```
+
+**ODPS Format (YAML):**
+Content-Type: `application/x-yaml`
+```
+schema: https://opendataproducts.org/schema/v4.1
+version: 4.1
+product:
+  details:
+    en:
+      productID: customer-analytics
+      name: Customer Analytics Dataset
+  marketplace:
+    pricingPlans: []
+...
+```
+
+**ODCS Format (JSON):**
+```json
+{
+  "apiVersion": "odcs/v3",
+  "kind": "DataContract",
+  "id": "contract-1",
+  "name": "Contract 1",
+  "schema": {
+    "fields": [...]
+  }
+}
+```
+
+**ODCS Format (YAML):**
+Content-Type: `application/x-yaml`
+```
+apiVersion: odcs/v3
+kind: DataContract
+id: contract-1
+name: Contract 1
+schema:
+  fields: []
+...
+```
+
+**Example Requests:**
+```bash
+# Export as ODPS JSON
+curl -X GET "https://api.example.com/api/v1/contracts/{id}/export/?format=odps&output_format=json&version=4.1" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Export as ODPS YAML
+curl -X GET "https://api.example.com/api/v1/contracts/{id}/export/?format=odps&output_format=yaml" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Export as HubContract JSON
+curl -X GET "https://api.example.com/api/v1/contracts/{id}/export/?format=hubcontract&output_format=json" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid format parameter or contract cannot be exported in requested format
+- `404 Not Found`: Contract not found
+
+**Notes:**
+- ODPS export generates ODPS format from HubContract (may embed original ODCS if available)
+- ODCS export prefers `original_raw` if available, otherwise attempts to generate from HubContract
+- HubContract export returns the normalized `hub_contract_json` directly
+
+### Download Contract
+
+**GET** `/api/v1/contracts/{id}/download/`
+
+Download a contract as a file in various formats. Similar to export but returns a downloadable file with appropriate Content-Disposition header.
+
+**Path Parameters:**
+- `id` (UUID): Contract UUID
+
+**Query Parameters:**
+- `format` (string, optional): Export format - `odps`, `odcs`, or `hubcontract` (default: `hubcontract`)
+- `output_format` (string, optional): Output format - `json` or `yaml` (default: `json`)
+- `version` (string, optional): ODPS version (e.g., `4.1`). Only used for ODPS format (default: `4.1`)
+
+**Response (200 OK):**
+
+Returns the contract content as a downloadable file with appropriate Content-Type and Content-Disposition headers.
+
+**Example Request:**
+```bash
+# Download as ODPS JSON file
+curl -X GET "https://api.example.com/api/v1/contracts/{id}/download/?format=odps&output_format=json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -o product.odps.json
+
+# Download as ODPS YAML file
+curl -X GET "https://api.example.com/api/v1/contracts/{id}/download/?format=odps&output_format=yaml" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -o product.odps.yaml
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid format parameter or contract cannot be exported in requested format
+- `404 Not Found`: Contract not found
+
+**Notes:**
+- Same format options as export endpoint
+- Returns file with appropriate filename in Content-Disposition header
+- Useful for downloading contracts for local storage or sharing
+
+---
+
+## Linking Endpoints
+
+### Link ODPS to ODCS Contract
+
+**POST** `/api/v1/contracts/{id}/link-odps/`
+
+Link an ODPS contract to an ODCS contract. The contract specified by `{id}` must be an ODCS contract. You can either link to an existing ODPS contract or create a new one.
+
+**Path Parameters:**
+- `id` (UUID): ODCS contract UUID
+
+**Request Body (Link to Existing ODPS):**
+```json
+{
+  "odps_contract_id": "existing-odps-contract-uuid"
+}
+```
+
+**Request Body (Create New ODPS and Link):**
+```json
+{
+  "original_raw": "ODPS document content (JSON or YAML string)",
+  "original_format": "JSON" | "YAML",
+  "resolve_external_refs": true,
+  "odps_version": "4.1"
+}
+```
+
+**Request Body Fields:**
+- `odps_contract_id` (UUID, optional): Existing ODPS contract ID to link to (mutually exclusive with `original_raw`)
+- `original_raw` (string, optional): ODPS document content to create new ODPS contract (mutually exclusive with `odps_contract_id`)
+- `original_format` (string, required if `original_raw` provided): Format of ODPS document - "JSON" or "YAML"
+- `resolve_external_refs` (boolean, optional): Whether to resolve external $ref references (default: true, only used if `original_raw` provided)
+- `odps_version` (string, optional): ODPS version (e.g., "4.1"). Only used if `original_raw` provided
+
+**Response (200 OK):**
+```json
+{
+  "id": "odps-contract-uuid",
+  "original_spec_type": "ODPS",
+  "original_spec_version": "4.1",
+  "status": "DRAFT",
+  "normalization_status": "NORMALIZED_OK",
+  "hub_contract_json": {
+    "extensions": {
+      "x_odps": {
+        "odcs_link": "odcs-contract-uuid"
+      }
+    }
+  },
+  "created_at": "2025-01-15T10:30:00Z"
+}
+```
+
+**Example Request (Link to Existing):**
+```bash
+curl -X POST https://api.example.com/api/v1/contracts/{odcs-id}/link-odps/ \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "odps_contract_id": "existing-odps-contract-uuid"
+  }'
+```
+
+**Example Request (Create New and Link):**
+```bash
+curl -X POST https://api.example.com/api/v1/contracts/{odcs-id}/link-odps/ \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "original_raw": "{\"schema\":\"https://opendataproducts.org/schema/v4.1\",\"version\":\"4.1\",\"product\":{\"details\":{\"en\":{\"productID\":\"linked-product\",\"name\":\"Linked Product\"}}}}",
+    "original_format": "JSON",
+    "resolve_external_refs": true
+  }'
+```
+
+**Error Responses:**
+- `400 Bad Request`: Contract is not ODCS type, invalid request body, or validation error
+- `404 Not Found`: Contract or ODPS contract not found
+- `500 Internal Server Error`: Linking operation failed
+
+**Notes:**
+- The contract specified by `{id}` must be an ODCS contract
+- Bidirectional linking is automatically established in both contracts' `hub_contract_json.extensions.x_odps`
+- If creating a new ODPS contract, it will be normalized and linked in a single operation
+
+### Unlink ODPS from ODCS Contract
+
+**POST** `/api/v1/contracts/{id}/unlink-odps/`
+
+Remove the bidirectional link between an ODCS contract and its linked ODPS contract.
+
+**Path Parameters:**
+- `id` (UUID): ODCS contract UUID
+
+**Response (200 OK):**
+```json
+{
+  "message": "ODPS contract unlinked successfully"
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST https://api.example.com/api/v1/contracts/{odcs-id}/unlink-odps/ \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Error Responses:**
+- `400 Bad Request`: Contract is not ODCS type or no link exists
+- `404 Not Found`: Contract not found
+- `500 Internal Server Error`: Unlinking operation failed
+
+**Notes:**
+- The contract specified by `{id}` must be an ODCS contract
+- Removes the link from both the ODCS and ODPS contracts
+- The contracts themselves are not deleted, only the link is removed
+
+### List Contract Links
+
+**GET** `/api/v1/contracts/{id}/links/`
+
+Get all links for a contract (both ODPS and ODCS links).
+
+**Path Parameters:**
+- `id` (UUID): Contract UUID (can be ODPS or ODCS)
+
+**Response (200 OK):**
+```json
+{
+  "odps_link": {
+    "id": "odps-contract-uuid",
+    "original_spec_type": "ODPS",
+    "original_spec_version": "4.1",
+    "status": "DRAFT",
+    "hub_contract_json": {...},
+    ...
+  },
+  "odcs_link": null
+}
+```
+
+**Response for ODPS Contract:**
+```json
+{
+  "odps_link": null,
+  "odcs_link": {
+    "id": "odcs-contract-uuid",
+    "original_spec_type": "ODCS",
+    "original_spec_version": "3.0.2",
+    "status": "DRAFT",
+    "hub_contract_json": {...},
+    ...
+  }
+}
+```
+
+**Example Request:**
+```bash
+curl -X GET https://api.example.com/api/v1/contracts/{id}/links/ \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Error Responses:**
+- `404 Not Found`: Contract not found
+
+**Notes:**
+- Returns `null` for links that don't exist
+- For ODCS contracts, returns the linked ODPS contract (if any)
+- For ODPS contracts, returns the linked ODCS contract (if any)
+- Both links are stored in `hub_contract_json.extensions.x_odps`
+
+---
+
 ## Lineage
 
 ### Get Contract-Level Lineage

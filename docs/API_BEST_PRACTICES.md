@@ -345,5 +345,5 @@ API versioning via URL path:
 - [API Documentation](./API_DOCUMENTATION.md)
 - [Error Code Reference](./API_ERROR_CODES.md)
 - [SDK Documentation](./SDK_DOCUMENTATION.md)
-- [Webhook Guide](./WEBHOOK_SUPPORT.md)
+- [Webhook API](./WEBHOOK_API.md)
 

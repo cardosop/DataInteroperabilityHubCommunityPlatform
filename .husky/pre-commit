@@ -1,7 +1,0 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
-# Run lint-staged for frontend if frontend files are staged
-if git diff --cached --name-only --diff-filter=ACM | grep -q "^frontend/"; then
-  cd frontend && npx lint-staged
-fi

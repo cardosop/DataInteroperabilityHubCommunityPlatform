@@ -35,16 +35,16 @@ logger = structlog.get_logger(__name__)
 def process_job(job_id: str, job_type: str, timeout: int = 600):
     """
     Process a job.
-    
+
     This is a placeholder that will be extended by specific job handlers.
     For MVP, this demonstrates the job processing pattern.
-    
+
     Implements reserved slots and starvation prevention:
     - HIGH priority jobs (job_critical) can use reserved slots or shared slots
     - NORMAL priority jobs (job_default) can use shared slots, or reserved slots if elevated
     - LOW priority jobs (job_low) can only use shared slots
     - NORMAL priority jobs are elevated to HIGH if they've been waiting > threshold
-    
+
     Args:
         job_id: UUID of the job
         job_type: Job type string
@@ -54,13 +54,13 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
     queue_name = get_queue_for_job_type(job_type)
     is_elevated = should_elevate_job(job_id, queue_name)
     wait_time = get_job_wait_time(job_id)
-    
+
     # Track slot usage based on priority and elevation
     slot_type = None
     try:
         # Get job
         job_obj = Job.objects.get(id=job_id)
-        
+
         # Check if job was cancelled before processing
         if job_obj.status == JobStatus.CANCELLED:
             logger.info(
@@ -69,7 +69,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 message=f"Job {job_id} was cancelled before processing started"
             )
             return
-        
+
         # Determine slot type based on queue and elevation
         if queue_name == 'job_critical' or (queue_name == 'job_default' and is_elevated):
             # HIGH priority or elevated: try reserved slot first, then shared
@@ -107,10 +107,10 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 )
                 slot_type = "shared"  # Fallback
                 increment_shared_slots_usage()
-        
+
         # Mark job as started
         job_obj.mark_started()
-        
+
         # Update tenant job counters: decrement queued, increment running
         if job_obj.tenant:
             decrement_tenant_job_counter(str(job_obj.tenant.id), "queued")
@@ -127,7 +127,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 status="RUNNING",
                 message=f"Job started for tenant {job_obj.tenant.id} (slot: {slot_type}, elevated: {is_elevated})"
             )
-        
+
         # Log audit event
         if job_obj.tenant and job_obj.created_by:
             create_audit_event(
@@ -142,11 +142,11 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                     'resource_id': str(job_obj.resource_id)
                 }
             )
-        
+
         # Check timeout
         start_time = timezone.now()
         timeout_time = start_time + timezone.timedelta(seconds=timeout)
-        
+
         # Check if job was cancelled after starting (before executing logic)
         job_obj.refresh_from_db()
         if job_obj.status == JobStatus.CANCELLED:
@@ -166,10 +166,10 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
             elif slot_type == "shared":
                 decrement_shared_slots_usage()
             return
-        
+
         # Execute job logic
         result = _execute_job_logic(job_obj, job_type)
-        
+
         # Check if job was cancelled during execution
         job_obj.refresh_from_db()
         if job_obj.status == JobStatus.CANCELLED:
@@ -189,7 +189,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
             elif slot_type == "shared":
                 decrement_shared_slots_usage()
             return
-        
+
         # Check if timeout exceeded
         if timezone.now() > timeout_time:
             job_obj.mark_failed(
@@ -197,10 +197,10 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 result_json=result
             )
             return
-        
+
         # Mark job as completed
         job_obj.mark_completed(result_json=result)
-        
+
         # Update tenant job counter: decrement running
         if job_obj.tenant:
             decrement_tenant_job_counter(str(job_obj.tenant.id), "running")
@@ -218,13 +218,13 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 status="COMPLETED",
                 message=f"Job completed for tenant {job_obj.tenant.id}"
             )
-        
+
         # Release slot
         if slot_type == "reserved":
             decrement_reserved_slots_usage()
         elif slot_type == "shared":
             decrement_shared_slots_usage()
-        
+
         # Log audit event
         if job_obj.tenant and job_obj.created_by:
             create_audit_event(
@@ -239,16 +239,16 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                     'resource_id': str(job_obj.resource_id)
                 }
             )
-    
+
     except Exception as e:
         # Handle job failure with retry logic
         try:
             job_obj = Job.objects.get(id=job_id)
-            
+
             # Determine error type and code
             error_type = type(e).__name__
             error_code = 'UNKNOWN_ERROR'
-            
+
             if isinstance(e, ValueError):
                 error_code = 'VALIDATION_ERROR'
             elif isinstance(e, ConnectionError):
@@ -259,19 +259,19 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 error_code = 'TIMEOUT_ERROR'
             elif 'connection' in str(e).lower() or 'unavailable' in str(e).lower():
                 error_code = 'SERVICE_UNAVAILABLE'
-            
+
             # Try to retry job if error is transient
             if retry_job(job_obj, job_type, e):
                 # Job was retried - release slot and return (job will be processed again)
                 if job_obj.tenant and job_obj.status == JobStatus.RUNNING:
                     decrement_tenant_job_counter(str(job_obj.tenant.id), "running")
-                
+
                 # Release slot
                 if slot_type == "reserved":
                     decrement_reserved_slots_usage()
                 elif slot_type == "shared":
                     decrement_shared_slots_usage()
-                
+
                 # Log retry event
                 if job_obj.tenant and job_obj.created_by:
                     create_audit_event(
@@ -287,7 +287,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                         }
                     )
                 return  # Job will be retried, exit here
-            
+
             # No retries remaining or error is not transient - mark as failed
             job_obj.mark_failed(
                 error_message=str(e),
@@ -298,16 +298,16 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                     'retry_count': job_obj.details_json.get('retry_count', 0) if job_obj.details_json else 0
                 }
             )
-            
+
             # Update tenant job counter: decrement running (if job was running)
             if job_obj.tenant and job_obj.status == JobStatus.RUNNING:
                 decrement_tenant_job_counter(str(job_obj.tenant.id), "running")
-            
+
             # Calculate duration for logging
             duration_seconds = None
             if job_obj.started_at and job_obj.completed_at:
                 duration_seconds = (job_obj.completed_at - job_obj.started_at).total_seconds()
-            
+
             # Log structured error
             logger.error(
                 "job_failed",
@@ -322,13 +322,13 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 status="FAILED",
                 message=f"Job failed for tenant {job_obj.tenant.id if job_obj.tenant else 'system'}: {str(e)}"
             )
-            
+
             # Release slot
             if slot_type == "reserved":
                 decrement_reserved_slots_usage()
             elif slot_type == "shared":
                 decrement_shared_slots_usage()
-            
+
             # Log audit event
             if job_obj.tenant and job_obj.created_by:
                 create_audit_event(
@@ -350,17 +350,17 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
 def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
     """
     Execute job logic based on job type.
-    
+
     Handles errors, timeouts, and service failures for each job type.
     Raises exceptions that will be caught by the outer process_job function.
-    
+
     Args:
         job_obj: Job instance
         job_type: Job type string
-    
+
     Returns:
         Result dictionary with job execution results
-    
+
     Raises:
         ValueError: For validation errors (missing parameters, invalid resource types)
         TimeoutError: For timeout errors
@@ -369,29 +369,44 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
     """
     if job_type == JobType.DQ_RUN:
         return _execute_dq_run_job(job_obj)
-    
+
     elif job_type == JobType.COMPLIANCE_RUN:
         return _execute_compliance_run_job(job_obj)
-    
+
     elif job_type == JobType.CONTRACT_VALIDATION:
         return _execute_contract_validation_job(job_obj)
-    
+
     elif job_type == JobType.SEMANTIC_MAPPING:
         return _execute_semantic_mapping_job(job_obj)
-    
+
     elif job_type == JobType.CONTRACT_MIGRATION:
         return _execute_contract_migration_job(job_obj)
-    
+
     elif job_type == JobType.SCHEDULED_INGESTION:
         from hub.apps.jobs.scheduled_ingestion_job import _execute_scheduled_ingestion_job
         return _execute_scheduled_ingestion_job(job_obj)
-    
+
     elif job_type == JobType.RETENTION_POLICY_ENFORCEMENT:
         return _execute_retention_policy_enforcement_job(job_obj)
-    
+
     elif job_type == JobType.SEARCH_INDEX_UPDATE:
         return _execute_search_index_update_job(job_obj)
-    
+
+    elif job_type == JobType.ODPS_NORMALIZATION:
+        return _execute_odps_normalization_job(job_obj)
+
+    elif job_type == JobType.ODPS_REF_RESOLUTION:
+        return _execute_odps_ref_resolution_job(job_obj)
+
+    elif job_type == JobType.ODPS_EXPORT:
+        return _execute_odps_export_job(job_obj)
+
+    elif job_type == JobType.ODPS_SEMANTIC_MAPPING:
+        return _execute_odps_semantic_mapping_job(job_obj)
+
+    elif job_type == JobType.ODPS_LINKING:
+        return _execute_odps_linking_job(job_obj)
+
     else:
         raise ValueError(f"Unknown job type: {job_type}")
 
@@ -399,13 +414,13 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
 def _execute_dq_run_job(job_obj: Job) -> dict:
     """
     Execute DQ_RUN job.
-    
+
     Args:
         job_obj: Job instance
-    
+
     Returns:
         Result dictionary with DQ run results
-    
+
     Raises:
         ValueError: If dq_run_id is missing or DQ run not found
         ConnectionError: If DQ service is unavailable
@@ -416,43 +431,43 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
     dq_run_id = job_obj.details_json.get('dq_run_id')
     if not dq_run_id:  # None or empty string
         dq_run_id = job_obj.resource_id
-    
+
     # Convert to string if it's a UUID object, handle None case
     if dq_run_id is not None:
         dq_run_id = str(dq_run_id)
-    
+
     if not dq_run_id:
         raise ValueError("DQ run ID is required")
-    
+
     # Check if DQ run exists before executing
     try:
         from hub.apps.dq.models import DQRun, DQRunStatus
         dq_run = DQRun.objects.get(id=dq_run_id)
     except DQRun.DoesNotExist:
         raise ValueError(f"DQ run {dq_run_id} not found")
-    
+
     try:
         # Import here to avoid circular imports
         from hub.apps.dq.views import execute_dq_run
         from hub.apps.dq.service_client import DQServiceClient
-        
+
         # Check if DQ service is available
         dq_client = DQServiceClient()
         is_healthy, _ = dq_client.health_check()
         if not is_healthy:
             raise ConnectionError("DQ service is unavailable")
-        
+
         # Execute DQ run (this handles its own errors and updates DQRun status)
         execute_dq_run(str(dq_run_id))
-        
+
         # Get updated DQ run (refresh from DB)
         dq_run.refresh_from_db()
-        
+
         # Check if DQ run failed
         if dq_run.status == DQRunStatus.FAILED:
             error_msg = dq_run.details_json.get('error', 'DQ run failed') if dq_run.details_json else 'DQ run failed'
             raise Exception(f"DQ run failed: {error_msg}")
-        
+
         return {
             'status': dq_run.status.lower(),
             'overall_status': dq_run.overall_status,
@@ -460,7 +475,7 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
             'dq_run_id': str(dq_run.id),
             'engine': dq_run.engine if hasattr(dq_run, 'engine') else None
         }
-    
+
     except ConnectionError:
         raise  # Re-raise connection errors
     except ValueError:
@@ -473,13 +488,13 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
 def _execute_compliance_run_job(job_obj: Job) -> dict:
     """
     Execute COMPLIANCE_RUN job.
-    
+
     Args:
         job_obj: Job instance
-    
+
     Returns:
         Result dictionary with compliance run results
-    
+
     Raises:
         ValueError: If compliance_run_id is missing or compliance run not found
         ConnectionError: If compliance service is unavailable
@@ -487,43 +502,43 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
     """
     # Get compliance_run_id from job details or resource_id
     compliance_run_id = job_obj.details_json.get('compliance_run_id') or job_obj.resource_id
-    
+
     # Convert to string if it's a UUID object
     if compliance_run_id:
         compliance_run_id = str(compliance_run_id)
-    
+
     if not compliance_run_id:
         raise ValueError("Compliance run ID is required")
-    
+
     try:
         # Import here to avoid circular imports
         from hub.apps.compliance.views import execute_compliance_run
         from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
         from hub.apps.compliance.service_client import ComplianceServiceClient
-        
+
         # Check if compliance run exists before executing
         try:
             compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
         except ComplianceRun.DoesNotExist:
             raise ValueError(f"Compliance run {compliance_run_id} not found")
-        
+
         # Check if compliance service is available
         compliance_client = ComplianceServiceClient()
         is_healthy, _ = compliance_client.health_check()
         if not is_healthy:
             raise ConnectionError("Compliance service is unavailable")
-        
+
         # Execute compliance run (this handles its own errors and updates ComplianceRun status)
         execute_compliance_run(str(compliance_run_id))
-        
+
         # Get updated compliance run (refresh from DB)
         compliance_run.refresh_from_db()
-        
+
         # Check if compliance run failed
         if compliance_run.status == ComplianceRunStatus.FAILED:
             error_msg = compliance_run.regulation_mapping_json.get('error', 'Compliance run failed') if compliance_run.regulation_mapping_json else 'Compliance run failed'
             raise Exception(f"Compliance run failed: {error_msg}")
-        
+
         return {
             'status': compliance_run.status.lower(),
             'overall_status': compliance_run.overall_status,
@@ -531,7 +546,7 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
             'allowed_to_store': compliance_run.allowed_to_store,
             'compliance_run_id': str(compliance_run.id)
         }
-    
+
     except ConnectionError:
         raise  # Re-raise connection errors
     except ValueError:
@@ -544,13 +559,13 @@ def _execute_compliance_run_job(job_obj: Job) -> dict:
 def _execute_contract_validation_job(job_obj: Job) -> dict:
     """
     Execute CONTRACT_VALIDATION job.
-    
+
     Args:
         job_obj: Job instance
-    
+
     Returns:
         Result dictionary with validation results
-    
+
     Raises:
         ValueError: If contract_id is missing or contract not found
         ConnectionError: If DataContract CLI service is unavailable
@@ -559,29 +574,29 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
     """
     # Get contract ID from resource_id
     contract_id = job_obj.resource_id
-    
+
     # Convert to string if it's a UUID object, handle None case
     if contract_id is not None:
         contract_id = str(contract_id)
-    
+
     if not contract_id:
         raise ValueError("Contract ID is required")
-    
+
     try:
         # Import here to avoid circular imports
         from hub.apps.contracts.models import Contract, ValidationStatus
         from hub.apps.contracts.cli_client import DataContractCLIClient, SYNC_TIMEOUT
         from hub.apps.contracts.cli_client import interpret_validation_status, group_errors_by_category
-        
+
         # Get contract
         try:
             contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
             raise ValueError(f"Contract {contract_id} not found")
-        
+
         if not contract.original_raw or contract.original_raw.strip() == '':
             raise ValueError(f"Contract {contract_id} has no original_raw content")
-        
+
         # Check if DataContract CLI service is available
         cli_client = DataContractCLIClient()
         try:
@@ -593,7 +608,7 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
             raise  # Re-raise connection errors
         except Exception as e:
             raise ConnectionError(f"DataContract CLI service health check failed: {str(e)}")
-        
+
         # Validate contract
         try:
             validation_result = cli_client.validate(
@@ -607,13 +622,13 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
             if 'timeout' in str(e).lower() or 'timed out' in str(e).lower():
                 raise TimeoutError(f"Contract validation timed out after {SYNC_TIMEOUT} seconds")
             raise ConnectionError(f"Contract validation service error: {str(e)}")
-        
+
         # Interpret validation status
         validation_status, errors, warnings = interpret_validation_status(validation_result)
-        
+
         # Group errors by category
         grouped_errors = group_errors_by_category(errors)
-        
+
         return {
             'status': 'completed',
             'validation_status': validation_status,
@@ -623,7 +638,7 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
             'cli_version': validation_result.get('cli_version', 'unknown'),
             'contract_id': str(contract_id)
         }
-    
+
     except (ConnectionError, TimeoutError, ValueError):
         raise  # Re-raise specific errors
     except Exception as e:
@@ -634,13 +649,13 @@ def _execute_contract_validation_job(job_obj: Job) -> dict:
 def _execute_semantic_mapping_job(job_obj: Job) -> dict:
     """
     Execute SEMANTIC_MAPPING job.
-    
+
     Args:
         job_obj: Job instance
-    
+
     Returns:
         Result dictionary with semantic mapping results
-    
+
     Raises:
         ValueError: If resource_type or resource_id is missing, or resource not found
         ConnectionError: If semantic service is unavailable
@@ -649,22 +664,22 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
     # Get resource details from job
     resource_type = job_obj.details_json.get('resource_type')
     resource_id = job_obj.details_json.get('resource_id')
-    
+
     if not resource_type:
         raise ValueError("Resource type is required for SEMANTIC_MAPPING job")
-    
+
     if not resource_id:
         raise ValueError("Resource ID is required for SEMANTIC_MAPPING job")
-    
+
     try:
         # Import here to avoid circular imports
         from hub.apps.semantic.utils import map_contract_to_semantic, map_asset_to_semantic
         from hub.apps.semantic.service_client import SemanticServiceClient
-        
+
         # Validate resource type first (before service health check)
         if resource_type not in ['CONTRACT', 'ASSET']:
             raise ValueError(f"Unknown resource type: {resource_type}")
-        
+
         # Validate resource exists before checking service health
         if resource_type == 'CONTRACT':
             from hub.apps.contracts.models import Contract
@@ -678,7 +693,7 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
                 raise ValueError(f"Contract {resource_id} not found")
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid contract ID format: {resource_id}") from e
-        
+
         elif resource_type == 'ASSET':
             from hub.apps.assets.models import Asset
             try:
@@ -691,7 +706,7 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
                 raise ValueError(f"Asset {resource_id} not found")
             except (ValueError, TypeError) as e:
                 raise ValueError(f"Invalid asset ID format: {resource_id}") from e
-        
+
         # Check if semantic service is available (after resource validation)
         semantic_client = SemanticServiceClient()
         try:
@@ -703,28 +718,28 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
             raise  # Re-raise connection errors
         except Exception as e:
             raise ConnectionError(f"Semantic service health check failed: {str(e)}")
-        
+
         # Execute mapping (resource already validated above)
         if resource_type == 'CONTRACT':
             semantic_resource = map_contract_to_semantic(contract, tenant=contract.tenant)
-            
+
             return {
                 'status': 'completed',
                 'resource_type': 'CONTRACT',
                 'resource_id': str(resource_id),
                 'semantic_resource_id': str(semantic_resource.id) if semantic_resource else None
             }
-        
+
         elif resource_type == 'ASSET':
             semantic_resource = map_asset_to_semantic(asset, tenant=asset.tenant)
-            
+
             return {
                 'status': 'completed',
                 'resource_type': 'ASSET',
                 'resource_id': str(resource_id),
                 'semantic_resource_id': str(semantic_resource.id) if semantic_resource else None
             }
-    
+
     except (ConnectionError, ValueError):
         raise  # Re-raise specific errors
     except Exception as e:
@@ -735,37 +750,37 @@ def _execute_semantic_mapping_job(job_obj: Job) -> dict:
 def _execute_contract_migration_job(job_obj: Job) -> dict:
     """
     Execute CONTRACT_MIGRATION job.
-    
+
     Args:
         job_obj: Job instance
-    
+
     Returns:
         Result dictionary with migration results
-    
+
     Raises:
         ValueError: If contract_id is missing or contract not found
         Exception: For other errors
     """
     # Get contract ID from resource_id
     contract_id = job_obj.resource_id
-    
+
     if not contract_id:
         raise ValueError("Contract ID is required for CONTRACT_MIGRATION job")
-    
+
     try:
         # Import here to avoid circular imports
         from hub.apps.contracts.models import Contract
         from hub.apps.contracts.migration_manager import ContractMigrationManager
-        
+
         # Get contract
         try:
             contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
             raise ValueError(f"Contract {contract_id} not found")
-        
+
         # Perform migration
         migrated, hub_contract, warnings = ContractMigrationManager.migrate_on_write(contract)
-        
+
         if not migrated:
             return {
                 'status': 'completed',
@@ -774,7 +789,7 @@ def _execute_contract_migration_job(job_obj: Job) -> dict:
                 'warnings': warnings,
                 'contract_id': str(contract_id)
             }
-        
+
         return {
             'status': 'completed',
             'migrated': True,
@@ -783,7 +798,7 @@ def _execute_contract_migration_job(job_obj: Job) -> dict:
             'warnings': warnings,
             'contract_id': str(contract_id)
         }
-    
+
     except ValueError:
         raise  # Re-raise validation errors
     except Exception as e:
@@ -795,7 +810,7 @@ def _execute_contract_migration_job(job_obj: Job) -> dict:
 def process_contract_migration_job(job_id: str):
     """
     Process contract migration job.
-    
+
     Args:
         job_id: UUID of the job
     """
@@ -805,29 +820,29 @@ def process_contract_migration_job(job_id: str):
 def _execute_retention_policy_enforcement_job(job_obj: Job) -> dict:
     """
     Execute RETENTION_POLICY_ENFORCEMENT job.
-    
+
     Enforces retention policies for assets, datasets, and files.
-    
+
     Args:
         job_obj: Job instance
-    
+
     Returns:
         Result dictionary with enforcement summary
-    
+
     Raises:
         ValueError: For validation errors
         Exception: For other errors
     """
     from hub.apps.governance.retention import RetentionPolicyEnforcer
-    
+
     tenant_id = job_obj.tenant_id
-    
+
     logger.info("Starting retention policy enforcement", job_id=str(job_obj.id), tenant_id=str(tenant_id))
-    
+
     try:
         # Enforce all policies
         results = RetentionPolicyEnforcer.enforce_all_policies(tenant_id=str(tenant_id) if tenant_id else None)
-        
+
         logger.info(
             "Retention policy enforcement completed",
             job_id=str(job_obj.id),
@@ -835,7 +850,7 @@ def _execute_retention_policy_enforcement_job(job_obj: Job) -> dict:
             enforced=results['enforced'],
             failed=results['failed']
         )
-        
+
         return {
             'success': True,
             'summary': {
@@ -846,7 +861,7 @@ def _execute_retention_policy_enforcement_job(job_obj: Job) -> dict:
             },
             'details': results['details']
         }
-    
+
     except Exception as e:
         logger.error("Retention policy enforcement job failed", exc_info=True, job_id=str(job_obj.id), error=str(e))
         raise
@@ -855,15 +870,15 @@ def _execute_retention_policy_enforcement_job(job_obj: Job) -> dict:
 def _execute_search_index_update_job(job_obj: Job) -> dict:
     """
     Execute SEARCH_INDEX_UPDATE job.
-    
+
     Updates search index for a specific resource (contract, asset, or dataset).
-    
+
     Args:
         job_obj: Job instance
-    
+
     Returns:
         Result dictionary with indexing summary
-    
+
     Raises:
         ValueError: For validation errors
         Exception: For other errors
@@ -872,17 +887,17 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
     from hub.apps.contracts.models import Contract
     from hub.apps.assets.models import Asset
     from hub.apps.datasets.models import Dataset
-    
+
     resource_type = job_obj.resource_type
     resource_id = job_obj.resource_id
-    
+
     logger.info(
         "Starting search index update",
         job_id=str(job_obj.id),
         resource_type=resource_type,
         resource_id=str(resource_id)
     )
-    
+
     try:
         # Index based on resource type
         if resource_type == "CONTRACT":
@@ -899,7 +914,7 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
             indexed_type = "dataset"
         else:
             raise ValueError(f"Unknown resource type for indexing: {resource_type}")
-        
+
         logger.info(
             "Search index update completed",
             job_id=str(job_obj.id),
@@ -907,7 +922,7 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
             resource_id=str(resource_id),
             search_index_id=str(search_index.id)
         )
-        
+
         return {
             'success': True,
             'indexed_type': indexed_type,
@@ -915,7 +930,7 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
             'resource_type': resource_type,
             'resource_id': str(resource_id)
         }
-    
+
     except Contract.DoesNotExist:
         raise ValueError(f"Contract {resource_id} not found")
     except Asset.DoesNotExist:
@@ -934,21 +949,1556 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
         raise
 
 
+def _execute_odps_normalization_job(job_obj: Job) -> dict:
+    """
+    Execute ODPS_NORMALIZATION job.
+
+    Normalizes an ODPS contract to HubContract format with progress tracking
+    and event publishing.
+
+    Args:
+        job_obj: Job instance
+
+    Returns:
+        Result dictionary with normalization results
+
+    Raises:
+        ValueError: If contract_id is missing, contract not found, or contract is not ODPS
+        ConnectionError: If normalization service is unavailable
+        Exception: For other errors
+    """
+    # Get contract ID from resource_id
+    contract_id = job_obj.resource_id
+
+    # Convert to string if it's a UUID object, handle None case
+    if contract_id is not None:
+        contract_id = str(contract_id)
+
+    if not contract_id:
+        raise ValueError("Contract ID is required for ODPS_NORMALIZATION job")
+
+    try:
+        # Import here to avoid circular imports
+        from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalSpecType
+        from hub.apps.contracts.normalization import normalize_contract
+        from hub.apps.core.events.service_publishers import ODPSEventPublisher
+        from hub.apps.core.events.publisher import EventPublisher
+
+        # Get contract
+        try:
+            contract = Contract.objects.get(id=contract_id)
+        except Contract.DoesNotExist:
+            raise ValueError(f"Contract {contract_id} not found")
+
+        # Validate contract is ODPS
+        if contract.original_spec_type != OriginalSpecType.ODPS:
+            raise ValueError(
+                f"Contract {contract_id} is not an ODPS contract "
+                f"(spec_type: {contract.original_spec_type})"
+            )
+
+        if not contract.original_raw or contract.original_raw.strip() == '':
+            raise ValueError(f"Contract {contract_id} has no original_raw content")
+
+        # Initialize event publisher
+        odps_event_publisher = ODPSEventPublisher()
+        odps_event_publisher._event_publisher = EventPublisher(
+            service_name="job_service",
+            tenant_id=str(contract.tenant.id) if contract.tenant else None,
+            user_id=str(job_obj.created_by.id) if job_obj.created_by else None,
+        )
+
+        tenant_id = str(contract.tenant.id) if contract.tenant else None
+        user_id = str(job_obj.created_by.id) if job_obj.created_by else None
+
+        # Update progress: Starting normalization (0%)
+        job_obj.details_json = job_obj.details_json or {}
+        job_obj.details_json['progress_percentage'] = 0.0
+        job_obj.details_json['current_phase'] = 'initialization'
+        job_obj.details_json['status_message'] = 'Starting ODPS normalization'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Publish normalization started event
+        try:
+            odps_event_publisher.publish_odps_normalization_progress(
+                contract_id=str(contract_id),
+                progress_percentage=0.0,
+                current_phase='initialization',
+                phase_index=0,
+                total_phases=5,
+                status_message='Starting ODPS normalization',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_normalization_progress_event_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id),
+                error=str(e),
+                message="Failed to publish ODPS normalization progress event"
+            )
+
+        # Update progress: Parsing contract (20%)
+        job_obj.details_json['progress_percentage'] = 20.0
+        job_obj.details_json['current_phase'] = 'parsing'
+        job_obj.details_json['status_message'] = 'Parsing ODPS contract'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_normalization_progress(
+                contract_id=str(contract_id),
+                progress_percentage=20.0,
+                current_phase='parsing',
+                phase_index=1,
+                total_phases=5,
+                status_message='Parsing ODPS contract',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Update progress: Normalizing to HubContract (40%)
+        job_obj.details_json['progress_percentage'] = 40.0
+        job_obj.details_json['current_phase'] = 'normalization'
+        job_obj.details_json['status_message'] = 'Normalizing ODPS to HubContract'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_normalization_progress(
+                contract_id=str(contract_id),
+                progress_percentage=40.0,
+                current_phase='normalization',
+                phase_index=2,
+                total_phases=5,
+                status_message='Normalizing ODPS to HubContract',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Normalize contract
+        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
+            raw_contract=contract.original_raw,
+            format=contract.original_format,
+            spec_type="ODPS"
+        )
+
+        # Update progress: Validation (60%)
+        job_obj.details_json['progress_percentage'] = 60.0
+        job_obj.details_json['current_phase'] = 'validation'
+        job_obj.details_json['status_message'] = 'Validating normalized HubContract'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_normalization_progress(
+                contract_id=str(contract_id),
+                progress_percentage=60.0,
+                current_phase='validation',
+                phase_index=3,
+                total_phases=5,
+                status_message='Validating normalized HubContract',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Check normalization status
+        if norm_status == NormalizationStatus.NORMALIZATION_FAILED:
+            error_message = norm_errors[0] if norm_errors else "ODPS normalization failed"
+
+            # Update progress: Failed (100%)
+            job_obj.details_json['progress_percentage'] = 100.0
+            job_obj.details_json['current_phase'] = 'failed'
+            job_obj.details_json['status_message'] = f'Normalization failed: {error_message}'
+            job_obj.save(update_fields=['details_json', 'updated_at'])
+
+            # Publish failure event
+            try:
+                odps_event_publisher.publish_odps_normalization_progress(
+                    contract_id=str(contract_id),
+                    progress_percentage=100.0,
+                    current_phase='failed',
+                    phase_index=5,
+                    total_phases=5,
+                    status_message=f'Normalization failed: {error_message}',
+                    odps_version=contract.original_spec_version,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                )
+            except Exception:
+                pass  # Event publishing failure should not affect job
+
+            raise ValueError(f"ODPS normalization failed: {error_message}")
+
+        # Update progress: Saving results (80%)
+        job_obj.details_json['progress_percentage'] = 80.0
+        job_obj.details_json['current_phase'] = 'saving'
+        job_obj.details_json['status_message'] = 'Saving normalized HubContract'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_normalization_progress(
+                contract_id=str(contract_id),
+                progress_percentage=80.0,
+                current_phase='saving',
+                phase_index=4,
+                total_phases=5,
+                status_message='Saving normalized HubContract',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Update contract with normalized data
+        with transaction.atomic():
+            contract.hub_contract_json = hub_contract
+            contract.normalization_status = norm_status
+            contract.save(update_fields=['hub_contract_json', 'normalization_status', 'updated_at'])
+
+        # Update progress: Completed (100%)
+        job_obj.details_json['progress_percentage'] = 100.0
+        job_obj.details_json['current_phase'] = 'completed'
+        job_obj.details_json['status_message'] = 'ODPS normalization completed successfully'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Publish completion event
+        try:
+            odps_event_publisher.publish_odps_normalization_progress(
+                contract_id=str(contract_id),
+                progress_percentage=100.0,
+                current_phase='completed',
+                phase_index=5,
+                total_phases=5,
+                status_message='ODPS normalization completed successfully',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+
+            # Publish normalized event
+            odps_event_publisher.publish_odps_normalized(
+                contract_id=str(contract_id),
+                normalization_status=norm_status.value,
+                normalization_errors=norm_errors,
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_normalization_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id),
+                error=str(e),
+                message="Failed to publish ODPS normalization completion event"
+            )
+
+        logger.info(
+            "odps_normalization_job_completed",
+            job_id=str(job_obj.id),
+            contract_id=str(contract_id),
+            tenant_id=tenant_id,
+            normalization_status=norm_status.value,
+            detected_spec_type=detected_spec_type,
+            detected_spec_version=detected_spec_version,
+            warnings_count=len(norm_warnings),
+            message=f"ODPS normalization job completed for contract {contract_id}"
+        )
+
+        return {
+            'status': 'completed',
+            'normalization_status': norm_status.value,
+            'detected_spec_type': detected_spec_type,
+            'detected_spec_version': detected_spec_version,
+            'normalization_errors': norm_errors,
+            'normalization_warnings': norm_warnings,
+            'contract_id': str(contract_id),
+            'warnings_count': len(norm_warnings),
+            'errors_count': len(norm_errors)
+        }
+
+    except (ValueError, ConnectionError):
+        raise  # Re-raise specific errors
+    except Exception as e:
+        # Wrap other exceptions
+        logger.error(
+            "odps_normalization_job_failed",
+            job_id=str(job_obj.id),
+            contract_id=str(contract_id) if 'contract_id' in locals() else None,
+            error=str(e),
+            exc_info=True,
+            message=f"ODPS normalization job failed: {str(e)}"
+        )
+        raise Exception(f"ODPS normalization failed: {str(e)}") from e
+
+
+def _execute_odps_ref_resolution_job(job_obj: Job) -> dict:
+    """
+    Execute ODPS_REF_RESOLUTION job.
+
+    Resolves all $ref references in an ODPS contract with progress tracking
+    and event publishing.
+
+    Args:
+        job_obj: Job instance
+
+    Returns:
+        Result dictionary with ref resolution results
+
+    Raises:
+        ValueError: If contract_id is missing, contract not found, or contract is not ODPS
+        ConnectionError: If ref resolution service is unavailable
+        Exception: For other errors
+    """
+    # Get contract ID from resource_id
+    contract_id = job_obj.resource_id
+
+    # Convert to string if it's a UUID object, handle None case
+    if contract_id is not None:
+        contract_id = str(contract_id)
+
+    if not contract_id:
+        raise ValueError("Contract ID is required for ODPS_REF_RESOLUTION job")
+
+    try:
+        # Import here to avoid circular imports
+        from hub.apps.contracts.models import Contract, OriginalSpecType
+        from hub.apps.contracts.ref_resolver import RefResolver, ExternalRefHandling
+        from hub.apps.contracts.odps_parser import ODPSParser
+        from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+        from hub.apps.core.events.service_publishers import ODPSEventPublisher
+        from hub.apps.core.events.publisher import EventPublisher
+        import json
+
+        # Get contract
+        try:
+            contract = Contract.objects.get(id=contract_id)
+        except Contract.DoesNotExist:
+            raise ValueError(f"Contract {contract_id} not found")
+
+        # Validate contract is ODPS
+        if contract.original_spec_type != OriginalSpecType.ODPS:
+            raise ValueError(
+                f"Contract {contract_id} is not an ODPS contract "
+                f"(spec_type: {contract.original_spec_type})"
+            )
+
+        if not contract.original_raw or contract.original_raw.strip() == '':
+            raise ValueError(f"Contract {contract_id} has no original_raw content")
+
+        # Initialize event publisher
+        odps_event_publisher = ODPSEventPublisher()
+        odps_event_publisher._event_publisher = EventPublisher(
+            service_name="job_service",
+            tenant_id=str(contract.tenant.id) if contract.tenant else None,
+            user_id=str(job_obj.created_by.id) if job_obj.created_by else None,
+        )
+
+        tenant_id = str(contract.tenant.id) if contract.tenant else None
+        user_id = str(job_obj.created_by.id) if job_obj.created_by else None
+
+        # Update progress: Starting ref resolution (0%)
+        job_obj.details_json = job_obj.details_json or {}
+        job_obj.details_json['progress_percentage'] = 0.0
+        job_obj.details_json['current_phase'] = 'initialization'
+        job_obj.details_json['status_message'] = 'Starting ODPS $ref resolution'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Publish ref resolution started event
+        try:
+            odps_event_publisher.publish_odps_ref_progress(
+                contract_id=str(contract_id),
+                progress_percentage=0.0,
+                refs_processed=0,
+                refs_total=None,
+                status_message='Starting ODPS $ref resolution',
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_ref_progress_event_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id),
+                error=str(e),
+                message="Failed to publish ODPS ref progress event"
+            )
+
+        # Update progress: Parsing document (10%)
+        job_obj.details_json['progress_percentage'] = 10.0
+        job_obj.details_json['current_phase'] = 'parsing'
+        job_obj.details_json['status_message'] = 'Parsing ODPS document'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_ref_progress(
+                contract_id=str(contract_id),
+                progress_percentage=10.0,
+                refs_processed=0,
+                refs_total=None,
+                status_message='Parsing ODPS document',
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Parse ODPS document
+        format_str = contract.original_format.lower() if contract.original_format else 'json'
+        odps_doc = ODPSParser.parse(
+            content=contract.original_raw,
+            format=format_str
+        )
+
+        # Update progress: Analyzing refs (20%)
+        job_obj.details_json['progress_percentage'] = 20.0
+        job_obj.details_json['current_phase'] = 'analyzing'
+        job_obj.details_json['status_message'] = 'Analyzing $ref references'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_ref_progress(
+                contract_id=str(contract_id),
+                progress_percentage=20.0,
+                refs_processed=0,
+                refs_total=None,
+                status_message='Analyzing $ref references',
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Count refs for progress tracking (approximate)
+        def count_refs(obj, count=0):
+            """Recursively count $ref references in document"""
+            if isinstance(obj, dict):
+                if "$ref" in obj:
+                    count += 1
+                for value in obj.values():
+                    count = count_refs(value, count)
+            elif isinstance(obj, list):
+                for item in obj:
+                    count = count_refs(item, count)
+            return count
+
+        total_refs = count_refs(odps_doc)
+        job_obj.details_json['refs_total'] = total_refs
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Update progress: Resolving refs (30%)
+        job_obj.details_json['progress_percentage'] = 30.0
+        job_obj.details_json['current_phase'] = 'resolving'
+        job_obj.details_json['status_message'] = f'Resolving {total_refs} $ref references'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_ref_progress(
+                contract_id=str(contract_id),
+                progress_percentage=30.0,
+                refs_processed=0,
+                refs_total=total_refs,
+                status_message=f'Resolving {total_refs} $ref references',
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Get external ref handling mode from job details (default: RESOLVE)
+        external_ref_handling_str = job_obj.details_json.get('external_ref_handling', 'resolve')
+        try:
+            external_ref_handling = ExternalRefHandling(external_ref_handling_str.lower())
+        except ValueError:
+            external_ref_handling = ExternalRefHandling.RESOLVE
+
+        # Create resolver
+        resolver = RefResolver(
+            tenant_id=tenant_id,
+            user_id=user_id
+        )
+
+        # Resolve all refs
+        try:
+            original_doc, resolved_doc = resolver.resolve_all_refs(
+                document=odps_doc,
+                preserve_original=True,
+                external_ref_handling=external_ref_handling
+            )
+        except ODPSRefResolutionError as e:
+            # Update progress: Failed (100%)
+            job_obj.details_json['progress_percentage'] = 100.0
+            job_obj.details_json['current_phase'] = 'failed'
+            job_obj.details_json['status_message'] = f'$ref resolution failed: {str(e)}'
+            job_obj.save(update_fields=['details_json', 'updated_at'])
+
+            # Publish failure event
+            try:
+                odps_event_publisher.publish_odps_ref_failed(
+                    contract_id=str(contract_id),
+                    ref_path=getattr(e, 'ref_path', 'unknown'),
+                    ref_type=getattr(e, 'ref_type', 'unknown'),
+                    error_message=str(e),
+                    error_code=getattr(e, 'error_code', None),
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                )
+            except Exception:
+                pass  # Event publishing failure should not affect job
+
+            raise ValueError(f"ODPS $ref resolution failed: {str(e)}")
+
+        # Update progress: Saving results (90%)
+        job_obj.details_json['progress_percentage'] = 90.0
+        job_obj.details_json['current_phase'] = 'saving'
+        job_obj.details_json['status_message'] = 'Saving resolved document'
+        job_obj.details_json['refs_processed'] = total_refs
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_ref_progress(
+                contract_id=str(contract_id),
+                progress_percentage=90.0,
+                refs_processed=total_refs,
+                refs_total=total_refs,
+                status_message='Saving resolved document',
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Serialize resolved document
+        if format_str == 'yaml':
+            import yaml
+            resolved_raw = yaml.dump(resolved_doc, default_flow_style=False, sort_keys=False)
+        else:
+            resolved_raw = json.dumps(resolved_doc, indent=2)
+
+        # Update contract with resolved document
+        with transaction.atomic():
+            # Store resolved document in original_raw_resolved if field exists, otherwise update original_raw
+            if hasattr(contract, 'original_raw_resolved'):
+                contract.original_raw_resolved = resolved_raw
+                contract.save(update_fields=['original_raw_resolved', 'updated_at'])
+            else:
+                # Fallback: update original_raw (this replaces the original, which may not be desired)
+                # In production, original_raw_resolved should be available
+                contract.original_raw = resolved_raw
+                contract.save(update_fields=['original_raw', 'updated_at'])
+
+        # Update progress: Completed (100%)
+        job_obj.details_json['progress_percentage'] = 100.0
+        job_obj.details_json['current_phase'] = 'completed'
+        job_obj.details_json['status_message'] = f'Successfully resolved {total_refs} $ref references'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Calculate duration (use started_at if available, otherwise use job creation time)
+        if job_obj.started_at:
+            duration = (timezone.now() - job_obj.started_at).total_seconds()
+        elif job_obj.created_at:
+            duration = (timezone.now() - job_obj.created_at).total_seconds()
+        else:
+            duration = 0.0  # Fallback to 0 if neither is available
+        duration_ms = int(duration * 1000)
+
+        # Publish completion event
+        try:
+            odps_event_publisher.publish_odps_ref_progress(
+                contract_id=str(contract_id),
+                progress_percentage=100.0,
+                refs_processed=total_refs,
+                refs_total=total_refs,
+                status_message=f'Successfully resolved {total_refs} $ref references',
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+
+            # Publish resolved event
+            odps_event_publisher.publish_odps_ref_resolved(
+                contract_id=str(contract_id),
+                ref_path="all",
+                ref_type="all",
+                resolution_status="completed",
+                ref_count=total_refs,
+                duration_ms=duration_ms,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_ref_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id),
+                error=str(e),
+                message="Failed to publish ODPS ref resolution completion event"
+            )
+
+        logger.info(
+            "odps_ref_resolution_job_completed",
+            job_id=str(job_obj.id),
+            contract_id=str(contract_id),
+            tenant_id=tenant_id,
+            refs_resolved=total_refs,
+            external_ref_handling=external_ref_handling.value,
+            message=f"ODPS $ref resolution job completed for contract {contract_id}"
+        )
+
+        return {
+            'status': 'completed',
+            'refs_resolved': total_refs,
+            'external_ref_handling': external_ref_handling.value,
+            'contract_id': str(contract_id),
+            'format': format_str
+        }
+
+    except (ValueError, ODPSRefResolutionError):
+        raise  # Re-raise specific errors
+    except Exception as e:
+        # Wrap other exceptions
+        logger.error(
+            "odps_ref_resolution_job_failed",
+            job_id=str(job_obj.id),
+            contract_id=str(contract_id) if 'contract_id' in locals() else None,
+            error=str(e),
+            exc_info=True,
+            message=f"ODPS $ref resolution job failed: {str(e)}"
+        )
+        raise Exception(f"ODPS $ref resolution failed: {str(e)}") from e
+
+
+def _execute_odps_export_job(job_obj: Job) -> dict:
+    """
+    Execute ODPS_EXPORT job.
+
+    Generates ODPS document from HubContract format with progress tracking
+    and event publishing.
+
+    Args:
+        job_obj: Job instance
+
+    Returns:
+        Result dictionary with export results
+
+    Raises:
+        ValueError: If contract_id is missing, contract not found, or contract has no hub_contract_json
+        Exception: For other errors
+    """
+    # Get contract ID from resource_id
+    contract_id = job_obj.resource_id
+
+    # Convert to string if it's a UUID object, handle None case
+    if contract_id is not None:
+        contract_id = str(contract_id)
+
+    if not contract_id:
+        raise ValueError("Contract ID is required for ODPS_EXPORT job")
+
+    try:
+        # Import here to avoid circular imports
+        from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat
+        from hub.apps.contracts.odps_generator import (
+            generate_odps_from_hubcontract,
+            format_odps_as_json,
+            format_odps_as_yaml,
+        )
+        from hub.apps.contracts.normalization import parse_contract
+        from hub.apps.core.events.service_publishers import ODPSEventPublisher
+        from hub.apps.core.events.publisher import EventPublisher
+        import json
+
+        # Get contract
+        try:
+            contract = Contract.objects.get(id=contract_id)
+        except Contract.DoesNotExist:
+            raise ValueError(f"Contract {contract_id} not found")
+
+        # Validate contract has hub_contract_json
+        if not contract.hub_contract_json:
+            raise ValueError(
+                f"Contract {contract_id} has no hub_contract_json. "
+                "Cannot export as ODPS format."
+            )
+
+        # Get export options from job details
+        export_format = job_obj.details_json.get('export_format', 'json').lower()
+        if export_format not in ['json', 'yaml']:
+            export_format = 'json'  # Default to JSON
+
+        odps_version = job_obj.details_json.get('odps_version', '4.1')
+
+        # Initialize event publisher
+        odps_event_publisher = ODPSEventPublisher()
+        odps_event_publisher._event_publisher = EventPublisher(
+            service_name="job_service",
+            tenant_id=str(contract.tenant.id) if contract.tenant else None,
+            user_id=str(job_obj.created_by.id) if job_obj.created_by else None,
+        )
+
+        tenant_id = str(contract.tenant.id) if contract.tenant else None
+        user_id = str(job_obj.created_by.id) if job_obj.created_by else None
+
+        # Update progress: Starting export (0%)
+        job_obj.details_json = job_obj.details_json or {}
+        job_obj.details_json['progress_percentage'] = 0.0
+        job_obj.details_json['current_phase'] = 'initialization'
+        job_obj.details_json['status_message'] = 'Starting ODPS export'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Publish export started event
+        try:
+            odps_event_publisher.publish_odps_export_progress(
+                contract_id=str(contract_id),
+                export_format=export_format,
+                progress_percentage=0.0,
+                current_phase='initialization',
+                status_message='Starting ODPS export',
+                odps_version=odps_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_export_progress_event_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id),
+                error=str(e),
+                message="Failed to publish ODPS export progress event"
+            )
+
+        # Update progress: Preparing data (10%)
+        job_obj.details_json['progress_percentage'] = 10.0
+        job_obj.details_json['current_phase'] = 'preparation'
+        job_obj.details_json['status_message'] = 'Preparing HubContract data'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_export_progress(
+                contract_id=str(contract_id),
+                export_format=export_format,
+                progress_percentage=10.0,
+                current_phase='preparation',
+                status_message='Preparing HubContract data',
+                odps_version=odps_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Get original ODCS contract if available (for embedding in ODPS)
+        original_odcs_contract = None
+        if contract.original_raw and contract.original_spec_type == OriginalSpecType.ODCS:
+            try:
+                original_odcs_contract = parse_contract(
+                    contract.original_raw, contract.original_format
+                )
+            except Exception:
+                # If parsing fails, continue without original ODCS
+                pass
+
+        # Update progress: Generating ODPS (30%)
+        job_obj.details_json['progress_percentage'] = 30.0
+        job_obj.details_json['current_phase'] = 'generation'
+        job_obj.details_json['status_message'] = 'Generating ODPS document'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_export_progress(
+                contract_id=str(contract_id),
+                export_format=export_format,
+                progress_percentage=30.0,
+                current_phase='generation',
+                status_message='Generating ODPS document',
+                odps_version=odps_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Generate ODPS document
+        odps_doc = generate_odps_from_hubcontract(
+            hub_contract=contract.hub_contract_json,
+            target_version=odps_version,
+            original_odcs_contract=original_odcs_contract,
+            original_odcs_url=None,
+        )
+
+        # Update progress: Formatting output (70%)
+        job_obj.details_json['progress_percentage'] = 70.0
+        job_obj.details_json['current_phase'] = 'formatting'
+        job_obj.details_json['status_message'] = f'Formatting ODPS as {export_format.upper()}'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_export_progress(
+                contract_id=str(contract_id),
+                export_format=export_format,
+                progress_percentage=70.0,
+                current_phase='formatting',
+                status_message=f'Formatting ODPS as {export_format.upper()}',
+                odps_version=odps_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Format output
+        if export_format == 'yaml':
+            odps_raw = format_odps_as_yaml(odps_doc)
+        else:
+            odps_raw = format_odps_as_json(odps_doc)
+
+        # Calculate bytes for progress tracking
+        bytes_processed = len(odps_raw.encode('utf-8'))
+        bytes_total = bytes_processed  # Total is same as processed for export
+
+        # Update progress: Saving results (90%)
+        job_obj.details_json['progress_percentage'] = 90.0
+        job_obj.details_json['current_phase'] = 'saving'
+        job_obj.details_json['status_message'] = 'Saving exported ODPS document'
+        job_obj.details_json['bytes_processed'] = bytes_processed
+        job_obj.details_json['bytes_total'] = bytes_total
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_export_progress(
+                contract_id=str(contract_id),
+                export_format=export_format,
+                progress_percentage=90.0,
+                current_phase='saving',
+                bytes_processed=bytes_processed,
+                bytes_total=bytes_total,
+                status_message='Saving exported ODPS document',
+                odps_version=odps_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Update contract with exported ODPS (store in original_raw for now)
+        # Note: This preserves the original_raw if it exists, but stores the exported ODPS
+        # In a production system, you might want to store this separately or in a versioned format
+        with transaction.atomic():
+            # Store exported ODPS in original_raw (or create a new field for exported content)
+            contract.original_raw = odps_raw
+            # Convert export_format string to OriginalFormat enum
+            if export_format == 'yaml':
+                contract.original_format = OriginalFormat.YAML
+            else:
+                contract.original_format = OriginalFormat.JSON
+            contract.original_spec_type = OriginalSpecType.ODPS
+            contract.original_spec_version = odps_version
+            contract.save(update_fields=[
+                'original_raw',
+                'original_format',
+                'original_spec_type',
+                'original_spec_version',
+                'updated_at'
+            ])
+
+        # Update progress: Completed (100%)
+        job_obj.details_json['progress_percentage'] = 100.0
+        job_obj.details_json['current_phase'] = 'completed'
+        job_obj.details_json['status_message'] = 'ODPS export completed successfully'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Publish completion event
+        try:
+            odps_event_publisher.publish_odps_export_progress(
+                contract_id=str(contract_id),
+                export_format=export_format,
+                progress_percentage=100.0,
+                current_phase='completed',
+                bytes_processed=bytes_processed,
+                bytes_total=bytes_total,
+                status_message='ODPS export completed successfully',
+                odps_version=odps_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_export_event_publish_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id),
+                error=str(e),
+                message="Failed to publish ODPS export completion event"
+            )
+
+        logger.info(
+            "odps_export_job_completed",
+            job_id=str(job_obj.id),
+            contract_id=str(contract_id),
+            tenant_id=tenant_id,
+            export_format=export_format,
+            odps_version=odps_version,
+            bytes_processed=bytes_processed,
+            message=f"ODPS export job completed for contract {contract_id}"
+        )
+
+        # Record export success metric (Task 6.6.4)
+        try:
+            from hub.apps.observability.otel_metrics import odps_export_total
+            odps_export_total.labels(
+                status="success",
+                format=export_format,
+                tenant_id=tenant_id or "unknown"
+            ).inc()
+        except Exception:
+            pass  # Don't fail on metrics recording
+
+        return {
+            'status': 'completed',
+            'export_format': export_format,
+            'odps_version': odps_version,
+            'contract_id': str(contract_id),
+            'bytes_processed': bytes_processed,
+            'bytes_total': bytes_total,
+        }
+
+    except (ValueError, ConnectionError):
+        # Record export failure metric (Task 6.6.4)
+        try:
+            from hub.apps.observability.otel_metrics import odps_export_total
+            tenant_id = str(contract.tenant.id) if 'contract' in locals() and contract.tenant else "unknown"
+            export_format = job_obj.details_json.get('export_format', 'unknown') if 'job_obj' in locals() else "unknown"
+            odps_export_total.labels(
+                status="failure",
+                format=export_format,
+                tenant_id=tenant_id
+            ).inc()
+        except Exception:
+            pass  # Don't fail on metrics recording
+        raise  # Re-raise specific errors
+    except Exception as e:
+        # Wrap other exceptions
+        logger.error(
+            "odps_export_job_failed",
+            job_id=str(job_obj.id),
+            contract_id=str(contract_id) if 'contract_id' in locals() else None,
+            error=str(e),
+            exc_info=True,
+            message=f"ODPS export job failed: {str(e)}"
+        )
+
+        # Record export failure metric (Task 6.6.4)
+        try:
+            from hub.apps.observability.otel_metrics import odps_export_total
+            tenant_id = str(contract.tenant.id) if 'contract' in locals() and contract.tenant else "unknown"
+            export_format = job_obj.details_json.get('export_format', 'unknown') if 'job_obj' in locals() else "unknown"
+            odps_export_total.labels(
+                status="failure",
+                format=export_format,
+                tenant_id=tenant_id
+            ).inc()
+        except Exception:
+            pass  # Don't fail on metrics recording
+
+        raise Exception(f"ODPS export failed: {str(e)}") from e
+
+
+def _execute_odps_semantic_mapping_job(job_obj: Job) -> dict:
+    """
+    Execute ODPS_SEMANTIC_MAPPING job.
+
+    Maps an ODPS contract to RDF (semantic representation) with progress tracking
+    and event publishing.
+
+    Args:
+        job_obj: Job instance
+
+    Returns:
+        Result dictionary with semantic mapping results
+
+    Raises:
+        ValueError: If contract_id is missing, contract not found, or contract is not ODPS
+        ConnectionError: If semantic service is unavailable
+        Exception: For other errors
+    """
+    import time
+    start_time = time.time()
+
+    # Get contract ID from resource_id
+    contract_id = job_obj.resource_id
+
+    # Convert to string if it's a UUID object, handle None case
+    if contract_id is not None:
+        contract_id = str(contract_id)
+
+    if not contract_id:
+        raise ValueError("Contract ID is required for ODPS_SEMANTIC_MAPPING job")
+
+    try:
+        # Import here to avoid circular imports
+        from hub.apps.contracts.models import Contract, OriginalSpecType
+        from hub.apps.semantic.utils import map_odps_to_semantic
+        from hub.apps.core.events.service_publishers import ODPSEventPublisher
+        from hub.apps.core.events.publisher import EventPublisher
+
+        # Get contract
+        try:
+            contract = Contract.objects.get(id=contract_id)
+        except Contract.DoesNotExist:
+            raise ValueError(f"Contract {contract_id} not found")
+
+        # Validate contract is ODPS
+        if contract.original_spec_type != OriginalSpecType.ODPS:
+            raise ValueError(
+                f"Contract {contract_id} is not an ODPS contract "
+                f"(spec_type: {contract.original_spec_type})"
+            )
+
+        # Initialize event publisher
+        odps_event_publisher = ODPSEventPublisher()
+        odps_event_publisher._event_publisher = EventPublisher(
+            service_name="job_service",
+            tenant_id=str(contract.tenant.id) if contract.tenant else None,
+            user_id=str(job_obj.created_by.id) if job_obj.created_by else None,
+        )
+
+        tenant_id = str(contract.tenant.id) if contract.tenant else None
+        user_id = str(job_obj.created_by.id) if job_obj.created_by else None
+
+        # Update progress: Starting semantic mapping (0%)
+        job_obj.details_json = job_obj.details_json or {}
+        job_obj.details_json['progress_percentage'] = 0.0
+        job_obj.details_json['current_phase'] = 'initialization'
+        job_obj.details_json['status_message'] = 'Starting ODPS semantic mapping'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Publish semantic mapping started event
+        try:
+            odps_event_publisher.publish_odps_semantic_mapping_progress(
+                contract_id=str(contract_id),
+                progress_percentage=0.0,
+                current_phase='initialization',
+                phase_index=0,
+                total_phases=4,
+                status_message='Starting ODPS semantic mapping',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_semantic_mapping_progress_event_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id),
+                error=str(e),
+                message="Failed to publish ODPS semantic mapping progress event"
+            )
+
+        # Update progress: Extracting ODPS product (25%)
+        job_obj.details_json['progress_percentage'] = 25.0
+        job_obj.details_json['current_phase'] = 'extraction'
+        job_obj.details_json['status_message'] = 'Extracting ODPS product structure'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_semantic_mapping_progress(
+                contract_id=str(contract_id),
+                progress_percentage=25.0,
+                current_phase='extraction',
+                phase_index=1,
+                total_phases=4,
+                status_message='Extracting ODPS product structure',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Update progress: Mapping to RDF (50%)
+        job_obj.details_json['progress_percentage'] = 50.0
+        job_obj.details_json['current_phase'] = 'mapping'
+        job_obj.details_json['status_message'] = 'Mapping ODPS to RDF'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_semantic_mapping_progress(
+                contract_id=str(contract_id),
+                progress_percentage=50.0,
+                current_phase='mapping',
+                phase_index=2,
+                total_phases=4,
+                status_message='Mapping ODPS to RDF',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Map ODPS to semantic (RDF)
+        semantic_resource = map_odps_to_semantic(
+            contract=contract,
+            tenant=contract.tenant,
+            use_cache=False
+        )
+
+        # Update progress: Saving semantic resource (75%)
+        job_obj.details_json['progress_percentage'] = 75.0
+        job_obj.details_json['current_phase'] = 'saving'
+        job_obj.details_json['status_message'] = 'Saving semantic resource'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_semantic_mapping_progress(
+                contract_id=str(contract_id),
+                progress_percentage=75.0,
+                current_phase='saving',
+                phase_index=3,
+                total_phases=4,
+                status_message='Saving semantic resource',
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Check if mapping was successful
+        if not semantic_resource:
+            # Mapping was skipped (e.g., no ODPS product data)
+            raise ValueError(
+                f"ODPS semantic mapping was skipped for contract {contract_id}. "
+                "Contract may not have valid ODPS product data."
+            )
+
+        # Update progress: Completed (100%)
+        job_obj.details_json['progress_percentage'] = 100.0
+        job_obj.details_json['current_phase'] = 'completed'
+        job_obj.details_json['status_message'] = 'ODPS semantic mapping completed'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Calculate duration
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Get semantic resource metadata
+        triples_count = 0
+        semantic_status = 'UNKNOWN'
+        if semantic_resource.metadata_json:
+            triples_count = semantic_resource.metadata_json.get('triples_count', 0)
+        if semantic_resource.status:
+            semantic_status = semantic_resource.status
+
+        # Publish completion event
+        try:
+            odps_event_publisher.publish_odps_semantic_mapped(
+                contract_id=str(contract_id),
+                semantic_resource_id=str(semantic_resource.id),
+                semantic_uri=semantic_resource.uri,
+                triples_count=triples_count,
+                semantic_status=semantic_status,
+                duration_ms=duration_ms,
+                odps_version=contract.original_spec_version,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_semantic_mapped_event_failed",
+                job_id=str(job_obj.id),
+                contract_id=str(contract_id),
+                error=str(e),
+                message="Failed to publish ODPS semantic mapped event"
+            )
+
+        logger.info(
+            "odps_semantic_mapping_job_completed",
+            job_id=str(job_obj.id),
+            contract_id=str(contract_id),
+            tenant_id=tenant_id,
+            semantic_resource_id=str(semantic_resource.id),
+            triples_count=triples_count,
+            message=f"ODPS semantic mapping job completed for contract {contract_id}"
+        )
+
+        return {
+            'status': 'completed',
+            'contract_id': str(contract_id),
+            'semantic_resource_id': str(semantic_resource.id),
+            'semantic_uri': semantic_resource.uri,
+            'triples_count': triples_count,
+            'semantic_status': semantic_status,
+            'duration_ms': duration_ms,
+        }
+
+    except (ValueError, ConnectionError):
+        raise  # Re-raise specific errors
+    except Exception as e:
+        # Wrap other exceptions
+        logger.error(
+            "odps_semantic_mapping_job_failed",
+            job_id=str(job_obj.id),
+            contract_id=str(contract_id) if 'contract_id' in locals() else None,
+            error=str(e),
+            exc_info=True,
+            message=f"ODPS semantic mapping job failed: {str(e)}"
+        )
+        raise Exception(f"ODPS semantic mapping failed: {str(e)}") from e
+
+
+def _execute_odps_linking_job(job_obj: Job) -> dict:
+    """
+    Execute ODPS_LINKING job.
+
+    Validates and establishes bidirectional links between ODPS and ODCS contracts
+    with progress tracking and event publishing.
+
+    Args:
+        job_obj: Job instance
+
+    Returns:
+        Result dictionary with linking results
+
+    Raises:
+        ValueError: If contract IDs are missing, contracts not found, or validation fails
+        Exception: For other errors
+    """
+    import time
+    start_time = time.time()
+
+    # Get contract IDs from job details
+    odps_contract_id = job_obj.details_json.get('odps_contract_id')
+    odcs_contract_id = job_obj.details_json.get('odcs_contract_id')
+
+    # If not in details, try resource_id (for backward compatibility)
+    if not odps_contract_id:
+        odps_contract_id = job_obj.resource_id
+
+    # Convert to string if it's a UUID object, handle None case
+    if odps_contract_id is not None:
+        odps_contract_id = str(odps_contract_id)
+    if odcs_contract_id is not None:
+        odcs_contract_id = str(odcs_contract_id)
+
+    if not odps_contract_id:
+        raise ValueError("ODPS contract ID is required for ODPS_LINKING job")
+    if not odcs_contract_id:
+        raise ValueError("ODCS contract ID is required for ODPS_LINKING job")
+
+    try:
+        # Import here to avoid circular imports
+        from hub.apps.contracts.models import Contract, OriginalSpecType, NormalizationStatus
+        from hub.apps.contracts.linking_validation import validate_linking, LinkingValidationError
+        from hub.apps.contracts.services import ContractService
+        from hub.apps.core.events.service_publishers import ODPSEventPublisher
+        from hub.apps.core.events.publisher import EventPublisher
+
+        # Get contracts
+        try:
+            odps_contract = Contract.objects.get(id=odps_contract_id)
+        except Contract.DoesNotExist:
+            raise ValueError(f"ODPS contract {odps_contract_id} not found")
+
+        try:
+            odcs_contract = Contract.objects.get(id=odcs_contract_id)
+        except Contract.DoesNotExist:
+            raise ValueError(f"ODCS contract {odcs_contract_id} not found")
+
+        # Get tenant and user IDs
+        tenant_id = str(odps_contract.tenant.id) if odps_contract.tenant else None
+        user_id = str(job_obj.created_by.id) if job_obj.created_by else None
+
+        # Initialize event publisher
+        odps_event_publisher = ODPSEventPublisher()
+        odps_event_publisher._event_publisher = EventPublisher(
+            service_name="job_service",
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+
+        # Update progress: Starting linking (0%)
+        job_obj.details_json = job_obj.details_json or {}
+        job_obj.details_json['progress_percentage'] = 0.0
+        job_obj.details_json['current_phase'] = 'initialization'
+        job_obj.details_json['status_message'] = 'Starting ODPS linking'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Publish linking started event
+        try:
+            odps_event_publisher.publish_odps_linking_status(
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                status="starting",
+                progress_percentage=0.0,
+                current_phase="initialization",
+                status_message="Starting ODPS linking",
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_linking_status_event_failed",
+                job_id=str(job_obj.id),
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                error=str(e),
+                message="Failed to publish ODPS linking status event"
+            )
+
+        # Update progress: Validating contracts (20%)
+        job_obj.details_json['progress_percentage'] = 20.0
+        job_obj.details_json['current_phase'] = 'validation'
+        job_obj.details_json['status_message'] = 'Validating contracts for linking'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_linking_status(
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                status="validating",
+                progress_percentage=20.0,
+                current_phase="validation",
+                status_message="Validating contracts for linking",
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Validate contracts for linking
+        try:
+            validated_odps_contract, validated_odcs_contract = validate_linking(
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                tenant_id=tenant_id
+            )
+        except LinkingValidationError as e:
+            # Update progress: Validation failed (100%)
+            job_obj.details_json['progress_percentage'] = 100.0
+            job_obj.details_json['current_phase'] = 'failed'
+            job_obj.details_json['status_message'] = f'Linking validation failed: {str(e)}'
+            job_obj.save(update_fields=['details_json', 'updated_at'])
+
+            # Publish failure event
+            try:
+                odps_event_publisher.publish_odps_linking_status(
+                    odps_contract_id=odps_contract_id,
+                    odcs_contract_id=odcs_contract_id,
+                    status="failed",
+                    progress_percentage=100.0,
+                    current_phase="validation",
+                    validation_passed=False,
+                    validation_errors=[str(e)],
+                    status_message=f"Linking validation failed: {str(e)}",
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                )
+            except Exception:
+                pass  # Event publishing failure should not affect job
+
+            raise ValueError(f"ODPS linking validation failed: {str(e)}")
+
+        # Update progress: Validation passed (40%)
+        job_obj.details_json['progress_percentage'] = 40.0
+        job_obj.details_json['current_phase'] = 'validation'
+        job_obj.details_json['status_message'] = 'Linking validation passed'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_linking_status(
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                status="validating",
+                progress_percentage=40.0,
+                current_phase="validation",
+                validation_passed=True,
+                status_message="Linking validation passed",
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Update progress: Establishing links (60%)
+        job_obj.details_json['progress_percentage'] = 60.0
+        job_obj.details_json['current_phase'] = 'linking'
+        job_obj.details_json['status_message'] = 'Establishing bidirectional links'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_linking_status(
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                status="linking",
+                progress_percentage=60.0,
+                current_phase="linking",
+                status_message="Establishing bidirectional links",
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Establish bidirectional links using ContractService
+        contract_service = ContractService(
+            tenant_id=tenant_id,
+            user_id=user_id
+        )
+
+        # Use the service method to link contracts (this handles the actual linking logic)
+        linked_odps_contract = contract_service.link_odps_to_odcs(
+            odcs_contract_id=odcs_contract_id,
+            odps_contract_id=odps_contract_id,
+            tenant_id=tenant_id,
+            user_id=user_id
+        )
+
+        # Refresh contracts from DB to get updated links
+        validated_odps_contract.refresh_from_db()
+        validated_odcs_contract.refresh_from_db()
+
+        # Verify links were established
+        odps_hub_contract = validated_odps_contract.hub_contract_json or {}
+        odcs_hub_contract = validated_odcs_contract.hub_contract_json or {}
+        odps_extensions = odps_hub_contract.get("extensions", {})
+        odcs_extensions = odcs_hub_contract.get("extensions", {})
+        odps_x_odps = odps_extensions.get("x_odps", {})
+        odcs_x_odps = odcs_extensions.get("x_odps", {})
+
+        odps_to_odcs_link = odps_x_odps.get("odcs_link")
+        odcs_to_odps_link = odcs_x_odps.get("odps_link")
+
+        if not odps_to_odcs_link or str(odps_to_odcs_link) != odcs_contract_id:
+            raise ValueError(
+                f"ODPS → ODCS link not established correctly. "
+                f"Expected {odcs_contract_id}, got {odps_to_odcs_link}"
+            )
+
+        if not odcs_to_odps_link or str(odcs_to_odps_link) != odps_contract_id:
+            raise ValueError(
+                f"ODCS → ODPS link not established correctly. "
+                f"Expected {odps_contract_id}, got {odcs_to_odps_link}"
+            )
+
+        # Update progress: Saving results (80%)
+        job_obj.details_json['progress_percentage'] = 80.0
+        job_obj.details_json['current_phase'] = 'saving'
+        job_obj.details_json['status_message'] = 'Links established successfully'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        try:
+            odps_event_publisher.publish_odps_linking_status(
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                status="linking",
+                progress_percentage=80.0,
+                current_phase="saving",
+                status_message="Links established successfully",
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception:
+            pass  # Event publishing failure should not affect job
+
+        # Update progress: Completed (100%)
+        job_obj.details_json['progress_percentage'] = 100.0
+        job_obj.details_json['current_phase'] = 'completed'
+        job_obj.details_json['status_message'] = 'ODPS linking completed successfully'
+        job_obj.save(update_fields=['details_json', 'updated_at'])
+
+        # Calculate duration
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Publish completion event
+        try:
+            odps_event_publisher.publish_odps_linking_status(
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                status="completed",
+                progress_percentage=100.0,
+                current_phase="completed",
+                validation_passed=True,
+                link_type="bidirectional",
+                status_message="ODPS linking completed successfully",
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+
+            # Publish linked event
+            odps_event_publisher.publish_odps_linked(
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                link_type="bidirectional",
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_linking_event_publish_failed",
+                job_id=str(job_obj.id),
+                odps_contract_id=odps_contract_id,
+                odcs_contract_id=odcs_contract_id,
+                error=str(e),
+                message="Failed to publish ODPS linking completion event"
+            )
+
+        logger.info(
+            "odps_linking_job_completed",
+            job_id=str(job_obj.id),
+            odps_contract_id=odps_contract_id,
+            odcs_contract_id=odcs_contract_id,
+            tenant_id=tenant_id,
+            duration_ms=duration_ms,
+            message=f"ODPS linking job completed for contracts {odps_contract_id} ↔ {odcs_contract_id}"
+        )
+
+        return {
+            'status': 'completed',
+            'odps_contract_id': odps_contract_id,
+            'odcs_contract_id': odcs_contract_id,
+            'link_type': 'bidirectional',
+            'duration_ms': duration_ms,
+        }
+
+    except (ValueError, LinkingValidationError):
+        raise  # Re-raise specific errors
+    except Exception as e:
+        # Wrap other exceptions
+        logger.error(
+            "odps_linking_job_failed",
+            job_id=str(job_obj.id),
+            odps_contract_id=odps_contract_id if 'odps_contract_id' in locals() else None,
+            odcs_contract_id=odcs_contract_id if 'odcs_contract_id' in locals() else None,
+            error=str(e),
+            exc_info=True,
+            message=f"ODPS linking job failed: {str(e)}"
+        )
+        raise Exception(f"ODPS linking failed: {str(e)}") from e
+
+
 def check_job_timeouts():
     """
     Check for jobs that have exceeded their timeout.
-    
+
     This should be called periodically (e.g., via cron or scheduled task).
     """
     running_jobs = Job.objects.filter(status=JobStatus.RUNNING)
-    
+
     for job_obj in running_jobs:
         if not job_obj.timeout_seconds or not job_obj.started_at:
             continue
-        
+
         # Calculate timeout time
         timeout_time = job_obj.started_at + timedelta(seconds=job_obj.timeout_seconds)
-        
+
         # Check if timeout exceeded
         if timezone.now() > timeout_time:
             job_obj.mark_failed(

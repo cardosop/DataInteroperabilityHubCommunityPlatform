@@ -161,3 +161,21 @@ class ODPSSchemaDirectoryStructureTest(TestCase):
                 f"Expected only: {required_versions}"
             )
 
+    def test_gitkeep_files_exist(self):
+        """Test: Verify directory structure exists - .gitkeep files preserve structure"""
+        required_versions = ["v4.1", "v4.0", "v3.x", "v2.x", "v1.x"]
+
+        for version in required_versions:
+            version_dir = self.odps_dir / version
+            gitkeep_file = version_dir / ".gitkeep"
+            with self.subTest(version=version):
+                self.assertTrue(
+                    gitkeep_file.exists(),
+                    f".gitkeep file should exist in '{version}' directory: {gitkeep_file}. "
+                    f"This ensures the directory structure is preserved in git even if files are removed."
+                )
+                self.assertTrue(
+                    gitkeep_file.is_file(),
+                    f".gitkeep should be a file in '{version}' directory: {gitkeep_file}"
+                )
+

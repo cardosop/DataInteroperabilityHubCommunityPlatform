@@ -19,6 +19,11 @@ class JobType(models.TextChoices):
     SCHEDULED_INGESTION = "SCHEDULED_INGESTION", "Scheduled Ingestion"
     RETENTION_POLICY_ENFORCEMENT = "RETENTION_POLICY_ENFORCEMENT", "Retention Policy Enforcement"
     SEARCH_INDEX_UPDATE = "SEARCH_INDEX_UPDATE", "Search Index Update"
+    ODPS_NORMALIZATION = "ODPS_NORMALIZATION", "ODPS Normalization"
+    ODPS_REF_RESOLUTION = "ODPS_REF_RESOLUTION", "ODPS $ref Resolution"
+    ODPS_EXPORT = "ODPS_EXPORT", "ODPS Export"
+    ODPS_SEMANTIC_MAPPING = "ODPS_SEMANTIC_MAPPING", "ODPS Semantic Mapping"
+    ODPS_LINKING = "ODPS_LINKING", "ODPS Linking"
 
 
 class JobStatus(models.TextChoices):
@@ -33,7 +38,7 @@ class JobStatus(models.TextChoices):
 class Job(models.Model):
     """
     Generic job model for long-running operations.
-    
+
     Tracks DQ runs, compliance checks, contract validation, semantic mapping, etc.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -105,7 +110,7 @@ class Job(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "jobs"
         ordering = ["-created_at"]
@@ -115,10 +120,10 @@ class Job(models.Model):
             models.Index(fields=["resource_type", "resource_id"]),
             models.Index(fields=["status", "created_at"]),
         ]
-    
+
     def __str__(self):
         return f"{self.type} - {self.status} ({self.resource_type}:{self.resource_id})"
-    
+
     def is_terminal(self) -> bool:
         """Check if job is in a terminal state"""
         return self.status in [
@@ -126,21 +131,21 @@ class Job(models.Model):
             JobStatus.FAILED,
             JobStatus.CANCELLED
         ]
-    
+
     def is_running(self) -> bool:
         """Check if job is currently running"""
         return self.status == JobStatus.RUNNING
-    
+
     def can_cancel(self) -> bool:
         """Check if job can be cancelled"""
         return self.status in [JobStatus.PENDING, JobStatus.RUNNING]
-    
+
     def mark_started(self):
         """Mark job as started"""
         self.status = JobStatus.RUNNING
         self.started_at = timezone.now()
         self.save(update_fields=['status', 'started_at', 'updated_at'])
-        
+
         # Track metrics
         try:
             from hub.apps.observability.otel_metrics import jobs_started_total
@@ -151,7 +156,7 @@ class Job(models.Model):
             ).inc()
         except Exception:
             pass  # Metrics may not be available
-    
+
     def mark_completed(self, result_json=None):
         """Mark job as completed"""
         self.status = JobStatus.COMPLETED
@@ -159,7 +164,7 @@ class Job(models.Model):
         if result_json is not None:
             self.result_json = result_json
         self.save(update_fields=['status', 'completed_at', 'result_json', 'updated_at'])
-        
+
         # Track metrics
         try:
             from hub.apps.observability.otel_metrics import (
@@ -167,13 +172,13 @@ class Job(models.Model):
                 job_duration_seconds
             )
             tenant_id = str(self.tenant.id) if self.tenant else 'system'
-            
+
             jobs_completed_total.labels(
                 job_type=self.type,
                 status='COMPLETED',
                 tenant_id=tenant_id
             ).inc()
-            
+
             # Track duration
             if self.started_at:
                 duration = (self.completed_at - self.started_at).total_seconds()
@@ -183,7 +188,7 @@ class Job(models.Model):
                 ).observe(duration)
         except Exception:
             pass  # Metrics may not be available
-    
+
     def mark_failed(self, error_message: str, result_json=None):
         """Mark job as failed"""
         self.status = JobStatus.FAILED
@@ -192,7 +197,7 @@ class Job(models.Model):
         if result_json is not None:
             self.result_json = result_json
         self.save(update_fields=['status', 'completed_at', 'error_message', 'result_json', 'updated_at'])
-        
+
         # Track metrics
         try:
             from hub.apps.observability.otel_metrics import (
@@ -200,20 +205,20 @@ class Job(models.Model):
                 job_duration_seconds
             )
             tenant_id = str(self.tenant.id) if self.tenant else 'system'
-            
+
             # Extract error code from error message
             error_code = 'UNKNOWN_ERROR'
             if 'timeout' in error_message.lower():
                 error_code = 'TIMEOUT'
             elif 'validation' in error_message.lower():
                 error_code = 'VALIDATION_ERROR'
-            
+
             jobs_failed_total.labels(
                 job_type=self.type,
                 error_code=error_code,
                 tenant_id=tenant_id
             ).inc()
-            
+
             # Track duration
             if self.started_at:
                 duration = (self.completed_at - self.started_at).total_seconds()
@@ -223,7 +228,7 @@ class Job(models.Model):
                 ).observe(duration)
         except Exception:
             pass  # Metrics may not be available
-    
+
     def mark_cancelled(self):
         """Mark job as cancelled"""
         self.status = JobStatus.CANCELLED

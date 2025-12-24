@@ -26,6 +26,11 @@ JOB_TIMEOUTS = {
     JobType.SCHEDULED_INGESTION: 3600,  # 1 hour (file discovery, download, dataset creation can take time)
     JobType.RETENTION_POLICY_ENFORCEMENT: 3600,  # 1 hour
     JobType.SEARCH_INDEX_UPDATE: 300,  # 5 minutes
+    JobType.ODPS_NORMALIZATION: 600,  # 10 minutes
+    JobType.ODPS_REF_RESOLUTION: 600,  # 10 minutes
+    JobType.ODPS_EXPORT: 300,  # 5 minutes
+    JobType.ODPS_SEMANTIC_MAPPING: 600,  # 10 minutes
+    JobType.ODPS_LINKING: 300,  # 5 minutes
 }
 
 # Maximum retry attempts per job type
@@ -38,6 +43,11 @@ JOB_MAX_RETRIES = {
     JobType.SCHEDULED_INGESTION: 2,  # Scheduled ingestion can retry up to 2 times
     JobType.RETENTION_POLICY_ENFORCEMENT: 1,  # Retention policy enforcement typically doesn't need retries
     JobType.SEARCH_INDEX_UPDATE: 2,  # Search index update can retry up to 2 times
+    JobType.ODPS_NORMALIZATION: 2,  # ODPS normalization can retry up to 2 times
+    JobType.ODPS_REF_RESOLUTION: 2,  # ODPS $ref resolution can retry up to 2 times
+    JobType.ODPS_EXPORT: 2,  # ODPS export can retry up to 2 times
+    JobType.ODPS_SEMANTIC_MAPPING: 2,  # ODPS semantic mapping can retry up to 2 times
+    JobType.ODPS_LINKING: 2,  # ODPS linking can retry up to 2 times
 }
 
 # Base delay for exponential backoff (in seconds)
@@ -54,10 +64,10 @@ WORKER_STARVATION_THRESHOLD_SECONDS = settings.WORKER_STARVATION_THRESHOLD_SECON
 def get_job_timeout(job_type: str) -> int:
     """
     Get timeout for a job type.
-    
+
     Args:
         job_type: Job type string
-    
+
     Returns:
         Timeout in seconds
     """
@@ -67,10 +77,10 @@ def get_job_timeout(job_type: str) -> int:
 def get_job_max_retries(job_type: str) -> int:
     """
     Get maximum retry attempts for a job type.
-    
+
     Args:
         job_type: Job type string
-    
+
     Returns:
         Maximum retry attempts
     """
@@ -80,47 +90,47 @@ def get_job_max_retries(job_type: str) -> int:
 def is_transient_failure(exception: Exception) -> bool:
     """
     Check if an exception represents a transient failure that should be retried.
-    
+
     Transient failures include:
     - ConnectionError: Service unavailable, network issues
     - TimeoutError: Request timeout, service slow to respond
     - Temporary service unavailability
-    
+
     Non-transient failures (should not retry):
     - ValueError: Invalid input, validation errors
     - Resource not found errors
-    
+
     Args:
         exception: Exception instance
-    
+
     Returns:
         True if exception is transient and should be retried
     """
     if isinstance(exception, (ConnectionError, TimeoutError)):
         return True
-    
+
     error_str = str(exception).lower()
     transient_keywords = [
         'timeout', 'timed out', 'connection', 'unavailable', 'network',
         'temporary', 'retry', 'service unavailable', '503', '502', '504'
     ]
-    
+
     return any(keyword in error_str for keyword in transient_keywords)
 
 
 def calculate_retry_delay(retry_count: int, base_delay: int = JOB_RETRY_BASE_DELAY) -> int:
     """
     Calculate retry delay using exponential backoff.
-    
+
     Formula: base_delay * (2 ^ retry_count)
     - Retry 1: 60 seconds (1 minute)
     - Retry 2: 120 seconds (2 minutes)
     - Retry 3: 240 seconds (4 minutes)
-    
+
     Args:
         retry_count: Current retry attempt (0-indexed)
         base_delay: Base delay in seconds (default: 60)
-    
+
     Returns:
         Delay in seconds
     """
@@ -130,23 +140,23 @@ def calculate_retry_delay(retry_count: int, base_delay: int = JOB_RETRY_BASE_DEL
 def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
     """
     Retry a failed job if retries are remaining and error is transient.
-    
+
     Args:
         job_obj: Job instance
         job_type: Job type string
         exception: Exception that caused the failure
-    
+
     Returns:
         True if job was retried, False if no retries remaining or error is not transient
     """
     # Check if error is transient
     if not is_transient_failure(exception):
         return False
-    
+
     # Get current retry count from details_json
     retry_count = job_obj.details_json.get('retry_count', 0)
     max_retries = get_job_max_retries(job_type)
-    
+
     # Check if retries remaining
     if retry_count >= max_retries:
         logger.info(
@@ -159,7 +169,7 @@ def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
             message=f"Job {job_obj.id} exceeded max retries ({max_retries})"
         )
         return False
-    
+
     # Increment retry count
     new_retry_count = retry_count + 1
     if job_obj.details_json is None:
@@ -167,21 +177,21 @@ def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
     job_obj.details_json['retry_count'] = new_retry_count
     job_obj.details_json['last_retry_error'] = str(exception)
     job_obj.details_json['last_retry_at'] = timezone.now().isoformat()
-    
+
     # Calculate retry delay
     retry_delay = calculate_retry_delay(retry_count)
-    
+
     # Reset job status to PENDING for retry
     job_obj.status = JobStatus.PENDING
     job_obj.started_at = None  # Reset started_at for retry
     job_obj.completed_at = None  # Reset completed_at for retry
     job_obj.error_message = None  # Clear error message
     job_obj.save(update_fields=['status', 'started_at', 'completed_at', 'error_message', 'details_json', 'updated_at'])
-    
+
     # Re-enqueue job with delay
     queue_name = get_queue_for_job_type(job_type)
     queue = get_queue(queue_name)
-    
+
     # Use django-rq's enqueue_in to schedule job with delay
     # Import here to avoid circular imports
     from django_rq import enqueue_in
@@ -193,11 +203,11 @@ def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
         job_type=job_type,
         timeout=get_job_timeout(job_type)
     )
-    
+
     # Update tenant job counter: increment queued (job is back in queue)
     if job_obj.tenant:
         increment_tenant_job_counter(str(job_obj.tenant.id), "queued")
-    
+
     logger.info(
         "job_retry_scheduled",
         job_id=str(job_obj.id),
@@ -209,56 +219,56 @@ def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
         error_type=type(exception).__name__,
         message=f"Job {job_obj.id} scheduled for retry {new_retry_count}/{max_retries} after {retry_delay}s"
     )
-    
+
     return True
 
 
 def check_tenant_job_limits(tenant_id: str) -> Tuple[bool, Optional[str]]:
     """
     Check if tenant has capacity for a new job (concurrency and queue depth).
-    
+
     Checks:
     1. Running jobs < max_job_concurrency
     2. Queued jobs < max_queued_jobs
-    
+
     Uses Redis counters for atomic operations.
-    
+
     Args:
         tenant_id: Tenant UUID as string
-        
+
     Returns:
         Tuple of (can_create_job: bool, error_message: Optional[str])
     """
     from hub.apps.tenants.services import get_tenant_job_limits
-    
+
     try:
         limits = get_tenant_job_limits(tenant_id)
         max_concurrency = limits["max_job_concurrency"]
         max_queued = limits["max_queued_jobs"]
-        
+
         # Get current counts from Redis (atomic operations)
         # Key format: job:tenant:{tenant_id}:running, job:tenant:{tenant_id}:queued
         running_key = f"job:tenant:{tenant_id}:running"
         queued_key = f"job:tenant:{tenant_id}:queued"
-        
+
         # Get current counts (default to 0 if keys don't exist)
         running_count = cache.get(running_key, 0)
         queued_count = cache.get(queued_key, 0)
-        
+
         # Check concurrency limit
         if running_count >= max_concurrency:
             return False, (
                 f"Tenant has reached maximum concurrent job limit ({max_concurrency}). "
                 f"Current running jobs: {running_count}. Please wait for jobs to complete."
             )
-        
+
         # Check queue depth limit
         if queued_count >= max_queued:
             return False, (
                 f"Tenant has reached maximum queued job limit ({max_queued}). "
                 f"Current queued jobs: {queued_count}. Please wait for queue to process."
             )
-        
+
         return True, None
     except Exception as e:
         logger.warning(
@@ -280,7 +290,7 @@ def get_tenant_job_counter(tenant_id: str, counter_type: str) -> int:
 def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -> None:
     """
     Increment tenant job counter in Redis and update Prometheus metrics.
-    
+
     Args:
         tenant_id: Tenant UUID as string
         counter_type: "running" or "queued"
@@ -294,7 +304,7 @@ def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -
         # Ensure expiration is set (24 hours) - refresh it after increment
         if hasattr(cache, 'expire'):
             cache.expire(key, 86400)
-        
+
         # Update Prometheus metrics
         try:
             from hub.apps.observability.otel_metrics import tenant_running_jobs, tenant_queued_jobs
@@ -318,7 +328,7 @@ def increment_tenant_job_counter(tenant_id: str, counter_type: str = "queued") -
 def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") -> None:
     """
     Decrement tenant job counter in Redis and update Prometheus metrics.
-    
+
     Args:
         tenant_id: Tenant UUID as string
         counter_type: "running" or "queued"
@@ -331,7 +341,7 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
         # Ensure expiration is set (24 hours)
         if hasattr(cache, 'expire'):
             cache.expire(key, 86400)
-        
+
         # Update Prometheus metrics
         try:
             from hub.apps.observability.otel_metrics import tenant_running_jobs, tenant_queued_jobs
@@ -364,10 +374,10 @@ def create_job(
 ) -> Job:
     """
     Create a job and enqueue it for processing.
-    
+
     Checks tenant job limits (concurrency and queue depth) before creating job.
     Rejects job creation if limits are exceeded.
-    
+
     Args:
         tenant: Tenant instance (optional)
         user: User instance (optional, alias for created_by)
@@ -377,10 +387,10 @@ def create_job(
         details_json: Additional job details (optional)
         timeout_seconds: Timeout in seconds (optional, defaults to job type default)
         queue_name: Queue name ('default', 'high', 'low')
-    
+
     Returns:
         Created Job instance
-    
+
     Raises:
         ValidationError: If tenant job limits are exceeded
     """
@@ -389,11 +399,11 @@ def create_job(
         can_create, error_message = check_tenant_job_limits(str(tenant.id))
         if not can_create:
             raise ValidationError(error_message)
-    
+
     # Get timeout for job type if not provided
     if timeout_seconds is None:
         timeout_seconds = get_job_timeout(job_type) if job_type else 600
-    
+
     # Create job record
     job = Job.objects.create(
         tenant=tenant,
@@ -405,7 +415,7 @@ def create_job(
         timeout_seconds=timeout_seconds,
         details_json=details_json or {}
     )
-    
+
     # Increment queued counter before enqueuing
     if tenant:
         increment_tenant_job_counter(str(tenant.id), "queued")
@@ -416,7 +426,7 @@ def create_job(
             job_type=job_type,
             message=f"Job created and queued for tenant {tenant.id}"
         )
-    
+
     # Track job enqueue timestamp for starvation prevention
     enqueue_timestamp = time.time()
     cache.set(
@@ -424,11 +434,11 @@ def create_job(
         enqueue_timestamp,
         timeout=86400  # 24 hours
     )
-    
+
     # Determine queue name from job type if not explicitly provided
     if queue_name == 'default' and job_type:
         queue_name = get_queue_for_job_type(job_type)
-    
+
     # Enqueue job for processing
     try:
         queue = get_queue(queue_name)
@@ -446,46 +456,46 @@ def create_job(
             message="Failed to enqueue job (Redis may be unavailable). Job record created but not queued."
         )
         # Note: Job remains in PENDING status - can be manually processed or retried
-    
+
     return job
 
 
 def get_queue_for_job_type(job_type: str) -> str:
     """
     Get queue name for a job type.
-    
+
     Queue mapping:
     - DQ_RUN, COMPLIANCE_RUN → job_critical (HIGH priority)
     - SEMANTIC_MAPPING, CONTRACT_MIGRATION → job_default (NORMAL priority)
     - CONTRACT_VALIDATION → job_low (LOW priority)
     - SCHEDULED_INGESTION → job_default (NORMAL priority, can be long-running)
-    
+
     Args:
         job_type: Job type string
-    
+
     Returns:
         Queue name
     """
     # HIGH priority queue (job_critical) for long-running critical jobs
     if job_type in [JobType.DQ_RUN, JobType.COMPLIANCE_RUN]:
         return 'job_critical'
-    
+
     # LOW priority queue (job_low) for quick validation jobs
     if job_type in [JobType.CONTRACT_VALIDATION]:
         return 'job_low'
-    
+
     # NORMAL priority queue (job_default) for standard jobs
-    # Includes: SEMANTIC_MAPPING, CONTRACT_MIGRATION, SCHEDULED_INGESTION, RETENTION_POLICY_ENFORCEMENT, SEARCH_INDEX_UPDATE
+    # Includes: SEMANTIC_MAPPING, CONTRACT_MIGRATION, SCHEDULED_INGESTION, RETENTION_POLICY_ENFORCEMENT, SEARCH_INDEX_UPDATE, ODPS_NORMALIZATION, ODPS_REF_RESOLUTION, ODPS_EXPORT, ODPS_SEMANTIC_MAPPING, ODPS_LINKING
     return 'job_default'
 
 
 def get_job_enqueue_timestamp(job_id: str) -> Optional[float]:
     """
     Get job enqueue timestamp from Redis.
-    
+
     Args:
         job_id: Job UUID as string
-    
+
     Returns:
         Enqueue timestamp (Unix timestamp) or None if not found
     """
@@ -496,10 +506,10 @@ def get_job_enqueue_timestamp(job_id: str) -> Optional[float]:
 def get_job_wait_time(job_id: str) -> Optional[float]:
     """
     Calculate job wait time in seconds.
-    
+
     Args:
         job_id: Job UUID as string
-    
+
     Returns:
         Wait time in seconds or None if timestamp not found
     """
@@ -512,34 +522,34 @@ def get_job_wait_time(job_id: str) -> Optional[float]:
 def should_elevate_job(job_id: str, queue_name: str) -> bool:
     """
     Check if a job should be elevated due to starvation prevention.
-    
+
     NORMAL priority jobs (job_default) are elevated to HIGH priority if they've been
     waiting longer than the starvation threshold.
-    
+
     Args:
         job_id: Job UUID as string
         queue_name: Queue name ('job_critical', 'job_default', 'job_low')
-    
+
     Returns:
         True if job should be elevated, False otherwise
     """
     # Only elevate NORMAL priority jobs (job_default)
     if queue_name != 'job_default':
         return False
-    
+
     wait_time = get_job_wait_time(job_id)
     if wait_time is None:
         return False
-    
+
     return wait_time > WORKER_STARVATION_THRESHOLD_SECONDS
 
 
 def get_reserved_slots_usage() -> int:
     """
     Get current number of reserved slots in use.
-    
+
     Reserved slots are for HIGH priority jobs only.
-    
+
     Returns:
         Number of reserved slots currently in use
     """
@@ -550,7 +560,7 @@ def get_reserved_slots_usage() -> int:
 def increment_reserved_slots_usage() -> int:
     """
     Increment reserved slots usage counter.
-    
+
     Returns:
         New reserved slots usage count
     """
@@ -569,7 +579,7 @@ def increment_reserved_slots_usage() -> int:
 def decrement_reserved_slots_usage() -> int:
     """
     Decrement reserved slots usage counter.
-    
+
     Returns:
         New reserved slots usage count
     """
@@ -584,9 +594,9 @@ def decrement_reserved_slots_usage() -> int:
 def get_shared_slots_usage() -> int:
     """
     Get current number of shared slots in use.
-    
+
     Shared slots can be used by any priority level.
-    
+
     Returns:
         Number of shared slots currently in use
     """
@@ -597,7 +607,7 @@ def get_shared_slots_usage() -> int:
 def increment_shared_slots_usage() -> int:
     """
     Increment shared slots usage counter.
-    
+
     Returns:
         New shared slots usage count
     """
@@ -616,7 +626,7 @@ def increment_shared_slots_usage() -> int:
 def decrement_shared_slots_usage() -> int:
     """
     Decrement shared slots usage counter.
-    
+
     Returns:
         New shared slots usage count
     """
@@ -631,7 +641,7 @@ def decrement_shared_slots_usage() -> int:
 def can_use_reserved_slot() -> bool:
     """
     Check if a reserved slot is available for HIGH priority jobs.
-    
+
     Returns:
         True if reserved slot is available, False otherwise
     """
@@ -642,7 +652,7 @@ def can_use_reserved_slot() -> bool:
 def can_use_shared_slot() -> bool:
     """
     Check if a shared slot is available for any priority job.
-    
+
     Returns:
         True if shared slot is available, False otherwise
     """
@@ -653,11 +663,11 @@ def can_use_shared_slot() -> bool:
 def can_process_job(queue_name: str, job_id: Optional[str] = None) -> Tuple[bool, Optional[str]]:
     """
     Check if a job can be processed based on reserved slots and starvation prevention.
-    
+
     Args:
         queue_name: Queue name ('job_critical', 'job_default', 'job_low')
         job_id: Optional job ID for starvation prevention check
-    
+
     Returns:
         Tuple of (can_process: bool, reason: Optional[str])
     """
@@ -669,7 +679,7 @@ def can_process_job(queue_name: str, job_id: Optional[str] = None) -> Tuple[bool
             return True, "shared_slot"
         else:
             return False, "no_slots_available"
-    
+
     # Check starvation prevention for NORMAL priority jobs
     if queue_name == 'job_default' and job_id:
         if should_elevate_job(job_id, queue_name):
@@ -680,13 +690,13 @@ def can_process_job(queue_name: str, job_id: Optional[str] = None) -> Tuple[bool
                 return True, "elevated_shared_slot"
             else:
                 return False, "no_slots_available"
-    
+
     # NORMAL and LOW priority jobs can only use shared slots
     if queue_name in ['job_default', 'job_low']:
         if can_use_shared_slot():
             return True, "shared_slot"
         else:
             return False, "no_shared_slots_available"
-    
+
     return False, "unknown_queue"
 

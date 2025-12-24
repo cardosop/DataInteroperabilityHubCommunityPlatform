@@ -80,3 +80,6 @@ drf-spectacular>=0.27.0
 channels>=4.0.0
 channels-redis>=4.2.0
 django-filter>=23.0
+
+# Payment Processing
+stripe>=7.0.0

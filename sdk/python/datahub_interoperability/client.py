@@ -257,6 +257,17 @@ class DataHubClient:
                         # Add http_status to error_data if not present (for string error format)
                         if "http_status" not in error_data:
                             error_data["http_status"] = response.status_code
+
+                        # Check if this is an ODPS-related endpoint and try to parse as ODPS error
+                        url_lower = url.lower()
+                        if "odps" in url_lower or "products" in url_lower or "/export" in url_lower or "/download" in url_lower or "/link-odps" in url_lower:
+                            from .errors import parse_odps_error
+                            try:
+                                raise parse_odps_error(error_data)
+                            except Exception:
+                                # If ODPS parsing fails, fall back to standard error parsing
+                                pass
+
                         raise parse_error(error_data)
                     except ValueError:
                         # Not JSON, create generic error
@@ -282,6 +293,15 @@ class DataHubClient:
                 # Parse error response
                 try:
                     error_data = e.response.json()
+                    # Check if this is an ODPS-related endpoint and try to parse as ODPS error
+                    url_lower = str(e.request.url).lower() if e.request.url else ""
+                    if "odps" in url_lower or "products" in url_lower or "/export" in url_lower or "/download" in url_lower or "/link-odps" in url_lower:
+                        from .errors import parse_odps_error
+                        try:
+                            raise parse_odps_error(error_data)
+                        except Exception:
+                            # If ODPS parsing fails, fall back to standard error parsing
+                            pass
                     raise parse_error(error_data)
                 except ValueError:
                     raise DataHubError(

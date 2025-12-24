@@ -80,7 +80,7 @@ INSTALLED_APPS = [
     "hub.apps.rate_limiting",
     "hub.apps.scheduled_ingestion",
     "hub.apps.search",
-    "hub.apps.webhooks",
+    "hub.apps.webhooks.apps.WebhooksConfig",
     "hub.apps.api.analytics",
     "hub.apps.orchestration",
     "hub.apps.websocket",  # WebSocket API
@@ -129,6 +129,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "hub.apps.api.middleware.csrf_exempt.APIEndpointCSRFExemptMiddleware",  # CSRF exemption for API endpoints
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "hub.apps.auth.middleware.TenantScopingMiddleware",  # Tenant scoping after authentication

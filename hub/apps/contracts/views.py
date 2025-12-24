@@ -21,13 +21,14 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
-from hub.apps.core.services.base import NotFoundError as ServiceNotFoundError
+from hub.apps.core.services.base import NotFoundError as ServiceNotFoundError, NotFoundError
 from hub.apps.core.services.base import ValidationError
 from hub.apps.jobs.models import JobType
 from hub.apps.jobs.utils import create_job
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
+from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 
 from .caching import (
     cache_contract,
@@ -57,8 +58,14 @@ from .lineage import (
 from .lineage_service import LineageService
 from .migration import MigrationStrategy, get_current_hubcontract_version
 from .migration_manager import ContractMigrationManager
-from .models import Contract, ContractStatus, NormalizationStatus, ValidationStatus
-from .normalization import normalize_contract, validate_hubcontract_schema
+from .models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalSpecType,
+    ValidationStatus,
+)
+from .normalization import normalize_contract, parse_contract, validate_hubcontract_schema
 from .normalization_metrics import record_all_normalization_metrics
 from .normalization_service import NormalizationService
 from .optimization import (
@@ -72,8 +79,77 @@ from .pagination import (
     optimize_queryset_for_pagination,
     paginate_queryset,
 )
-from .serializers import ContractCreateSerializer, ContractSerializer, ContractUpdateSerializer
+from .serializers import ContractCreateSerializer, ContractSerializer, ContractUpdateSerializer, ProductCreateSerializer, ODPSLinkSerializer
 from .services import ContractService
+from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+from hub.apps.observability.otel_metrics import (
+    odps_export_duration_seconds,
+    odps_export_size_bytes,
+    odps_export_total,
+)
+import time
+
+
+def _get_tenant_id_from_request(request) -> str:
+    """
+    Get tenant_id from request (Task 6.6.1).
+
+    Priority:
+    1. request.tenant_id (set by middleware/authentication)
+    2. request.tenant.id (if tenant object is set)
+    3. request.user.tenant_id (if user has tenant_id field)
+    4. request.user.tenant.id (if user has tenant relationship)
+
+    Returns:
+        Tenant ID as string, or "unknown" if not found
+    """
+    tenant_id = None
+
+    # Try request.tenant_id first (most reliable, set by middleware)
+    if hasattr(request, "tenant_id") and request.tenant_id:
+        tenant_id = str(request.tenant_id)
+
+    # Fallback to request.tenant object
+    if not tenant_id and hasattr(request, "tenant") and request.tenant:
+        tenant_id = str(request.tenant.id)
+
+    # Fallback to user.tenant_id (direct field access)
+    if not tenant_id and hasattr(request, "user") and request.user:
+        from django.contrib.auth.models import AnonymousUser
+        if not isinstance(request.user, AnonymousUser):
+            if hasattr(request.user, "tenant_id") and request.user.tenant_id:
+                tenant_id = str(request.user.tenant_id)
+            # Last resort: get from user.tenant relationship
+            elif hasattr(request.user, "tenant") and request.user.tenant:
+                tenant_id = str(request.user.tenant.id)
+
+    return tenant_id or "unknown"
+
+
+def _categorize_export_size(size_bytes: int) -> str:
+    """
+    Categorize export size into size categories (Task 6.6.1).
+
+    Categories:
+    - small: < 10 KB
+    - medium: 10 KB - 100 KB
+    - large: 100 KB - 1 MB
+    - xlarge: >= 1 MB
+
+    Args:
+        size_bytes: Size in bytes
+
+    Returns:
+        Size category string
+    """
+    if size_bytes < 10 * 1024:  # < 10 KB
+        return "small"
+    elif size_bytes < 100 * 1024:  # 10 KB - 100 KB
+        return "medium"
+    elif size_bytes < 1024 * 1024:  # 100 KB - 1 MB
+        return "large"
+    else:  # >= 1 MB
+        return "xlarge"
 
 
 @extend_schema_view(
@@ -187,6 +263,27 @@ from .services import ContractService
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
                 description="Filter by model name",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="spec_type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by original spec type (e.g., 'ODPS', 'ODCS')",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="odps_version",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by ODPS version (e.g., '4.1', '4.0'). Only applies to ODPS contracts",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="has_odps_link",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Filter by whether contract has an ODPS link (true/false). Only applies to ODCS contracts",
                 required=False,
             ),
             OpenApiParameter(
@@ -326,34 +423,102 @@ class ContractViewSet(viewsets.ModelViewSet):
         """
         Override initialize_request to handle format suffix conflicts.
 
-        When format is in query parameters (e.g., ?format=dot), DRF's format suffix
-        patterns can interfere. For the lineage visualization endpoint, we need to
+        When format is in query parameters (e.g., ?format=dot, ?format=hubcontract), DRF's format suffix
+        patterns can interfere. For the lineage visualization and export endpoints, we need to
         ensure query parameters take precedence over format suffixes.
         """
         # Call parent to get the DRF request object
         drf_request = super().initialize_request(request, *args, **kwargs)
 
-        # Check if this is the lineage visualization endpoint
+        # Check if this is the lineage visualization or export endpoint
         # The action name is determined by the URL path
-        if hasattr(drf_request, "path") and "lineage/visualization" in drf_request.path:
+        path = getattr(drf_request, "path", "")
+        if not path and hasattr(request, "META"):
+            path = request.META.get("PATH_INFO", "")
+        is_lineage_visualization = "lineage/visualization" in path
+        is_export = "export" in path
+
+        if is_lineage_visualization or is_export:
             # If format is in query parameters, clear any format from kwargs
             # This prevents DRF from trying to match format suffix patterns
             if "format" in request.GET or "format" in drf_request.query_params:
-                # Clear format from kwargs if it was set by format suffix pattern
-                if "format" in kwargs:
-                    # Store it temporarily but don't use it for routing
-                    drf_request._format_from_suffix = kwargs.pop("format")
-                # Also clear format attribute if it was set
-                if hasattr(drf_request, "format") and drf_request.format:
-                    # Only clear if format is also in query params (query params take precedence)
-                    format_in_query = request.GET.get("format") or drf_request.query_params.get(
-                        "format"
-                    )
-                    if format_in_query:
+                # Get format from query params to check if it's a valid format suffix
+                format_in_query = request.GET.get("format") or drf_request.query_params.get("format")
+
+                # Valid format suffixes for DRF (json, yaml, etc.)
+                valid_format_suffixes = ["json", "yaml", "xml", "csv"]
+
+                # Only clear format if it's NOT a valid format suffix
+                # This allows format suffixes to work for other endpoints
+                if format_in_query and format_in_query.lower() not in valid_format_suffixes:
+                    # Clear format from kwargs if it was set by format suffix pattern
+                    if "format" in kwargs:
+                        # Store it temporarily but don't use it for routing
+                        drf_request._format_from_suffix = kwargs.pop("format")
+                    # Also clear format attribute if it was set
+                    # CRITICAL: This must be done before content negotiation
+                    if hasattr(drf_request, "format") and drf_request.format:
                         drf_request._original_format = drf_request.format
                         drf_request.format = None
+                    # Disable format suffix handling for this request
+                    # CRITICAL: Set format_kwarg to None to prevent DRF from trying to use format suffixes
+                    # This must be set on the viewset instance, not just the request
+                    self.format_kwarg = None
+                    # Also set on the request object for consistency
+                    if hasattr(drf_request, "format_kwarg"):
+                        drf_request.format_kwarg = None
 
         return drf_request
+
+    def perform_content_negotiation(self, request, force=False):
+        """
+        Override perform_content_negotiation to handle format parameter conflicts.
+
+        For export endpoint, prevent DRF from treating ?format=hubcontract as a format suffix.
+        """
+        # Check if this is the export endpoint
+        # Use action name if available, otherwise check path
+        is_export = False
+        if hasattr(self, "action") and self.action == "export_contract":
+            is_export = True
+        else:
+            # Check path from request
+            path = getattr(request, "path", "")
+            if not path and hasattr(request, "META"):
+                path = request.META.get("PATH_INFO", "")
+            is_export = "export" in path
+
+        if is_export:
+            # Get format from query params
+            format_in_query = None
+            if hasattr(request, "query_params"):
+                format_in_query = request.query_params.get("format")
+            elif hasattr(request, "GET"):
+                format_in_query = request.GET.get("format")
+
+            # Valid format suffixes for DRF (json, yaml, etc.)
+            valid_format_suffixes = ["json", "yaml", "xml", "csv"]
+
+            # If format is in query params and it's NOT a valid format suffix,
+            # disable format suffix handling for this request
+            if format_in_query and format_in_query.lower() not in valid_format_suffixes:
+                # Temporarily disable format_kwarg to prevent DRF from trying to use format suffixes
+                original_format_kwarg = getattr(self, "format_kwarg", None)
+                self.format_kwarg = None
+                try:
+                    # Perform content negotiation without format suffix
+                    return super().perform_content_negotiation(request, force=force)
+                finally:
+                    # Restore original format_kwarg
+                    if original_format_kwarg is not None:
+                        self.format_kwarg = original_format_kwarg
+                    elif hasattr(self, "format_kwarg"):
+                        # If it was None, we might need to explicitly set it back
+                        # But for now, just leave it as None since we disabled it
+                        pass
+
+        # For other endpoints, use default behavior
+        return super().perform_content_negotiation(request, force=force)
 
     @transaction.atomic
     def create(self, request):
@@ -376,6 +541,8 @@ class ContractViewSet(viewsets.ModelViewSet):
         original_format = serializer.validated_data["original_format"]
         original_spec_type = serializer.validated_data.get("original_spec_type")
         asset_id = serializer.validated_data.get("asset_id")
+        disable_external_refs = serializer.validated_data.get("disable_external_refs", False)
+        remove_external_refs = serializer.validated_data.get("remove_external_refs", False)
 
         # Get tenant from user
         tenant = (
@@ -401,6 +568,8 @@ class ContractViewSet(viewsets.ModelViewSet):
                 user_id=str(request.user.id),
                 asset_id=str(asset_id) if asset_id else None,
                 original_spec_type=original_spec_type,
+                disable_external_refs=disable_external_refs,
+                remove_external_refs=remove_external_refs,
             )
 
             return Response(ContractSerializer(contract).data, status=status.HTTP_201_CREATED)
@@ -416,6 +585,132 @@ class ContractViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     "error": "Contract creation failed",
+                    "code": "INTERNAL_ERROR",
+                    "details": {"error": str(e)},
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @extend_schema(
+        summary="Create product (Product-First flow)",
+        description="""
+        Create ODPS product with linked ODCS contract (Product-First flow).
+
+        This endpoint implements the Product-First creation flow where an ODPS document
+        is ingested and automatically linked to an ODCS contract extracted from product.contract.
+
+        **Workflow Steps:**
+        1. Parse and validate ODPS document
+        2. Resolve $ref references (internal, local, external)
+        3. Extract ODCS contract from product.contract (required)
+        4. Validate extracted ODCS contract
+        5. Normalize ODCS → HubContract (technical)
+        6. Normalize ODPS → HubContract (marketplace)
+        7. Create ODCS contract record
+        8. Create ODPS contract record
+        9. Link contracts bidirectionally
+        10. Index for search
+        11. Generate semantic mapping (RDF)
+
+        **Supported Formats:**
+        - JSON (original_format: "JSON")
+        - YAML (original_format: "YAML")
+
+        **External References:**
+        - `resolve_external_refs=True` (default): External $ref references will be resolved
+        - `resolve_external_refs=False`: External $ref references will be disabled (raises error if found)
+
+        **Response:**
+        Returns both created contracts (ODPS + ODCS) with bidirectional links established.
+        """,
+        request=ProductCreateSerializer,
+        responses={
+            201: inline_serializer(
+                name='ProductCreateResponse',
+                fields={
+                    'odps_contract': ContractSerializer(),
+                    'odcs_contract': ContractSerializer(),
+                    'workflow_instance_id': serializers.UUIDField(),
+                }
+            ),
+            400: OpenApiResponse(description="Validation error or workflow execution failed"),
+        },
+        tags=["Contracts", "Products"],
+    )
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="products",
+        url_name="create-product"
+    )
+    @transaction.atomic
+    def create_product(self, request):
+        """
+        Create product using Product-First flow (ODPS).
+
+        POST /api/v1/contracts/products/
+        Body: {
+            "original_raw": "ODPS document content",
+            "original_format": "JSON" or "YAML",
+            "resolve_external_refs": true (optional, default: true),
+            "asset_id": "uuid" (optional)
+        }
+        """
+        self.check_auditor_permissions(request, "create")
+        serializer = ProductCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        original_raw = serializer.validated_data["original_raw"]
+        original_format = serializer.validated_data["original_format"]
+        resolve_external_refs = serializer.validated_data.get("resolve_external_refs", True)
+        asset_id = serializer.validated_data.get("asset_id")
+
+        # Get tenant from user
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant to create products"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Execute ProductCreationWorkflow
+        try:
+            result = ProductCreationWorkflow.execute(
+                original_raw=original_raw,
+                original_format=original_format,
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
+                asset_id=str(asset_id) if asset_id else None,
+                resolve_external_refs=resolve_external_refs
+            )
+
+            # Serialize contracts
+            odps_contract_serializer = ContractSerializer(result["odps_contract"])
+            odcs_contract_serializer = ContractSerializer(result["odcs_contract"])
+
+            return Response(
+                {
+                    "odps_contract": odps_contract_serializer.data,
+                    "odcs_contract": odcs_contract_serializer.data,
+                    "workflow_instance_id": result["workflow_instance_id"]
+                },
+                status=status.HTTP_201_CREATED
+            )
+        except ValueError as e:
+            return Response(
+                {
+                    "error": "Product creation failed",
+                    "code": "WORKFLOW_EXECUTION_FAILED",
+                    "details": {"error": str(e)},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            return Response(
+                {
+                    "error": "Product creation failed",
                     "code": "INTERNAL_ERROR",
                     "details": {"error": str(e)},
                 },
@@ -443,142 +738,60 @@ class ContractViewSet(viewsets.ModelViewSet):
         old_status = contract.status
         old_hub_contract_json = contract.hub_contract_json
 
-        # Update original_raw if provided
-        if "original_raw" in serializer.validated_data:
-            contract.original_raw = serializer.validated_data["original_raw"]
-
-            # Update format if provided
-            if "original_format" in serializer.validated_data:
-                contract.original_format = serializer.validated_data["original_format"]
-
-            # Re-normalize contract
-            (
-                hub_contract,
-                detected_spec_type,
-                detected_spec_version,
-                norm_status,
-                norm_errors,
-                norm_warnings,
-            ) = normalize_contract(
-                raw_contract=contract.original_raw,
-                format=contract.original_format,
-                spec_type=contract.original_spec_type,
-            )
-
-            # Check if normalization failed due to DCS rejection
-            if norm_status == NormalizationStatus.NORMALIZATION_FAILED and norm_errors:
-                dcs_rejection_errors = [
-                    e
-                    for e in norm_errors
-                    if "data contract specification" in e.lower()
-                    or "dcs" in e.lower()
-                    or "no longer supported" in e.lower()
-                ]
-                if dcs_rejection_errors:
-                    return Response(
-                        {
-                            "error": "DCS contracts are no longer supported",
-                            "code": "DCS_NOT_SUPPORTED",
-                            "details": norm_errors,
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-            # Validate HubContract schema if normalization succeeded
-            if hub_contract:
-                is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
-                if not is_valid:
-                    norm_status = NormalizationStatus.NORMALIZATION_FAILED
-                    norm_errors.extend(validation_errors)
-                    hub_contract = None
-
-            # Update normalization fields
-            contract.hub_contract_version = "1.0.0" if hub_contract else None
-            contract.hub_contract_json = hub_contract
-            contract.normalization_status = norm_status
-            contract.normalization_errors = norm_errors
-            contract.normalization_warnings = norm_warnings
-
-            # Reset validation status (requires re-validation)
-            # If contract is ACTIVE, set to DRAFT since it needs re-validation
-            # This prevents validation errors when saving ACTIVE contract with validation_status=None
-            if contract.status == ContractStatus.ACTIVE:
-                contract.status = ContractStatus.DRAFT
-
-            contract.validation_status = None
-            contract.validation_errors = []
-            contract.validation_warnings = []
-            contract.last_validated_at = None
-
-        # Update status if provided
-        if "status" in serializer.validated_data:
-            new_status = serializer.validated_data["status"]
-
-            # Enforce ACTIVE status requirements
-            if new_status == ContractStatus.ACTIVE:
-                # Ensure validation_status is set BEFORE checking can_activate
-                # can_activate() requires validation_status to be VALID or WARNING_ONLY
-                if contract.validation_status is None:
-                    contract.validation_status = ValidationStatus.VALID
-
-                # Ensure normalization_status is set BEFORE checking can_activate
-                # can_activate() requires normalization_status to be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS
-                if contract.normalization_status is None:
-                    if contract.hub_contract_json:
-                        contract.normalization_status = NormalizationStatus.NORMALIZED_OK
-                    else:
-                        return Response(
-                            {
-                                "error": "Cannot activate contract: hub_contract_json is required for activation"
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-
-                # Now check if contract can be activated (after ensuring statuses are set)
-                can_activate, reason = contract.can_activate()
-                if not can_activate:
-                    return Response(
-                        {"error": f"Cannot activate contract: {reason}"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-            contract.status = new_status
-
-        # Apply ON_WRITE migration if needed
-        if contract.hub_contract_json and contract.hub_contract_version:
-            migrated, migrated_hub_contract, migration_warnings = (
-                ContractMigrationManager.migrate_on_write(contract)
-            )
-            if migrated:
-                # Contract was migrated, refresh from DB
-                contract.refresh_from_db()
-
-        # Validate contract before saving
-        try:
-            contract.full_clean()
-        except ValidationError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        contract.save()
-
-        # Log audit event
-        create_audit_event(
-            resource_type="CONTRACT",
-            action="CONTRACT_UPDATED",
-            actor_user=request.user,
-            tenant=contract.tenant,
-            resource_id=str(contract.id),
-            details={
-                "old_status": old_status,
-                "new_status": contract.status,
-                "normalization_status": contract.normalization_status,
-                "old_hub_contract_json": old_hub_contract_json,
-                "new_hub_contract_json": contract.hub_contract_json,
-            },
-            request=request,
+        # Get tenant from user
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
         )
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant to update contracts"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        return Response(ContractSerializer(contract).data, status=status.HTTP_200_OK)
+        # Use service layer for updates
+        try:
+            service = ContractService(
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
+                request_id=getattr(request, "request_id", None),
+            )
+
+            # Extract update parameters
+            original_raw = serializer.validated_data.get("original_raw")
+            original_format = serializer.validated_data.get("original_format")
+            status_value = serializer.validated_data.get("status")
+            remove_external_refs = serializer.validated_data.get("remove_external_refs", False)
+
+            # Update contract using service layer
+            contract = service.update_contract(
+                contract_id=str(contract.id),
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
+                original_raw=original_raw,
+                original_format=original_format,
+                status=status_value,
+                remove_external_refs=remove_external_refs,
+            )
+
+            return Response(ContractSerializer(contract).data, status=status.HTTP_200_OK)
+
+        except ValidationError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=e.http_status
+            )
+        except NotFoundError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=e.http_status
+            )
+        except Exception as e:
+            return Response(
+                {
+                    "error": "Contract update failed",
+                    "code": "INTERNAL_ERROR",
+                    "details": {"error": str(e)},
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
@@ -625,12 +838,22 @@ class ContractViewSet(viewsets.ModelViewSet):
             tenant_id = None
             if hasattr(self.request, "tenant_id") and self.request.tenant_id:
                 tenant_id = self.request.tenant_id
+                # CRITICAL: Convert string tenant_id to UUID for filtering
+                # Middleware sets tenant_id as string, but Contract.tenant_id is UUIDField
                 if isinstance(tenant_id, str):
                     import uuid
 
                     try:
                         tenant_id = uuid.UUID(tenant_id)
                     except (ValueError, TypeError):
+                        # Invalid UUID string - log and set to None
+                        import logging
+                        import os
+                        if os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith("test"):
+                            logger = logging.getLogger(__name__)
+                            logger.warning(
+                                f"ContractViewSet.get_queryset: Failed to convert tenant_id string '{tenant_id}' to UUID"
+                            )
                         tenant_id = None
             if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
                 tenant_id = self.request.tenant.id
@@ -655,20 +878,24 @@ class ContractViewSet(viewsets.ModelViewSet):
             if not tenant_id and hasattr(user, "tenant") and user.tenant:
                 tenant_id = user.tenant.id
 
-            # DEBUG: Log tenant_id retrieval for troubleshooting (only in test environments)
+            # DEBUG: Log tenant_id retrieval for troubleshooting (always log in test environments)
             import os
+            import logging
 
-            if os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith(
-                "test"
-            ) or "test" in os.environ.get("PYTEST_CURRENT_TEST", ""):
-                import logging
+            # Check multiple ways to detect test mode
+            is_test = (
+                os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith("test") or
+                "test" in os.environ.get("PYTEST_CURRENT_TEST", "") or
+                "test" in str(os.environ.get("DJANGO_SETTINGS_MODULE", ""))
+            )
 
+            if is_test:
                 logger = logging.getLogger(__name__)
-                logger.debug(
-                    f"ContractViewSet.get_queryset: tenant_id={tenant_id}, "
+                logger.warning(
+                    f"ContractViewSet.get_queryset: tenant_id={tenant_id} (type: {type(tenant_id)}), "
                     f"user.tenant_id={getattr(user, 'tenant_id', None)}, "
                     f"user.tenant={getattr(user, 'tenant', None)}, "
-                    f"request.tenant_id={getattr(self.request, 'tenant_id', None)}, "
+                    f"request.tenant_id={getattr(self.request, 'tenant_id', None)} (type: {type(getattr(self.request, 'tenant_id', None))}), "
                     f"request.tenant={getattr(self.request, 'tenant', None)}"
                 )
 
@@ -689,21 +916,54 @@ class ContractViewSet(viewsets.ModelViewSet):
                 # DEBUG: Verify queryset has contracts (only in test environments)
                 import os
 
-                if "test" in os.environ.get("PYTEST_CURRENT_TEST", "") or "pytest" in str(
-                    os.environ.get("_", "")
-                ):
-                    count_before_filtering = queryset.count()
-                    if count_before_filtering == 0:
-                        # Log for debugging
-                        import logging
+                # Check multiple ways to detect test mode
+                is_test = (
+                    os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith("test") or
+                    "test" in os.environ.get("PYTEST_CURRENT_TEST", "") or
+                    "pytest" in str(os.environ.get("_", "")) or
+                    "test" in str(os.environ.get("DJANGO_SETTINGS_MODULE", ""))
+                )
 
-                        logger = logging.getLogger(__name__)
-                        logger.warning(
-                            f"ContractViewSet.get_queryset: tenant_id={tenant_id}, "
-                            f"but queryset is empty. Total contracts for tenant: {Contract.objects.filter(tenant_id=tenant_id).count()}"
+                if is_test:
+                    count_before_filtering = queryset.count()
+                    total_for_tenant = Contract.objects.filter(tenant_id=tenant_id).count()
+                    # Always log in test mode to debug the issue
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"ContractViewSet.get_queryset: tenant_id={tenant_id} (type: {type(tenant_id)}), "
+                        f"queryset.count()={count_before_filtering}, "
+                        f"Total contracts for tenant: {total_for_tenant}, "
+                        f"request.tenant_id={getattr(self.request, 'tenant_id', None)} (type: {type(getattr(self.request, 'tenant_id', None))}), "
+                        f"user.id={getattr(user, 'id', None) if user else None}, "
+                        f"user.tenant_id={getattr(user, 'tenant_id', None) if user else None}"
+                    )
+                    if count_before_filtering == 0 and total_for_tenant > 0:
+                        # Queryset is empty but contracts exist - this indicates a filtering issue
+                        logger.error(
+                            f"ContractViewSet.get_queryset: CRITICAL - queryset is empty but {total_for_tenant} contracts exist for tenant {tenant_id}. "
+                            f"This suggests a UUID type mismatch or filtering issue."
                         )
             else:
                 queryset = Contract.objects.none()
+                # Log when tenant_id is None
+                import os
+                is_test = (
+                    os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith("test") or
+                    "test" in os.environ.get("PYTEST_CURRENT_TEST", "") or
+                    "pytest" in str(os.environ.get("_", "")) or
+                    "test" in str(os.environ.get("DJANGO_SETTINGS_MODULE", ""))
+                )
+                if is_test:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(
+                        f"ContractViewSet.get_queryset: CRITICAL - tenant_id is None! "
+                        f"request.tenant_id={getattr(self.request, 'tenant_id', None)}, "
+                        f"request.tenant={getattr(self.request, 'tenant', None)}, "
+                        f"user.id={getattr(user, 'id', None) if user else None}, "
+                        f"user.tenant_id={getattr(user, 'tenant_id', None) if user else None}"
+                    )
 
         # Apply enhanced filtering (GAP-9.2.2)
         # NOTE: Filtering must happen BEFORE sorting annotations are applied
@@ -979,6 +1239,54 @@ class ContractViewSet(viewsets.ModelViewSet):
         model_name = query_params.get("model_name")
         if model_name:
             queryset = queryset.filter(hub_contract_json__models__name=model_name)
+
+        # Filter by spec_type (ODPS-specific filtering)
+        spec_type = query_params.get("spec_type")
+        if spec_type:
+            queryset = queryset.filter(original_spec_type=spec_type)
+
+        # Filter by odps_version (ODPS-specific filtering)
+        odps_version = query_params.get("odps_version")
+        if odps_version:
+            # Only apply to ODPS contracts
+            queryset = queryset.filter(
+                original_spec_type=OriginalSpecType.ODPS,
+                original_spec_version=odps_version
+            )
+
+        # Filter by has_odps_link (ODPS-specific filtering)
+        has_odps_link = query_params.get("has_odps_link")
+        if has_odps_link is not None:
+            # Convert string to boolean if needed
+            if isinstance(has_odps_link, str):
+                has_odps_link = has_odps_link.lower() in ("true", "1", "yes")
+
+            # Only apply to ODCS contracts (they can have ODPS links)
+            queryset = queryset.filter(original_spec_type=OriginalSpecType.ODCS)
+
+            if has_odps_link:
+                # Filter ODCS contracts that have an ODPS link
+                # Check for extensions.x_odps.odps_link in hub_contract_json
+                # The link must exist and not be null/empty
+                queryset = queryset.filter(
+                    hub_contract_json__extensions__x_odps__odps_link__isnull=False
+                ).exclude(
+                    hub_contract_json__extensions__x_odps__odps_link=""
+                )
+            else:
+                # Filter ODCS contracts that do NOT have an ODPS link
+                # Use Q objects to handle null checks properly (Q is already imported at top)
+                # A contract doesn't have an ODPS link if:
+                # - odps_link is null/empty, OR
+                # - x_odps section doesn't exist, OR
+                # - extensions section doesn't exist
+                queryset = queryset.filter(
+                    Q(hub_contract_json__extensions__x_odps__odps_link__isnull=True) |
+                    Q(hub_contract_json__extensions__x_odps__odps_link="") |
+                    Q(hub_contract_json__extensions__x_odps__isnull=True) |
+                    Q(hub_contract_json__extensions__isnull=True) |
+                    Q(hub_contract_json__isnull=True)
+                )
 
         return queryset
 
@@ -1713,6 +2021,308 @@ class ContractViewSet(viewsets.ModelViewSet):
         },
         tags=["Contracts"],
     )
+    @extend_schema(
+        summary="Link ODPS contract to ODCS contract",
+        description="""
+        Link an ODPS contract to an existing ODCS contract (bidirectional linking).
+
+        This endpoint implements Task 3.5.2: ODPS linking endpoint.
+        It accepts either an existing ODPS contract ID or an ODPS document,
+        validates compatibility, and creates bidirectional links.
+
+        **Compatibility Validation:**
+        - ODPS product.contract must match the ODCS contract (id, name, schema)
+        - Both contracts must belong to the same tenant
+        - Both contracts must be normalized
+
+        **Linking:**
+        - Creates bidirectional links: ODPS → ODCS and ODCS → ODPS
+        - Links are stored in hub_contract_json.extensions.x_odps
+
+        **Request Body Options:**
+        1. Link to existing ODPS contract:
+           ```json
+           {
+             "odps_contract_id": "uuid-of-existing-odps-contract"
+           }
+           ```
+
+        2. Create and link new ODPS contract:
+           ```json
+           {
+             "original_raw": "ODPS document content",
+             "original_format": "JSON" or "YAML",
+             "resolve_external_refs": true (optional, default: true)
+           }
+           ```
+
+        **Response:**
+        Returns the linked ODPS contract with bidirectional link established.
+        """,
+        request=ODPSLinkSerializer,
+        responses={
+            200: ContractSerializer,
+            400: OpenApiResponse(description="Validation error or compatibility check failed"),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "Linking"],
+    )
+    @action(detail=True, methods=["post"], url_path="link-odps")
+    @transaction.atomic
+    def link_odps(self, request, id=None):
+        """
+        Link ODPS contract to ODCS contract.
+
+        POST /api/v1/contracts/{id}/link-odps/
+        Body: {
+            "odps_contract_id": "uuid" (optional, to link existing ODPS contract),
+            OR
+            "original_raw": "ODPS document content" (optional, to create new ODPS contract),
+            "original_format": "JSON" or "YAML" (required if original_raw provided),
+            "resolve_external_refs": true (optional, default: true, only used if original_raw provided)
+        }
+        """
+        self.check_auditor_permissions(request, "update")
+        contract = self.get_object()
+
+        # Verify contract is ODCS
+        if contract.original_spec_type != OriginalSpecType.ODCS:
+            return Response(
+                {
+                    "error": "Contract must be ODCS type for ODPS linking",
+                    "code": "INVALID_CONTRACT_TYPE",
+                    "details": {"contract_type": contract.original_spec_type},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ODPSLinkSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        odps_contract_id = serializer.validated_data.get("odps_contract_id")
+        odps_raw = serializer.validated_data.get("original_raw")
+        odps_format = serializer.validated_data.get("original_format")
+        resolve_external_refs = serializer.validated_data.get("resolve_external_refs", True)
+
+        # Get tenant from user
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant to link contracts"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Use service layer
+        try:
+            service = ContractService(
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
+                request_id=getattr(request, "request_id", None),
+            )
+            odps_contract = service.link_odps_to_odcs(
+                odcs_contract_id=str(contract.id),
+                odps_contract_id=str(odps_contract_id) if odps_contract_id else None,
+                odps_raw=odps_raw,
+                odps_format=odps_format,
+                resolve_external_refs=resolve_external_refs,
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id)
+            )
+
+            return Response(ContractSerializer(odps_contract).data, status=status.HTTP_200_OK)
+        except ValidationError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=status.HTTP_400_BAD_REQUEST
+            )
+        except NotFoundError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            # Log the full exception for debugging
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"ODPS linking failed: {str(e)}\n{traceback.format_exc()}",
+                exc_info=True
+            )
+            return Response(
+                {
+                    "error": "ODPS linking failed",
+                    "code": "INTERNAL_ERROR",
+                    "details": {"error": str(e), "type": type(e).__name__},
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @extend_schema(
+        summary="Unlink ODPS from ODCS contract",
+        description="Remove the bidirectional link between an ODCS contract and its linked ODPS contract.",
+        request=None,
+        responses={
+            200: OpenApiResponse(description="Successfully unlinked"),
+            400: OpenApiResponse(description="Validation error"),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "Linking"],
+    )
+    @action(detail=True, methods=["post"], url_path="unlink-odps")
+    @transaction.atomic
+    def unlink_odps(self, request, id=None):
+        """
+        Unlink ODPS contract from ODCS contract.
+
+        POST /api/v1/contracts/{id}/unlink-odps/
+        """
+        self.check_auditor_permissions(request, "update")
+        contract = self.get_object()
+
+        # Verify contract is ODCS
+        if contract.original_spec_type != OriginalSpecType.ODCS:
+            return Response(
+                {
+                    "error": "Contract must be ODCS type for ODPS unlinking",
+                    "code": "INVALID_CONTRACT_TYPE",
+                    "details": {"contract_type": contract.original_spec_type},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get tenant from user
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant to unlink contracts"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Use service layer
+        try:
+            service = ContractService(
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
+                request_id=getattr(request, "request_id", None),
+            )
+            service.unlink_odps_from_odcs(
+                odcs_contract_id=str(contract.id),
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id)
+            )
+
+            return Response(
+                {"message": "ODPS contract unlinked successfully"},
+                status=status.HTTP_200_OK
+            )
+        except ValidationError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=status.HTTP_400_BAD_REQUEST
+            )
+        except NotFoundError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            # Log the full exception for debugging
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"ODPS unlinking failed: {str(e)}\n{traceback.format_exc()}",
+                exc_info=True
+            )
+            return Response(
+                {
+                    "error": "ODPS unlinking failed",
+                    "code": "INTERNAL_ERROR",
+                    "details": {"error": str(e), "type": type(e).__name__},
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @extend_schema(
+        summary="List contract links",
+        description="Get all links for a contract (ODPS and ODCS links).",
+        responses={
+            200: inline_serializer(
+                name="ContractLinksResponse",
+                fields={
+                    "odps_link": ContractSerializer(allow_null=True),
+                    "odcs_link": ContractSerializer(allow_null=True),
+                },
+            ),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "Linking"],
+    )
+    @action(detail=True, methods=["get"], url_path="links")
+    def list_links(self, request, id=None):
+        """
+        List all links for a contract.
+
+        GET /api/v1/contracts/{id}/links/
+        Returns: {
+            "odps_link": {...} or null,
+            "odcs_link": {...} or null
+        }
+        """
+        self.check_auditor_permissions(request, "view")
+        contract = self.get_object()
+
+        # Get tenant from user
+        tenant = (
+            request.user.tenant if hasattr(request.user, "tenant") and request.user.tenant else None
+        )
+        if not tenant:
+            return Response(
+                {"error": "User must belong to a tenant to view contract links"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Use service layer
+        try:
+            service = ContractService(
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id),
+                request_id=getattr(request, "request_id", None),
+            )
+            links = service.get_contract_links(
+                contract_id=str(contract.id),
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id)
+            )
+
+            return Response(links, status=status.HTTP_200_OK)
+        except ValidationError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=status.HTTP_400_BAD_REQUEST
+            )
+        except NotFoundError as e:
+            return Response(
+                {"error": e.message, "code": e.code, "details": e.details}, status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            # Log the full exception for debugging
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Failed to get contract links: {str(e)}\n{traceback.format_exc()}",
+                exc_info=True
+            )
+            return Response(
+                {
+                    "error": "Failed to get contract links",
+                    "code": "INTERNAL_ERROR",
+                    "details": {"error": str(e), "type": type(e).__name__},
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     @action(detail=True, methods=["post"], url_path="migrate")
     def migrate_contract(self, request, id=None):
         """
@@ -2472,3 +3082,875 @@ class ContractViewSet(viewsets.ModelViewSet):
             # Include impact_graph for backward compatibility and test expectations
             json_graph["impact_graph"] = impact_result.get("impact_graph", {})
             return Response(json_graph)
+
+    @extend_schema(
+        summary="Export contract",
+        description="""
+        Export a contract in various formats (ODPS, ODCS, HubContract).
+
+        **Format Options:**
+        - `odps`: Export as ODPS (Open Data Product Standard) format
+        - `odcs`: Export as ODCS (Open Data Contract Standard) format (original or generated)
+        - `hubcontract`: Export as HubContract format (normalized internal format)
+
+        **Output Format Options:**
+        - `json`: Export as JSON (default)
+        - `yaml`: Export as YAML
+
+        **Behavior:**
+        - For `odcs` format: Returns original_raw if available, otherwise generates from HubContract
+        - For `odps` format: Generates ODPS document from HubContract
+        - For `hubcontract` format: Returns hub_contract_json directly
+
+        **Response:**
+        - Returns contract content in requested format
+        - Content-Type header set based on output_format
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="format",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Export format: odps, odcs, or hubcontract (default: hubcontract)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="output_format",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Output format: json or yaml (default: json)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="version",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="ODPS version for export (e.g., 4.1). Only used when format=odps (default: 4.1)",
+                required=False,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(description="Contract exported successfully"),
+            400: OpenApiResponse(description="Invalid format or contract not available"),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts"],
+    )
+    @action(detail=True, methods=["get"], url_path="export")
+    def export_contract(self, request, id=None):
+        """
+        Export a contract in various formats.
+
+        GET /contracts/{id}/export/
+        Query params:
+        - format: odps|odcs|hubcontract (default: hubcontract)
+        - output_format: yaml|json (default: json)
+
+        Returns contract content in requested format.
+        """
+        # CRITICAL: Disable format suffix handling for this endpoint
+        # This prevents DRF from trying to interpret ?format=hubcontract as a format suffix
+        # Store original format_kwarg and set to None
+        original_format_kwarg = getattr(self, "format_kwarg", None)
+        self.format_kwarg = None
+
+        try:
+            # get_object() may raise Http404 - let it propagate to be handled by DRF's exception handler
+            from django.http import Http404
+            import os
+            import logging
+            logger = logging.getLogger(__name__)
+
+
+            contract = self.get_object()
+
+            # Get format parameter (default: hubcontract)
+            # CRITICAL: Check query parameter FIRST before any format suffix handling
+            # This ensures ?format=hubcontract works even if DRF tries to interpret it as a suffix
+            if hasattr(request, "query_params"):
+                format_type = request.query_params.get("format", "hubcontract").lower().strip()
+            elif hasattr(request, "GET"):
+                format_type = request.GET.get("format", "hubcontract").lower().strip()
+            else:
+                format_type = "hubcontract"
+
+            if format_type not in ["odps", "odcs", "hubcontract"]:
+                return Response(
+                    {
+                        "error": f"Invalid format: {format_type}. Must be one of: odps, odcs, hubcontract"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Get output_format parameter (default: json)
+            if hasattr(request, "query_params"):
+                output_format = request.query_params.get("output_format", "json").lower().strip()
+            elif hasattr(request, "GET"):
+                output_format = request.GET.get("output_format", "json").lower().strip()
+            else:
+                output_format = "json"
+
+            if output_format not in ["yaml", "json"]:
+                return Response(
+                    {"error": f"Invalid output_format: {output_format}. Must be one of: yaml, json"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Get version parameter (only used for ODPS format, default: 4.1)
+            if hasattr(request, "query_params"):
+                odps_version = request.query_params.get("version", "4.1").strip()
+            elif hasattr(request, "GET"):
+                odps_version = request.GET.get("version", "4.1").strip()
+            else:
+                odps_version = "4.1"
+
+            # Handle different format types
+            if format_type == "hubcontract":
+                # Export as HubContract format
+                if not contract.hub_contract_json:
+                    return Response(
+                        {
+                            "error": "Contract has no hub_contract_json. Cannot export as HubContract format."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                contract_data = contract.hub_contract_json
+
+                # Format output
+                if output_format == "yaml":
+                    from django.http import HttpResponse
+                    from hub.apps.contracts.odps_generator import format_odps_as_yaml
+
+                    try:
+                        # Use ODPS formatter for YAML (works for any dict)
+                        output = format_odps_as_yaml(contract_data)
+                        # Use Django's HttpResponse directly to avoid DRF's JSON serialization
+                        return HttpResponse(output, content_type="application/x-yaml")
+                    except Exception as e:
+                        return Response(
+                            {"error": f"Failed to format as YAML: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
+                else:  # json
+                    # Return as JSON (DRF will serialize it automatically)
+                    return Response(contract_data, content_type="application/json")
+
+            elif format_type == "odcs":
+                # Export as ODCS format
+                # Prefer original_raw if available, otherwise generate from HubContract
+                if contract.original_raw and contract.original_spec_type == OriginalSpecType.ODCS:
+                    # Return original ODCS format
+                    original_format = contract.original_format.lower()
+
+                    # Convert to requested output format if needed
+                    if output_format == original_format:
+                        # Same format, return as-is
+                        if output_format == "yaml":
+                            from django.http import HttpResponse
+                            return HttpResponse(contract.original_raw, content_type="application/x-yaml")
+                        else:
+                            # For JSON, parse the original_raw and return as dict
+                            # DRF will serialize it properly
+                            import json
+                            contract_data = json.loads(contract.original_raw)
+                            return Response(contract_data, content_type="application/json")
+                    else:
+                        # Need to convert format
+                        # parse_contract is now imported at the top of the file
+                        try:
+                            # Parse original contract
+                            contract_data = parse_contract(contract.original_raw, contract.original_format)
+
+                            # Format in requested output format
+                            if output_format == "yaml":
+                                from django.http import HttpResponse
+                                from hub.apps.contracts.odps_generator import format_odps_as_yaml
+
+                                output = format_odps_as_yaml(contract_data)
+                                return HttpResponse(output, content_type="application/x-yaml")
+                            else:  # json
+                                # Return as JSON (DRF will serialize it automatically)
+                                return Response(contract_data, content_type="application/json")
+                        except Exception as e:
+                            return Response(
+                                {"error": f"Failed to convert ODCS format: {str(e)}"},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            )
+                else:
+                    # No original_raw or not ODCS, try to generate from HubContract
+                    if not contract.hub_contract_json:
+                        return Response(
+                            {
+                                "error": "Contract has no original_raw or hub_contract_json. Cannot export as ODCS format."
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                    # TODO: Implement HubContract → ODCS generation if needed
+                    # For now, return error if original_raw is not available
+                    return Response(
+                        {
+                            "error": "ODCS export requires original_raw. HubContract → ODCS generation not yet implemented."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            elif format_type == "odps":
+                # Export as ODPS format
+                if not contract.hub_contract_json:
+                    return Response(
+                        {"error": "Contract has no hub_contract_json. Cannot export as ODPS format."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # Generate ODPS from HubContract
+                from hub.apps.contracts.odps_generator import (
+                    generate_odps_from_hubcontract,
+                    format_odps_as_json,
+                    format_odps_as_yaml,
+                )
+
+                # Get tenant_id for metrics (Task 6.6.1)
+                tenant_id = _get_tenant_id_from_request(request)
+
+                try:
+                    # Start timing for export duration metric (Task 6.6.1)
+                    export_start_time = time.time()
+
+                    # Get original ODCS contract if available (for embedding in ODPS)
+                    original_odcs_contract = None
+                    if contract.original_raw and contract.original_spec_type == OriginalSpecType.ODCS:
+                        try:
+                            # parse_contract is now imported at the top of the file
+                            original_odcs_contract = parse_contract(
+                                contract.original_raw, contract.original_format
+                            )
+                        except Exception:
+                            # If parsing fails, continue without original ODCS
+                            pass
+
+                    # Generate ODPS document
+                    odps_doc = generate_odps_from_hubcontract(
+                        hub_contract=contract.hub_contract_json,
+                        target_version=odps_version,
+                        original_odcs_contract=original_odcs_contract,
+                        original_odcs_url=None,
+                    )
+
+                    # Format output
+                    if output_format == "yaml":
+                        output = format_odps_as_yaml(odps_doc)
+                        content_type = "application/x-yaml"
+                    else:  # json
+                        output = format_odps_as_json(odps_doc)
+                        content_type = "application/json"
+
+                    # Calculate export duration and size for metrics (Task 6.6.1)
+                    export_duration = time.time() - export_start_time
+                    export_size_bytes = len(output.encode('utf-8'))
+                    size_category = _categorize_export_size(export_size_bytes)
+
+                    # Record metrics (Task 6.6.1, 6.6.4)
+                    odps_export_duration_seconds.labels(
+                        format=output_format,
+                        size_category=size_category,
+                        tenant_id=tenant_id
+                    ).observe(export_duration)
+
+                    odps_export_size_bytes.labels(
+                        format=output_format,
+                        tenant_id=tenant_id
+                    ).observe(export_size_bytes)
+
+                    # Record export success (Task 6.6.4)
+                    odps_export_total.labels(
+                        status="success",
+                        format=output_format,
+                        tenant_id=tenant_id
+                    ).inc()
+
+                    return Response(output, content_type=content_type)
+
+                except Exception as e:
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to generate ODPS export: {str(e)}", exc_info=True)
+
+                    # Record export failure (Task 6.6.4)
+                    try:
+                        odps_export_total.labels(
+                            status="failure",
+                            format=output_format if 'output_format' in locals() else "unknown",
+                            tenant_id=tenant_id
+                        ).inc()
+                    except Exception:
+                        pass  # Don't fail on metrics recording
+
+                    return Response(
+                        {"error": f"Failed to generate ODPS export: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
+
+        except Http404:
+            # Re-raise Http404 so it can be handled by DRF's exception handler
+            # This ensures proper 404 responses instead of 500 errors
+            raise
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(f"Export endpoint error: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"Export failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        finally:
+            # Restore original format_kwarg
+            if "original_format_kwarg" in locals():
+                if original_format_kwarg is not None:
+                    self.format_kwarg = original_format_kwarg
+                else:
+                    # If it was None originally, we might need to restore it differently
+                    # But for now, just leave it as None since we disabled it
+                    pass
+
+    @extend_schema(
+        summary="Download contract",
+        description="""
+        Download a contract as a file in various formats (ODPS, ODCS, HubContract).
+
+        **Format Options:**
+        - `odps`: Download as ODPS (Open Data Product Standard) format
+        - `odcs`: Download as ODCS (Open Data Contract Standard) format (original or generated)
+        - `hubcontract`: Download as HubContract format (normalized internal format)
+
+        **Output Format Options:**
+        - `yaml`: Download in YAML format
+        - `json`: Download in JSON format
+
+        **Query Parameters:**
+        - `format` (optional): Specify the desired output format. Defaults to `hubcontract`.
+        - `output_format` (optional): Specify the desired serialization format (yaml or json). Defaults to `json`.
+
+        Returns a file download with appropriate Content-Disposition header.
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="format",
+                type=OpenApiTypes.STR,
+                enum=["odps", "odcs", "hubcontract"],
+                description="Desired contract format for download.",
+                default="hubcontract",
+            ),
+            OpenApiParameter(
+                name="output_format",
+                type=OpenApiTypes.STR,
+                enum=["yaml", "json"],
+                description="Desired output serialization format.",
+                default="json",
+            ),
+            OpenApiParameter(
+                name="version",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="ODPS version for download (e.g., 4.1). Only used when format=odps (default: 4.1)",
+                required=False,
+            ),
+        ],
+        responses={
+            200: OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="Contract file downloaded successfully.",
+            ),
+            400: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Invalid format or output_format specified.",
+            ),
+            404: OpenApiResponse(
+                response=OpenApiTypes.OBJECT, description="Contract not found."
+            ),
+            500: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="Internal server error during download.",
+            ),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="download")
+    def download_contract(self, request, id=None):
+        """
+        Download a contract as a file in various formats.
+
+        GET /contracts/{id}/download/
+        Query params:
+        - format: odps|odcs|hubcontract (default: hubcontract)
+        - output_format: yaml|json (default: json)
+
+        Returns contract file with Content-Disposition header for download.
+        """
+        # CRITICAL: Disable format suffix handling for this endpoint
+        # This prevents DRF from trying to interpret ?format=hubcontract as a format suffix
+        # Store original format_kwarg and set to None
+        original_format_kwarg = getattr(self, "format_kwarg", None)
+        self.format_kwarg = None
+
+        try:
+            # get_object() may raise Http404 - let it propagate to be handled by DRF's exception handler
+            from django.http import Http404, HttpResponse
+            contract = self.get_object()
+
+            # Get format parameter (default: hubcontract)
+            # CRITICAL: Check query parameter FIRST before any format suffix handling
+            # This ensures ?format=hubcontract works even if DRF tries to interpret it as a suffix
+            if hasattr(request, "query_params"):
+                format_type = request.query_params.get("format", "hubcontract").lower().strip()
+            elif hasattr(request, "GET"):
+                format_type = request.GET.get("format", "hubcontract").lower().strip()
+            else:
+                format_type = "hubcontract"
+
+            if format_type not in ["odps", "odcs", "hubcontract"]:
+                return Response(
+                    {"error": f"Invalid format: {format_type}. Must be one of: odps, odcs, hubcontract"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Get output_format parameter (default: json)
+            if hasattr(request, "query_params"):
+                output_format = request.query_params.get("output_format", "json").lower().strip()
+            elif hasattr(request, "GET"):
+                output_format = request.GET.get("output_format", "json").lower().strip()
+            else:
+                output_format = "json"
+
+            if output_format not in ["yaml", "json"]:
+                return Response(
+                    {"error": f"Invalid output_format: {output_format}. Must be one of: yaml, json"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Get version parameter (only used for ODPS format, default: 4.1)
+            if hasattr(request, "query_params"):
+                odps_version = request.query_params.get("version", "4.1").strip()
+            elif hasattr(request, "GET"):
+                odps_version = request.GET.get("version", "4.1").strip()
+            else:
+                odps_version = "4.1"
+
+            # Generate filename based on contract and format
+            # Try to get name from hub_contract_json, otherwise use contract ID
+            contract_name = f"contract-{contract.id}"
+            if contract.hub_contract_json:
+                # Try to get name from hub_contract_json
+                if isinstance(contract.hub_contract_json, dict):
+                    info = contract.hub_contract_json.get("info", {})
+                    if isinstance(info, dict):
+                        name = info.get("name")
+                        if name:
+                            contract_name = name
+            # Sanitize filename (remove invalid characters)
+            import re
+            contract_name = re.sub(r'[^\w\s-]', '', contract_name).strip()
+            contract_name = re.sub(r'[-\s]+', '-', contract_name)
+
+            # Determine file extension
+            if output_format == "yaml":
+                extension = "yaml"
+                content_type = "application/x-yaml"
+            else:
+                extension = "json"
+                content_type = "application/json"
+
+            filename = f"{contract_name}.{format_type}.{extension}"
+
+            # Handle different format types (reuse export logic)
+            if format_type == "hubcontract":
+                # Download as HubContract format
+                if not contract.hub_contract_json:
+                    return Response(
+                        {
+                            "error": "Contract has no hub_contract_json. Cannot download as HubContract format."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                contract_data = contract.hub_contract_json
+
+                # Format output
+                if output_format == "yaml":
+                    from hub.apps.contracts.odps_generator import format_odps_as_yaml
+
+                    try:
+                        # Use ODPS formatter for YAML (works for any dict)
+                        output = format_odps_as_yaml(contract_data)
+                        response = HttpResponse(output, content_type=content_type)
+                        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                        return response
+                    except Exception as e:
+                        return Response(
+                            {"error": f"Failed to format as YAML: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
+                else:  # json
+                    # Return as JSON
+                    import json
+                    output = json.dumps(contract_data, indent=2, ensure_ascii=False)
+                    response = HttpResponse(output, content_type=content_type)
+                    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                    return response
+
+            elif format_type == "odcs":
+                # Download as ODCS format
+                if not contract.original_raw:
+                    # For now, return error if original_raw is not available
+                    return Response(
+                        {
+                            "error": "ODCS download requires original_raw. HubContract → ODCS generation not yet implemented."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                original_format = contract.original_format.lower()
+
+                # Convert to requested output format if needed
+                if output_format == original_format:
+                    # Same format, return as-is
+                    if output_format == "yaml":
+                        response = HttpResponse(contract.original_raw, content_type=content_type)
+                        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                        return response
+                    else:
+                        # For JSON, parse the original_raw and return as dict
+                        # Then serialize back to JSON for download
+                        import json
+                        contract_data = json.loads(contract.original_raw)
+                        output = json.dumps(contract_data, indent=2, ensure_ascii=False)
+                        response = HttpResponse(output, content_type=content_type)
+                        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                        return response
+                else:
+                    # Need to convert format
+                    # parse_contract is now imported at the top of the file
+                    try:
+                        # Parse original contract
+                        contract_data = parse_contract(contract.original_raw, contract.original_format)
+
+                        # Format in requested output format
+                        if output_format == "yaml":
+                            from hub.apps.contracts.odps_generator import format_odps_as_yaml
+
+                            output = format_odps_as_yaml(contract_data)
+                            response = HttpResponse(output, content_type=content_type)
+                            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                            return response
+                        else:  # json
+                            # Return as JSON
+                            import json
+                            output = json.dumps(contract_data, indent=2, ensure_ascii=False)
+                            response = HttpResponse(output, content_type=content_type)
+                            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                            return response
+                    except Exception as e:
+                        return Response(
+                            {"error": f"Failed to convert ODCS format: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
+
+            elif format_type == "odps":
+                # Download as ODPS format
+                if not contract.hub_contract_json:
+                    return Response(
+                        {"error": "Contract has no hub_contract_json. Cannot download as ODPS format."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # Generate ODPS from HubContract
+                from hub.apps.contracts.odps_generator import (
+                    generate_odps_from_hubcontract,
+                )
+
+                # Get original ODCS contract if available (for embedding in ODPS)
+                original_odcs_contract = None
+                if contract.original_raw and contract.original_spec_type == OriginalSpecType.ODCS:
+                    try:
+                        # parse_contract is now imported at the top of the file
+                        original_odcs_contract = parse_contract(
+                            contract.original_raw, contract.original_format
+                        )
+                    except Exception:
+                        # If parsing fails, continue without original ODCS
+                        pass
+
+                try:
+                    odps_doc = generate_odps_from_hubcontract(
+                        hub_contract=contract.hub_contract_json,
+                        target_version=odps_version,
+                        original_odcs_contract=original_odcs_contract,
+                        original_odcs_url=None,
+                    )
+
+                    # Format in requested output format
+                    if output_format == "yaml":
+                        from hub.apps.contracts.odps_generator import format_odps_as_yaml
+
+                        output = format_odps_as_yaml(odps_doc)
+                        response = HttpResponse(output, content_type=content_type)
+                        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                        return response
+                    else:  # json
+                        from hub.apps.contracts.odps_generator import format_odps_as_json
+
+                        output = format_odps_as_json(odps_doc)
+                        response = HttpResponse(output, content_type=content_type)
+                        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                        return response
+                except Exception as e:
+                    return Response(
+                        {"error": f"Failed to generate ODPS format: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
+
+        except Http404:
+            # Re-raise Http404 so it can be handled by DRF's exception handler
+            # This ensures proper 404 responses instead of 500 errors
+            raise
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(f"Download endpoint error: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"Download failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        finally:
+            # Restore original format_kwarg
+            if "original_format_kwarg" in locals():
+                if original_format_kwarg is not None:
+                    self.format_kwarg = original_format_kwarg
+                else:
+                    # If it was None originally, we might need to restore it differently
+                    # But for now, just leave it as None since we disabled it
+                    pass
+
+    @extend_schema(
+        summary="Generate ODPS document",
+        description="""
+        Generate ODPS (Open Data Product Standard) document from HubContract.
+
+        This endpoint generates an ODPS document from the contract's HubContract representation,
+        focusing on marketplace metadata. The generated ODPS document can be used for
+        marketplace listings and product catalogs.
+
+        **Request Body (optional):**
+        - `target_version` (string, optional): Target ODPS version (default: "4.1")
+        - `output_format` (string, optional): Output format - "json" or "yaml" (default: "json")
+        - `embed_odcs` (boolean, optional): If true and contract is ODCS, embed original ODCS
+          contract inline in product.contract.spec (default: true)
+
+        **Behavior:**
+        - Generates ODPS from HubContract (marketplace metadata)
+        - If contract is ODCS and has original_raw, optionally embeds ODCS in product.contract.spec
+        - Returns generated ODPS document in requested format
+
+        **Response:**
+        - Returns generated ODPS document as JSON or YAML
+        - Content-Type header set based on output_format
+        """,
+        request=inline_serializer(
+            name='GenerateODPSRequest',
+            fields={
+                'target_version': serializers.CharField(
+                    required=False,
+                    default='4.1',
+                    help_text='Target ODPS version (default: 4.1)'
+                ),
+                'output_format': serializers.ChoiceField(
+                    choices=['json', 'yaml'],
+                    required=False,
+                    default='json',
+                    help_text='Output format: json or yaml (default: json)'
+                ),
+                'embed_odcs': serializers.BooleanField(
+                    required=False,
+                    default=True,
+                    help_text='If true and contract is ODCS, embed original ODCS contract inline'
+                ),
+            }
+        ),
+        responses={
+            200: inline_serializer(
+                name='GenerateODPSResponse',
+                fields={
+                    'odps_document': serializers.DictField(
+                        help_text='Generated ODPS document'
+                    ),
+                    'target_version': serializers.CharField(
+                        help_text='ODPS version used for generation'
+                    ),
+                    'output_format': serializers.CharField(
+                        help_text='Output format (json or yaml)'
+                    ),
+                }
+            ),
+            400: OpenApiResponse(description="Contract has no hub_contract_json or invalid parameters"),
+            404: OpenApiResponse(description="Contract not found"),
+            500: OpenApiResponse(description="ODPS generation failed"),
+        },
+        tags=["Contracts", "ODPS"],
+    )
+    @action(detail=True, methods=["post"], url_path="generate-odps")
+    def generate_odps(self, request, id=None):
+        """
+        Generate ODPS document from HubContract.
+
+        POST /api/v1/contracts/{id}/generate-odps/
+        Body (optional): {
+            "target_version": "4.1" (optional, default: "4.1"),
+            "output_format": "json" (optional, default: "json", options: "json", "yaml"),
+            "embed_odcs": true (optional, default: true)
+        }
+
+        Returns generated ODPS document.
+        """
+        self.check_auditor_permissions(request, "generate_odps")
+
+        try:
+            # get_object() may raise Http404 - let it propagate to be handled by DRF's exception handler
+            from django.http import Http404
+            contract = self.get_object()
+
+            # Validate contract has hub_contract_json
+            if not contract.hub_contract_json:
+                return Response(
+                    {
+                        "error": "Contract has no hub_contract_json. Cannot generate ODPS document."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Get request parameters (with defaults)
+            # Support both query params and body data
+            target_version = request.query_params.get("target_version") or request.data.get("target_version", "4.1")
+            output_format = request.query_params.get("output_format") or request.data.get("output_format", "json")
+            embed_odcs_str = request.query_params.get("embed_odcs") or request.data.get("embed_odcs", True)
+            # Convert embed_odcs to boolean if it's a string
+            if isinstance(embed_odcs_str, str):
+                embed_odcs = embed_odcs_str.lower() in ("true", "1", "yes")
+            else:
+                embed_odcs = embed_odcs_str
+
+            # Validate target_version
+            if not isinstance(target_version, str) or not target_version.strip():
+                return Response(
+                    {"error": "target_version must be a non-empty string"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            target_version = target_version.strip()
+
+            # Validate output_format
+            if output_format not in ["json", "yaml"]:
+                return Response(
+                    {"error": f"output_format must be 'json' or 'yaml', got '{output_format}'"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Import ODPS generator functions
+            from hub.apps.contracts.odps_generator import (
+                generate_odps_from_hubcontract,
+                format_odps_as_json,
+                format_odps_as_yaml,
+            )
+            from hub.apps.contracts.odps_errors import ODPSExportError
+
+            # Get original ODCS contract if available and embed_odcs is True
+            original_odcs_contract = None
+            if embed_odcs and contract.original_raw and contract.original_spec_type == OriginalSpecType.ODCS:
+                try:
+                    original_odcs_contract = parse_contract(
+                        contract.original_raw, contract.original_format
+                    )
+                except Exception as e:
+                    # If parsing fails, log warning but continue without original ODCS
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Failed to parse original ODCS contract for embedding: {str(e)}",
+                        exc_info=True
+                    )
+
+            # Generate ODPS document from HubContract
+            try:
+                odps_doc = generate_odps_from_hubcontract(
+                    hub_contract=contract.hub_contract_json,
+                    target_version=target_version,
+                    original_odcs_contract=original_odcs_contract,
+                    original_odcs_url=None,  # Not using URL reference for now
+                )
+            except ODPSExportError as e:
+                # ODPS generation failed with structured error
+                return Response(
+                    {
+                        "error": e.user_message or str(e),
+                        "error_code": e.error_code,
+                        "context": e.context,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except Exception as e:
+                # Unexpected error during generation
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to generate ODPS document: {str(e)}", exc_info=True)
+                return Response(
+                    {"error": f"Failed to generate ODPS document: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            # Format output based on output_format
+            if output_format == "yaml":
+                try:
+                    odps_content = format_odps_as_yaml(odps_doc)
+                    # Return as JSON response with YAML content in a field
+                    # This allows consistent response structure
+                    return Response(
+                        {
+                            "odps_document": odps_doc,  # Include dict for programmatic access
+                            "odps_content": odps_content,  # Include YAML string for direct use
+                            "target_version": target_version,
+                            "output_format": output_format,
+                        },
+                        content_type="application/json",
+                    )
+                except ODPSExportError as e:
+                    return Response(
+                        {
+                            "error": f"Failed to format ODPS as YAML: {e.user_message or str(e)}",
+                            "error_code": e.error_code,
+                            "context": e.context,
+                        },
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
+            else:  # json
+                # Return ODPS document as JSON
+                return Response(
+                    {
+                        "odps_document": odps_doc,
+                        "target_version": target_version,
+                        "output_format": output_format,
+                    },
+                    content_type="application/json",
+                )
+
+        except Http404:
+            # Re-raise Http404 so it can be handled by DRF's exception handler
+            raise
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Generate ODPS endpoint error: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"Generate ODPS failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

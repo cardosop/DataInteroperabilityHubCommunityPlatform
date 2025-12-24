@@ -9,6 +9,7 @@ from .asset_creation import AssetCreationWorkflow
 from .dataset_creation import DatasetCreationWorkflow
 from .version_creation import VersionCreationWorkflow
 from .marketplace_publication import MarketplacePublicationWorkflow
+from .product_creation import ProductCreationWorkflow
 
 __all__ = [
     'ContractCreationWorkflow',
@@ -20,5 +21,6 @@ __all__ = [
     'DatasetCreationWorkflow',
     'VersionCreationWorkflow',
     'MarketplacePublicationWorkflow',
+    'ProductCreationWorkflow',
 ]
 

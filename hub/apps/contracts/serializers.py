@@ -8,12 +8,13 @@ from typing import Dict, Any, List, Optional
 from drf_spectacular.utils import extend_schema_serializer, extend_schema_field, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from .models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
+from .ref_resolver import ExternalRefHandling
 
 
 class OwnerSerializer(serializers.Serializer):
     """
     Serializer for contract owner (GAP-9.2.1).
-    
+
     Owners are individuals or teams responsible for the contract.
     """
     name = serializers.CharField(
@@ -29,19 +30,27 @@ class OwnerSerializer(serializers.Serializer):
 class QualityRuleSerializer(serializers.Serializer):
     """
     Serializer for quality rule (GAP-9.2.1).
-    
+
     Quality rules define data quality checks and expectations.
     """
     rule_id = serializers.CharField(
+        required=False,
+        allow_null=True,
         help_text="Unique identifier for the rule (e.g., 'not_null_order_id')"
     )
     dimension = serializers.CharField(
+        required=False,
+        allow_null=True,
         help_text="Quality dimension (e.g., 'completeness', 'validity', 'consistency', 'accuracy', 'timeliness')"
     )
     expression = serializers.CharField(
+        required=False,
+        allow_null=True,
         help_text="Quality check expression (e.g., 'order_id IS NOT NULL', 'price > 0')"
     )
     severity = serializers.CharField(
+        required=False,
+        allow_null=True,
         help_text="Rule severity (e.g., 'ERROR', 'WARNING', 'INFO')"
     )
     field = serializers.CharField(
@@ -54,7 +63,7 @@ class QualityRuleSerializer(serializers.Serializer):
 class CompliancePolicySerializer(serializers.Serializer):
     """
     Serializer for compliance policy (GAP-9.2.1).
-    
+
     Compliance policy defines data privacy and regulatory compliance requirements.
     """
     contains_personal_data = serializers.BooleanField(
@@ -88,7 +97,7 @@ class CompliancePolicySerializer(serializers.Serializer):
 class LifecyclePolicySerializer(serializers.Serializer):
     """
     Serializer for lifecycle policy (GAP-9.2.1).
-    
+
     Lifecycle policy defines data refresh cadence and service level agreements.
     """
     data_source = serializers.CharField(
@@ -111,7 +120,7 @@ class LifecyclePolicySerializer(serializers.Serializer):
 class MarketplacePolicySerializer(serializers.Serializer):
     """
     Serializer for marketplace policy (GAP-9.2.1).
-    
+
     Marketplace policy defines how the data can be shared and used in the marketplace.
     """
     license_summary = serializers.CharField(
@@ -136,7 +145,7 @@ class MarketplacePolicySerializer(serializers.Serializer):
 class FieldPropertySerializer(serializers.Serializer):
     """
     Serializer for field properties (GAP-9.2.1).
-    
+
     Field properties define the structure, constraints, and semantics of data fields.
     """
     name = serializers.CharField(
@@ -289,7 +298,7 @@ class FieldPropertySerializer(serializers.Serializer):
 class ContractSerializer(serializers.ModelSerializer):
     """
     Enhanced serializer for Contract model with computed fields (GAP-9.2.1).
-    
+
     **Computed Fields:**
     All computed fields are extracted from `hub_contract_json`:
     - `owners`: From `info.owners`
@@ -300,7 +309,7 @@ class ContractSerializer(serializers.ModelSerializer):
     - `marketplace_policy`: From `marketplace`
     - `schema_fields`: From `schema.fields` with constraint flags (is_primary_key, is_unique, is_indexed)
     """
-    
+
     # Computed fields from hub_contract_json (GAP-9.2.1)
     owners = serializers.SerializerMethodField(
         help_text="Array of contract owners (extracted from info.owners)"
@@ -362,7 +371,7 @@ class ContractSerializer(serializers.ModelSerializer):
     quality_specification = serializers.SerializerMethodField(
         help_text="Quality specification extracted from quality.specification"
     )
-    
+
     class Meta:
         model = Contract
         fields = [
@@ -449,27 +458,27 @@ class ContractSerializer(serializers.ModelSerializer):
             'quality_type',
             'quality_specification'
         ]
-    
+
     def get_owners(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract owners from hub_contract_json (GAP-9.2.1)"""
         hub_contract = obj.hub_contract_json or {}
         info = hub_contract.get('info', {})
         owners = info.get('owners', [])
         return [OwnerSerializer(owner).data for owner in owners] if owners else []
-    
+
     def get_tags(self, obj: Contract) -> List[str]:
         """Extract tags from hub_contract_json (GAP-9.2.1)"""
         hub_contract = obj.hub_contract_json or {}
         info = hub_contract.get('info', {})
         return info.get('tags', [])
-    
+
     def get_quality_rules(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract quality rules from hub_contract_json (GAP-9.2.1)"""
         hub_contract = obj.hub_contract_json or {}
         quality = hub_contract.get('quality', {})
         rules = quality.get('rules', [])
         return [QualityRuleSerializer(rule).data for rule in rules] if rules else []
-    
+
     def get_compliance_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
         """Extract compliance policy from hub_contract_json (GAP-9.2.1)"""
         hub_contract = obj.hub_contract_json or {}
@@ -477,7 +486,7 @@ class ContractSerializer(serializers.ModelSerializer):
         if not compliance:
             return None
         return CompliancePolicySerializer(compliance).data
-    
+
     def get_lifecycle_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
         """Extract lifecycle policy from hub_contract_json (GAP-9.2.1)"""
         hub_contract = obj.hub_contract_json or {}
@@ -485,7 +494,7 @@ class ContractSerializer(serializers.ModelSerializer):
         if not lifecycle:
             return None
         return LifecyclePolicySerializer(lifecycle).data
-    
+
     def get_marketplace_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
         """Extract marketplace policy from hub_contract_json (GAP-9.2.1)"""
         hub_contract = obj.hub_contract_json or {}
@@ -493,7 +502,7 @@ class ContractSerializer(serializers.ModelSerializer):
         if not marketplace:
             return None
         return MarketplacePolicySerializer(marketplace).data
-    
+
     def get_schema_fields(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract schema fields with all properties from hub_contract_json (GAP-9.2.1)"""
         hub_contract = obj.hub_contract_json or {}
@@ -502,10 +511,10 @@ class ContractSerializer(serializers.ModelSerializer):
         primary_key = schema.get('primary_key', [])
         unique_constraints = schema.get('unique_constraints', [])
         indexes = schema.get('indexes', [])
-        
+
         # Build set of primary key fields
         primary_key_set = set(primary_key)
-        
+
         # Build set of unique constraint fields
         unique_fields_set = set()
         for constraint in unique_constraints:
@@ -513,7 +522,7 @@ class ContractSerializer(serializers.ModelSerializer):
                 unique_fields_set.update(constraint)
             elif isinstance(constraint, dict) and 'fields' in constraint:
                 unique_fields_set.update(constraint['fields'])
-        
+
         # Build set of indexed fields
         indexed_fields_set = set()
         for index in indexes:
@@ -521,7 +530,7 @@ class ContractSerializer(serializers.ModelSerializer):
                 indexed_fields_set.update(index)
             elif isinstance(index, dict) and 'fields' in index:
                 indexed_fields_set.update(index['fields'])
-        
+
         # Serialize fields with enhanced properties
         serialized_fields = []
         for field in fields:
@@ -532,7 +541,7 @@ class ContractSerializer(serializers.ModelSerializer):
             field_data['is_unique'] = field_name in unique_fields_set
             field_data['is_indexed'] = field_name in indexed_fields_set
             serialized_fields.append(field_data)
-        
+
         return serialized_fields
 
     def get_contact(self, obj: Contract) -> List[Dict[str, Any]]:
@@ -585,19 +594,19 @@ class ContractSerializer(serializers.ModelSerializer):
         hub_contract = obj.hub_contract_json or {}
         quality = hub_contract.get('quality', {})
         return quality.get('specification')
-    
+
     def get_support(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract support channels from hub_contract_json."""
         hub_contract = obj.hub_contract_json or {}
         support = hub_contract.get('support', [])
         return support if isinstance(support, list) else []
-    
+
     def get_definitions(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract definitions from hub_contract_json."""
         hub_contract = obj.hub_contract_json or {}
         definitions = hub_contract.get('definitions', [])
         return definitions if isinstance(definitions, list) else []
-    
+
     def get_models(self, obj: Contract) -> List[Dict[str, Any]]:
         """Extract models from hub_contract_json."""
         hub_contract = obj.hub_contract_json or {}
@@ -615,6 +624,18 @@ class ContractCreateSerializer(serializers.Serializer):
         required=False,
         help_text="Optional: will be auto-detected if not provided"
     )
+    disable_external_refs = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="If True, external $ref references will be disabled (raises error if found). "
+                  "If False, external refs will be resolved normally."
+    )
+    remove_external_refs = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="If True, external $ref references will be removed from the document. "
+                  "If False, external refs will be resolved and replaced with their content."
+    )
 
 
 class ContractUpdateSerializer(serializers.Serializer):
@@ -622,3 +643,82 @@ class ContractUpdateSerializer(serializers.Serializer):
     original_raw = serializers.CharField(required=False)
     original_format = serializers.ChoiceField(choices=OriginalFormat.choices, required=False)
     status = serializers.ChoiceField(choices=ContractStatus.choices, required=False)
+    remove_external_refs = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="If True, external $ref references will be removed from the document. "
+                  "If False, external refs will be resolved and replaced with their content."
+    )
+
+
+class ProductCreateSerializer(serializers.Serializer):
+    """Serializer for Product-First creation (ODPS)"""
+    original_raw = serializers.CharField(
+        help_text="ODPS document content (JSON or YAML)"
+    )
+    original_format = serializers.ChoiceField(
+        choices=OriginalFormat.choices,
+        help_text="ODPS document format: JSON or YAML"
+    )
+    resolve_external_refs = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="If True, external $ref references will be resolved. "
+                  "If False, external refs will be disabled (raises error if found)."
+    )
+    asset_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text="Optional asset ID to link contracts to"
+    )
+
+
+class ODPSLinkSerializer(serializers.Serializer):
+    """Serializer for ODPS linking request"""
+    odps_contract_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text="Existing ODPS contract ID to link (mutually exclusive with original_raw)"
+    )
+    original_raw = serializers.CharField(
+        required=False,
+        allow_null=True,
+        help_text="ODPS document content (JSON or YAML) - mutually exclusive with odps_contract_id"
+    )
+    original_format = serializers.ChoiceField(
+        choices=OriginalFormat.choices,
+        required=False,
+        allow_null=True,
+        help_text="ODPS document format: JSON or YAML (required if original_raw is provided)"
+    )
+    resolve_external_refs = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="If True, external $ref references will be resolved. "
+                  "If False, external refs will be disabled (raises error if found). "
+                  "Only used if original_raw is provided."
+    )
+
+    def validate(self, attrs):
+        """Validate that either odps_contract_id or original_raw is provided, but not both"""
+        odps_contract_id = attrs.get("odps_contract_id")
+        original_raw = attrs.get("original_raw")
+        original_format = attrs.get("original_format")
+
+        if not odps_contract_id and not original_raw:
+            raise serializers.ValidationError(
+                "Either 'odps_contract_id' or 'original_raw' must be provided"
+            )
+
+        if odps_contract_id and original_raw:
+            raise serializers.ValidationError(
+                "Cannot provide both 'odps_contract_id' and 'original_raw'. "
+                "Provide either an existing ODPS contract ID or a new ODPS document."
+            )
+
+        if original_raw and not original_format:
+            raise serializers.ValidationError(
+                "'original_format' is required when 'original_raw' is provided"
+            )
+
+        return attrs

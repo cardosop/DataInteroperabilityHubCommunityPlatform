@@ -29,8 +29,11 @@ Environment Variables:
 """
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from django.conf import settings
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.resources import Resource
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +138,7 @@ def get_sampling_config() -> tuple:
         return TraceIdRatioBased(sampling_rate), sampling_rate
 
 
-def create_resource() -> Optional[Resource]:
+def create_resource() -> Optional["Resource"]:
     """
     Create OpenTelemetry resource with service attributes.
 

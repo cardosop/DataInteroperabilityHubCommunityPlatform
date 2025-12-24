@@ -47,18 +47,18 @@ class Command(BaseCommand):
         poll_interval = options['poll_interval']
         batch_size = options['batch_size']
         run_once = options['once']
-        
+
         self.stdout.write(
             self.style.SUCCESS(
                 f'Starting workflow processor '
                 f'(poll_interval={poll_interval}s, batch_size={batch_size})'
             )
         )
-        
+
         # Initialize workflow engine and registry
         workflow_engine = WorkflowEngine()
         workflow_registry = WorkflowRegistry()
-        
+
         # Register all workflow tasks from workflow classes
         try:
             from hub.apps.orchestration.workflows import (
@@ -71,8 +71,9 @@ class Command(BaseCommand):
                 DatasetCreationWorkflow,
                 VersionCreationWorkflow,
                 MarketplacePublicationWorkflow,
+                ProductCreationWorkflow,
             )
-            
+
             workflow_classes = [
                 ContractCreationWorkflow,
                 ScheduledIngestionWorkflow,
@@ -83,13 +84,14 @@ class Command(BaseCommand):
                 DatasetCreationWorkflow,
                 VersionCreationWorkflow,
                 MarketplacePublicationWorkflow,
+                ProductCreationWorkflow,
             ]
-            
+
             # Register tasks from each workflow class
             for workflow_class in workflow_classes:
                 if hasattr(workflow_class, 'register_tasks'):
                     workflow_class.register_tasks(workflow_engine)
-            
+
             self.stdout.write(
                 self.style.SUCCESS(f'Registered tasks from {len(workflow_classes)} workflow classes')
             )
@@ -98,27 +100,27 @@ class Command(BaseCommand):
                 self.style.WARNING(f'Warning: Could not register workflow tasks: {e}')
             )
             logger.warning(f"Could not register workflow tasks: {e}", exc_info=True)
-        
+
         total_processed = 0
-        
+
         try:
             while True:
                 processed = self._process_batch(workflow_engine, batch_size)
                 total_processed += processed
-                
+
                 if processed > 0:
                     self.stdout.write(
                         self.style.SUCCESS(
                             f'Processed {processed} workflow(s) (total: {total_processed})'
                         )
                     )
-                
+
                 if run_once:
                     break
-                
+
                 # Sleep before next poll
                 time.sleep(poll_interval)
-                
+
         except KeyboardInterrupt:
             self.stdout.write(
                 self.style.SUCCESS(f'\nStopped. Total processed: {total_processed}')
@@ -133,43 +135,43 @@ class Command(BaseCommand):
     def _process_batch(self, workflow_engine: WorkflowEngine, batch_size: int) -> int:
         """
         Process a batch of workflow instances.
-        
+
         Args:
             workflow_engine: WorkflowEngine instance
             batch_size: Maximum number of workflows to process
-            
+
         Returns:
             Number of workflows processed
         """
         processed = 0
-        
+
         # Get workflows that need processing:
         # 1. DRAFT workflows that need to be started
         # 2. RUNNING workflows that need to be continued
-        
+
         # Process DRAFT workflows first (start them)
         # select_for_update requires a transaction, so we need to evaluate the queryset inside a transaction
         with transaction.atomic():
             draft_workflows = list(WorkflowInstance.objects.filter(
                 status=WorkflowStatus.DRAFT
             ).select_for_update(skip_locked=True)[:batch_size])
-        
+
         for instance in draft_workflows:
             try:
                 with transaction.atomic():
                     # Refresh to ensure we have the latest state
                     instance.refresh_from_db()
-                    
+
                     # Double-check status (may have changed)
                     if instance.status != WorkflowStatus.DRAFT:
                         continue
-                    
+
                     # Start the workflow
                     workflow_engine.start_instance(str(instance.id))
-                    
+
                     # Execute the workflow
                     workflow_engine.execute_instance(str(instance.id))
-                    
+
                     processed += 1
                     logger.info(
                         f"Processed DRAFT workflow instance: {instance.id} "
@@ -190,7 +192,7 @@ class Command(BaseCommand):
                         )
                 except Exception:
                     pass  # Ignore errors during failure marking
-        
+
         # Process RUNNING workflows (continue execution)
         remaining_slots = batch_size - processed
         if remaining_slots > 0:
@@ -199,20 +201,20 @@ class Command(BaseCommand):
                 running_workflows = list(WorkflowInstance.objects.filter(
                     status=WorkflowStatus.RUNNING
                 ).select_for_update(skip_locked=True)[:remaining_slots])
-            
+
             for instance in running_workflows:
                 try:
                     with transaction.atomic():
                         # Refresh to ensure we have the latest state
                         instance.refresh_from_db()
-                        
+
                         # Double-check status (may have changed)
                         if instance.status != WorkflowStatus.RUNNING:
                             continue
-                        
+
                         # Continue execution
                         workflow_engine.execute_instance(str(instance.id))
-                        
+
                         processed += 1
                         logger.info(
                             f"Continued RUNNING workflow instance: {instance.id} "
@@ -233,6 +235,6 @@ class Command(BaseCommand):
                             )
                     except Exception:
                         pass  # Ignore errors during failure marking
-        
+
         return processed
 

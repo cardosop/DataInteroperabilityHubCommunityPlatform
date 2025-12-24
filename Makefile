@@ -75,6 +75,49 @@ test-unit: ## Run unit tests only
 test-cov: ## Run tests with coverage
 	pytest --cov=. --cov-report=html
 
+test-odps-validation: ## Run ODPS schema CI validation tests
+	@echo "Running ODPS schema CI validation tests..."
+	cd hub && python manage.py test apps.contracts.tests.test_odps_ci_validation --verbosity=2
+
+validate-odps-schemas: ## Validate ODPS schema files (JSON Schema validation)
+	@echo "Validating ODPS schema files..."
+	@python scripts/validate_odps_schemas.py --strict || (echo "❌ ODPS schema validation failed!" && exit 1)
+	@echo "✅ All ODPS schema files are valid!"
+
+ci-odps-validation: validate-odps-schemas test-odps-validation ## Run all ODPS validation checks (CI pipeline)
+	@echo "✅ All ODPS validation checks passed!"
+
+validate-odcs-schemas: ## Validate ODCS contract files (all versions: 3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, 2.2.2)
+	@echo "Validating ODCS contract files..."
+	@python scripts/validate_odcs_schemas.py --strict || (echo "❌ ODCS contract validation failed!" && exit 1)
+	@echo "✅ All ODCS contract files are valid!"
+
+test-odcs-validation: ## Run ODCS validation tests (all versions)
+	@echo "Running ODCS validation tests..."
+	cd services/datacontract-service && pytest tests/test_odcs_ci_validation.py -v --tb=short || (echo "❌ ODCS validation tests failed!" && exit 1)
+	@echo "✅ All ODCS validation tests passed!"
+
+test-odcs-backward-compatibility: ## Test ODCS backward compatibility across versions
+	@echo "Testing ODCS backward compatibility..."
+	cd services/datacontract-service && pytest tests/test_odcs_ci_validation.py::TestODCSBackwardCompatibility -v --tb=short || (echo "❌ ODCS backward compatibility tests failed!" && exit 1)
+	@echo "✅ ODCS backward compatibility tests passed!"
+
+test-odcs-normalizers: ## Test ODCS version-specific normalizers
+	@echo "Testing ODCS version-specific normalizers..."
+	cd services/datacontract-service && pytest tests/test_odcs_ci_validation.py::TestODCSVersionSpecificNormalizers -v --tb=short || (echo "❌ ODCS normalizer tests failed!" && exit 1)
+	@echo "✅ ODCS normalizer tests passed!"
+
+ci-odcs-validation: validate-odcs-schemas test-odcs-validation test-odcs-backward-compatibility test-odcs-normalizers ## Run all ODCS validation checks (CI pipeline)
+	@echo "✅ All ODCS validation checks passed!"
+
+test-backward-compatibility: ## Run comprehensive backward compatibility tests (ODPS and ODCS)
+	@echo "Running comprehensive backward compatibility tests..."
+	cd hub && python manage.py test hub.apps.contracts.tests.test_comprehensive_backward_compatibility_ci --verbosity=2 || (echo "❌ Backward compatibility tests failed!" && exit 1)
+	@echo "✅ All backward compatibility tests passed!"
+
+ci-backward-compatibility: test-backward-compatibility ## Run all backward compatibility checks (CI pipeline)
+	@echo "✅ All backward compatibility checks passed!"
+
 lint: ## Run linters
 	@echo "Running ruff..."
 	@ruff check . || true

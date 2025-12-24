@@ -56,3 +56,19 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: lint-odps
+        name: Lint ODPS Files
+        entry: python scripts/lint_odps.py --strict
+        language: system
+        types: [file]
+        files: ^(tests/fixtures/odps/|examples/contracts/).*\.(json|yaml|yml)$
+        pass_filenames: true
+
+      - id: format-check-odps
+        name: Check ODPS Formatting
+        entry: python scripts/format_odps.py
+        language: system
+        types: [file]
+        files: ^(tests/fixtures/odps/|examples/contracts/).*\.(json|yaml|yml)$
+        pass_filenames: true
+

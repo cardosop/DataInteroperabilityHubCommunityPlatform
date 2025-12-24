@@ -77,6 +77,7 @@ services:
     environment:
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
       ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
+      FUSEKI_ENABLE_UPDATE: "true"
     ports:
       - "${FUSEKI_PORT:-3030}:3030"
     volumes:

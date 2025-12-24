@@ -141,6 +141,70 @@ type Contract {
   createdBy: UserType
   createdAt: DateTime!
   updatedAt: DateTime!
+
+  # ODPS-specific fields (only available for ODPS contracts)
+  odpsVersion: String                    # ODPS version (e.g., "4.1")
+  odcsLink: String                       # Linked ODCS contract ID (for ODPS contracts)
+  odpsLink: String                       # Linked ODPS contract ID (for ODCS contracts)
+  pricingPlans: [PricingPlan!]           # Pricing plans (for ODPS contracts)
+  accessMethods: [AccessMethod!]         # Access methods (for ODPS contracts)
+  paymentGateways: [PaymentGateway!]     # Payment gateways (for ODPS contracts)
+  productStrategy: ProductStrategy       # Product strategy (for ODPS contracts)
+  productDetails(lang: String = "en"): ProductDetails  # Product details for specific language
+}
+
+# ODPS-specific types
+type PricingPlan {
+  planId: String
+  name: String
+  description: String
+  price: Float
+  currency: String
+  billingPeriod: String
+  billingUnit: String
+  isDefault: Boolean
+  features: [String!]
+}
+
+type AccessMethod {
+  methodId: String
+  type: String
+  name: String
+  description: String
+  endpoint: String
+  url: String
+  authenticationType: String
+  authenticationConfig: JSON
+  rateLimit: JSON
+  format: String
+  maxSize: String
+  version: String
+}
+
+type PaymentGateway {
+  gatewayId: String
+  name: String
+  type: String
+  enabled: Boolean
+  config: JSON
+  webhookUrl: String
+}
+
+type ProductStrategy {
+  objectives: JSON
+  strategicAlignment: JSON
+  productKpis: JSON
+  targetAudience: JSON
+  valueProposition: JSON
+}
+
+type ProductDetails {
+  productId: String
+  name: String
+  description: String
+  productVersion: String
+  category: String
+  tags: [String!]
 }
 ```
 
@@ -341,6 +405,140 @@ query {
 }
 ```
 
+### List ODPS Contracts
+
+```graphql
+query {
+  odpsContracts {
+    edges {
+      node {
+        id
+        odpsVersion
+        status
+        asset {
+          id
+          name
+        }
+        odcsLink
+        pricingPlans {
+          planId
+          name
+          price
+          currency
+        }
+      }
+    }
+  }
+}
+```
+
+### Filter ODPS Contracts by Version
+
+```graphql
+query {
+  odpsContracts(filter: { version: "4.1" }) {
+    edges {
+      node {
+        id
+        odpsVersion
+        status
+      }
+    }
+  }
+}
+```
+
+### Filter ODPS Contracts with Linked ODCS
+
+```graphql
+query {
+  odpsContracts(filter: { hasOdcsLink: true }) {
+    edges {
+      node {
+        id
+        odpsVersion
+        odcsLink
+        asset {
+          id
+          name
+        }
+      }
+    }
+  }
+}
+```
+
+### Get Linked Contracts (ODPS-ODCS Relationships)
+
+```graphql
+query {
+  linkedContracts(contractId: "contract-uuid") {
+    edges {
+      node {
+        id
+        originalSpecType
+        originalSpecVersion
+        status
+        odpsLink
+        odcsLink
+      }
+    }
+  }
+}
+```
+
+### Get ODPS Contract with Full Details
+
+```graphql
+query {
+  contract(id: "odps-contract-uuid") {
+    id
+    odpsVersion
+    status
+    asset {
+      id
+      name
+    }
+    pricingPlans {
+      planId
+      name
+      description
+      price
+      currency
+      billingPeriod
+      isDefault
+      features
+    }
+    accessMethods {
+      methodId
+      type
+      name
+      endpoint
+      authenticationType
+      format
+    }
+    paymentGateways {
+      gatewayId
+      name
+      type
+      enabled
+    }
+    productStrategy {
+      objectives
+      strategicAlignment
+      productKpis
+    }
+    productDetails(lang: "en") {
+      productId
+      name
+      description
+      category
+      tags
+    }
+  }
+}
+```
+
 ### List Jobs
 
 ```graphql
@@ -378,6 +576,172 @@ query {
       startCursor
       endCursor
     }
+  }
+}
+```
+
+---
+
+## Mutation Examples
+
+### Create ODPS Contract
+
+```graphql
+mutation {
+  createODPS(input: {
+    originalRaw: """
+    {
+      "product": {
+        "productID": "product-123",
+        "name": "Sample Product",
+        "version": "1.0.0"
+      }
+    }
+    """
+    originalFormat: "JSON"
+    assetId: "asset-uuid"
+    extractOdcs: false
+    resolveExternalRefs: true
+  }) {
+    contract {
+      id
+      odpsVersion
+      status
+      normalizationStatus
+    }
+    errors
+  }
+}
+```
+
+### Create ODPS Contract with ODCS Extraction (Product-First Flow)
+
+```graphql
+mutation {
+  createODPS(input: {
+    originalRaw: """
+    {
+      "product": {
+        "productID": "product-123",
+        "name": "Sample Product",
+        "contract": {
+          "contractID": "contract-123",
+          "name": "Sample Contract"
+        }
+      }
+    }
+    """
+    originalFormat: "JSON"
+    extractOdcs: true
+    resolveExternalRefs: true
+  }) {
+    contract {
+      id
+      odpsVersion
+      status
+    }
+    errors
+  }
+}
+```
+
+### Link ODPS to ODCS Contract
+
+```graphql
+mutation {
+  linkODPS(
+    odcsId: "odcs-contract-uuid"
+    odpsId: "odps-contract-uuid"
+    resolveExternalRefs: true
+  ) {
+    odpsContract {
+      id
+      odpsVersion
+      odcsLink
+    }
+    odcsContract {
+      id
+      odpsLink
+    }
+    errors
+  }
+}
+```
+
+### Link ODPS to ODCS (Create New ODPS)
+
+```graphql
+mutation {
+  linkODPS(
+    odcsId: "odcs-contract-uuid"
+    odpsRaw: """
+    {
+      "product": {
+        "productID": "product-123",
+        "name": "New Product"
+      }
+    }
+    """
+    odpsFormat: "JSON"
+    resolveExternalRefs: true
+  ) {
+    odpsContract {
+      id
+      odpsVersion
+      odcsLink
+    }
+    odcsContract {
+      id
+      odpsLink
+    }
+    errors
+  }
+}
+```
+
+### Unlink ODPS from ODCS Contract
+
+```graphql
+mutation {
+  unlinkODPS(odcsId: "odcs-contract-uuid") {
+    success
+    errors
+  }
+}
+```
+
+### Export ODPS Contract
+
+```graphql
+mutation {
+  exportODPS(
+    contractId: "odps-contract-uuid"
+    options: {
+      version: "4.1"
+      format: "json"
+    }
+  ) {
+    content
+    format
+    errors
+  }
+}
+```
+
+### Export ODPS Contract as YAML
+
+```graphql
+mutation {
+  exportODPS(
+    contractId: "odps-contract-uuid"
+    options: {
+      version: "4.1"
+      format: "yaml"
+    }
+  ) {
+    content
+    format
+    errors
   }
 }
 ```
@@ -752,10 +1116,51 @@ The test suite covers:
 | **Under-fetching** | Common (multiple requests needed) | Avoided (single query for related data) |
 | **Caching** | HTTP caching (GET requests) | More complex (query-based) |
 | **File Uploads** | Native support | Not supported (use REST) |
-| **Mutations** | Native support | Not yet implemented |
+| **Mutations** | Native support | ✅ ODPS mutations implemented (createODPS, linkODPS, unlinkODPS, exportODPS) |
 
 ---
 
-**Last Updated**: 2025-01-15  
-**Maintainer**: Engineering Team  
-**Status**: ✅ Complete
+---
+
+## ODPS-Specific Features
+
+The GraphQL API includes comprehensive support for ODPS (Open Data Product Specification) contracts:
+
+### ODPS Queries
+
+- **`odpsContracts`**: Query ODPS contracts with filtering by version and link status
+- **`linkedContracts`**: Get contracts linked to a specific contract (ODPS-ODCS relationships)
+
+### ODPS Mutations
+
+- **`createODPS`**: Create a new ODPS contract from JSON or YAML
+- **`linkODPS`**: Link an ODPS contract to an ODCS contract
+- **`unlinkODPS`**: Unlink an ODPS contract from an ODCS contract
+- **`exportODPS`**: Export an ODPS contract in JSON or YAML format
+
+### ODPS Contract Fields
+
+ODPS contracts include additional fields accessible via GraphQL:
+
+- **`odpsVersion`**: The ODPS specification version (e.g., "4.1")
+- **`odcsLink`**: Linked ODCS contract ID (for ODPS contracts)
+- **`odpsLink`**: Linked ODPS contract ID (for ODCS contracts)
+- **`pricingPlans`**: List of pricing plans with details
+- **`accessMethods`**: List of access methods (APIs, downloads, etc.)
+- **`paymentGateways`**: List of payment gateways
+- **`productStrategy`**: Product strategy information
+- **`productDetails(lang)`**: Product details for a specific language
+
+### ODPS Filter Options
+
+The `odpsContracts` query supports filtering via `ODPSFilter`:
+
+- **`version`**: Filter by ODPS version (e.g., "4.1", "4.0")
+- **`hasOdcsLink`**: Filter ODPS contracts that have linked ODCS contracts
+- **`hasNoOdcsLink`**: Filter ODPS contracts that do not have linked ODCS contracts
+
+---
+
+**Last Updated**: 2025-12-22
+**Maintainer**: Engineering Team
+**Status**: ✅ Complete (with ODPS support)

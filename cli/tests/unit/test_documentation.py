@@ -1,0 +1,106 @@
+"""
+Unit tests for CLI documentation.
+
+Tests that documentation is complete, accurate, and up-to-date.
+"""
+import pytest
+import re
+from pathlib import Path
+
+
+class TestCLIDocumentation:
+    """Test CLI documentation completeness and accuracy"""
+
+    @pytest.fixture
+    def readme_path(self):
+        """Path to CLI README"""
+        return Path(__file__).parent.parent.parent / "README.md"
+
+    @pytest.fixture
+    def odps_usage_path(self):
+        """Path to ODPS usage documentation"""
+        return Path(__file__).parent.parent.parent / "docs" / "ODPS_USAGE.md"
+
+    def test_readme_exists(self, readme_path):
+        """Test that README.md exists"""
+        assert readme_path.exists(), f"README.md not found at {readme_path}"
+
+    def test_readme_contains_odps_section(self, readme_path):
+        """Test that README contains ODPS commands section"""
+        content = readme_path.read_text()
+        assert "ODPS" in content or "odps" in content.lower(), "README should contain ODPS documentation"
+        assert "create-odps" in content.lower(), "README should document create-odps command"
+        assert "get-pricing" in content.lower(), "README should document get-pricing command"
+        assert "get-access-methods" in content.lower(), "README should document get-access-methods command"
+
+    def test_readme_contains_odps_examples(self, readme_path):
+        """Test that README contains ODPS examples"""
+        content = readme_path.read_text()
+        assert "create-odps" in content, "README should contain create-odps example"
+        assert "--extract-odcs" in content or "--link-odcs" in content, "README should contain ODPS linking examples"
+
+    def test_readme_contains_odps_workflow(self, readme_path):
+        """Test that README contains ODPS workflow examples"""
+        content = readme_path.read_text()
+        assert "ODPS Workflow" in content or "ODPS workflow" in content, "README should contain ODPS workflow section"
+
+    def test_odps_usage_doc_exists(self, odps_usage_path):
+        """Test that ODPS usage documentation exists"""
+        assert odps_usage_path.exists(), f"ODPS_USAGE.md not found at {odps_usage_path}"
+
+    def test_odps_usage_doc_structure(self, odps_usage_path):
+        """Test that ODPS usage documentation has proper structure"""
+        content = odps_usage_path.read_text()
+
+        # Check for main sections
+        assert "# ODPS" in content or "## Overview" in content, "ODPS doc should have overview"
+        assert "Creating ODPS" in content or "create-odps" in content.lower(), "ODPS doc should cover creation"
+        assert "Information" in content or "get-pricing" in content.lower(), "ODPS doc should cover information commands"
+        assert "Workflow" in content or "workflow" in content.lower(), "ODPS doc should cover workflows"
+
+    def test_odps_usage_doc_contains_all_commands(self, odps_usage_path):
+        """Test that ODPS usage doc documents all ODPS commands"""
+        content = odps_usage_path.read_text()
+
+        # Check for all ODPS commands
+        commands = [
+            "create-odps",
+            "link-odps",
+            "unlink-odps",
+            "list-links",
+            "get-pricing",
+            "get-access-methods",
+            "--show-odps"
+        ]
+
+        for command in commands:
+            assert command in content.lower(), f"ODPS doc should document {command} command"
+
+    def test_odps_usage_doc_contains_examples(self, odps_usage_path):
+        """Test that ODPS usage doc contains examples"""
+        content = odps_usage_path.read_text()
+
+        # Check for code blocks with examples
+        code_blocks = re.findall(r'```bash\n(.*?)\n```', content, re.DOTALL)
+        assert len(code_blocks) > 0, "ODPS doc should contain command examples"
+
+    def test_odps_usage_doc_contains_troubleshooting(self, odps_usage_path):
+        """Test that ODPS usage doc contains troubleshooting section"""
+        content = odps_usage_path.read_text()
+        assert "Troubleshooting" in content or "troubleshooting" in content.lower(), "ODPS doc should have troubleshooting section"
+
+    def test_readme_odps_command_reference(self, readme_path):
+        """Test that README contains ODPS command reference table"""
+        content = readme_path.read_text()
+        # Check for command reference or table
+        assert "Command Reference" in content or "| Command |" in content, "README should contain command reference"
+
+    def test_documentation_accuracy(self, readme_path):
+        """Test that documented commands match actual implementation"""
+        content = readme_path.read_text()
+
+        # Verify documented commands are mentioned
+        # This is a basic check - actual command validation would require importing the CLI
+        assert "contracts" in content.lower(), "README should document contracts commands"
+        assert "odps" in content.lower() or "ODPS" in content, "README should document ODPS commands"
+

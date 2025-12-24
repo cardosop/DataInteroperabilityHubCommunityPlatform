@@ -23,7 +23,7 @@ User = get_user_model()
 class ContractFactoryEnhanced:
     """
     Enhanced contract factory that creates contracts with all HubContract sections.
-    
+
     This is a real factory (not a mock) that creates actual Contract instances
     with complete hub_contract_json including all sections:
     - owners
@@ -34,7 +34,7 @@ class ContractFactoryEnhanced:
     - marketplace policy
     - schema fields with all properties
     """
-    
+
     @staticmethod
     def create_hub_contract_json(
         contract_id: Optional[str] = None,
@@ -54,7 +54,7 @@ class ContractFactoryEnhanced:
     ) -> Dict[str, Any]:
         """
         Create a complete HubContract JSON with all sections.
-        
+
         Args:
             contract_id: Contract identifier (default: auto-generated)
             name: Contract name (default: "Test Contract")
@@ -70,7 +70,7 @@ class ContractFactoryEnhanced:
             primary_key: List of primary key field names
             unique_constraints: List of unique constraint definitions
             indexes: List of index definitions
-            
+
         Returns:
             Complete HubContract JSON dict
         """
@@ -109,7 +109,7 @@ class ContractFactoryEnhanced:
                 "data_source": "test.source",
                 "refresh_cadence": "DAILY",
                 "slas": {
-                    "availability": "99.0",
+                    "availability": 99.0,
                     "latency_ms_p95": 5000
                 }
             }
@@ -144,7 +144,7 @@ class ContractFactoryEnhanced:
             unique_constraints = []
         if indexes is None:
             indexes = []
-        
+
         return {
             "hub_contract_version": "1.0.0",
             "id": contract_id,
@@ -169,7 +169,7 @@ class ContractFactoryEnhanced:
             "lifecycle": lifecycle_policy,
             "marketplace": marketplace_policy
         }
-    
+
     @staticmethod
     def create_contract(
         tenant: Tenant,
@@ -187,7 +187,7 @@ class ContractFactoryEnhanced:
     ) -> Contract:
         """
         Create a Contract instance with complete HubContract JSON.
-        
+
         Args:
             tenant: Tenant instance
             created_by: User who created the contract
@@ -201,25 +201,35 @@ class ContractFactoryEnhanced:
             validation_status: Validation status
             hub_contract_json: Complete HubContract JSON (if None, uses create_hub_contract_json)
             **kwargs: Additional arguments passed to create_hub_contract_json
-            
+
         Returns:
             Contract instance
         """
+        # Extract original_raw from kwargs if provided (before passing to create_hub_contract_json)
+        original_raw = kwargs.pop('original_raw', None)
+
         if hub_contract_json is None:
             hub_contract_json = ContractFactoryEnhanced.create_hub_contract_json(**kwargs)
-        
-        # Create original_raw from hub_contract_json for testing
+
+        # Use provided original_raw if available, otherwise create from hub_contract_json
         import json
-        original_raw = json.dumps({
-            "id": hub_contract_json.get("id", "test-contract"),
-            "info": hub_contract_json.get("info", {}),
-            "schema": hub_contract_json.get("schema", {}),
-            "quality": hub_contract_json.get("quality", {}),
-            "privacy_compliance": hub_contract_json.get("privacy_compliance", {}),
-            "lifecycle": hub_contract_json.get("lifecycle", {}),
-            "marketplace": hub_contract_json.get("marketplace", {})
-        })
-        
+        if original_raw is not None:
+            # If it's a dict, convert to JSON string
+            if isinstance(original_raw, dict):
+                original_raw = json.dumps(original_raw)
+            # If it's already a string, use it as-is
+        else:
+            # Create original_raw from hub_contract_json for testing
+            original_raw = json.dumps({
+                "id": hub_contract_json.get("id", "test-contract"),
+                "info": hub_contract_json.get("info", {}),
+                "schema": hub_contract_json.get("schema", {}),
+                "quality": hub_contract_json.get("quality", {}),
+                "privacy_compliance": hub_contract_json.get("privacy_compliance", {}),
+                "lifecycle": hub_contract_json.get("lifecycle", {}),
+                "marketplace": hub_contract_json.get("marketplace", {})
+            })
+
         return Contract.objects.create(
             tenant=tenant,
             asset=asset,
@@ -239,7 +249,7 @@ class ContractFactoryEnhanced:
             validation_warnings=[],
             created_by=created_by
         )
-    
+
     @staticmethod
     def create_contract_with_all_sections(
         tenant: Tenant,
@@ -248,7 +258,7 @@ class ContractFactoryEnhanced:
     ) -> Contract:
         """
         Create a contract with all sections populated (owners, tags, quality, compliance, lifecycle, marketplace).
-        
+
         This is a convenience method that creates a contract with comprehensive test data.
         """
         return ContractFactoryEnhanced.create_contract(
@@ -290,7 +300,7 @@ class ContractFactoryEnhanced:
                     "data_source": "OLTP.orders",
                     "refresh_cadence": "DAILY",
                     "slas": {
-                        "availability": "99.0",
+                        "availability": 99.0,
                         "latency_ms_p95": 5000
                     }
                 },

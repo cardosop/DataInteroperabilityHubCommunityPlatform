@@ -16,7 +16,7 @@ Usage:
         jobs_started_total,
         job_duration_seconds,
     )
-    
+
     # Record metrics
     http_requests_total.labels(method='GET', route='/api/', status_class='2xx').inc()
     jobs_started_total.labels(job_type='DQ_RUN', tenant_id='123').inc()
@@ -27,7 +27,7 @@ Migration from prometheus-client:
     - metric.labels(...).inc() for counters
     - metric.labels(...).observe(value) for histograms
     - metric.labels(...).set(value) for gauges
-    
+
     All metric names and labels are preserved exactly.
 """
 import os
@@ -60,15 +60,15 @@ _initialized = False
 def setup_opentelemetry_metrics() -> Optional[object]:
     """
     Set up OpenTelemetry metrics with Prometheus exporter.
-    
+
     Returns:
         Meter instance or None if not enabled/available
     """
     global _meter, _metric_reader, _initialized
-    
+
     if not OPENTELEMETRY_AVAILABLE:
         return None
-    
+
     # Check if Django settings are configured
     try:
         from django.conf import settings
@@ -77,36 +77,36 @@ def setup_opentelemetry_metrics() -> Optional[object]:
     except Exception:
         # Django not configured yet, will initialize later
         return None
-    
+
     # Check if already initialized
     if _initialized and _meter is not None:
         return _meter
-    
+
     try:
         # Create resource with service name
         resource = Resource.create({
             "service.name": "hub-api",
             "service.version": getattr(settings, 'APP_VERSION', '1.0.0'),
         })
-        
+
         # Create Prometheus metric reader (uses prometheus_client REGISTRY)
         _metric_reader = PrometheusMetricReader(disable_target_info=False)
-        
+
         # Create meter provider
         meter_provider = MeterProvider(
             resource=resource,
             metric_readers=[_metric_reader]
         )
-        
+
         # Set global meter provider
         metrics.set_meter_provider(meter_provider)
-        
+
         # Get meter instance
         _meter = metrics.get_meter(__name__)
         _initialized = True
-        
+
         return _meter
-    
+
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ def setup_opentelemetry_metrics() -> Optional[object]:
 def get_meter() -> Optional[object]:
     """
     Get OpenTelemetry meter instance.
-    
+
     Returns:
         Meter instance or None
     """
@@ -135,10 +135,10 @@ def get_meter() -> Optional[object]:
 def get_status_class(status_code: int) -> str:
     """
     Get status class from HTTP status code.
-    
+
     Args:
         status_code: HTTP status code
-        
+
     Returns:
         Status class string (2xx, 4xx, 5xx)
     """
@@ -160,11 +160,11 @@ class _ValueProxy:
     """Proxy object for _value.get() compatibility"""
     def __init__(self):
         self._count = 0.0
-    
+
     def get(self):
         """Get current value (always returns 0 for OpenTelemetry - values not directly accessible)"""
         return self._count
-    
+
     def set(self, value):
         """Set value (for testing)"""
         self._count = value
@@ -176,7 +176,7 @@ class _LabeledMetric:
         self.metric = metric
         self.attributes = attributes or {}
         self._value = _ValueProxy()  # Compatibility property
-    
+
     def inc(self, amount: float = 1):
         """Increment metric"""
         if hasattr(self.metric, 'add'):
@@ -185,7 +185,7 @@ class _LabeledMetric:
         elif hasattr(self.metric, 'inc'):
             self.metric.inc(amount, attributes=self.attributes)
             self._value._count += amount
-    
+
     def dec(self, amount: float = 1):
         """Decrement metric"""
         if hasattr(self.metric, 'add'):
@@ -194,14 +194,14 @@ class _LabeledMetric:
         elif hasattr(self.metric, 'dec'):
             self.metric.dec(amount, attributes=self.attributes)
             self._value._count -= amount
-    
+
     def observe(self, value: float):
         """Observe a value (for histograms)"""
         if hasattr(self.metric, 'record'):
             self.metric.record(value, attributes=self.attributes)
         elif hasattr(self.metric, 'observe'):
             self.metric.observe(value, attributes=self.attributes)
-    
+
     def set(self, value: float):
         """Set metric value (for gauges)"""
         if hasattr(self.metric, 'set'):
@@ -217,12 +217,12 @@ class _CounterWrapper:
         self.unit = unit
         self._counter = None
         self._expected_labels = expected_labels or ()
-    
+
     @property
     def _labelnames(self):
         """Compatibility property for prometheus-client API"""
         return self._expected_labels
-    
+
     @property
     def _value(self):
         """Compatibility property for prometheus-client API (_value.get())"""
@@ -230,7 +230,7 @@ class _CounterWrapper:
         if not hasattr(self, '_value_proxy'):
             self._value_proxy = _ValueProxy()
         return self._value_proxy
-    
+
     def _get_counter(self):
         """Get or create the counter metric"""
         if self._counter is None:
@@ -242,17 +242,17 @@ class _CounterWrapper:
                     unit=self.unit
                 )
         return self._counter
-    
+
     def add(self, amount: float, attributes: Dict[str, str] = None):
         """Add to counter"""
         counter = self._get_counter()
         if counter is not None:
             counter.add(amount, attributes=attributes or {})
-    
+
     def inc(self, attributes: Dict[str, str] = None):
         """Increment counter by 1"""
         self.add(1, attributes=attributes)
-    
+
     def labels(self, **kwargs) -> _LabeledMetric:
         """Create a labeled metric (compatibility with prometheus-client API)"""
         return _LabeledMetric(self, kwargs)
@@ -267,12 +267,12 @@ class _HistogramWrapper:
         self.buckets = buckets
         self._histogram = None
         self._expected_labels = expected_labels or ()
-    
+
     @property
     def _labelnames(self):
         """Compatibility property for prometheus-client API"""
         return self._expected_labels
-    
+
     @property
     def _value(self):
         """Compatibility property for prometheus-client API (_value.get())"""
@@ -280,7 +280,7 @@ class _HistogramWrapper:
         if not hasattr(self, '_value_proxy'):
             self._value_proxy = _ValueProxy()
         return self._value_proxy
-    
+
     def _get_histogram(self):
         """Get or create the histogram metric"""
         if self._histogram is None:
@@ -293,17 +293,17 @@ class _HistogramWrapper:
                     explicit_bucket_boundaries_advisory=list(self.buckets)
                 )
         return self._histogram
-    
+
     def record(self, amount: float, attributes: Dict[str, str] = None):
         """Record a value"""
         histogram = self._get_histogram()
         if histogram is not None:
             histogram.record(amount, attributes=attributes or {})
-    
+
     def observe(self, amount: float, attributes: Dict[str, str] = None):
         """Alias for record (for compatibility with prometheus-client API)"""
         self.record(amount, attributes=attributes)
-    
+
     def labels(self, **kwargs) -> _LabeledMetric:
         """Create a labeled metric (compatibility with prometheus-client API)"""
         return _LabeledMetric(self, kwargs)
@@ -318,12 +318,12 @@ class _UpDownCounterWrapper:
         self._counter = None
         self._current_values: Dict[str, float] = {}  # Track current values by attribute key
         self._expected_labels = expected_labels or ()
-    
+
     @property
     def _labelnames(self):
         """Compatibility property for prometheus-client API"""
         return self._expected_labels
-    
+
     @property
     def _value(self):
         """Compatibility property for prometheus-client API (_value.get())"""
@@ -331,7 +331,7 @@ class _UpDownCounterWrapper:
         if not hasattr(self, '_value_proxy'):
             self._value_proxy = _ValueProxy()
         return self._value_proxy
-    
+
     def _get_counter(self):
         """Get or create the updown counter metric"""
         if self._counter is None:
@@ -343,13 +343,13 @@ class _UpDownCounterWrapper:
                     unit=self.unit
                 )
         return self._counter
-    
+
     def _get_key(self, attributes: Dict[str, str] = None) -> str:
         """Get a key for the attributes dict"""
         if attributes is None:
             return ''
         return ','.join(f"{k}={v}" for k, v in sorted(attributes.items()))
-    
+
     def add(self, amount: float, attributes: Dict[str, str] = None):
         """Add to counter"""
         counter = self._get_counter()
@@ -358,7 +358,7 @@ class _UpDownCounterWrapper:
             # Track current value
             key = self._get_key(attributes)
             self._current_values[key] = self._current_values.get(key, 0) + amount
-    
+
     def set(self, value: float, attributes: Dict[str, str] = None):
         """Set counter to a specific value (resets to 0 first, then adds value)"""
         key = self._get_key(attributes)
@@ -374,15 +374,15 @@ class _UpDownCounterWrapper:
             if not hasattr(self, '_value_proxy'):
                 self._value_proxy = _ValueProxy()
             self._value_proxy.set(value)
-    
+
     def inc(self, amount: float = 1, attributes: Dict[str, str] = None):
         """Increment counter"""
         self.add(amount, attributes=attributes)
-    
+
     def dec(self, amount: float = 1, attributes: Dict[str, str] = None):
         """Decrement counter"""
         self.add(-amount, attributes=attributes)
-    
+
     def labels(self, **kwargs) -> _LabeledMetric:
         """Create a labeled metric (compatibility with prometheus-client API)"""
         return _LabeledMetric(self, kwargs)
@@ -514,6 +514,122 @@ contract_broken_lineage_links_total = _CounterWrapper(
     expected_labels=('link_type', 'tenant_id')
 )
 
+# ODPS Metrics (Task 6.2.1)
+odps_ingestion_total = _CounterWrapper(
+    'odps_ingestion_total',
+    'Total number of ODPS ingestion operations (marketplace)',
+    unit='1',
+    expected_labels=('source', 'tenant_id')
+)
+
+odps_normalization_total = _CounterWrapper(
+    'odps_normalization_total',
+    'Total number of ODPS normalization operations',
+    unit='1',
+    expected_labels=('status', 'version', 'tenant_id')
+)
+
+odps_ref_resolution_total = _CounterWrapper(
+    'odps_ref_resolution_total',
+    'Total number of $ref resolution operations',
+    unit='1',
+    expected_labels=('ref_type', 'status', 'tenant_id')
+)
+
+odps_ref_resolution_failures_total = _CounterWrapper(
+    'odps_ref_resolution_failures_total',
+    'Total number of $ref resolution failures',
+    unit='1',
+    expected_labels=('ref_type', 'error_type', 'tenant_id')
+)
+
+odps_external_fetch_failures_total = _CounterWrapper(
+    'odps_external_fetch_failures_total',
+    'Total number of external $ref fetch failures',
+    unit='1',
+    expected_labels=('error_type', 'tenant_id')
+)
+
+odps_version_distribution_total = _CounterWrapper(
+    'odps_version_distribution_total',
+    'Total number of ODPS documents by version',
+    unit='1',
+    expected_labels=('version', 'tenant_id')
+)
+
+odps_rate_limit_violations_total = _CounterWrapper(
+    'odps_rate_limit_violations_total',
+    'Total number of ODPS $ref rate limit violations',
+    unit='1',
+    expected_labels=('level', 'tenant_id', 'user_id')
+)
+
+odps_ref_cache_hits_total = _CounterWrapper(
+    'odps_ref_cache_hits_total',
+    'Total number of external $ref cache hits',
+    unit='1',
+    expected_labels=('tenant_id',)
+)
+
+odps_ref_cache_misses_total = _CounterWrapper(
+    'odps_ref_cache_misses_total',
+    'Total number of external $ref cache misses',
+    unit='1',
+    expected_labels=('tenant_id',)
+)
+
+# ODPS Semantic Mapping Metrics (Task 6.6.3)
+odps_semantic_mapping_duration_seconds = _HistogramWrapper(
+    'odps_semantic_mapping_duration_seconds',
+    'ODPS semantic mapping duration in seconds',
+    unit='s',
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+    expected_labels=('status', 'tenant_id')
+)
+
+odps_semantic_mapping_total = _CounterWrapper(
+    'odps_semantic_mapping_total',
+    'Total number of ODPS semantic mapping operations',
+    unit='1',
+    expected_labels=('status', 'tenant_id')
+)
+
+odps_semantic_mapping_success_rate = _UpDownCounterWrapper(
+    'odps_semantic_mapping_success_rate',
+    'ODPS semantic mapping success rate (0-1)',
+    unit='1',
+    expected_labels=('tenant_id',)
+)
+
+# ODCS Metrics (Task 6.2.2 - explicit backward compatibility)
+odcs_ingestion_total = _CounterWrapper(
+    'odcs_ingestion_total',
+    'Total number of ODCS ingestion operations (technical)',
+    unit='1',
+    expected_labels=('source', 'tenant_id')
+)
+
+odcs_normalization_total = _CounterWrapper(
+    'odcs_normalization_total',
+    'Total number of ODCS normalization operations (all versions)',
+    unit='1',
+    expected_labels=('status', 'version', 'tenant_id')
+)
+
+odcs_version_distribution_total = _CounterWrapper(
+    'odcs_version_distribution_total',
+    'Total number of ODCS documents by version (3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, 2.2.2)',
+    unit='1',
+    expected_labels=('version', 'tenant_id')
+)
+
+odcs_normalization_regression_total = _CounterWrapper(
+    'odcs_normalization_regression_total',
+    'Total number of ODCS normalization regressions detected',
+    unit='1',
+    expected_labels=('version', 'regression_type', 'tenant_id')
+)
+
 
 # ============================================================================
 # Histogram Metrics
@@ -553,6 +669,75 @@ file_upload_size_bytes = _HistogramWrapper(
     unit='By',
     buckets=(1024, 10240, 102400, 1048576, 10485760, 104857600, 1073741824),
     expected_labels=('file_type',)
+)
+
+# ODPS $ref Resolution Duration (Task 6.2.1)
+# Buckets optimized for p50, p95, p99 percentiles
+odps_ref_resolution_duration_seconds = _HistogramWrapper(
+    'odps_ref_resolution_duration_seconds',
+    'Duration of $ref resolution operations in seconds',
+    unit='s',
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    expected_labels=('ref_type', 'tenant_id')
+)
+
+# ODPS Export Duration (Task 6.6.1)
+# Buckets optimized for export operations (typically faster than ref resolution)
+odps_export_duration_seconds = _HistogramWrapper(
+    'odps_export_duration_seconds',
+    'Duration of ODPS export operations in seconds',
+    unit='s',
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+    expected_labels=('format', 'size_category', 'tenant_id')
+)
+
+# ODPS Export Size (Task 6.6.1)
+# Buckets optimized for export sizes (bytes)
+odps_export_size_bytes = _HistogramWrapper(
+    'odps_export_size_bytes',
+    'Size of ODPS export output in bytes',
+    unit='By',
+    buckets=(1024, 10240, 102400, 1048576, 10485760, 104857600, 1073741824),
+    expected_labels=('format', 'tenant_id')
+)
+
+# ODPS Export Total (Task 6.6.4)
+# Counter to track export attempts with status for failure rate alerts
+odps_export_total = _CounterWrapper(
+    'odps_export_total',
+    'Total number of ODPS export operations',
+    unit='1',
+    expected_labels=('status', 'format', 'tenant_id')
+)
+
+# ODPS Linking Metrics (Task 6.6.2)
+odps_linking_total = _CounterWrapper(
+    'odps_linking_total',
+    'Total number of ODPS linking operations',
+    unit='1',
+    expected_labels=('direction', 'tenant_id')
+)
+
+odps_linking_success_total = _CounterWrapper(
+    'odps_linking_success_total',
+    'Total number of successful ODPS linking operations',
+    unit='1',
+    expected_labels=('direction', 'tenant_id')
+)
+
+odps_linking_failures_total = _CounterWrapper(
+    'odps_linking_failures_total',
+    'Total number of failed ODPS linking operations',
+    unit='1',
+    expected_labels=('direction', 'error_code', 'tenant_id')
+)
+
+odps_linking_duration_seconds = _HistogramWrapper(
+    'odps_linking_duration_seconds',
+    'Duration of ODPS linking operations in seconds',
+    unit='s',
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    expected_labels=('direction', 'tenant_id')
 )
 
 
@@ -756,13 +941,13 @@ service_health_status = _UpDownCounterWrapper(
 def metrics_view(request):
     """
     Prometheus metrics endpoint using OpenTelemetry Prometheus exporter.
-    
+
     Returns:
         HTTP response with Prometheus metrics in text format
     """
     if not OPENTELEMETRY_AVAILABLE or REGISTRY is None:
         return HttpResponse("Metrics not available", status=503, content_type='text/plain')
-    
+
     try:
         # Generate Prometheus format from the registry
         metrics_data = generate_latest(REGISTRY)

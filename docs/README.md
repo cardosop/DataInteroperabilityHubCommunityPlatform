@@ -24,6 +24,8 @@ Complete documentation for the Data Interoperability Hub platform.
 - **[API Testing Guide](API_TESTING_GUIDE.md)** - API testing strategies
 - **[GraphQL API](GRAPHQL_API.md)** - GraphQL API documentation
 - **[WebSocket API](WEBSOCKET_API.md)** - WebSocket API for real-time updates
+- **[Webhook API](WEBHOOK_API.md)** - Webhook subscriptions and ODPS event delivery
+- **[ODPS Integration Guide](ODPS_INTEGRATION_GUIDE.md)** - Complete guide for ODPS (Open Data Product Standard) integration
 
 ### Features
 - **[Features](FEATURES.md)** - Complete feature documentation
@@ -70,7 +72,9 @@ docs/
 │   ├── API_VERSIONING_POLICY.md # Versioning policy
 │   ├── API_TESTING_GUIDE.md     # API testing
 │   ├── GRAPHQL_API.md          # GraphQL API
-│   └── WEBSOCKET_API.md        # WebSocket API
+│   ├── WEBSOCKET_API.md        # WebSocket API
+│   ├── WEBHOOK_API.md          # Webhook API
+│   └── ODPS_INTEGRATION_GUIDE.md # ODPS integration guide
 │
 ├── Features
 │   └── FEATURES.md              # Feature overview

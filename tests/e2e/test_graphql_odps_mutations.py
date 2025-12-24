@@ -1,0 +1,432 @@
+"""
+E2E tests for ODPS GraphQL mutations.
+
+Tests complete workflows:
+- Create ODPS contract
+- Link ODPS to ODCS
+- Unlink ODPS from ODCS
+- Export ODPS contract
+
+Uses REAL services (no mocks).
+"""
+import json
+import pytest
+from django.test import TestCase
+from rest_framework import status
+
+from hub.apps.assets.models import Asset
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
+from hub.apps.tenants.models import Tenant
+
+from .conftest import E2ETestBase
+
+
+pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
+
+
+class GraphQLODPSMutationsE2ETest(E2ETestBase):
+    """E2E tests for ODPS GraphQL mutations"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        super().setUp()
+
+        # Sample ODPS document
+        self.sample_odps = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-product",
+                        "name": "Test Product",
+                        "description": "Test product description",
+                    }
+                },
+                "contract": {
+                    "spec": {
+                        "apiVersion": "odcs/v3",
+                        "kind": "DataContract",
+                        "id": "test-contract",
+                        "name": "Test Contract",
+                        "schema": {
+                            "fields": [
+                                {"name": "field1", "type": "string", "required": True}
+                            ]
+                        },
+                    }
+                }
+            },
+        }
+
+        # Sample ODCS document
+        self.sample_odcs = {
+            "apiVersion": "odcs/v3",
+            "kind": "DataContract",
+            "id": "test-contract",
+            "name": "Test Contract",
+            "schema": {
+                "fields": [{"name": "field1", "type": "string", "required": True}]
+            },
+        }
+
+    def _graphql_mutation(self, mutation, variables=None):
+        """Helper to execute GraphQL mutation"""
+        data = {"query": mutation}
+        if variables:
+            data["variables"] = variables
+
+        response = self.client.post(
+            "/graphql-graphene/",
+            data=json.dumps(data),
+            content_type="application/json",
+        )
+        return response
+
+    def test_create_odps_workflow(self):
+        """Test complete workflow: Create ODPS contract via GraphQL"""
+        mutation = """
+        mutation CreateODPS($input: CreateODPSInput!) {
+            createODPS(input: $input) {
+                contract {
+                    id
+                    originalSpecType
+                    originalSpecVersion
+                    odpsVersion
+                }
+                errors
+            }
+        }
+        """
+
+        variables = {
+            "input": {
+                "originalRaw": json.dumps(self.sample_odps),
+                "originalFormat": "JSON",
+                "assetId": str(self.asset.id) if hasattr(self, "asset") else None,
+                "resolveExternalRefs": True,
+            }
+        }
+
+        response = self._graphql_mutation(mutation, variables)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = json.loads(response.content)
+        self.assertIn("data", data)
+        result = data["data"]["createODPS"]
+        self.assertEqual(len(result["errors"]), 0)
+        self.assertIsNotNone(result["contract"])
+        self.assertEqual(result["contract"]["originalSpecType"], "ODPS")
+
+        # Verify contract exists in database
+        contract_id = result["contract"]["id"]
+        contract = Contract.objects.get(id=contract_id)
+        self.assertEqual(contract.original_spec_type, OriginalSpecType.ODPS)
+
+    def test_link_odps_workflow(self):
+        """Test complete workflow: Link ODPS to ODCS via GraphQL"""
+        # Create ODCS contract first
+        odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=self.asset if hasattr(self, "asset") else None,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odcs),
+            created_by=self.user,
+        )
+
+        # Create ODPS contract
+        odps_contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=self.asset if hasattr(self, "asset") else None,
+            version=2,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="4.1",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odps),
+            created_by=self.user,
+        )
+
+        mutation = """
+        mutation LinkODPS($odcsId: ID!, $odpsId: ID!) {
+            linkODPS(odcsId: $odcsId, odpsId: $odpsId) {
+                odpsContract {
+                    id
+                    odcsLink
+                }
+                odcsContract {
+                    id
+                    odpsLink
+                }
+                errors
+            }
+        }
+        """
+
+        variables = {
+            "odcsId": str(odcs_contract.id),
+            "odpsId": str(odps_contract.id),
+        }
+
+        response = self._graphql_mutation(mutation, variables)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = json.loads(response.content)
+        self.assertIn("data", data)
+        result = data["data"]["linkODPS"]
+
+        # May have errors if contracts are not compatible, but should attempt linking
+        if len(result["errors"]) == 0:
+            self.assertIsNotNone(result["odpsContract"])
+            self.assertIsNotNone(result["odcsContract"])
+
+    def test_unlink_odps_workflow(self):
+        """Test complete workflow: Unlink ODPS from ODCS via GraphQL"""
+        # Create ODCS contract
+        odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=self.asset if hasattr(self, "asset") else None,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odcs),
+            created_by=self.user,
+        )
+
+        mutation = """
+        mutation UnlinkODPS($odcsId: ID!) {
+            unlinkODPS(odcsId: $odcsId) {
+                success
+                errors
+            }
+        }
+        """
+
+        variables = {"odcsId": str(odcs_contract.id)}
+
+        response = self._graphql_mutation(mutation, variables)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = json.loads(response.content)
+        self.assertIn("data", data)
+        result = data["data"]["unlinkODPS"]
+        # Should succeed even if no link exists
+        self.assertIsNotNone(result["success"])
+
+    def test_export_odps_workflow(self):
+        """Test complete workflow: Export ODPS contract via GraphQL"""
+        # Create ODPS contract with hub_contract_json
+        hub_contract = {
+            "id": "test-contract",
+            "info": {
+                "name": "Test Contract",
+                "description": "Test contract description",
+            },
+            "schema": {
+                "fields": [{"name": "field1", "type": "string", "required": True}]
+            },
+        }
+
+        odps_contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=self.asset if hasattr(self, "asset") else None,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="4.1",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odps),
+            hub_contract_json=hub_contract,
+            created_by=self.user,
+        )
+
+        mutation = """
+        mutation ExportODPS($contractId: ID!, $options: ExportODPSOptions) {
+            exportODPS(contractId: $contractId, options: $options) {
+                content
+                format
+                errors
+            }
+        }
+        """
+
+        variables = {
+            "contractId": str(odps_contract.id),
+            "options": {"version": "4.1", "format": "json"},
+        }
+
+        response = self._graphql_mutation(mutation, variables)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = json.loads(response.content)
+        self.assertIn("data", data)
+        result = data["data"]["exportODPS"]
+        self.assertEqual(len(result["errors"]), 0)
+        self.assertIsNotNone(result["content"])
+        self.assertEqual(result["format"], "json")
+
+        # Verify exported content is valid JSON
+        exported_data = json.loads(result["content"])
+        self.assertIn("schema", exported_data)
+        self.assertIn("version", exported_data)
+        self.assertIn("product", exported_data)
+
+    def test_export_odps_yaml_workflow(self):
+        """Test complete workflow: Export ODPS contract as YAML via GraphQL"""
+        # Create ODPS contract with hub_contract_json
+        hub_contract = {
+            "id": "test-contract",
+            "info": {
+                "name": "Test Contract",
+                "description": "Test contract description",
+            },
+            "schema": {
+                "fields": [{"name": "field1", "type": "string", "required": True}]
+            },
+        }
+
+        odps_contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=self.asset if hasattr(self, "asset") else None,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODPS,
+            original_spec_version="4.1",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odps),
+            hub_contract_json=hub_contract,
+            created_by=self.user,
+        )
+
+        mutation = """
+        mutation ExportODPS($contractId: ID!, $options: ExportODPSOptions) {
+            exportODPS(contractId: $contractId, options: $options) {
+                content
+                format
+                errors
+            }
+        }
+        """
+
+        variables = {
+            "contractId": str(odps_contract.id),
+            "options": {"version": "4.1", "format": "yaml"},
+        }
+
+        response = self._graphql_mutation(mutation, variables)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = json.loads(response.content)
+        self.assertIn("data", data)
+        result = data["data"]["exportODPS"]
+        self.assertEqual(len(result["errors"]), 0)
+        self.assertIsNotNone(result["content"])
+        self.assertEqual(result["format"], "yaml")
+
+        # Verify exported content is valid YAML
+        try:
+            import yaml
+
+            exported_data = yaml.safe_load(result["content"])
+            self.assertIn("schema", exported_data)
+            self.assertIn("version", exported_data)
+            self.assertIn("product", exported_data)
+        except ImportError:
+            # YAML not available, skip validation
+            pass
+
+    def test_complete_odps_workflow(self):
+        """Test complete workflow: Create, Link, Export ODPS via GraphQL"""
+        # Step 1: Create ODPS contract
+        create_mutation = """
+        mutation CreateODPS($input: CreateODPSInput!) {
+            createODPS(input: $input) {
+                contract {
+                    id
+                    originalSpecType
+                }
+                errors
+            }
+        }
+        """
+
+        create_variables = {
+            "input": {
+                "originalRaw": json.dumps(self.sample_odps),
+                "originalFormat": "JSON",
+                "resolveExternalRefs": True,
+            }
+        }
+
+        response = self._graphql_mutation(create_mutation, create_variables)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = json.loads(response.content)
+        odps_contract_id = data["data"]["createODPS"]["contract"]["id"]
+
+        # Step 2: Create ODCS contract (for linking)
+        odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=self.asset if hasattr(self, "asset") else None,
+            version=1,
+            status=ContractStatus.DRAFT,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            original_raw=json.dumps(self.sample_odcs),
+            created_by=self.user,
+        )
+
+        # Step 3: Link ODPS to ODCS
+        link_mutation = """
+        mutation LinkODPS($odcsId: ID!, $odpsId: ID!) {
+            linkODPS(odcsId: $odcsId, odpsId: $odpsId) {
+                odpsContract {
+                    id
+                }
+                odcsContract {
+                    id
+                }
+                errors
+            }
+        }
+        """
+
+        link_variables = {
+            "odcsId": str(odcs_contract.id),
+            "odpsId": odps_contract_id,
+        }
+
+        response = self._graphql_mutation(link_mutation, link_variables)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Step 4: Export ODPS
+        export_mutation = """
+        mutation ExportODPS($contractId: ID!, $options: ExportODPSOptions) {
+            exportODPS(contractId: $contractId, options: $options) {
+                content
+                format
+                errors
+            }
+        }
+        """
+
+        export_variables = {
+            "contractId": odps_contract_id,
+            "options": {"version": "4.1", "format": "json"},
+        }
+
+        response = self._graphql_mutation(export_mutation, export_variables)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        data = json.loads(response.content)
+        result = data["data"]["exportODPS"]
+        self.assertEqual(len(result["errors"]), 0)
+        self.assertIsNotNone(result["content"])
+

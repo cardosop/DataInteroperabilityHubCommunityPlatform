@@ -14,7 +14,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from hub.apps.core.events.service_publishers import WorkflowEventPublisher
+from hub.apps.core.events.service_publishers import WorkflowEventPublisher, ODPSEventPublisher
 
 from .compensation import WorkflowCompensation
 from .dsl_parser import WorkflowDSLParser
@@ -77,6 +77,9 @@ class WorkflowEngine(WorkflowEventPublisher):
         self.version_manager = WorkflowVersionManager()
         self.compensation = WorkflowCompensation()
         self.task_registry: Dict[str, Callable] = {}
+
+        # ODPS workflows that should publish ODPS-specific events (Task 7.1.4)
+        self._odps_workflow_names = {"product_creation"}
 
     def register_task(self, task_name: str, task_func: Callable):
         """
@@ -245,6 +248,13 @@ class WorkflowEngine(WorkflowEventPublisher):
         except Exception as e:
             logger.warning(f"Failed to publish workflow.started event: {e}")
 
+        # Publish ODPS workflow.started event if this is an ODPS workflow (Task 7.1.4)
+        self._publish_odps_workflow_event_if_applicable(
+            instance, "started",
+            odps_version=self._extract_odps_version_from_input(instance.input_data),
+            progress_percentage=instance.state_data.get("progress_percentage") if instance.state_data else None
+        )
+
         logger.info(f"Started workflow instance: {instance.id}")
         return instance
 
@@ -294,6 +304,15 @@ class WorkflowEngine(WorkflowEventPublisher):
                 step_def = steps[i]
                 step = instance.steps.get(step_index=i)
 
+                # Publish ODPS creation progress event if this is an ODPS workflow (Task 7.3.2)
+                if self._is_odps_workflow(instance.workflow_name):
+                    self._publish_odps_creation_progress_if_applicable(
+                        instance=instance,
+                        step_index=i,
+                        step_name=step_def.get("name", "unknown"),
+                        total_steps=len(steps)
+                    )
+
                 # Execute step
                 step_output = self._execute_step(instance, step, step_def)
 
@@ -309,6 +328,16 @@ class WorkflowEngine(WorkflowEventPublisher):
 
                 instance.current_step_index = i + 1
                 instance.save(update_fields=["current_step_index", "state_data", "updated_at"])
+
+                # Publish ODPS creation progress event after step completion (Task 7.3.2)
+                if self._is_odps_workflow(instance.workflow_name):
+                    self._publish_odps_creation_progress_if_applicable(
+                        instance=instance,
+                        step_index=i + 1,
+                        step_name=step_def.get("name", "unknown"),
+                        total_steps=len(steps),
+                        status_message=f"Step {step_def.get('name', 'unknown')} completed"
+                    )
 
                 # Check if step failed
                 if step.status == StepStatus.FAILED:
@@ -371,6 +400,16 @@ class WorkflowEngine(WorkflowEventPublisher):
             except Exception as e:
                 logger.warning(f"Failed to publish workflow.completed event: {e}")
 
+            # Publish ODPS workflow.completed event if this is an ODPS workflow (Task 7.1.4)
+            self._publish_odps_workflow_event_if_applicable(
+                instance, "completed",
+                output_data=instance.output_data,
+                duration_ms=execution_duration_ms,
+                odps_contract_id=instance.state_data.get("odps_contract_id") if instance.state_data else None,
+                odcs_contract_id=instance.state_data.get("odcs_contract_id") if instance.state_data else None,
+                progress_percentage=instance.state_data.get("progress_percentage") if instance.state_data else 100.0
+            )
+
             if span:
                 span.set_attribute("workflow.status", "COMPLETED")
                 span.set_attribute("workflow.duration_seconds", execution_duration)
@@ -402,6 +441,16 @@ class WorkflowEngine(WorkflowEventPublisher):
                 )
             except Exception as e2:
                 logger.warning(f"Failed to publish workflow.failed event: {e2}")
+
+            # Publish ODPS workflow.failed event if this is an ODPS workflow (Task 7.1.4)
+            self._publish_odps_workflow_event_if_applicable(
+                instance, "failed",
+                error_message=str(e),
+                error_details={"exception_type": type(e).__name__},
+                failed_step_index=instance.current_step_index,
+                failed_step_name=instance.state_data.get("current_step_name") if instance.state_data else None,
+                progress_percentage=instance.state_data.get("progress_percentage") if instance.state_data else None
+            )
         finally:
             if span:
                 span.end()
@@ -518,6 +567,9 @@ class WorkflowEngine(WorkflowEventPublisher):
         # Save the instance to persist progress in state_data
         instance.save(update_fields=["state_data"])
 
+        # Publish ODPS workflow progress event if this is an ODPS workflow (Task 7.1.4)
+        self._publish_odps_workflow_progress_if_applicable(instance, progress_percentage)
+
         # Record step started metric
         tenant_id_str = get_tenant_id(instance.tenant_id)
         workflow_steps_started_total.labels(
@@ -612,6 +664,9 @@ class WorkflowEngine(WorkflowEventPublisher):
             instance.state_data["current_step_name"] = step.step_name
             instance.save(update_fields=["state_data"])
 
+            # Publish ODPS workflow progress event if this is an ODPS workflow (Task 7.1.4)
+            self._publish_odps_workflow_progress_if_applicable(instance, progress_percentage_after)
+
             # Publish workflow.step.completed event
             try:
                 tenant_id_str_for_event = str(instance.tenant_id) if instance.tenant_id else None
@@ -628,6 +683,14 @@ class WorkflowEngine(WorkflowEventPublisher):
                 )
             except Exception as e:
                 logger.warning(f"Failed to publish workflow.step.completed event: {e}")
+
+            # Publish ODPS workflow.step.completed event if this is an ODPS workflow (Task 7.1.4)
+            self._publish_odps_workflow_step_event_if_applicable(
+                instance, step, "completed",
+                output_data=output,
+                duration_ms=step_duration_ms,
+                progress_percentage=progress_percentage_after
+            )
 
             if step_span:
                 step_span.set_attribute("workflow.step.status", "COMPLETED")
@@ -695,6 +758,16 @@ class WorkflowEngine(WorkflowEventPublisher):
                 )
             except Exception as e2:
                 logger.warning(f"Failed to publish workflow.step.failed event: {e2}")
+
+            # Publish ODPS workflow.step.failed event if this is an ODPS workflow (Task 7.1.4)
+            self._publish_odps_workflow_step_event_if_applicable(
+                instance, step, "failed",
+                error_message=str(e),
+                error_details={"exception_type": type(e).__name__},
+                retry_count=step.retry_count,
+                duration_ms=step_duration_ms,
+                progress_percentage=progress_percentage_at_failure
+            )
 
             if step_span:
                 step_span.set_attribute("workflow.step.status", "FAILED")
@@ -945,41 +1018,58 @@ class WorkflowEngine(WorkflowEventPublisher):
                     return field_value is not None and field_value != ""
 
                 # Pattern 3: Complex condition with &&: "{{ field1 != null && field2 != 'VALUE' }}"
-                # For now, evaluate each part separately
+                # Handle && conditions by extracting field names and operators from template syntax
                 if '&&' in if_str:
-                    parts = if_str.split('&&')
+                    # Remove outer {{ }} and split by &&
+                    inner = if_str.strip()
+                    if inner.startswith('{{'):
+                        inner = inner[2:].strip()
+                    if inner.endswith('}}'):
+                        inner = inner[:-2].strip()
+
+                    parts = [p.strip() for p in inner.split('&&')]
                     results = []
                     for part in parts:
-                        part = part.strip()
-                        # Check for != null
-                        match = re.match(r'\{\{\s*(\w+)\s*!=\s*null\s*\}\}', part)
+                        # Check for != null (without {{ }} wrapper since we already removed it)
+                        match = re.match(r'(\w+)\s*!=\s*null', part)
                         if match:
                             field_name = match.group(1)
                             field_value = state_data.get(field_name)
                             results.append(field_value is not None and field_value != "")
+                            continue
+                        # Check for == null
+                        match = re.match(r'(\w+)\s*==\s*null', part)
+                        if match:
+                            field_name = match.group(1)
+                            field_value = state_data.get(field_name)
+                            results.append(field_value is None or field_value == "")
+                            continue
                         # Check for != 'value'
-                        match = re.match(r'\{\{\s*(\w+)\s*!=\s*[\'"](\w+)[\'"]\s*\}\}', part)
+                        match = re.match(r'(\w+)\s*!=\s*[\'"](\w+)[\'"]', part)
                         if match:
                             field_name = match.group(1)
                             expected_value = match.group(2)
                             field_value = state_data.get(field_name)
                             results.append(str(field_value) != expected_value)
+                            continue
                         # Check for == comparison
-                        match = re.match(r'\{\{\s*(\w+)\s*==\s*(\w+)\s*\}\}', part)
+                        match = re.match(r'(\w+)\s*==\s*(\w+)', part)
                         if match:
                             field_name = match.group(1)
-                            value_str = match.group(2)
-                            if value_str.lower() == "true":
-                                value = True
-                            elif value_str.lower() == "false":
-                                value = False
-                            elif value_str.isdigit():
-                                value = int(value_str)
-                            else:
-                                value = value_str
+                            expected_value = match.group(2)
                             field_value = state_data.get(field_name)
-                            results.append(field_value == value)
-                    # All parts must be True
+                            # Convert value string to appropriate type
+                            if expected_value.lower() == "true":
+                                expected_value = True
+                            elif expected_value.lower() == "false":
+                                expected_value = False
+                            elif expected_value.isdigit():
+                                expected_value = int(expected_value)
+                            results.append(field_value == expected_value)
+                            continue
+                        # If no pattern matches, default to False
+                        results.append(False)
+                    # All parts must be true for && condition
                     return all(results) if results else False
 
                 # Fallback: unsupported format
@@ -1232,3 +1322,312 @@ class WorkflowEngine(WorkflowEventPublisher):
 
         # Ensure result is between 0.0 and 100.0
         return max(0.0, min(100.0, progress_percentage))
+
+    def _is_odps_workflow(self, workflow_name: str) -> bool:
+        """
+        Check if a workflow is an ODPS workflow (Task 7.1.4).
+
+        Args:
+            workflow_name: Workflow name to check
+
+        Returns:
+            True if workflow is an ODPS workflow, False otherwise
+        """
+        return workflow_name in self._odps_workflow_names
+
+    def _extract_odps_version_from_input(self, input_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract ODPS version from workflow input data (Task 7.1.4).
+
+        Args:
+            input_data: Workflow input data
+
+        Returns:
+            ODPS version string or None if not found
+        """
+        # Try to get ODPS version from various possible locations
+        if not input_data:
+            return None
+
+        # Check direct odps_version field
+        if "odps_version" in input_data:
+            return input_data.get("odps_version")
+
+        # Check state_data if it's nested
+        state_data = input_data.get("state_data")
+        if state_data and isinstance(state_data, dict):
+            if "odps_version" in state_data:
+                return state_data.get("odps_version")
+
+        # Try to extract from original_raw if it's an ODPS document
+        if "original_raw" in input_data:
+            try:
+                import json
+                raw_content = input_data["original_raw"]
+                if isinstance(raw_content, str):
+                    doc = json.loads(raw_content)
+                    if isinstance(doc, dict):
+                        # Check for ODPS schema/version fields
+                        if "version" in doc:
+                            return doc.get("version")
+                        if "schema" in doc:
+                            schema = doc.get("schema", "")
+                            if "v4.1" in schema or "v4.0" in schema:
+                                return "4.1"
+            except Exception:
+                pass
+
+        return None
+
+    def _get_odps_event_publisher(self, instance: WorkflowInstance) -> Optional[ODPSEventPublisher]:
+        """
+        Get ODPSEventPublisher instance for ODPS workflow event publishing (Task 7.1.4).
+
+        Args:
+            instance: Workflow instance
+
+        Returns:
+            ODPSEventPublisher instance or None if not applicable
+        """
+        if not self._is_odps_workflow(instance.workflow_name):
+            return None
+
+        try:
+            # Create ODPSEventPublisher instance
+            odps_publisher = ODPSEventPublisher()
+            tenant_id_str = str(instance.tenant_id) if instance.tenant_id else None
+            user_id_str = str(instance.created_by_id) if instance.created_by_id else None
+
+            # Initialize event publisher with correct tenant/user
+            from hub.apps.core.events.publisher import EventPublisher
+            odps_publisher._event_publisher = EventPublisher(
+                service_name="workflow_engine",
+                tenant_id=tenant_id_str,
+                user_id=user_id_str,
+            )
+
+            return odps_publisher
+        except Exception as e:
+            logger.warning(f"Failed to create ODPSEventPublisher: {e}")
+            return None
+
+    def _publish_odps_workflow_event_if_applicable(
+        self,
+        instance: WorkflowInstance,
+        event_type: str,
+        **kwargs
+    ) -> None:
+        """
+        Publish ODPS workflow event if this is an ODPS workflow (Task 7.1.4).
+
+        Args:
+            instance: Workflow instance
+            event_type: Event type ("started", "completed", "failed")
+            **kwargs: Additional event data
+        """
+        if not self._is_odps_workflow(instance.workflow_name):
+            return
+
+        odps_publisher = self._get_odps_event_publisher(instance)
+        if not odps_publisher:
+            return
+
+        try:
+            tenant_id_str = str(instance.tenant_id) if instance.tenant_id else None
+            user_id_str = str(instance.created_by_id) if instance.created_by_id else None
+
+            if event_type == "started":
+                odps_publisher.publish_odps_workflow_started(
+                    workflow_instance_id=str(instance.id),
+                    workflow_name=instance.workflow_name,
+                    workflow_version=instance.workflow_version,
+                    input_data=instance.input_data,
+                    odps_version=kwargs.get("odps_version"),
+                    progress_percentage=kwargs.get("progress_percentage"),
+                    tenant_id=tenant_id_str,
+                    user_id=user_id_str,
+                )
+            elif event_type == "completed":
+                odps_publisher.publish_odps_workflow_completed(
+                    workflow_instance_id=str(instance.id),
+                    workflow_name=instance.workflow_name,
+                    workflow_version=instance.workflow_version,
+                    output_data=kwargs.get("output_data"),
+                    duration_ms=kwargs.get("duration_ms"),
+                    odps_contract_id=kwargs.get("odps_contract_id"),
+                    odcs_contract_id=kwargs.get("odcs_contract_id"),
+                    progress_percentage=kwargs.get("progress_percentage"),
+                    tenant_id=tenant_id_str,
+                    user_id=user_id_str,
+                )
+            elif event_type == "failed":
+                odps_publisher.publish_odps_workflow_failed(
+                    workflow_instance_id=str(instance.id),
+                    workflow_name=instance.workflow_name,
+                    error_message=kwargs.get("error_message", "Unknown error"),
+                    workflow_version=instance.workflow_version,
+                    error_details=kwargs.get("error_details"),
+                    failed_step_index=kwargs.get("failed_step_index"),
+                    failed_step_name=kwargs.get("failed_step_name"),
+                    progress_percentage=kwargs.get("progress_percentage"),
+                    tenant_id=tenant_id_str,
+                    user_id=user_id_str,
+                )
+        except Exception as e:
+            logger.warning(f"Failed to publish ODPS workflow.{event_type} event: {e}")
+
+    def _publish_odps_workflow_step_event_if_applicable(
+        self,
+        instance: WorkflowInstance,
+        step: WorkflowStep,
+        event_type: str,
+        **kwargs
+    ) -> None:
+        """
+        Publish ODPS workflow step event if this is an ODPS workflow (Task 7.1.4).
+
+        Args:
+            instance: Workflow instance
+            step: Workflow step
+            event_type: Event type ("completed", "failed")
+            **kwargs: Additional event data
+        """
+        if not self._is_odps_workflow(instance.workflow_name):
+            return
+
+        odps_publisher = self._get_odps_event_publisher(instance)
+        if not odps_publisher:
+            return
+
+        try:
+            tenant_id_str = str(instance.tenant_id) if instance.tenant_id else None
+            user_id_str = str(instance.created_by_id) if instance.created_by_id else None
+
+            # Extract ODPS version from step output or state
+            odps_version = None
+            if instance.state_data:
+                odps_version = instance.state_data.get("odps_version")
+            if not odps_version and kwargs.get("output_data"):
+                odps_version = kwargs.get("output_data", {}).get("odps_version")
+
+            if event_type == "completed":
+                odps_publisher.publish_odps_workflow_step_completed(
+                    workflow_instance_id=str(instance.id),
+                    step_index=step.step_index,
+                    step_name=step.step_name,
+                    step_type=step.step_type,
+                    output_data=kwargs.get("output_data"),
+                    duration_ms=kwargs.get("duration_ms"),
+                    progress_percentage=kwargs.get("progress_percentage"),
+                    odps_version=odps_version,
+                    tenant_id=tenant_id_str,
+                    user_id=user_id_str,
+                )
+            elif event_type == "failed":
+                odps_publisher.publish_odps_workflow_step_failed(
+                    workflow_instance_id=str(instance.id),
+                    step_index=step.step_index,
+                    step_name=step.step_name,
+                    error_message=kwargs.get("error_message", "Unknown error"),
+                    error_details=kwargs.get("error_details"),
+                    retry_count=kwargs.get("retry_count"),
+                    duration_ms=kwargs.get("duration_ms"),
+                    progress_percentage=kwargs.get("progress_percentage"),
+                    tenant_id=tenant_id_str,
+                    user_id=user_id_str,
+                )
+        except Exception as e:
+            logger.warning(f"Failed to publish ODPS workflow.step.{event_type} event: {e}")
+
+    def _publish_odps_workflow_progress_if_applicable(
+        self,
+        instance: WorkflowInstance,
+        progress_percentage: float
+    ) -> None:
+        """
+        Publish ODPS workflow progress event if this is an ODPS workflow (Task 7.1.4).
+
+        Args:
+            instance: Workflow instance
+            progress_percentage: Current progress percentage
+        """
+        if not self._is_odps_workflow(instance.workflow_name):
+            return
+
+        odps_publisher = self._get_odps_event_publisher(instance)
+        if not odps_publisher:
+            return
+
+        try:
+            tenant_id_str = str(instance.tenant_id) if instance.tenant_id else None
+            user_id_str = str(instance.created_by_id) if instance.created_by_id else None
+
+            # Get total steps from workflow definition
+            dsl = instance.workflow_definition.dsl_json
+            steps = dsl.get("steps", [])
+            total_steps = len(steps)
+
+            odps_publisher.publish_odps_workflow_progress(
+                workflow_instance_id=str(instance.id),
+                workflow_name=instance.workflow_name,
+                progress_percentage=progress_percentage,
+                workflow_version=instance.workflow_version,
+                current_step_index=instance.current_step_index,
+                current_step_name=instance.state_data.get("current_step_name") if instance.state_data else None,
+                total_steps=total_steps,
+                tenant_id=tenant_id_str,
+                user_id=user_id_str,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to publish ODPS workflow.progress event: {e}")
+
+    def _publish_odps_creation_progress_if_applicable(
+        self,
+        instance: WorkflowInstance,
+        step_index: int,
+        step_name: str,
+        total_steps: int,
+        status_message: Optional[str] = None
+    ) -> None:
+        """
+        Publish ODPS creation progress event if this is an ODPS workflow (Task 7.3.2).
+
+        Args:
+            instance: Workflow instance
+            step_index: Current step index (0-based)
+            step_name: Current step name
+            total_steps: Total number of steps
+            status_message: Optional status message
+        """
+        if not self._is_odps_workflow(instance.workflow_name):
+            return
+
+        odps_publisher = self._get_odps_event_publisher(instance)
+        if not odps_publisher:
+            return
+
+        try:
+            tenant_id_str = str(instance.tenant_id) if instance.tenant_id else None
+            user_id_str = str(instance.created_by_id) if instance.created_by_id else None
+
+            # Calculate progress percentage
+            progress_percentage = ((step_index + 1) / total_steps * 100.0) if total_steps > 0 else 0.0
+
+            # Get contract ID from state if available
+            contract_id = None
+            if instance.state_data:
+                contract_id = instance.state_data.get("odps_contract_id") or instance.state_data.get("contract_id")
+
+            odps_publisher.publish_odps_creation_progress(
+                contract_id=contract_id,
+                workflow_instance_id=str(instance.id),
+                progress_percentage=progress_percentage,
+                current_step=step_name,
+                total_steps=total_steps,
+                step_index=step_index,
+                status_message=status_message,
+                tenant_id=tenant_id_str,
+                user_id=user_id_str,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to publish ODPS creation.progress event: {e}")
