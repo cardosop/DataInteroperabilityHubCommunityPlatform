@@ -14,7 +14,7 @@ from django.utils import timezone
 class SearchIndex(models.Model):
     """
     Full-text search index for contracts, assets, datasets, and related metadata.
-    
+
     Uses PostgreSQL tsvector for efficient full-text search with GIN indexes.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -31,6 +31,7 @@ class SearchIndex(models.Model):
             ("CONTRACT", "Contract"),
             ("ASSET", "Asset"),
             ("DATASET", "Dataset"),
+            ("VIRTUAL_DATASET", "Virtual Dataset"),
         ],
         help_text="Type of resource being indexed"
     )
@@ -130,7 +131,7 @@ class SearchIndex(models.Model):
         auto_now_add=True,
         help_text="When this index was created"
     )
-    
+
     class Meta:
         db_table = "search_index"
         ordering = ["-indexed_at"]
@@ -148,7 +149,7 @@ class SearchIndex(models.Model):
                 name="unique_search_index"
             ),
         ]
-    
+
     def __str__(self):
         return f"{self.resource_type} {self.resource_id} - {self.title}"
 
@@ -238,7 +239,7 @@ class SearchAnalytics(models.Model):
         auto_now_add=True,
         help_text="When this search was performed"
     )
-    
+
     class Meta:
         db_table = "search_analytics"
         ordering = ["-created_at"]
@@ -249,7 +250,7 @@ class SearchAnalytics(models.Model):
             models.Index(fields=["tenant", "user"]),
             models.Index(fields=["created_at"]),
         ]
-    
+
     def __str__(self):
         return f"Search: {self.query[:50]}... ({self.result_count} results)"
 

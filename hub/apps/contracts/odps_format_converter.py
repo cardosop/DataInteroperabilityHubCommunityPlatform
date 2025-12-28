@@ -13,7 +13,6 @@ when converting to JSON, as JSON does not support comments.
 """
 import json
 import structlog
-from typing import Dict, Any
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 

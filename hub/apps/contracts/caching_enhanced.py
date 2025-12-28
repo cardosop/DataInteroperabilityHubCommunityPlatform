@@ -8,14 +8,11 @@ Provides enhanced caching capabilities for contracts:
 """
 import time
 from typing import Any, Dict, List, Optional, Set
-from collections import defaultdict
 
 import structlog
 import redis
 from django.conf import settings
 from django.core.cache import cache as django_cache
-from django.db.models import Count, Q
-from django.utils import timezone
 
 from hub.apps.contracts.caching import (
     cache_contract,
@@ -25,9 +22,7 @@ from hub.apps.contracts.caching import (
 )
 from hub.apps.contracts.models import Contract
 from hub.apps.core.caching.cache import (
-    generate_cache_key,
     invalidate_cache_pattern,
-    warm_cache,
 )
 from hub.apps.observability.otel_metrics import (
     cache_hits_total,

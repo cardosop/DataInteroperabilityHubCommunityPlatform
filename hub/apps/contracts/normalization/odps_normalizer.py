@@ -127,25 +127,25 @@ class ODPSNormalizer:
             hub_contract = self._initialize_hub_contract(contract_data, spec_version)
 
             # Normalize contract sections
-            # Task 1.4.2: ODPS → HubContract info mapping
+            # ODPS → HubContract info mapping
             self._normalize_info(contract_data, hub_contract, warnings)
-            # Task 1.4.3: ODPS → HubContract quality mapping
+            # ODPS → HubContract quality mapping
             self._normalize_quality(contract_data, hub_contract, warnings)
-            # Task 1.4.4: ODPS → HubContract lifecycle mapping
+            # ODPS → HubContract lifecycle mapping
             self._normalize_lifecycle(contract_data, hub_contract, warnings)
-            # Task 1.4.5: ODPS → HubContract marketplace mapping
+            # ODPS → HubContract marketplace mapping
             self._normalize_marketplace(contract_data, hub_contract, warnings)
             # Minimal schema normalization (populate from product.dataSchema if available)
             self._normalize_schema_minimal(contract_data, hub_contract, warnings)
-            # Task 1.4.6: ODPS contract extraction
+            # ODPS contract extraction
             self._extract_contract(contract_data, hub_contract, warnings)
-            # Task 1.4.7: ODPS → HubContract product strategy mapping (ODPS 4.1+)
+            # ODPS → HubContract product strategy mapping (ODPS 4.1+)
             self._normalize_product_strategy(contract_data, hub_contract, warnings, spec_version)
 
             # Determine normalization status
             status = self._determine_status(hub_contract, errors, warnings)
 
-            # Track metrics (Task 6.2.1)
+            # Track ODPS normalization metrics for observability
             try:
                 from hub.apps.observability.otel_metrics import (
                     odps_normalization_total,
@@ -197,7 +197,7 @@ class ODPSNormalizer:
                 message=str(e),
                 context=e.context
             )
-            # Track failure metrics (Task 6.2.1)
+            # Track ODPS normalization failure metrics
             try:
                 from hub.apps.observability.otel_metrics import (
                     odps_normalization_total,
@@ -1730,7 +1730,12 @@ class ODPSNormalizer:
                 )
 
             # Get productStrategy from contract_data
-            product_strategy = contract_data.get("productStrategy")
+            # In ODPS, productStrategy is under product.productStrategy
+            product = contract_data.get("product", {})
+            if isinstance(product, dict):
+                product_strategy = product.get("productStrategy")
+            else:
+                product_strategy = None
 
             if product_strategy is None:
                 # Product strategy is optional, no warning needed

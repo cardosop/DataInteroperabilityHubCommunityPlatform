@@ -17,6 +17,7 @@ from ..odps_errors import (
     ODPSParameterError,
     handle_api_error,
     validate_odps_version,
+    validate_odcs_version,
     validate_contract_id,
     validate_file_format,
     validate_mutually_exclusive_options,
@@ -475,9 +476,9 @@ def create_odps(
 @click.argument('contract_id')
 @click.option('--format', 'format_type', type=click.Choice(['odps', 'odcs', 'hubcontract']), default='hubcontract', help='Export format (default: hubcontract)')
 @click.option('--output-format', 'output_format', type=click.Choice(['json', 'yaml']), default='json', help='Output format: json or yaml (default: json)')
-@click.option('--version', 'odps_version', type=str, help='ODPS version for export (e.g., 4.1). Only used when --format=odps')
+@click.option('--version', 'version_param', type=str, help='ODPS or ODCS version for export (e.g., 4.1 for ODPS, 3.0.2 for ODCS). Required when --format=odps or --format=odcs')
 @click.option('--cli-format', 'output_format_cli', type=click.Choice(['json', 'table']), default='table', help='CLI output format (default: table)')
-def export_contract(contract_id: str, format_type: str, output_format: str, odps_version: Optional[str], output_format_cli: str):
+def export_contract(contract_id: str, format_type: str, output_format: str, version_param: Optional[str], output_format_cli: str):
     """
     Export a contract in various formats.
 
@@ -491,40 +492,103 @@ def export_contract(contract_id: str, format_type: str, output_format: str, odps
     try:
         # Validate parameters
         validate_contract_id(contract_id)
-        if odps_version and format_type == 'odps':
-            validate_odps_version(odps_version)
+
+        # Validate version based on format type
+        if format_type == 'odps' and version_param:
+            validate_odps_version(version_param)
+        elif format_type == 'odcs' and version_param:
+            validate_odcs_version(version_param)
 
         # Build query parameters
         params = {
             'format': format_type,
             'output_format': output_format
         }
-        if odps_version and format_type == 'odps':
-            params['version'] = odps_version
+        if version_param and format_type in ('odps', 'odcs'):
+            params['version'] = version_param
 
         # Call export endpoint
-        # API endpoint: /api/v1/contracts/contracts/{id}/export/
+        # API endpoint: /api/v1/contracts/{id}/export/
         # Use request method to get raw response
-        response = api_client.request('GET', f'contracts/contracts/{contract_id}/export/', params=params)
+        response = api_client.request('GET', f'contracts/{contract_id}/export/', params=params)
 
-        # Handle response
+        # Handle response with format-specific error handling
         if response.status_code >= 400:
+            # Try to parse error response
             error_data = {}
             try:
                 error_data = response.json()
             except:
                 error_data = {'error': {'message': response.text or 'Unknown error'}}
 
+            # Use handle_api_error for better error parsing and context
             error_msg = error_data.get('error', {}).get('message', 'Unknown error')
             error_code = error_data.get('error', {}).get('code', 'UNKNOWN_ERROR')
-            raise click.ClickException(f"API error ({error_code}): {error_msg}")
+
+            # Add format-specific context to error
+            error_context = {
+                'contract_id': contract_id,
+                'format': format_type,
+                'output_format': output_format
+            }
+            if version_param:
+                error_context['version'] = version_param
+                if format_type == 'odcs':
+                    error_context['odcs_version'] = version_param
+                elif format_type == 'odps':
+                    error_context['odps_version'] = version_param
+
+            # Use handle_api_error for structured error handling
+            try:
+                odps_error = handle_api_error(
+                    response.text or json.dumps(error_data),
+                    response.status_code,
+                    f'contracts/{contract_id}/export/'
+                )
+                # Enhance error context with format-specific information
+                odps_error.context.update(error_context)
+                raise odps_error
+            except ODPSCLIError:
+                raise
+            except Exception:
+                # Fallback to ClickException if handle_api_error doesn't return ODPS error
+                raise click.ClickException(f"API error ({error_code}): {error_msg}")
 
         # Get content type to determine if it's JSON or YAML
-        content_type = response.headers.get('Content-Type', '')
+        content_type = response.headers.get('Content-Type', '').lower()
         content = response.text
 
+        # Validate response content for ODCS format
+        if format_type == 'odcs' and content:
+            # Basic validation: check if content looks like ODCS
+            # For JSON format, should have apiVersion and kind fields
+            # For YAML format, should have apiVersion and kind fields
+            if output_format == 'json':
+                try:
+                    content_dict = json.loads(content)
+                    if 'apiVersion' not in content_dict or 'kind' not in content_dict:
+                        # Not a critical error, but log a warning
+                        click.echo("Warning: Exported content may not be valid ODCS format", err=True)
+                except json.JSONDecodeError:
+                    # Invalid JSON - this is an error
+                    raise ODPSExportError(
+                        message="Invalid JSON response from ODCS export",
+                        error_code="INVALID_ODCS_RESPONSE",
+                        context={
+                            'contract_id': contract_id,
+                            'format': format_type,
+                            'output_format': output_format,
+                            'version': version_param
+                        },
+                        suggestion="The API returned invalid JSON. Check API logs or contact support."
+                    )
+            elif output_format == 'yaml':
+                # For YAML, check if it contains ODCS indicators
+                if 'apiVersion' not in content and 'kind' not in content:
+                    click.echo("Warning: Exported content may not be valid ODCS format", err=True)
+
         if output_format_cli == 'json':
-            # Return raw JSON response
+            # Return raw response content
             click.echo(content)
         else:
             # Table format - show export info
@@ -532,8 +596,11 @@ def export_contract(contract_id: str, format_type: str, output_format: str, odps
             click.echo(f"Contract ID: {contract_id}")
             click.echo(f"Format: {format_type}")
             click.echo(f"Output Format: {output_format}")
-            if odps_version:
-                click.echo(f"ODPS Version: {odps_version}")
+            if version_param:
+                if format_type == 'odps':
+                    click.echo(f"ODPS Version: {version_param}")
+                elif format_type == 'odcs':
+                    click.echo(f"ODCS Version: {version_param}")
             click.echo(f"\nContent ({len(content)} bytes):")
             click.echo("-" * 80)
             # Show first 500 characters of content
@@ -548,10 +615,22 @@ def export_contract(contract_id: str, format_type: str, output_format: str, odps
     except click.ClickException:
         raise
     except Exception as e:
+        # Enhanced error context for ODCS exports
+        error_context = {
+            'contract_id': contract_id,
+            'format': format_type,
+            'output_format': output_format
+        }
+        if version_param:
+            error_context['version'] = version_param
+            if format_type == 'odcs':
+                error_context['odcs_version'] = version_param
+
+        error_code = "ODCS_EXPORT_FAILED" if format_type == 'odcs' else "ODPS_EXPORT_FAILED"
         raise ODPSExportError(
-            message=f"Failed to export contract: {str(e)}",
-            error_code="ODPS_EXPORT_FAILED",
-            context={'contract_id': contract_id, 'format': format_type},
+            message=f"Failed to export contract as {format_type.upper()}: {str(e)}",
+            error_code=error_code,
+            context=error_context,
             original_error=e
         )
 
@@ -953,6 +1032,349 @@ def list_links(contract_id: str, output_format: str):
             message=f"Failed to list contract links: {str(e)}",
             error_code="ODPS_LIST_LINKS_FAILED",
             context={'contract_id': contract_id},
+            original_error=e
+        )
+
+
+@contracts.command('get-payment-gateways')
+@click.argument('contract_id')
+@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
+def get_payment_gateways(contract_id: str, output_format: str):
+    """
+    Get payment gateways from an ODPS contract.
+
+    Returns all payment gateways configured in the contract's marketplace section.
+    The contract must be an ODPS contract (original_spec_type must be 'ODPS').
+    """
+    try:
+        # Validate contract ID
+        validate_contract_id(contract_id)
+
+        # API endpoint: GET /api/v1/contracts/{contract_id}/payment-gateways/
+        # Note: Router uses basename="contract", so URL is contracts/{id}/payment-gateways/ (not contracts/contracts/{id}/payment-gateways/)
+        try:
+            result = api_client.get(f'contracts/{contract_id}/payment-gateways/')
+        except Exception as e:
+            # Handle API errors - api_client.get() may raise ClickException or other exceptions
+            # Re-raise ClickException as-is, wrap others
+            if isinstance(e, click.ClickException):
+                raise
+            raise ODPSCLIError(
+                message=f"Failed to get payment gateways: {str(e)}",
+                error_code="GET_PAYMENT_GATEWAYS_FAILED",
+                context={'contract_id': contract_id},
+                original_error=e
+            )
+
+        payment_gateways = result.get('payment_gateways', {})
+
+        if output_format == 'json':
+            click.echo(json.dumps(payment_gateways, indent=2))
+        else:
+            # Table format
+            if not payment_gateways:
+                click.echo(f"No payment gateways found for contract {contract_id}.")
+                click.echo("Note: Payment gateways are only available for ODPS contracts.")
+                return
+
+            click.echo(f"Payment Gateways for Contract: {contract_id}")
+            click.echo("")
+            click.echo(f"{'Gateway ID':<30} {'Type':<20} {'Enabled':<10} {'Webhook URL':<50}")
+            click.echo("-" * 110)
+
+            for gateway_id, gateway_config in payment_gateways.items():
+                gateway_type = gateway_config.get('type', 'N/A')
+                enabled = gateway_config.get('enabled', False)
+                enabled_str = 'Yes' if enabled else 'No'
+                webhook_url = gateway_config.get('webhook_url') or 'N/A'
+                # Truncate webhook URL if too long
+                if webhook_url and webhook_url != 'N/A' and len(webhook_url) > 48:
+                    webhook_url = webhook_url[:45] + '...'
+
+                click.echo(
+                    f"{gateway_id:<30} "
+                    f"{gateway_type:<20} "
+                    f"{enabled_str:<10} "
+                    f"{webhook_url:<50}"
+                )
+
+            click.echo("")
+            click.echo(f"Total: {len(payment_gateways)} payment gateway(s)")
+
+    except (ODPSCLIError, ODPSParameterError):
+        raise
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise ODPSCLIError(
+            message=f"Failed to get payment gateways: {str(e)}",
+            error_code="GET_PAYMENT_GATEWAYS_FAILED",
+            context={'contract_id': contract_id},
+            original_error=e
+        )
+
+
+@contracts.command('get-product-strategy')
+@click.argument('contract_id')
+@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
+def get_product_strategy(contract_id: str, output_format: str):
+    """
+    Get product strategy from an ODPS contract (ODPS 4.1+).
+
+    Returns the product strategy configured in the contract.
+    The contract must be an ODPS contract with version 4.1 or higher.
+    """
+    try:
+        # Validate contract ID
+        validate_contract_id(contract_id)
+
+        # API endpoint: GET /api/v1/contracts/{contract_id}/product-strategy/
+        # Note: Router uses basename="contract", so URL is contracts/{id}/product-strategy/ (not contracts/contracts/{id}/product-strategy/)
+        try:
+            result = api_client.get(f'contracts/{contract_id}/product-strategy/')
+        except Exception as e:
+            # Handle API errors - api_client.get() may raise ClickException or other exceptions
+            # Re-raise ClickException as-is, wrap others
+            if isinstance(e, click.ClickException):
+                raise
+            raise ODPSCLIError(
+                message=f"Failed to get product strategy: {str(e)}",
+                error_code="GET_PRODUCT_STRATEGY_FAILED",
+                context={'contract_id': contract_id},
+                original_error=e
+            )
+
+        product_strategy = result.get('product_strategy')
+
+        if output_format == 'json':
+            click.echo(json.dumps(product_strategy, indent=2) if product_strategy else 'null')
+        else:
+            # Table format
+            if not product_strategy:
+                click.echo(f"No product strategy found for contract {contract_id}.")
+                click.echo("Note: Product strategy is only available for ODPS 4.1+ contracts.")
+                return
+
+            click.echo(f"Product Strategy for Contract: {contract_id}")
+            click.echo("")
+
+            # Display objectives
+            objectives = product_strategy.get('objectives', [])
+            if objectives:
+                click.echo("Objectives:")
+                if isinstance(objectives, list):
+                    for i, objective in enumerate(objectives, 1):
+                        if isinstance(objective, dict):
+                            obj_name = objective.get('name', 'N/A')
+                            obj_desc = objective.get('description', '')
+                            click.echo(f"  {i}. {obj_name}")
+                            if obj_desc:
+                                click.echo(f"     {obj_desc}")
+                        else:
+                            click.echo(f"  {i}. {objective}")
+                else:
+                    click.echo(f"  {objectives}")
+                click.echo("")
+
+            # Display strategic alignment
+            strategic_alignment = product_strategy.get('strategicAlignment', [])
+            if strategic_alignment:
+                click.echo("Strategic Alignment:")
+                if isinstance(strategic_alignment, list):
+                    for i, alignment in enumerate(strategic_alignment, 1):
+                        if isinstance(alignment, dict):
+                            align_name = alignment.get('name', 'N/A')
+                            align_desc = alignment.get('description', '')
+                            click.echo(f"  {i}. {align_name}")
+                            if align_desc:
+                                click.echo(f"     {align_desc}")
+                        else:
+                            click.echo(f"  {i}. {alignment}")
+                else:
+                    click.echo(f"  {strategic_alignment}")
+                click.echo("")
+
+            # Display product KPIs
+            product_kpis = product_strategy.get('productKPIs', [])
+            if product_kpis:
+                click.echo("Product KPIs:")
+                if isinstance(product_kpis, list):
+                    for i, kpi in enumerate(product_kpis, 1):
+                        if isinstance(kpi, dict):
+                            kpi_name = kpi.get('name', 'N/A')
+                            kpi_value = kpi.get('targetValue', 'N/A')
+                            kpi_unit = kpi.get('unit', '')
+                            kpi_desc = kpi.get('description', '')
+                            click.echo(f"  {i}. {kpi_name}: {kpi_value} {kpi_unit}".strip())
+                            if kpi_desc:
+                                click.echo(f"     {kpi_desc}")
+                        else:
+                            click.echo(f"  {i}. {kpi}")
+                else:
+                    click.echo(f"  {product_kpis}")
+                click.echo("")
+
+            # Display target audience
+            target_audience = product_strategy.get('targetAudience', {})
+            if target_audience:
+                click.echo("Target Audience:")
+                if isinstance(target_audience, dict):
+                    for key, value in target_audience.items():
+                        click.echo(f"  {key}: {value}")
+                else:
+                    click.echo(f"  {target_audience}")
+                click.echo("")
+
+            # Display value proposition
+            value_proposition = product_strategy.get('valueProposition', {})
+            if value_proposition:
+                click.echo("Value Proposition:")
+                if isinstance(value_proposition, dict):
+                    for key, value in value_proposition.items():
+                        click.echo(f"  {key}: {value}")
+                else:
+                    click.echo(f"  {value_proposition}")
+                click.echo("")
+
+            # Summary
+            sections = []
+            if objectives:
+                sections.append(f"{len(objectives) if isinstance(objectives, list) else 1} objective(s)")
+            if strategic_alignment:
+                sections.append(f"{len(strategic_alignment) if isinstance(strategic_alignment, list) else 1} alignment(s)")
+            if product_kpis:
+                sections.append(f"{len(product_kpis) if isinstance(product_kpis, list) else 1} KPI(s)")
+            if target_audience:
+                sections.append("target audience")
+            if value_proposition:
+                sections.append("value proposition")
+
+            if sections:
+                click.echo(f"Summary: {', '.join(sections)}")
+
+    except (ODPSCLIError, ODPSParameterError):
+        raise
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise ODPSCLIError(
+            message=f"Failed to get product strategy: {str(e)}",
+            error_code="GET_PRODUCT_STRATEGY_FAILED",
+            context={'contract_id': contract_id},
+            original_error=e
+        )
+
+
+@contracts.command('get-product-details')
+@click.argument('contract_id')
+@click.option('--lang', default='en', help='Language code (ISO 639-1, e.g., "en", "fi", "es"). Default: "en"')
+@click.option('--format', 'output_format', type=click.Choice(['json', 'table']), default='table', help='Output format')
+def get_product_details(contract_id: str, lang: str, output_format: str):
+    """
+    Get product details from an ODPS contract for a specific language.
+
+    Returns the product details configured in the contract for the specified language.
+    The contract must be an ODPS contract.
+    """
+    try:
+        # Validate contract ID
+        validate_contract_id(contract_id)
+
+        # Validate language code (ISO 639-1: 2 characters)
+        if not isinstance(lang, str) or len(lang) != 2:
+            raise ODPSParameterError(
+                message=f"Invalid language code: {lang}. Must be a valid ISO 639-1 code (2 characters)",
+                error_code="INVALID_LANGUAGE_CODE",
+                context={'lang': lang}
+            )
+        lang = lang.lower()
+
+        # API endpoint: GET /api/v1/contracts/{contract_id}/product-details/?lang={lang}
+        # Note: Router uses basename="contract" with empty prefix, so URL is contracts/{id}/product-details/
+        # The base URL already includes /api/v1, and contracts/ is from api/urls.py, so we just need {id}/product-details/
+        try:
+            result = api_client.get(f'contracts/{contract_id}/product-details/', params={'lang': lang})
+        except Exception as e:
+            # Handle API errors - api_client.get() may raise ClickException or other exceptions
+            # Re-raise ClickException as-is, wrap others
+            if isinstance(e, click.ClickException):
+                raise
+            raise ODPSCLIError(
+                message=f"Failed to get product details: {str(e)}",
+                error_code="GET_PRODUCT_DETAILS_FAILED",
+                context={'contract_id': contract_id, 'lang': lang},
+                original_error=e
+            )
+
+        product_details = result.get('product_details')
+
+        if output_format == 'json':
+            click.echo(json.dumps(product_details, indent=2) if product_details else 'null')
+        else:
+            # Table format
+            if not product_details:
+                click.echo(f"No product details found for contract {contract_id} in language '{lang}'.")
+                click.echo("Note: Product details may not be available for all languages.")
+                return
+
+            click.echo(f"Product Details for Contract: {contract_id} (Language: {lang})")
+            click.echo("")
+
+            # Display product ID
+            product_id = product_details.get('productID') or product_details.get('product_id')
+            if product_id:
+                click.echo(f"Product ID: {product_id}")
+
+            # Display name
+            name = product_details.get('name')
+            if name:
+                click.echo(f"Name: {name}")
+
+            # Display description
+            description = product_details.get('description')
+            if description:
+                click.echo(f"Description: {description}")
+
+            # Display product version
+            product_version = product_details.get('productVersion') or product_details.get('product_version')
+            if product_version:
+                click.echo(f"Version: {product_version}")
+
+            # Display category
+            category = product_details.get('category')
+            if category:
+                click.echo(f"Category: {category}")
+
+            # Display tags
+            tags = product_details.get('tags')
+            if tags:
+                if isinstance(tags, list):
+                    if tags:
+                        click.echo(f"Tags: {', '.join(str(tag) for tag in tags)}")
+                else:
+                    click.echo(f"Tags: {tags}")
+
+            # Display any additional fields
+            known_fields = {'productID', 'product_id', 'name', 'description', 'productVersion', 'product_version', 'category', 'tags'}
+            additional_fields = {k: v for k, v in product_details.items() if k not in known_fields}
+            if additional_fields:
+                click.echo("")
+                click.echo("Additional Fields:")
+                for key, value in additional_fields.items():
+                    if isinstance(value, (dict, list)):
+                        click.echo(f"  {key}: {json.dumps(value, indent=2)}")
+                    else:
+                        click.echo(f"  {key}: {value}")
+
+    except (ODPSParameterError, ODPSCLIError) as e:
+        raise
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise ODPSCLIError(
+            message=f"Unexpected error getting product details: {str(e)}",
+            error_code="GET_PRODUCT_DETAILS_UNEXPECTED_ERROR",
+            context={'contract_id': contract_id, 'lang': lang},
             original_error=e
         )
 

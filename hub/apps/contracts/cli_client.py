@@ -8,7 +8,6 @@ import hashlib
 from typing import Dict, Any, Optional, List, Tuple
 from django.conf import settings
 from django.core.cache import cache
-from django.utils import timezone
 import structlog
 
 from hub.apps.core.resilience.circuit_breaker import (

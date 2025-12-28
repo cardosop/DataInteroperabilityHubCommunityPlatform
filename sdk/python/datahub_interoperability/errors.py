@@ -369,6 +369,152 @@ class ODPSLinkingError(ODPSError):
         )
 
 
+# ODCS-specific error classes
+class ODCSError(DataHubError):
+    """
+    Base exception class for all ODCS-related errors in the SDK.
+
+    Maps to backend ODCSError hierarchy with structured error information.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODCS_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        recoverable: bool = False,
+        recovery_strategy: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize ODCS error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            recoverable: Whether the error can be recovered from
+            recovery_strategy: Suggested recovery strategy
+            context: Additional context information
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+        self.recoverable = recoverable
+        self.recovery_strategy = recovery_strategy
+        self.context = context or {}
+        # Extract context from details if available
+        if details and isinstance(details, dict):
+            if "context" in details:
+                self.context.update(details["context"])
+            if "recoverable" in details:
+                self.recoverable = details["recoverable"]
+            if "recovery_strategy" in details:
+                self.recovery_strategy = details["recovery_strategy"]
+
+
+class ODCSValidationError(ODCSError):
+    """
+    Exception raised when ODCS document validation fails.
+
+    Used for schema validation, required field validation, and data type validation.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODCS_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        field_path: Optional[str] = None,
+        expected: Optional[Any] = None,
+        actual: Optional[Any] = None,
+    ):
+        """
+        Initialize ODCS validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=False,
+            recovery_strategy="fail",
+            context=context,
+        )
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class ODCSExportError(ODCSError):
+    """
+    Exception raised when ODCS export/generation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODCS_EXPORT_ERROR",
+        http_status: int = 500,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        field_path: Optional[str] = None,
+    ):
+        """
+        Initialize ODCS export error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that caused the error
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=True,  # Export errors are typically recoverable
+            recovery_strategy="retry",
+            context=context,
+        )
+        self.field_path = field_path
+
+
 def parse_error(response_data: Any) -> DataHubError:
     """
     Parse API error response and return appropriate error class
@@ -453,13 +599,122 @@ def parse_error(response_data: Any) -> DataHubError:
         return ConflictError(message, request_id, details)
     elif http_status == 429:
         retry_after = None
+        # Check details dict first
         if isinstance(details, dict):
             retry_after = details.get("retry_after")
+        # Also check top-level error dict (DRF format)
+        if retry_after is None and isinstance(error, dict):
+            retry_after = error.get("retry_after")
+        # Also check top-level response_data (some API formats)
+        if retry_after is None and isinstance(response_data, dict):
+            retry_after = response_data.get("retry_after")
+
+        # Convert to int if it's a string or ErrorDetail-like object
+        if retry_after is not None:
+            try:
+                if isinstance(retry_after, str):
+                    retry_after = int(retry_after.strip())
+                elif hasattr(retry_after, '__str__'):
+                    # Handle ErrorDetail objects
+                    retry_after = int(str(retry_after).strip())
+                else:
+                    retry_after = int(retry_after)
+            except (ValueError, TypeError):
+                retry_after = None
+
         return RateLimitError(message, request_id, retry_after)
     elif http_status >= 500:
         return ServerError(message, code, http_status, request_id)
     else:
         return DataHubError(message, code, http_status, request_id, timestamp, details)
+
+
+def parse_odcs_error(response_data: Any) -> ODCSError:
+    """
+    Parse ODCS-specific error response and return appropriate ODCS error class.
+
+    Maps backend ODCS error codes to SDK ODCS error classes.
+
+    Args:
+        response_data: Error response from API (dict, str, or other)
+
+    Returns:
+        Appropriate ODCSError subclass
+    """
+    # First parse as standard error
+    base_error = parse_error(response_data)
+
+    # If not a dict or doesn't have error structure, return base error wrapped as ODCS error
+    if not isinstance(response_data, dict) or "error" not in response_data:
+        return ODCSError(
+            base_error.message,
+            base_error.code,
+            base_error.http_status,
+            base_error.request_id,
+            base_error.details,
+        )
+
+    error = response_data["error"]
+    if not isinstance(error, dict):
+        return ODCSError(
+            base_error.message,
+            base_error.code,
+            base_error.http_status,
+            base_error.request_id,
+            base_error.details,
+        )
+
+    code = error.get("code", base_error.code)
+    http_status = error.get("http_status", base_error.http_status)
+    message = error.get("message", base_error.message)
+    request_id = error.get("request_id", base_error.request_id)
+    details = error.get("details", base_error.details or {})
+    context = error.get("context", {})
+
+    # Map ODCS error codes to specific error classes
+    code_upper = code.upper()
+
+    # ODCS Validation Errors
+    if "VALIDATION" in code_upper or "SCHEMA" in code_upper or "REQUIRED_FIELD" in code_upper:
+        field_path = context.get("field_path") if isinstance(context, dict) else None
+        expected = context.get("expected") if isinstance(context, dict) else None
+        actual = context.get("actual") if isinstance(context, dict) else None
+        return ODCSValidationError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            field_path=field_path,
+            expected=expected,
+            actual=actual,
+        )
+
+    # ODCS Export Errors
+    if "EXPORT" in code_upper or "SERIALIZATION" in code_upper or "FORMAT" in code_upper:
+        field_path = context.get("field_path") if isinstance(context, dict) else None
+        return ODCSExportError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            field_path=field_path,
+        )
+
+    # Default to base ODCSError
+    recoverable = error.get("recoverable", False) if isinstance(error, dict) else False
+    recovery_strategy = error.get("recovery_strategy") if isinstance(error, dict) else None
+    return ODCSError(
+        message,
+        code,
+        http_status,
+        request_id,
+        details,
+        recoverable=recoverable,
+        recovery_strategy=recovery_strategy,
+        context=context if isinstance(context, dict) else {},
+    )
 
 
 def parse_odps_error(response_data: Any) -> ODPSError:

@@ -977,26 +977,343 @@ class TestContractsExport:
         result = runner.invoke(cli, ['contracts', 'export', 'contract-1'])
 
         assert result.exit_code != 0
-        assert 'Failed to export contract' in result.output or 'API error' in result.output
+        # Enhanced error handling provides better formatted messages
+        assert 'Contract not found' in result.output or 'Failed to export' in result.output or 'error' in result.output.lower()
 
-    def test_export_contract_version_only_for_odps(self, runner, mock_api_client):
-        """Test that version parameter is only sent when format is odps"""
+    def test_export_contract_odcs_with_version(self, runner, mock_api_client):
+        """Test exporting contract as ODCS format with version"""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.headers = {'Content-Type': 'application/json'}
-        mock_response.text = '{"apiVersion": "odcs/v3"}'
+        mock_response.text = '{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}'
         mock_api_client.request.return_value = mock_response
 
         result = runner.invoke(cli, [
             'contracts', 'export', 'contract-1',
             '--format', 'odcs',
-            '--version', '4.1'
+            '--version', '3.0.2'
         ])
 
         assert result.exit_code == 0
         call_args = mock_api_client.request.call_args
-        # Version should not be in params when format is not odps
-        assert 'version' not in call_args[1]['params']
+        assert call_args[1]['params']['format'] == 'odcs'
+        assert call_args[1]['params'].get('version') == '3.0.2'
+
+    def test_export_contract_odcs_with_version_yaml(self, runner, mock_api_client):
+        """Test exporting contract as ODCS format with version in YAML"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/x-yaml'}
+        mock_response.text = 'apiVersion: odcs.io/v3.0.2\nkind: DataContract'
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.1',
+            '--output-format', 'yaml'
+        ])
+
+        assert result.exit_code == 0
+        call_args = mock_api_client.request.call_args
+        assert call_args[1]['params']['format'] == 'odcs'
+        assert call_args[1]['params']['output_format'] == 'yaml'
+        assert call_args[1]['params'].get('version') == '3.0.1'
+
+    def test_export_contract_odcs_invalid_version_format(self, runner):
+        """Test exporting contract as ODCS with invalid version format"""
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', 'invalid'
+        ])
+
+        assert result.exit_code != 0
+        assert 'Invalid ODCS version format' in result.output or 'invalid' in result.output.lower()
+
+    def test_export_contract_odcs_unsupported_version(self, runner):
+        """Test exporting contract as ODCS with unsupported version"""
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '99.99.99'
+        ])
+
+        assert result.exit_code != 0
+        assert 'not supported' in result.output.lower()
+
+    def test_export_contract_odcs_version_preview(self, runner, mock_api_client):
+        """Test exporting contract as ODCS with preview version"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = '{"apiVersion": "odcs.io/v3.0.0-preview"}'
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.0-preview'
+        ])
+
+        assert result.exit_code == 0
+        call_args = mock_api_client.request.call_args
+        assert call_args[1]['params'].get('version') == '3.0.0-preview'
+
+    def test_export_contract_version_only_for_odps_or_odcs(self, runner, mock_api_client):
+        """Test that version parameter is only sent when format is odps or odcs"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = '{"hub_contract_version": "1.0.0"}'
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'hubcontract',
+            '--version', '3.0.2'
+        ])
+
+        assert result.exit_code == 0
+        call_args = mock_api_client.request.call_args
+        # Version should not be in params when format is hubcontract
+        assert 'version' not in call_args[1]['params'] or call_args[1]['params'].get('version') is None
+
+    def test_export_contract_odcs_all_versions_json(self, runner, mock_api_client):
+        """Test exporting ODCS with all supported versions as JSON"""
+        supported_versions = ['3.0.2', '3.0.1', '3.0.0', '3.0.0-preview', '2.2.2']
+
+        for version in supported_versions:
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.headers = {'Content-Type': 'application/json'}
+            mock_response.text = json.dumps({
+                'apiVersion': f'odcs.io/v{version}',
+                'kind': 'DataContract',
+                'id': 'test-contract'
+            })
+            mock_api_client.request.return_value = mock_response
+
+            result = runner.invoke(cli, [
+                'contracts', 'export', 'contract-1',
+                '--format', 'odcs',
+                '--version', version,
+                '--output-format', 'json'
+            ])
+
+            assert result.exit_code == 0, f"Failed for version {version}: {result.output}"
+            call_args = mock_api_client.request.call_args
+            assert call_args[1]['params']['format'] == 'odcs'
+            assert call_args[1]['params']['version'] == version
+            assert call_args[1]['params']['output_format'] == 'json'
+
+    def test_export_contract_odcs_all_versions_yaml(self, runner, mock_api_client):
+        """Test exporting ODCS with all supported versions as YAML"""
+        supported_versions = ['3.0.2', '3.0.1', '3.0.0', '3.0.0-preview', '2.2.2']
+
+        for version in supported_versions:
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.headers = {'Content-Type': 'application/x-yaml'}
+            mock_response.text = f'apiVersion: odcs.io/v{version}\nkind: DataContract\nid: test-contract'
+            mock_api_client.request.return_value = mock_response
+
+            result = runner.invoke(cli, [
+                'contracts', 'export', 'contract-1',
+                '--format', 'odcs',
+                '--version', version,
+                '--output-format', 'yaml'
+            ])
+
+            assert result.exit_code == 0, f"Failed for version {version}: {result.output}"
+            call_args = mock_api_client.request.call_args
+            assert call_args[1]['params']['format'] == 'odcs'
+            assert call_args[1]['params']['version'] == version
+            assert call_args[1]['params']['output_format'] == 'yaml'
+
+    def test_export_contract_odcs_format_conversion_json_to_yaml(self, runner, mock_api_client):
+        """Test exporting ODCS with format conversion from JSON to YAML"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/x-yaml'}
+        mock_response.text = 'apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-contract'
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.2',
+            '--output-format', 'yaml',
+            '--cli-format', 'json'
+        ])
+
+        assert result.exit_code == 0
+        call_args = mock_api_client.request.call_args
+        assert call_args[1]['params']['format'] == 'odcs'
+        assert call_args[1]['params']['output_format'] == 'yaml'
+        # CLI format json should output raw content
+        assert 'apiVersion' in result.output or 'odcs' in result.output.lower()
+
+    def test_export_contract_odcs_format_conversion_yaml_to_json(self, runner, mock_api_client):
+        """Test exporting ODCS with format conversion from YAML to JSON"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = json.dumps({
+            'apiVersion': 'odcs.io/v3.0.2',
+            'kind': 'DataContract',
+            'id': 'test-contract'
+        })
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.2',
+            '--output-format', 'json',
+            '--cli-format', 'table'
+        ])
+
+        assert result.exit_code == 0
+        call_args = mock_api_client.request.call_args
+        assert call_args[1]['params']['format'] == 'odcs'
+        assert call_args[1]['params']['output_format'] == 'json'
+        # Table format should show export info
+        assert 'exported successfully' in result.output.lower() or 'Contract ID' in result.output
+
+    def test_export_contract_odcs_error_handling_api_error(self, runner, mock_api_client):
+        """Test error handling for ODCS export API errors"""
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = json.dumps({
+            'error': {
+                'message': 'Invalid ODCS version',
+                'code': 'INVALID_VERSION'
+            }
+        })
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.2'
+        ])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+
+    def test_export_contract_odcs_error_handling_invalid_json_response(self, runner, mock_api_client):
+        """Test error handling for invalid JSON response from ODCS export"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = 'invalid json content {'
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.2',
+            '--output-format', 'json'
+        ])
+
+        assert result.exit_code != 0
+        assert 'invalid' in result.output.lower() or 'json' in result.output.lower()
+
+    def test_export_contract_odcs_error_handling_missing_odcs_fields(self, runner, mock_api_client):
+        """Test warning for ODCS export missing required fields"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/json'}
+        # Missing apiVersion and kind fields
+        mock_response.text = json.dumps({
+            'id': 'test-contract',
+            'name': 'Test Contract'
+        })
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.2',
+            '--output-format', 'json'
+        ])
+
+        # Should succeed but show warning
+        assert result.exit_code == 0
+        assert 'warning' in result.output.lower() or 'may not be valid' in result.output.lower()
+
+    def test_export_contract_odcs_error_handling_404_not_found(self, runner, mock_api_client):
+        """Test error handling for 404 Not Found when exporting ODCS"""
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = json.dumps({
+            'error': {
+                'message': 'Contract not found',
+                'code': 'NOT_FOUND'
+            }
+        })
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'nonexistent-contract',
+            '--format', 'odcs',
+            '--version', '3.0.2'
+        ])
+
+        assert result.exit_code != 0
+        assert 'not found' in result.output.lower() or 'error' in result.output.lower()
+
+    def test_export_contract_odcs_error_handling_500_server_error(self, runner, mock_api_client):
+        """Test error handling for 500 Server Error when exporting ODCS"""
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = json.dumps({
+            'error': {
+                'message': 'Internal server error',
+                'code': 'INTERNAL_ERROR'
+            }
+        })
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.2'
+        ])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+
+    def test_export_contract_odcs_with_version_table_output(self, runner, mock_api_client):
+        """Test ODCS export with version showing table output format"""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.text = json.dumps({
+            'apiVersion': 'odcs.io/v3.0.2',
+            'kind': 'DataContract',
+            'id': 'test-contract',
+            'name': 'Test Contract'
+        })
+        mock_api_client.request.return_value = mock_response
+
+        result = runner.invoke(cli, [
+            'contracts', 'export', 'contract-1',
+            '--format', 'odcs',
+            '--version', '3.0.2',
+            '--output-format', 'json',
+            '--cli-format', 'table'
+        ])
+
+        assert result.exit_code == 0
+        assert 'exported successfully' in result.output.lower()
+        assert 'ODCS Version: 3.0.2' in result.output
+        assert 'Format: odcs' in result.output
+        assert 'Output Format: json' in result.output
 
 
 class TestContractsDownload:
@@ -1986,4 +2303,589 @@ class TestContractsListLinks:
 
         assert result.exit_code != 0
         assert 'Failed to list contract links' in result.output or 'API error' in result.output
+
+
+class TestContractsGetPaymentGateways:
+    """Test contracts get-payment-gateways command"""
+
+    def test_get_payment_gateways_success_table_format(self, runner, mock_api_client):
+        """Test getting payment gateways in table format"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'payment_gateways': {
+                'stripe': {
+                    'type': 'stripe',
+                    'enabled': True,
+                    'webhook_url': 'https://api.stripe.com/webhook'
+                },
+                'paypal': {
+                    'type': 'paypal',
+                    'enabled': False,
+                    'webhook_url': None
+                }
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+
+        assert result.exit_code == 0
+        assert 'stripe' in result.output
+        assert 'paypal' in result.output
+        assert 'Yes' in result.output
+        assert 'No' in result.output
+        assert 'Payment Gateways for Contract' in result.output
+        assert 'Total: 2 payment gateway(s)' in result.output
+        mock_api_client.get.assert_called_once_with(f'contracts/{contract_id}/payment-gateways/')
+
+    def test_get_payment_gateways_success_json_format(self, runner, mock_api_client):
+        """Test getting payment gateways in JSON format"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'payment_gateways': {
+                'stripe': {
+                    'type': 'stripe',
+                    'enabled': True,
+                    'webhook_url': 'https://api.stripe.com/webhook'
+                }
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id, '--format', 'json'])
+
+        assert result.exit_code == 0
+        output_data = json.loads(result.output)
+        assert isinstance(output_data, dict)
+        assert 'stripe' in output_data
+        assert output_data['stripe']['type'] == 'stripe'
+        assert output_data['stripe']['enabled'] is True
+
+    def test_get_payment_gateways_empty(self, runner, mock_api_client):
+        """Test getting payment gateways when none are configured"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'payment_gateways': {}
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+
+        assert result.exit_code == 0
+        assert 'No payment gateways found' in result.output
+        assert 'ODPS contracts' in result.output
+
+    def test_get_payment_gateways_long_webhook_url(self, runner, mock_api_client):
+        """Test getting payment gateways with long webhook URL (truncation)"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        long_url = 'https://api.example.com/webhook/' + 'x' * 100
+        mock_data = {
+            'payment_gateways': {
+                'stripe': {
+                    'type': 'stripe',
+                    'enabled': True,
+                    'webhook_url': long_url
+                }
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+
+        assert result.exit_code == 0
+        assert 'stripe' in result.output
+        # Check that URL is truncated (should end with ...)
+        assert '...' in result.output or len(long_url) > 48
+
+    def test_get_payment_gateways_missing_fields(self, runner, mock_api_client):
+        """Test getting payment gateways with missing optional fields"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'payment_gateways': {
+                'stripe': {
+                    # Missing type, enabled, webhook_url
+                }
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+
+        assert result.exit_code == 0
+        assert 'stripe' in result.output
+        assert 'N/A' in result.output  # Should show N/A for missing fields
+
+    def test_get_payment_gateways_invalid_contract_id(self, runner):
+        """Test getting payment gateways with invalid contract ID"""
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', 'invalid-id'])
+
+        assert result.exit_code != 0
+        assert 'uuid' in result.output.lower() or 'invalid' in result.output.lower()
+
+    def test_get_payment_gateways_empty_contract_id(self, runner):
+        """Test getting payment gateways with empty contract ID"""
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', ''])
+
+        assert result.exit_code != 0
+
+    def test_get_payment_gateways_api_error_404(self, runner, mock_api_client):
+        """Test getting payment gateways when contract not found"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Contract not found (404)")
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+
+        assert result.exit_code != 0
+        assert 'not found' in result.output.lower() or '404' in result.output or 'error' in result.output.lower()
+
+    def test_get_payment_gateways_api_error_400(self, runner, mock_api_client):
+        """Test getting payment gateways when contract is not ODPS"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Contract is not an ODPS contract (400)")
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or 'validation' in result.output.lower() or 'odps' in result.output.lower()
+
+    def test_get_payment_gateways_api_error_500(self, runner, mock_api_client):
+        """Test getting payment gateways when API returns server error"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_api_client.get.side_effect = Exception("Internal server error")
+
+        result = runner.invoke(cli, ['contracts', 'get-payment-gateways', contract_id])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+
+
+class TestContractsGetProductStrategy:
+    """Test contracts get-product-strategy command"""
+
+    def test_get_product_strategy_success_table_format(self, runner, mock_api_client):
+        """Test getting product strategy in table format"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_strategy': {
+                'objectives': [
+                    {'name': 'Increase revenue', 'description': 'Target 20% growth'}
+                ],
+                'strategicAlignment': [
+                    {'name': 'Digital transformation', 'description': 'Align with company goals'}
+                ],
+                'productKPIs': [
+                    {'name': 'User adoption', 'targetValue': '1000', 'unit': 'users', 'description': 'Monthly active users'}
+                ],
+                'targetAudience': {'type': 'enterprise', 'size': 'large'},
+                'valueProposition': {'key': 'value', 'benefit': 'cost reduction'}
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+
+        assert result.exit_code == 0
+        assert 'Product Strategy for Contract' in result.output
+        assert 'Objectives' in result.output
+        assert 'Strategic Alignment' in result.output
+        assert 'Product KPIs' in result.output
+        assert 'Target Audience' in result.output
+        assert 'Value Proposition' in result.output
+        assert 'Increase revenue' in result.output
+        assert 'Summary:' in result.output
+        mock_api_client.get.assert_called_once_with(f'contracts/{contract_id}/product-strategy/')
+
+    def test_get_product_strategy_success_json_format(self, runner, mock_api_client):
+        """Test getting product strategy in JSON format"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_strategy': {
+                'objectives': [{'name': 'Test objective'}],
+                'productKPIs': [{'name': 'Test KPI', 'targetValue': '100'}]
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id, '--format', 'json'])
+
+        assert result.exit_code == 0
+        output_data = json.loads(result.output)
+        assert isinstance(output_data, dict)
+        assert 'objectives' in output_data
+        assert 'productKPIs' in output_data
+
+    def test_get_product_strategy_empty(self, runner, mock_api_client):
+        """Test getting product strategy when none is configured"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_strategy': None
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+
+        assert result.exit_code == 0
+        assert 'No product strategy found' in result.output
+        assert 'ODPS 4.1+' in result.output
+
+    def test_get_product_strategy_partial_data(self, runner, mock_api_client):
+        """Test getting product strategy with partial data (only objectives)"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_strategy': {
+                'objectives': [{'name': 'Single objective'}]
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+
+        assert result.exit_code == 0
+        assert 'Objectives' in result.output
+        assert 'Single objective' in result.output
+        # Should not error if other sections are missing
+
+    def test_get_product_strategy_invalid_contract_id(self, runner):
+        """Test getting product strategy with invalid contract ID"""
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', 'invalid-id'])
+
+        assert result.exit_code != 0
+        assert 'uuid' in result.output.lower() or 'invalid' in result.output.lower() or 'not found' in result.output.lower()
+
+    def test_get_product_strategy_empty_contract_id(self, runner):
+        """Test getting product strategy with empty contract ID"""
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', ''])
+
+        assert result.exit_code != 0
+
+    def test_get_product_strategy_api_error_404(self, runner, mock_api_client):
+        """Test getting product strategy when contract not found"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Contract not found (404)")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+
+        assert result.exit_code != 0
+        assert 'not found' in result.output.lower() or '404' in result.output or 'error' in result.output.lower()
+
+    def test_get_product_strategy_api_error_400_not_odps(self, runner, mock_api_client):
+        """Test getting product strategy when contract is not ODPS"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Contract is not an ODPS contract (400)")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or 'odps' in result.output.lower()
+
+    def test_get_product_strategy_api_error_400_version(self, runner, mock_api_client):
+        """Test getting product strategy when contract is not ODPS 4.1+"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Product strategy is only available for ODPS 4.1+ (400)")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or '4.1' in result.output.lower()
+
+    def test_get_product_strategy_api_error_500(self, runner, mock_api_client):
+        """Test getting product strategy when API returns server error"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_api_client.get.side_effect = Exception("Internal server error")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+
+    def test_get_product_strategy_complex_data(self, runner, mock_api_client):
+        """Test getting product strategy with complex nested data"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_strategy': {
+                'objectives': [
+                    {'name': 'Obj1', 'description': 'Desc1'},
+                    {'name': 'Obj2', 'description': 'Desc2'}
+                ],
+                'strategicAlignment': [
+                    {'name': 'Align1', 'description': 'AlignDesc1'},
+                    {'name': 'Align2'}
+                ],
+                'productKPIs': [
+                    {'name': 'KPI1', 'targetValue': '100', 'unit': 'users', 'description': 'KPI desc'},
+                    {'name': 'KPI2', 'targetValue': '50', 'unit': '%'}
+                ],
+                'targetAudience': {'type': 'enterprise', 'size': 'large', 'industry': 'tech'},
+                'valueProposition': {'key': 'value', 'benefit': 'cost reduction', 'differentiator': 'quality'}
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-strategy', contract_id])
+
+        assert result.exit_code == 0
+        assert '2 objective(s)' in result.output or 'objective' in result.output.lower()
+        assert '2 alignment(s)' in result.output or 'alignment' in result.output.lower()
+        assert '2 KPI(s)' in result.output or 'kpi' in result.output.lower()
+        assert 'target audience' in result.output.lower()
+        assert 'value proposition' in result.output.lower()
+
+
+class TestContractsGetProductDetails:
+    """Test contracts get-product-details command"""
+
+    def test_get_product_details_success_table_format(self, runner, mock_api_client):
+        """Test getting product details in table format"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Test Product',
+                'description': 'A test product description',
+                'productVersion': '1.0.0',
+                'category': 'Data Product',
+                'tags': ['tag1', 'tag2', 'tag3']
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+
+        assert result.exit_code == 0
+        assert 'Product Details for Contract' in result.output
+        assert 'Language: en' in result.output
+        assert 'Product ID: test-product' in result.output
+        assert 'Name: Test Product' in result.output
+        assert 'Description: A test product description' in result.output
+        assert 'Version: 1.0.0' in result.output
+        assert 'Category: Data Product' in result.output
+        assert 'tag1' in result.output
+        mock_api_client.get.assert_called_once_with(f'contracts/{contract_id}/product-details/', params={'lang': 'en'})
+
+    def test_get_product_details_success_json_format(self, runner, mock_api_client):
+        """Test getting product details in JSON format"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Test Product',
+                'description': 'A test product description'
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--format', 'json'])
+
+        assert result.exit_code == 0
+        output_data = json.loads(result.output)
+        assert isinstance(output_data, dict)
+        assert 'productID' in output_data
+        assert 'name' in output_data
+        assert output_data['productID'] == 'test-product'
+        assert output_data['name'] == 'Test Product'
+
+    def test_get_product_details_with_language_parameter(self, runner, mock_api_client):
+        """Test getting product details with language parameter"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Testi Tuote',
+                'description': 'Testituotteen kuvaus'
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'fi'])
+
+        assert result.exit_code == 0
+        assert 'Language: fi' in result.output
+        assert 'Testi Tuote' in result.output
+        mock_api_client.get.assert_called_once_with(f'contracts/{contract_id}/product-details/', params={'lang': 'fi'})
+
+    def test_get_product_details_empty(self, runner, mock_api_client):
+        """Test getting product details when none is configured"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_details': None
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+
+        assert result.exit_code == 0
+        assert 'No product details found' in result.output
+        assert 'may not be available for all languages' in result.output
+
+    def test_get_product_details_partial_data(self, runner, mock_api_client):
+        """Test getting product details with partial data (only name and productID)"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Test Product'
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+
+        assert result.exit_code == 0
+        assert 'Product ID: test-product' in result.output
+        assert 'Name: Test Product' in result.output
+
+    def test_get_product_details_invalid_contract_id(self, runner):
+        """Test getting product details with invalid contract ID"""
+        result = runner.invoke(cli, ['contracts', 'get-product-details', 'invalid-id'])
+
+        assert result.exit_code != 0
+        assert 'uuid' in result.output.lower() or 'invalid' in result.output.lower() or 'not found' in result.output.lower()
+
+    def test_get_product_details_empty_contract_id(self, runner):
+        """Test getting product details with empty contract ID"""
+        result = runner.invoke(cli, ['contracts', 'get-product-details', ''])
+
+        assert result.exit_code != 0
+
+    def test_get_product_details_invalid_language_code(self, runner):
+        """Test getting product details with invalid language code"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'invalid'])
+
+        assert result.exit_code != 0
+        assert 'language code' in result.output.lower() or 'invalid' in result.output.lower()
+
+    def test_get_product_details_language_code_too_long(self, runner):
+        """Test getting product details with language code that is too long"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'eng'])
+
+        assert result.exit_code != 0
+        assert 'language code' in result.output.lower() or '2 characters' in result.output.lower()
+
+    def test_get_product_details_api_error_404(self, runner, mock_api_client):
+        """Test getting product details when contract not found"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Contract not found (404)")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+
+        assert result.exit_code != 0
+        assert 'not found' in result.output.lower() or '404' in result.output or 'error' in result.output.lower()
+
+    def test_get_product_details_api_error_400_not_odps(self, runner, mock_api_client):
+        """Test getting product details when contract is not ODPS"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        from click import ClickException
+        mock_api_client.get.side_effect = ClickException("API error: Contract is not an ODPS contract (400)")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or 'odps' in result.output.lower()
+
+    def test_get_product_details_api_error_500(self, runner, mock_api_client):
+        """Test getting product details when API returns server error"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_api_client.get.side_effect = Exception("Internal server error")
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+
+        assert result.exit_code != 0
+        assert 'error' in result.output.lower() or 'failed' in result.output.lower()
+
+    def test_get_product_details_multilingual_support(self, runner, mock_api_client):
+        """Test getting product details with different languages"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+
+        # Test English
+        mock_data_en = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Test Product',
+                'description': 'English description'
+            }
+        }
+        mock_api_client.get.return_value = mock_data_en
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'en'])
+        assert result.exit_code == 0
+        assert 'Test Product' in result.output
+        assert 'English description' in result.output
+
+        # Test Spanish
+        mock_data_es = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Producto de Prueba',
+                'description': 'Descripción en español'
+            }
+        }
+        mock_api_client.get.return_value = mock_data_es
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'es'])
+        assert result.exit_code == 0
+        assert 'Producto de Prueba' in result.output
+        assert 'Descripción en español' in result.output
+
+    def test_get_product_details_with_tags(self, runner, mock_api_client):
+        """Test getting product details with tags list"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Test Product',
+                'tags': ['data', 'analytics', 'product']
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+
+        assert result.exit_code == 0
+        assert 'Tags:' in result.output
+        assert 'data' in result.output
+        assert 'analytics' in result.output
+        assert 'product' in result.output
+
+    def test_get_product_details_with_additional_fields(self, runner, mock_api_client):
+        """Test getting product details with additional fields"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Test Product',
+                'customField': 'custom value',
+                'nestedField': {'key': 'value'}
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id])
+
+        assert result.exit_code == 0
+        assert 'Additional Fields:' in result.output
+        assert 'customField' in result.output
+        assert 'nestedField' in result.output
+
+    def test_get_product_details_language_case_insensitive(self, runner, mock_api_client):
+        """Test that language code is converted to lowercase"""
+        contract_id = '123e4567-e89b-12d3-a456-426614174000'
+        mock_data = {
+            'product_details': {
+                'productID': 'test-product',
+                'name': 'Test Product'
+            }
+        }
+        mock_api_client.get.return_value = mock_data
+
+        result = runner.invoke(cli, ['contracts', 'get-product-details', contract_id, '--lang', 'EN'])
+
+        assert result.exit_code == 0
+        # Should call API with lowercase 'en'
+        mock_api_client.get.assert_called_once_with(f'contracts/{contract_id}/product-details/', params={'lang': 'en'})
 

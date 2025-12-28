@@ -72,6 +72,7 @@ class Command(BaseCommand):
                 VersionCreationWorkflow,
                 MarketplacePublicationWorkflow,
                 ProductCreationWorkflow,
+                TransformationPipelineWorkflow,
             )
 
             workflow_classes = [
@@ -85,6 +86,7 @@ class Command(BaseCommand):
                 VersionCreationWorkflow,
                 MarketplacePublicationWorkflow,
                 ProductCreationWorkflow,
+                TransformationPipelineWorkflow,
             ]
 
             # Register tasks from each workflow class

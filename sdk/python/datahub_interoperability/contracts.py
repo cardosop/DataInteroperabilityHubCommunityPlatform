@@ -13,6 +13,9 @@ from .errors import (
     ODPSExportError,
     ODPSLinkingError,
     parse_odps_error,
+    ODCSValidationError,
+    ODCSExportError,
+    parse_odcs_error,
     ValidationError,
     NotFoundError,
 )
@@ -109,6 +112,59 @@ class ContractsAPI:
                 error_code="INVALID_VALUE",
                 field_path=f"/{param_name}",
                 expected="version string in format 'X.Y'",
+                actual=version,
+            )
+
+    def _validate_odcs_version(self, version: Optional[str], param_name: str = "version") -> None:
+        """
+        Validate ODCS version format.
+
+        Validates that the version string matches the expected format and is a supported version.
+        ODCS versions follow the format: major.minor[.patch] or major.minor[-suffix]
+        Supported versions: 3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, 2.2.2
+
+        Args:
+            version: Version string to validate (e.g., "3.0.2", "3.0.1", "3.0.0-preview", "2.2.2")
+            param_name: Parameter name for error messages
+
+        Raises:
+            ODCSValidationError: If version format is invalid or version is not supported
+        """
+        if version is None:
+            return  # Optional parameter, None is valid
+
+        if not isinstance(version, str):
+            raise ODCSValidationError(
+                f"{param_name} must be a string",
+                error_code="INVALID_DATA_TYPE",
+                field_path=f"/{param_name}",
+                expected="string (e.g., '3.0.2', '3.0.0-preview')",
+                actual=type(version).__name__,
+            )
+
+        version = version.strip()
+
+        # ODCS version format: major.minor[.patch] or major.minor[-suffix]
+        # Examples: "3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"
+        version_pattern = r"^\d+\.\d+(\.\d+)?(-[a-zA-Z0-9-]+)?$"
+        if not re.match(version_pattern, version):
+            raise ODCSValidationError(
+                f"{param_name} must be in format 'X.Y' or 'X.Y.Z' or 'X.Y-suffix' (e.g., '3.0.2', '3.0.0-preview')",
+                error_code="INVALID_VALUE",
+                field_path=f"/{param_name}",
+                expected="version string in format 'X.Y' or 'X.Y.Z' or 'X.Y-suffix'",
+                actual=version,
+            )
+
+        # Check if version is supported
+        # Supported ODCS versions (must match backend supported versions)
+        supported_versions = ['2.2.2', '3.0.0', '3.0.0-preview', '3.0.1', '3.0.2']
+        if version not in supported_versions:
+            raise ODCSValidationError(
+                f"{param_name} '{version}' is not supported. Supported versions: {', '.join(supported_versions)}",
+                error_code="INVALID_VALUE",
+                field_path=f"/{param_name}",
+                expected=f"one of: {', '.join(supported_versions)}",
                 actual=version,
             )
 
@@ -243,6 +299,63 @@ class ContractsAPI:
         return ODPSValidationError(
             f"ODPS {operation} failed: {str(error)}",
             error_code="ODPS_ERROR",
+            http_status=500,
+            details={"context": {"operation": operation, "original_error": str(error)}},
+        )
+
+    def _handle_odcs_error(self, error: Exception, operation: str) -> Exception:
+        """
+        Handle and map ODCS-related errors from API responses.
+
+        Args:
+            error: Exception from API call
+            operation: Operation name for error context
+
+        Returns:
+            Mapped ODCS error or original error
+        """
+        from .errors import DataHubError, NotFoundError, NetworkError
+
+        # If it's already an ODCS error, return it
+        if isinstance(error, (ODCSValidationError, ODCSExportError)):
+            return error
+
+        # Preserve NotFoundError for 404 cases
+        if isinstance(error, NotFoundError):
+            return error
+
+        # Preserve NetworkError for network/timeout errors
+        if isinstance(error, NetworkError):
+            return error
+
+        # If it's a DataHubError with 404 status, return NotFoundError
+        if isinstance(error, DataHubError) and error.http_status == 404:
+            return NotFoundError(
+                error.message,
+                error.request_id,
+            )
+
+        # If it's a DataHubError, try to parse as ODCS error
+        if isinstance(error, DataHubError):
+            # Try to extract error details from the error
+            error_dict = error.to_dict() if hasattr(error, "to_dict") else {}
+            if error_dict:
+                try:
+                    return parse_odcs_error(error_dict)
+                except Exception:
+                    # If parsing fails, wrap in ODCS error with context
+                    return ODCSValidationError(
+                        f"ODCS {operation} failed: {error.message}",
+                        error_code=error.code,
+                        http_status=error.http_status,
+                        request_id=error.request_id,
+                        details=error.details,
+                    )
+
+        # For other errors, wrap in generic ODCS error
+        return ODCSValidationError(
+            f"ODCS {operation} failed: {str(error)}",
+            error_code="ODCS_ERROR",
             http_status=500,
             details={"context": {"operation": operation, "original_error": str(error)}},
         )
@@ -1156,4 +1269,101 @@ class ContractsAPI:
         except Exception as e:
             # Map and re-raise with ODPS error context
             raise self._handle_odps_error(e, "download") from e
+
+    async def export_odcs(
+        self,
+        contract_id: str,
+        version: Optional[str] = None,
+        format: str = "json",
+    ) -> Dict[str, Any]:
+        """
+        Export contract as ODCS (Open Data Contract Standard) format.
+
+        Args:
+            contract_id: Contract UUID
+            version: ODCS version (e.g., "3.0.2", "3.0.0-preview"). Optional, defaults to contract's detected version
+            format: Output format ("json" or "yaml"). Defaults to "json"
+
+        Returns:
+            Contract data in ODCS format. For JSON format, returns a dictionary.
+            For YAML format, returns a dictionary with 'content' (YAML string) and 'format' fields.
+
+        Raises:
+            ODCSValidationError: If parameters are invalid
+            ODCSExportError: If export operation fails
+            NotFoundError: If contract is not found
+            DataHubError: On other API errors
+        """
+        # Validate parameters
+        # Convert ODPSValidationError to ODCSValidationError for ODCS operations
+        try:
+            self._validate_contract_id(contract_id, "contract_id")
+        except ODPSValidationError as e:
+            # Convert ODPS validation error to ODCS validation error
+            raise ODCSValidationError(
+                e.message,
+                error_code=e.code,
+                http_status=e.http_status,
+                request_id=e.request_id,
+                details=e.details,
+                field_path=e.field_path,
+                expected=e.expected,
+                actual=e.actual,
+            ) from e
+
+        try:
+            self._validate_format(format, "format", ["json", "yaml"])
+        except ODPSValidationError as e:
+            # Convert ODPS validation error to ODCS validation error
+            raise ODCSValidationError(
+                e.message,
+                error_code=e.code,
+                http_status=e.http_status,
+                request_id=e.request_id,
+                details=e.details,
+                field_path=e.field_path,
+                expected=e.expected,
+                actual=e.actual,
+            ) from e
+
+        if version:
+            self._validate_odcs_version(version, "version")
+
+        params: Dict[str, Any] = {
+            "format": "odcs",
+            "output_format": format,
+        }
+        if version:
+            params["version"] = version
+
+        # Use request() to handle both JSON and YAML responses
+        try:
+            response = await self.client.request("GET", f"contracts/{contract_id}/export/", params=params)
+        except Exception as e:
+            # Map and re-raise with ODCS error context
+            raise self._handle_odcs_error(e, "export") from e
+
+        # Check content type to determine how to parse
+        content_type = response.headers.get("Content-Type", "").lower()
+
+        if "yaml" in content_type or format == "yaml":
+            # YAML response - return as text
+            return {
+                "content": response.text,
+                "format": "yaml",
+            }
+        else:
+            # JSON response - parse as JSON
+            # The API may return JSON as a string (escaped), so try parsing the text first
+            try:
+                # Try parsing the response text as JSON (handles both JSON objects and JSON-encoded strings)
+                import json
+                parsed = json.loads(response.text)
+                # If the parsed result is a string, parse it again (handles double-encoded JSON)
+                if isinstance(parsed, str):
+                    return json.loads(parsed)
+                return parsed
+            except (json.JSONDecodeError, ValueError):
+                # Fallback to response.json() if direct parsing fails
+                return response.json()
 

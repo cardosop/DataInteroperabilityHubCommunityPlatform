@@ -38,7 +38,6 @@ if _normalization_py_path.exists():
 
     # Re-export ODCSNormalizer and registry utilities
     ODCSNormalizer = _normalization_py_module.ODCSNormalizer
-    normalize_odcs_to_hubcontract = _normalization_py_module.normalize_odcs_to_hubcontract
     _NORMALIZER_REGISTRY = _normalization_py_module._NORMALIZER_REGISTRY
     _reset_normalizer_registry = _normalization_py_module._reset_normalizer_registry
 
@@ -47,7 +46,6 @@ if _normalization_py_path.exists():
         'SpecNormalizer',
         'ODPSNormalizer',
         'ODCSNormalizer',
-        'normalize_odcs_to_hubcontract',
         'get_normalizer',
         'register_normalizer',
         'normalize_contract',

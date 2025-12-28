@@ -175,6 +175,7 @@ def test_client_initialization(config):
     assert client.scheduled_ingestion is not None
     assert client.versioning is not None
     assert client.governance is not None
+    assert client.mesh is not None
     assert client.search is not None
     assert client.observability is not None
     assert client.webhooks is not None
@@ -190,6 +191,7 @@ def test_client_api_access(config):
     assert hasattr(client, "scheduled_ingestion")
     assert hasattr(client, "versioning")
     assert hasattr(client, "governance")
+    assert hasattr(client, "mesh")
     assert hasattr(client, "search")
     assert hasattr(client, "observability")
     assert hasattr(client, "webhooks")

@@ -204,7 +204,7 @@ class ODCSNormalizerBase(ABC):
             if isinstance(hub_contract, dict):
                 coverage = hub_contract.get('normalization', {}).get('coverage')
 
-            # Track ODCS metrics (Task 6.2.2 - explicit backward compatibility)
+            # Track ODCS normalization metrics for observability
             try:
                 from hub.apps.observability.otel_metrics import (
                     odcs_normalization_total,

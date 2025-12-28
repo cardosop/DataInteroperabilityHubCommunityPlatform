@@ -47,6 +47,17 @@ repos:
 
   - repo: local
     hooks:
+      - id: validate-transformation-schemas
+        name: Validate Transformation Pipeline Schemas
+        entry: python -c "import json, sys; [json.load(open(f)) for f in sys.argv[1:]]" --
+        language: system
+        types: [file]
+        files: ^hub/apps/transformation/.*\.json$
+        pass_filenames: true
+        description: "Validate JSON schema files for transformation pipelines"
+
+  - repo: local
+    hooks:
       - id: validate-odps-schemas
         name: Validate ODPS Schema Files
         entry: python scripts/validate_odps_schemas.py --strict

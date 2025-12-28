@@ -30,18 +30,18 @@ ERROR_CODE_MAP = {
 def get_error_code(exc, http_status):
     """
     Get error code from exception or HTTP status.
-    
+
     Args:
         exc: Exception instance
         http_status: HTTP status code
-        
+
     Returns:
         Error code string
     """
     # Check if exception has a code attribute
     if hasattr(exc, 'code') and exc.code:
         return exc.code
-    
+
     # Map HTTP status to error code
     return ERROR_CODE_MAP.get(http_status, 'UNKNOWN_ERROR')
 
@@ -49,25 +49,25 @@ def get_error_code(exc, http_status):
 def get_error_message(exc, http_status):
     """
     Get user-friendly error message.
-    
+
     Args:
         exc: Exception instance
         http_status: HTTP status code
-        
+
     Returns:
         Error message string
     """
     # Check if exception has a message attribute
     if hasattr(exc, 'message') and exc.message:
         return exc.message
-    
+
     # Use exception string representation
     message = str(exc)
-    
+
     # Remove stack traces and internal details
     if 'Traceback' in message:
         message = message.split('Traceback')[0].strip()
-    
+
     # Default messages for common status codes
     if not message or message == 'None':
         default_messages = {
@@ -80,24 +80,24 @@ def get_error_message(exc, http_status):
             status.HTTP_500_INTERNAL_SERVER_ERROR: 'Internal server error',
         }
         message = default_messages.get(http_status, 'An error occurred')
-    
+
     return message
 
 
 def get_error_details(exc, response):
     """
     Extract error details from exception.
-    
+
     Args:
         exc: Exception instance
         response: DRF response object
-        
+
     Returns:
         Tuple of (details_dict, original_data_dict) for field-level access
     """
     details = {}
     original_data = {}
-    
+
     # Check if exception has detail attribute
     if hasattr(exc, 'detail'):
         if isinstance(exc.detail, dict):
@@ -109,17 +109,17 @@ def get_error_details(exc, response):
         else:
             details = {'message': str(exc.detail)}
             original_data = {'message': str(exc.detail)}
-    
+
     # Check response data for validation errors
     elif response and hasattr(response, 'data'):
         if isinstance(response.data, dict):
             # Preserve original data for field-level access
             original_data = response.data.copy()
-            
+
             # DRF validation errors
             if 'non_field_errors' in response.data:
                 details['non_field_errors'] = response.data['non_field_errors']
-            
+
             # Field-specific errors
             field_errors = []
             for field, errors in response.data.items():
@@ -137,20 +137,20 @@ def get_error_details(exc, response):
                             'message': str(errors),
                             'code': 'VALIDATION_ERROR'
                         })
-            
+
             if field_errors:
                 details['field_errors'] = field_errors
         elif isinstance(response.data, list):
             details = {'errors': response.data}
             original_data = {'errors': response.data}
-    
+
     return details if details else None, original_data
 
 
 def custom_exception_handler(exc, context):
     """
     Custom exception handler that returns standardized error format.
-    
+
     Returns error responses in the format:
     {
         "error": {
@@ -165,14 +165,14 @@ def custom_exception_handler(exc, context):
     """
     response = exception_handler(exc, context)
     request = context.get('request')
-    
+
     # Generate request ID if not present
     request_id = getattr(request, 'id', None) if request else None
     if not request_id:
         request_id = str(uuid.uuid4())
         if request:
             request.id = request_id
-    
+
     # Get HTTP status code
     if response is not None:
         http_status = response.status_code
@@ -183,12 +183,12 @@ def custom_exception_handler(exc, context):
         http_status = status.HTTP_500_INTERNAL_SERVER_ERROR
         response = Response(status=http_status)
         original_response_data = {}
-    
+
     # Build standardized error response
     error_code = get_error_code(exc, http_status)
     error_message = get_error_message(exc, http_status)
     error_details, original_data = get_error_details(exc, response)
-    
+
     custom_response_data = {
         'error': {
             'code': error_code,
@@ -198,11 +198,20 @@ def custom_exception_handler(exc, context):
             'timestamp': timezone.now().isoformat(),
         }
     }
-    
+
     # Add details if available
     if error_details:
         custom_response_data['error']['details'] = error_details
-    
+
+        # For rate limit errors, ensure retry_after is in details
+        if http_status == status.HTTP_429_TOO_MANY_REQUESTS:
+            if isinstance(error_details, dict) and 'retry_after' not in error_details:
+                # Try to get retry_after from exception detail if available
+                if hasattr(exc, 'detail') and isinstance(exc.detail, dict):
+                    retry_after = exc.detail.get('retry_after')
+                    if retry_after is not None:
+                        custom_response_data['error']['details']['retry_after'] = retry_after
+
     # For validation errors (400), also preserve field-level access for backward compatibility
     # This allows tests to access response.data['email'] while still providing standardized format
     if http_status == status.HTTP_400_BAD_REQUEST:
@@ -223,7 +232,7 @@ def custom_exception_handler(exc, context):
                             custom_response_data[field_name] = str(field_value[0])
                     else:
                         custom_response_data[field_name] = str(field_value)
-            
+
             # Also handle non_field_errors - extract field names from error messages
             if 'non_field_errors' in source_data:
                 non_field_errors = source_data['non_field_errors']
@@ -235,14 +244,14 @@ def custom_exception_handler(exc, context):
                             custom_response_data['size'] = error_str
                         elif 'file' in error_str.lower() and 'file' not in custom_response_data:
                             custom_response_data['file'] = error_str
-    
+
     # Log error using enhanced error logger
     from hub.apps.core.error_handling.error_logging import ErrorLogger
     from hub.apps.core.error_handling.error_tracking import get_error_tracker
-    
+
     error_logger = ErrorLogger()
     error_tracker = get_error_tracker()
-    
+
     # Get tenant and user IDs from request
     tenant_id = None
     user_id = None
@@ -251,7 +260,7 @@ def custom_exception_handler(exc, context):
             tenant_id = str(request.tenant_id)
         if hasattr(request, 'user') and request.user.is_authenticated:
             user_id = str(request.user.id)
-    
+
     # Log error
     error_logger.log_error(
         error=exc,
@@ -267,7 +276,7 @@ def custom_exception_handler(exc, context):
         },
         level="error",
     )
-    
+
     # Track error in Sentry
     error_tracker.track_error(
         error=exc,
@@ -283,13 +292,13 @@ def custom_exception_handler(exc, context):
         },
         level="error",
     )
-    
+
     # Set user context for Sentry
     if user_id:
         error_tracker.set_user(user_id)
     if tenant_id:
         error_tracker.set_tenant(tenant_id)
-    
+
     response.data = custom_response_data
     return response
 

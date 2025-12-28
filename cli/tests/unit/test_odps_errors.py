@@ -21,6 +21,7 @@ from datahub_cli.odps_errors import (
     parse_api_error_response,
     handle_api_error,
     validate_odps_version,
+    validate_odcs_version,
     validate_contract_id,
     validate_file_format,
     validate_mutually_exclusive_options,
@@ -313,6 +314,68 @@ class TestValidateODPSVersion:
     def test_validate_none_version(self):
         """Test validating None version (should pass)"""
         validate_odps_version(None)
+
+
+class TestValidateODCSVersion:
+    """Test ODCS version validation"""
+
+    def test_validate_valid_version(self):
+        """Test validating valid ODCS version"""
+        validate_odcs_version("3.0.2")
+        validate_odcs_version("3.0.1")
+        validate_odcs_version("3.0.0")
+        validate_odcs_version("3.0.0-preview")
+        validate_odcs_version("2.2.2")
+
+    def test_validate_invalid_version_format_missing_minor(self):
+        """Test validating invalid version format - missing minor"""
+        with pytest.raises(ODPSParameterError) as exc_info:
+            validate_odcs_version("3")
+        assert "Invalid ODCS version format" in str(exc_info.value)
+        assert exc_info.value.suggestion is not None
+
+    def test_validate_invalid_version_format_with_letters(self):
+        """Test validating version with invalid letters"""
+        with pytest.raises(ODPSParameterError) as exc_info:
+            validate_odcs_version("3.0.2a")
+        assert "Invalid ODCS version format" in str(exc_info.value)
+
+    def test_validate_unsupported_version(self):
+        """Test validating unsupported ODCS version"""
+        with pytest.raises(ODPSParameterError) as exc_info:
+            validate_odcs_version("99.99.99")
+        assert "not supported" in str(exc_info.value).lower()
+        assert "3.0.2" in str(exc_info.value)  # Should mention supported versions
+
+    def test_validate_none_version(self):
+        """Test validating None version (should pass)"""
+        validate_odcs_version(None)
+
+    def test_validate_version_with_suffix(self):
+        """Test validating version with suffix"""
+        validate_odcs_version("3.0.0-preview")
+
+    def test_validate_version_with_patch(self):
+        """Test validating version with patch number"""
+        validate_odcs_version("3.0.2")
+        validate_odcs_version("2.2.2")
+
+    def test_validate_version_without_patch(self):
+        """Test validating version without patch number"""
+        validate_odcs_version("3.0.0")
+        validate_odcs_version("3.0.1")
+
+    def test_validate_invalid_suffix_format(self):
+        """Test validating version with invalid suffix format"""
+        with pytest.raises(ODPSParameterError) as exc_info:
+            validate_odcs_version("3.0.0_preview")  # Underscore instead of dash
+        assert "Invalid ODCS version format" in str(exc_info.value)
+
+    def test_validate_non_string_version(self):
+        """Test validating non-string version"""
+        with pytest.raises(ODPSParameterError) as exc_info:
+            validate_odcs_version(3.0)  # type: ignore
+        assert "must be a string" in str(exc_info.value).lower()
 
 
 class TestValidateContractID:

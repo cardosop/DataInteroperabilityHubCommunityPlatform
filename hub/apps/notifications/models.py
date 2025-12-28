@@ -26,12 +26,17 @@ class EmailType(models.TextChoices):
     JOB_COMPLETION = "JOB_COMPLETION", "Job Completion"
     JOB_FAILURE = "JOB_FAILURE", "Job Failure"
     API_DEPRECATION = "API_DEPRECATION", "API Deprecation"
+    ODPS_CREATION_COMPLETION = "ODPS_CREATION_COMPLETION", "ODPS Creation Completion"
+    ODPS_NORMALIZATION_FAILURE = "ODPS_NORMALIZATION_FAILURE", "ODPS Normalization Failure"
+    ODPS_LINKING_STATUS = "ODPS_LINKING_STATUS", "ODPS Linking Status"
+    PIPELINE_EXECUTION_COMPLETION = "PIPELINE_EXECUTION_COMPLETION", "Pipeline Execution Completion"
+    PIPELINE_EXECUTION_FAILURE = "PIPELINE_EXECUTION_FAILURE", "Pipeline Execution Failure"
 
 
 class EmailDelivery(models.Model):
     """
     Tracks email delivery status and metadata.
-    
+
     Used for auditing, debugging, and retry logic.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -117,7 +122,7 @@ class EmailDelivery(models.Model):
         blank=True,
         help_text="User this email is related to"
     )
-    
+
     class Meta:
         db_table = 'email_deliveries'
         indexes = [
@@ -127,10 +132,10 @@ class EmailDelivery(models.Model):
             models.Index(fields=['tenant', 'status']),
         ]
         ordering = ['-created_at']
-    
+
     def __str__(self):
         return f"{self.email_type} to {self.to_email} ({self.status})"
-    
+
     def mark_sent(self, message_id: str = None):
         """Mark email as sent"""
         self.status = EmailDeliveryStatus.SENT
@@ -138,20 +143,20 @@ class EmailDelivery(models.Model):
         if message_id:
             self.message_id = message_id
         self.save(update_fields=['status', 'sent_at', 'message_id', 'updated_at'])
-    
+
     def mark_delivered(self):
         """Mark email as delivered"""
         self.status = EmailDeliveryStatus.DELIVERED
         self.delivered_at = timezone.now()
         self.save(update_fields=['status', 'delivered_at', 'updated_at'])
-    
+
     def mark_failed(self, error_message: str):
         """Mark email as failed"""
         self.status = EmailDeliveryStatus.FAILED
         self.failed_at = timezone.now()
         self.error_message = error_message
         self.save(update_fields=['status', 'failed_at', 'error_message', 'updated_at'])
-    
+
     def mark_bounced(self, error_message: str = None):
         """Mark email as bounced"""
         self.status = EmailDeliveryStatus.BOUNCED
@@ -159,14 +164,14 @@ class EmailDelivery(models.Model):
         if error_message:
             self.error_message = error_message
         self.save(update_fields=['status', 'failed_at', 'error_message', 'updated_at'])
-    
+
     def can_retry(self) -> bool:
         """Check if email can be retried"""
         return (
             self.status in [EmailDeliveryStatus.FAILED, EmailDeliveryStatus.DEFERRED] and
             self.retry_count < self.max_retries
         )
-    
+
     def increment_retry(self):
         """Increment retry count"""
         self.retry_count += 1

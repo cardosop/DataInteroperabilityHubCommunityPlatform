@@ -158,7 +158,7 @@ class ContractCreationWorkflowUnitTest(TestCase):
         self.assertEqual(result["normalization_status"], NormalizationStatus.NORMALIZED_OK.value)
 
     def test_normalize_contract_task_dcs_rejection(self):
-        """Test contract normalization task with DCS contract (should fail)"""
+        """Test contract normalization task with deprecated contract format (should fail)"""
         dcs_contract = {
             "dataContractSpecification": "1.0.0",
             "id": "test-contract"
@@ -877,7 +877,7 @@ class ContractCreationWorkflowE2ETest(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_contract_creation_with_dcs_contract(self):
-        """Test contract creation with DCS contract (should return 400)"""
+        """Test contract creation with deprecated contract format (should return 400)"""
         from rest_framework.test import APIClient
 
         dcs_contract = {

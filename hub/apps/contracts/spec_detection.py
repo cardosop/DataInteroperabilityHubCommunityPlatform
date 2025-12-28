@@ -135,13 +135,6 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
             # ODPS detected but version unknown - default to latest
             return OriginalSpecType.ODPS, "4.1"
 
-    # Check for deprecated DCS format (dataContractSpecification field)
-    # This is detected but will cause an error during normalization
-    if 'dataContractSpecification' in contract_data:
-        # Return ODCS type but normalization will detect and reject DCS contracts
-        # This allows us to provide a clear error message during normalization
-        return OriginalSpecType.ODCS, "3.0.2"
-
     # Check for ODCS - has 'apiVersion' and 'kind' fields
     if 'apiVersion' in contract_data and 'kind' in contract_data:
         # Extract version from apiVersion (e.g., "odcs.io/v3.0.2" -> "3.0.2")

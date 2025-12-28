@@ -55,6 +55,31 @@ class WebhookEventType(models.TextChoices):
     ODPS_EXPORT_COMPLETED = "odps.export.completed", "ODPS Export Completed"
     ODPS_EXPORT_FAILED = "odps.export.failed", "ODPS Export Failed"
 
+    # Transformation events
+    PIPELINE_CREATED = "pipeline.created", "Pipeline Created"
+    PIPELINE_UPDATED = "pipeline.updated", "Pipeline Updated"
+    PIPELINE_DELETED = "pipeline.deleted", "Pipeline Deleted"
+    PIPELINE_EXECUTION_STARTED = "pipeline.execution.started", "Pipeline Execution Started"
+    PIPELINE_EXECUTION_COMPLETED = "pipeline.execution.completed", "Pipeline Execution Completed"
+    PIPELINE_EXECUTION_FAILED = "pipeline.execution.failed", "Pipeline Execution Failed"
+    PREVIEW_GENERATED = "preview.generated", "Preview Generated"
+    WRANGLING_COMPLETED = "wrangling.completed", "Wrangling Completed"
+
+    # Mesh events
+    MESH_DOMAIN_CREATED = "mesh.domain.created", "Mesh Domain Created"
+    MESH_DOMAIN_UPDATED = "mesh.domain.updated", "Mesh Domain Updated"
+    MESH_POLICY_APPLIED = "mesh.policy.applied", "Mesh Policy Applied"
+    MESH_COMPLIANCE_CHECKED = "mesh.compliance.checked", "Mesh Compliance Checked"
+    MESH_TOPOLOGY_UPDATED = "mesh.topology.updated", "Mesh Topology Updated"
+    MESH_HEALTH_STATUS_CHANGED = "mesh.health.status_changed", "Mesh Health Status Changed"
+
+    # Virtualization events
+    VIRTUALIZATION_DATASET_CREATED = "virtualization.dataset.created", "Virtual Dataset Created"
+    VIRTUALIZATION_QUERY_EXECUTION_STARTED = "virtualization.query.execution.started", "Query Execution Started"
+    VIRTUALIZATION_QUERY_EXECUTION_PROGRESS = "virtualization.query.execution.progress", "Query Execution Progress"
+    VIRTUALIZATION_QUERY_EXECUTION_COMPLETED = "virtualization.query.execution.completed", "Query Execution Completed"
+    VIRTUALIZATION_QUERY_EXECUTION_FAILED = "virtualization.query.execution.failed", "Query Execution Failed"
+
     @classmethod
     def get_odps_event_types(cls) -> list[str]:
         """
@@ -95,6 +120,115 @@ class WebhookEventType(models.TextChoices):
         elif hasattr(event_type, 'value'):
             event_type = event_type.value
         return event_type in cls.get_odps_event_types()
+
+    @classmethod
+    def get_transformation_event_types(cls) -> list[str]:
+        """
+        Get all transformation event type values.
+
+        Returns:
+            List of transformation event type string values
+        """
+        return [
+            str(cls.PIPELINE_CREATED),
+            str(cls.PIPELINE_UPDATED),
+            str(cls.PIPELINE_DELETED),
+            str(cls.PIPELINE_EXECUTION_STARTED),
+            str(cls.PIPELINE_EXECUTION_COMPLETED),
+            str(cls.PIPELINE_EXECUTION_FAILED),
+            str(cls.PREVIEW_GENERATED),
+            str(cls.WRANGLING_COMPLETED),
+        ]
+
+    @classmethod
+    def is_transformation_event_type(cls, event_type: str | tuple) -> bool:
+        """
+        Check if an event type is a transformation event.
+
+        Args:
+            event_type: Event type string, tuple, or enum value to check
+
+        Returns:
+            True if the event type is a transformation event, False otherwise
+        """
+        # Extract string value if event_type is a tuple (enum choice tuple)
+        if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
+            event_type = event_type[0]
+        # Extract string value if event_type is an enum
+        elif hasattr(event_type, 'value'):
+            event_type = event_type.value
+        return event_type in cls.get_transformation_event_types()
+
+    @classmethod
+    def get_mesh_event_types(cls) -> list[str]:
+        """
+        Get all mesh event type values.
+
+        Returns:
+            List of mesh event type string values
+        """
+        return [
+            str(cls.MESH_DOMAIN_CREATED),
+            str(cls.MESH_DOMAIN_UPDATED),
+            str(cls.MESH_POLICY_APPLIED),
+            str(cls.MESH_COMPLIANCE_CHECKED),
+            str(cls.MESH_TOPOLOGY_UPDATED),
+            str(cls.MESH_HEALTH_STATUS_CHANGED),
+        ]
+
+    @classmethod
+    def is_mesh_event_type(cls, event_type: str | tuple) -> bool:
+        """
+        Check if an event type is a mesh event.
+
+        Args:
+            event_type: Event type string, tuple, or enum value to check
+
+        Returns:
+            True if the event type is a mesh event, False otherwise
+        """
+        # Extract string value if event_type is a tuple (enum choice tuple)
+        if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
+            event_type = event_type[0]
+        # Extract string value if event_type is an enum
+        elif hasattr(event_type, 'value'):
+            event_type = event_type.value
+        return event_type in cls.get_mesh_event_types()
+
+    @classmethod
+    def get_virtualization_event_types(cls) -> list[str]:
+        """
+        Get all virtualization event type values.
+
+        Returns:
+            List of virtualization event type string values
+        """
+        return [
+            str(cls.VIRTUALIZATION_DATASET_CREATED),
+            str(cls.VIRTUALIZATION_QUERY_EXECUTION_STARTED),
+            str(cls.VIRTUALIZATION_QUERY_EXECUTION_PROGRESS),
+            str(cls.VIRTUALIZATION_QUERY_EXECUTION_COMPLETED),
+            str(cls.VIRTUALIZATION_QUERY_EXECUTION_FAILED),
+        ]
+
+    @classmethod
+    def is_virtualization_event_type(cls, event_type: str | tuple) -> bool:
+        """
+        Check if an event type is a virtualization event.
+
+        Args:
+            event_type: Event type string, tuple, or enum value to check
+
+        Returns:
+            True if the event type is a virtualization event, False otherwise
+        """
+        # Extract string value if event_type is a tuple (enum choice tuple)
+        if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
+            event_type = event_type[0]
+        # Extract string value if event_type is an enum
+        elif hasattr(event_type, 'value'):
+            event_type = event_type.value
+        return event_type in cls.get_virtualization_event_types()
 
 
 class DeliveryStatus(models.TextChoices):

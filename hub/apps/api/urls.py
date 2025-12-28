@@ -4,11 +4,11 @@ from .views import OpenAPISchemaView, OpenAPIYAMLView, SwaggerUIView, ReDocView,
 urlpatterns = [
     # API info endpoint
     path('', api_info, name='api-info'),
-    
+
     # OpenAPI schema endpoints
     path('openapi.json', OpenAPISchemaView.as_view(), name='openapi-schema-v1'),
     path('openapi.yaml', OpenAPIYAMLView.as_view(), name='openapi-schema-yaml'),
-    
+
     # API v1 endpoints
     path('auth/', include('hub.apps.auth.urls')),
     path('tenants/', include('hub.apps.tenants.urls')),
@@ -32,9 +32,12 @@ urlpatterns = [
     path('', include('hub.apps.observability.urls')),
     path('ai/', include('hub.apps.ai.urls')),
     path('', include('hub.apps.social.urls')),
-    
+    path('transformation/', include('hub.apps.transformation.urls')),
+    path('mesh/', include('hub.apps.mesh.urls')),
+    path('virtualization/', include('hub.apps.virtualization.urls')),
+
     # Catch-all for non-existent API endpoints (must be last)
     # This will only match if none of the above patterns matched
     # Use a more specific pattern that doesn't interfere with router actions
-    re_path(r'^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|search/|developer/|webhooks/).*$', api_not_found, name='api-not-found'),
+    re_path(r'^(?!auth/|tenants/|users/|audit/|files/|datasets/|jobs/|contracts/|assets/|dq/|compliance/|semantic/|marketplace/|scheduled-ingestions/|search/|developer/|webhooks/|transformation/|mesh/|virtualization/).*$', api_not_found, name='api-not-found'),
 ]

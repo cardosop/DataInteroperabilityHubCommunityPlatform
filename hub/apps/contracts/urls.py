@@ -197,6 +197,8 @@ def export_contract_custom(request, id=None, *args, **kwargs):
     # The middleware sets these on the Django request, but we need to ensure they're on the DRF request
     # This is essential for tenant filtering to work correctly
     # Also, in tests, middleware might not run, so fall back to getting tenant_id from user
+    # ROOT CAUSE FIX: Match the pattern used in lineage_visualization_custom which works correctly
+    # Set tenant_id as string (get_queryset() will convert to UUID) - this matches the working pattern
     if hasattr(request, "tenant_id") and request.tenant_id:
         drf_request.tenant_id = request.tenant_id
     elif hasattr(drf_request, "user") and drf_request.user and not drf_request.user.is_anonymous:
@@ -206,16 +208,20 @@ def export_contract_custom(request, id=None, *args, **kwargs):
         try:
             db_user = User.objects.only("tenant_id").get(id=drf_request.user.id)
             if db_user.tenant_id:
+                # ROOT CAUSE FIX: Set as string (not UUID) to match working lineage_visualization_custom pattern
+                # get_queryset() will convert string to UUID, and this pattern is proven to work
                 drf_request.tenant_id = str(db_user.tenant_id)
         except User.DoesNotExist:
             pass
 
+    # Set tenant object if available
     if hasattr(request, "tenant") and request.tenant:
         drf_request.tenant = request.tenant
     elif hasattr(drf_request, "tenant_id") and drf_request.tenant_id:
         # Fallback: get tenant object from tenant_id (for tests where middleware doesn't run)
         from hub.apps.tenants.models import Tenant
         try:
+            # tenant_id is already a UUID, so we can use it directly
             drf_request.tenant = Tenant.objects.get(id=drf_request.tenant_id)
         except Tenant.DoesNotExist:
             pass
@@ -227,6 +233,8 @@ def export_contract_custom(request, id=None, *args, **kwargs):
     # 3. viewset.lookup_url_kwarg is set to 'id' (matches lookup_field='id')
     # 4. viewset.action is set (for proper viewset initialization)
     # 5. viewset.format_kwarg is set to None (prevents format suffix conflicts)
+    # ROOT CAUSE FIX: Set request FIRST, then set other attributes
+    # This ensures get_queryset() has access to tenant_id when it's called
     viewset.request = drf_request
     viewset.kwargs = kwargs
     viewset.format_kwarg = None  # CRITICAL: Disable format suffix handling
@@ -473,17 +481,19 @@ urlpatterns = [
     ),
     # Custom export endpoint without format suffix patterns
     # This must come BEFORE the router URLs to take precedence
-    # Note: Pattern is ^(?P<id>...) not ^contracts/(?P<id>...) because this app is already mounted at /api/v1/contracts/
+    # ROOT CAUSE FIX: Pattern must include 'contracts/' because router adds it via basename="contract"
+    # The router URLs are at /api/v1/contracts/contracts/{id}/... so custom pattern must match
     re_path(
-        r"^(?P<id>[^/.]+)/export/$",
+        r"^contracts/(?P<id>[^/.]+)/export/$",
         export_contract_custom,
         name="contract-export-custom",
     ),
     # Custom download endpoint without format suffix patterns
     # This must come BEFORE the router URLs to take precedence
-    # Note: Pattern is ^(?P<id>...) not ^contracts/(?P<id>...) because this app is already mounted at /api/v1/contracts/
+    # ROOT CAUSE FIX: Pattern must include 'contracts/' because router adds it via basename="contract"
+    # The router URLs are at /api/v1/contracts/contracts/{id}/... so custom pattern must match
     re_path(
-        r"^(?P<id>[^/.]+)/download/$",
+        r"^contracts/(?P<id>[^/.]+)/download/$",
         download_contract_custom,
         name="contract-download-custom",
     ),

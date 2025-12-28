@@ -52,6 +52,7 @@ soda-core>=3.0.0
 # Data Processing
 pandas>=2.1.0
 numpy>=1.26.0
+pyarrow>=14.0.0  # Required for Parquet file format support
 
 # HTTP Client
 httpx>=0.25.0

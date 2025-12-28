@@ -197,7 +197,7 @@ def check_rate_limit(
                 limit=global_limit,
                 reset_time=reset_time
             )
-            # Track metrics (Task 6.2.1)
+            # Track rate limit violation metrics
             try:
                 odps_rate_limit_violations_total.labels(level="global", tenant_id=tenant_id or 'unknown', user_id='').inc()
             except Exception:
@@ -233,7 +233,7 @@ def check_rate_limit(
                     limit=tenant_limit,
                     reset_time=reset_time
                 )
-                # Track metrics (Task 6.2.1)
+                # Track rate limit violation metrics
                 try:
                     odps_rate_limit_violations_total.labels(level="tenant", tenant_id=tenant_id, user_id='').inc()
                 except Exception:
@@ -271,7 +271,7 @@ def check_rate_limit(
                     limit=user_limit,
                     reset_time=reset_time
                 )
-                # Track metrics (Task 6.2.1)
+                # Track rate limit violation metrics
                 try:
                     odps_rate_limit_violations_total.labels(level="user", tenant_id=tenant_id, user_id=user_id or '').inc()
                 except Exception:

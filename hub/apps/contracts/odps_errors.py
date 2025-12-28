@@ -20,7 +20,7 @@ All errors include:
 - recovery_strategy: Suggested recovery strategy
 """
 import time
-from typing import Optional, Dict, Any, Callable, Type
+from typing import Optional, Dict, Any, Callable
 from enum import Enum
 from abc import ABC, abstractmethod
 import structlog

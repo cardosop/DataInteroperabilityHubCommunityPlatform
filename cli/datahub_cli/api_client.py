@@ -36,6 +36,9 @@ class APIClient:
 
         Returns Response object. Raises click.ClickException on error.
         """
+        # Reload config to ensure we have the latest API key (important for tests)
+        config._load()
+
         # Ensure authenticated
         if not self.auth_manager.ensure_authenticated():
             raise click.ClickException(
@@ -58,8 +61,16 @@ class APIClient:
                 stream=stream
             )
 
-            # Handle 401 Unauthorized - try to refresh token
+            # Handle 401 Unauthorized - try to refresh token (only for JWT, not API keys)
             if response.status_code == 401:
+                # Check if we're using API key authentication
+                api_key = self.auth_manager.config.get_api_key()
+                if api_key and api_key.strip():
+                    # Using API key - don't try to refresh, just return the error response
+                    # The _handle_response will process the error properly
+                    return response
+
+                # Using JWT - try to refresh token
                 if self.auth_manager.refresh_access_token():
                     # Retry request with new token
                     headers = self.auth_manager.get_auth_headers()
@@ -97,9 +108,9 @@ class APIClient:
         response = self._request('PATCH', endpoint, json_data=json_data)
         return self._handle_response(response)
 
-    def delete(self, endpoint: str) -> Dict[str, Any]:
+    def delete(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """DELETE request"""
-        response = self._request('DELETE', endpoint)
+        response = self._request('DELETE', endpoint, json_data=json_data)
         return self._handle_response(response)
 
     def get_stream(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:

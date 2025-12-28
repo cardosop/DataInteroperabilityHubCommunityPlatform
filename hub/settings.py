@@ -83,9 +83,12 @@ INSTALLED_APPS = [
     "hub.apps.webhooks.apps.WebhooksConfig",
     "hub.apps.api.analytics",
     "hub.apps.orchestration",
+    "hub.apps.transformation",  # Transformation pipelines
     "hub.apps.websocket",  # WebSocket API
     "hub.apps.ai",  # AI/ML features
     "hub.apps.social",  # Social features
+    "hub.apps.mesh",  # Data mesh domains and federated governance
+    "hub.apps.virtualization",  # Data virtualization and federated queries
 ]
 
 # Conditionally add graphene_django and graphql_graphene app if available
@@ -610,23 +613,51 @@ if USE_S3:
     else:
         staging_detected = False  # Production defaults to non-staging
 
+    # Environment variables always take precedence
+    env_access_key = os.getenv('AWS_ACCESS_KEY_ID')
+    env_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+
+    # Determine default S3 endpoint first
+    is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
+    is_test_env = "test" in sys.argv or "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST")
+
     if staging_detected:
-        AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="minio_staging")
-        AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="minio_staging_secure")
         default_s3_endpoint = "http://localhost:9010"
-    else:
-        AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="minio")
-        AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="minio123")
+    elif is_in_docker and is_test_env:
+        # In Docker test environment, try test service names, then localhost with test port
+        import socket
+        try:
+            socket.gethostbyname("minio-test")
+            default_s3_endpoint = "http://minio-test:9000"
+        except socket.gaierror:
+            # Test service not on same network, use localhost with test port
+            default_s3_endpoint = "http://localhost:9010"  # Test port from docker-compose.test.yml
+    elif is_in_docker:
         # Check if we're in Docker (can resolve 'minio' hostname)
         try:
             import socket
-
             socket.gethostbyname("minio")
             default_s3_endpoint = "http://minio:9000"  # In Docker, use service name
         except socket.gaierror:
-            default_s3_endpoint = "http://localhost:9000"  # Outside Docker, use localhost
+            default_s3_endpoint = "http://localhost:9000"  # Fallback to localhost
+    else:
+        default_s3_endpoint = "http://localhost:9000"  # Outside Docker, use localhost
+
+    # Set credentials - environment variables take precedence
+    if env_access_key and env_secret_key:
+        AWS_ACCESS_KEY_ID = env_access_key
+        AWS_SECRET_ACCESS_KEY = env_secret_key
+    elif staging_detected:
+        # Staging detected and no env override
+        AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="minio_staging")
+        AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="minio_staging_secure")
+    else:
+        # Use defaults (regular MinIO credentials)
+        AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="minio")
+        AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="minio123")
 
     AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="hub-files")
+    # Environment variable always takes precedence (set by Docker Compose)
     AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=default_s3_endpoint)
     AWS_S3_USE_SSL = env.bool("AWS_S3_USE_SSL", default=False)
     AWS_S3_VERIFY = env.bool("AWS_S3_VERIFY", default=False)

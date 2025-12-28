@@ -1,6 +1,0 @@
-Test Failures - Sat Dec  6 04:45:46 PM -03 2025
-======================
-
-
-=== Unit Tests Failures ===
-[gw0] [  6%] ERROR tests/unit/contracts/test_normalization_edge_cases.py::NormalizationEdgeCaseTest::test_normalize_contract_1000_fields 

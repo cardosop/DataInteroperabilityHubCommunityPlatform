@@ -62,7 +62,7 @@ class DataHubClient:
 
     Provides authenticated HTTP client with retry logic and error handling.
     Includes high-level APIs for contracts, lineage, scheduled ingestion, versioning,
-    governance, search, observability, and webhooks.
+    governance, mesh, search, observability, transformation, virtualization, and webhooks.
     """
 
     def __init__(self, config: DataHubClientConfig):
@@ -92,10 +92,13 @@ class DataHubClient:
         from .contracts import ContractsAPI
         from .governance import GovernanceAPI
         from .lineage import LineageAPI
+        from .mesh import MeshAPI
         from .observability import ObservabilityAPI
         from .scheduled_ingestion import ScheduledIngestionAPI
         from .search import SearchAPI
+        from .transformation import TransformationAPI
         from .versioning import VersioningAPI
+        from .virtualization import VirtualizationAPI
         from .webhooks import WebhooksAPI
 
         self.contracts = ContractsAPI(self)
@@ -103,8 +106,11 @@ class DataHubClient:
         self.scheduled_ingestion = ScheduledIngestionAPI(self)
         self.versioning = VersioningAPI(self)
         self.governance = GovernanceAPI(self)
+        self.mesh = MeshAPI(self)
         self.search = SearchAPI(self)
         self.observability = ObservabilityAPI(self)
+        self.transformation = TransformationAPI(self)
+        self.virtualization = VirtualizationAPI(self)
         self.webhooks = WebhooksAPI(self)
 
     def set_api_token(self, token: str) -> None:
@@ -258,9 +264,40 @@ class DataHubClient:
                         if "http_status" not in error_data:
                             error_data["http_status"] = response.status_code
 
-                        # Check if this is an ODPS-related endpoint and try to parse as ODPS error
+                        # Check if this is an ODPS or ODCS-related endpoint and try to parse as ODPS/ODCS error
                         url_lower = url.lower()
-                        if "odps" in url_lower or "products" in url_lower or "/export" in url_lower or "/download" in url_lower or "/link-odps" in url_lower:
+                        request_params = kwargs.get("params", {})
+
+                        # Check for ODCS export endpoints (format=odcs parameter or odcs in URL)
+                        is_odcs_endpoint = "odcs" in url_lower
+                        # Check for ODPS-related endpoints
+                        is_odps_endpoint = (
+                            "odps" in url_lower or
+                            "products" in url_lower or
+                            "/link-odps" in url_lower
+                        )
+
+                        # For export/download endpoints, check format parameter
+                        if "/export" in url_lower or "/download" in url_lower:
+                            # Try to get format from params if available
+                            if isinstance(request_params, dict):
+                                format_param = request_params.get("format", "").lower()
+                                if format_param == "odcs":
+                                    is_odcs_endpoint = True
+                                elif format_param == "odps":
+                                    is_odps_endpoint = True
+
+                        # Try ODCS error parsing first (for ODCS endpoints)
+                        if is_odcs_endpoint:
+                            from .errors import parse_odcs_error
+                            try:
+                                raise parse_odcs_error(error_data)
+                            except Exception:
+                                # If ODCS parsing fails, fall back to standard error parsing
+                                pass
+
+                        # Try ODPS error parsing (for ODPS endpoints)
+                        if is_odps_endpoint:
                             from .errors import parse_odps_error
                             try:
                                 raise parse_odps_error(error_data)

@@ -6,7 +6,8 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.contracts.models import Contract
-from hub.apps.contracts.normalization import normalize_odcs_to_hubcontract
+import json
+from hub.apps.contracts.normalization import normalize_contract
 
 
 class TestLineageIntegration(TestCase):
@@ -29,7 +30,11 @@ class TestLineageIntegration(TestCase):
             "transformLogic": "SELECT * FROM source",
         }
 
-        hub_contract, status_val, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, spec_type, spec_version, status_val, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status_val.value, "SUCCESS")
 
@@ -67,7 +72,11 @@ class TestLineageIntegration(TestCase):
             },
         }
 
-        hub_contract, status_val, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, spec_type, spec_version, status_val, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status_val.value, "SUCCESS")
 
@@ -115,7 +124,11 @@ class TestLineageIntegration(TestCase):
             },
         }
 
-        hub_contract, status_val, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, spec_type, spec_version, status_val, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status_val.value, "SUCCESS")
 
@@ -171,7 +184,11 @@ class TestLineageIntegration(TestCase):
             },
         }
 
-        hub_contract, status_val, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
+        hub_contract, spec_type, spec_version, status_val, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status_val.value, "SUCCESS")
 

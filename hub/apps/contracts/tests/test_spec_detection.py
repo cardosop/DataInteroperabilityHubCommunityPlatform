@@ -238,6 +238,63 @@ class TestDetectSpecType:
         assert spec_type == OriginalSpecType.ODCS
         assert spec_version == '3.0.2'
 
+    def test_detect_spec_type_ignores_dcs_dataContractSpecification(self):
+        """Test that deprecated dataContractSpecification field is ignored (not detected)"""
+        # Contract with deprecated field should be treated as ODCS or fallback
+        contract = {
+            'dataContractSpecification': '1.0.0',
+            'id': 'test-dcs',
+            'name': 'Test DCS Contract'
+        }
+        spec_type, spec_version = detect_spec_type(contract)
+        # Should fall back to ODCS (not detect as deprecated format)
+        assert spec_type == OriginalSpecType.ODCS
+        assert spec_version == '3.0.2'
+
+    def test_detect_spec_type_dcs_with_odcs_fields_treated_as_odcs(self):
+        """Test that contract with deprecated field but ODCS fields is detected as ODCS"""
+        contract = {
+            'dataContractSpecification': '1.0.0',  # Deprecated field (ignored)
+            'apiVersion': 'odcs.io/v3.0.2',
+            'kind': 'DataContract'
+        }
+        spec_type, spec_version = detect_spec_type(contract)
+        # Should detect as ODCS (apiVersion and kind take precedence)
+        assert spec_type == OriginalSpecType.ODCS
+        assert spec_version == '3.0.2'
+
+    def test_detect_spec_type_only_odcs_and_odps_detected(self):
+        """Test that only ODCS and ODPS are detected, not deprecated formats"""
+        test_cases = [
+            # ODPS contract
+            ({
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {"details": {"en": {"productID": "test"}}}
+            }, OriginalSpecType.ODPS, "4.1"),
+            # ODCS contract
+            ({
+                'apiVersion': 'odcs.io/v3.0.2',
+                'kind': 'DataContract'
+            }, OriginalSpecType.ODCS, "3.0.2"),
+            # Contract with deprecated field only (should fallback to ODCS)
+            ({
+                'dataContractSpecification': '1.0.0'
+            }, OriginalSpecType.ODCS, "3.0.2"),
+            # Contract with deprecated field and other fields (should fallback to ODCS)
+            ({
+                'dataContractSpecification': '1.0.0',
+                'id': 'test',
+                'name': 'Test'
+            }, OriginalSpecType.ODCS, "3.0.2"),
+        ]
+
+        for contract, expected_type, expected_version in test_cases:
+            spec_type, spec_version = detect_spec_type(contract)
+            assert spec_type == expected_type, \
+                f"Contract {contract} should be detected as {expected_type}, got {spec_type}"
+            assert spec_version == expected_version, \
+                f"Contract {contract} should have version {expected_version}, got {spec_version}"
+
     def test_integration_odps_spec_detection_complete_flow(self):
         """Test: Integration test for ODPS spec detection - complete flow"""
         # Test complete ODPS detection flow with all indicators

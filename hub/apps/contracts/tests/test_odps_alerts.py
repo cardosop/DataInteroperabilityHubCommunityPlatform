@@ -379,7 +379,7 @@ class ODPSAlertsConfigurationTest(TestCase):
         self.assertEqual(alert['labels']['component'], 'odps', "Alert component should be odps")
         self.assertIn('0.05', alert['expr'], "Alert threshold should be 5% (0.05)")
         self.assertEqual(alert['for'], '5m', "Alert should fire after 5 minutes")
-        
+
         # Verify annotations
         annotations = alert.get('annotations', {})
         self.assertIn('summary', annotations, "Alert should have summary annotation")

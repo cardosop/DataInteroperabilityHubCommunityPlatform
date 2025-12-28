@@ -48,6 +48,7 @@ Complete documentation for the Data Interoperability Hub platform.
 - **[Monitoring](MONITORING.md)** - Monitoring and observability
 - **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Runbooks](RUNBOOKS.md)** - Operational runbooks
+- **[ODCS to ODPS Migration Guide](ODCS_TO_ODPS_MIGRATION_GUIDE.md)** - Complete guide for migrating ODCS contracts to ODPS
 
 ### Infrastructure
 - **[Event Bus](EVENT_BUS.md)** - Event-driven communication
@@ -96,7 +97,8 @@ docs/
 ├── Operations
 │   ├── MONITORING.md            # Monitoring
 │   ├── TROUBLESHOOTING.md        # Troubleshooting
-│   └── RUNBOOKS.md              # Runbooks
+│   ├── RUNBOOKS.md              # Runbooks
+│   └── ODCS_TO_ODPS_MIGRATION_GUIDE.md # ODCS to ODPS migration guide
 │
 ├── Infrastructure
 │   ├── EVENT_BUS.md             # Event bus

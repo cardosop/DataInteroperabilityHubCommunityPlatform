@@ -24,6 +24,8 @@ class JobType(models.TextChoices):
     ODPS_EXPORT = "ODPS_EXPORT", "ODPS Export"
     ODPS_SEMANTIC_MAPPING = "ODPS_SEMANTIC_MAPPING", "ODPS Semantic Mapping"
     ODPS_LINKING = "ODPS_LINKING", "ODPS Linking"
+    TRANSFORMATION_PIPELINE_EXECUTION = "TRANSFORMATION_PIPELINE_EXECUTION", "Transformation Pipeline Execution"
+    VIRTUAL_QUERY_EXECUTION = "VIRTUAL_QUERY_EXECUTION", "Virtual Query Execution"
 
 
 class JobStatus(models.TextChoices):

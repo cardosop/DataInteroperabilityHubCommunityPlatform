@@ -8,7 +8,7 @@ Detects ODPS version from contract data by:
 Supports all ODPS versions: 4.1, 4.0, 3.x, 2.x, 1.x
 """
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 def detect_odps_version(contract_data: Dict[str, Any]) -> str:

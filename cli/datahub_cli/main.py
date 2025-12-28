@@ -3,7 +3,7 @@ DataHub CLI main entry point.
 """
 import click
 import sys
-from .commands import assets, contracts, files, jobs, config as config_cmd, lineage, dq, compliance, governance
+from .commands import assets, contracts, files, jobs, config as config_cmd, lineage, dq, compliance, governance, mesh, transformation, virtualization
 from .auth import auth_manager
 from .config import config
 
@@ -14,7 +14,7 @@ from .config import config
 def cli(ctx):
     """
     DataHub CLI - Command-line tool for managing DataHub resources.
-    
+
     Use 'datahub login' to authenticate, or set an API key with 'datahub config set api_key <key>'.
     """
     # Ensure context object exists
@@ -45,6 +45,9 @@ cli.add_command(config_cmd.config_cmd, name='config')
 cli.add_command(dq.dq, name='dq')
 cli.add_command(compliance.compliance, name='compliance')
 cli.add_command(governance.governance, name='governance')
+cli.add_command(mesh.mesh, name='mesh')
+cli.add_command(transformation.transformation, name='transformation')
+cli.add_command(virtualization.virtualization, name='virtualization')
 
 
 def main():

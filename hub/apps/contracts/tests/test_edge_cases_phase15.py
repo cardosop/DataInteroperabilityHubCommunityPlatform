@@ -12,20 +12,20 @@ import json
 from django.test import TestCase
 
 from hub.apps.contracts.models import Contract, OriginalSpecType, NormalizationStatus, ContractStatus
-from hub.apps.contracts.normalization import normalize_odcs_to_hubcontract
+from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.lineage import LineageTraverser, LineageReference, resolve_lineage_reference
 from tests.factories import TenantFactory, UserFactory, AssetFactory
 
 
 class EdgeCasesPhase15TestCase(TestCase):
     """Test edge cases for Phase 15 features."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         self.tenant = TenantFactory()
         self.user = UserFactory(tenant=self.tenant)
         self.asset = AssetFactory(tenant=self.tenant)
-    
+
     def test_missing_contact_handling(self):
         """Test normalization when contact is missing."""
         odcs_contract = {
@@ -37,14 +37,18 @@ class EdgeCasesPhase15TestCase(TestCase):
             "schema": {"fields": [{"name": "id", "type": "string"}]}
             # No contact field
         }
-        
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
+
         self.assertIsNotNone(hub_contract)
         self.assertNotIn('contact', hub_contract)
         # Should still normalize successfully
         self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
-    
+
     def test_missing_servers_handling(self):
         """Test normalization when servers are missing."""
         odcs_contract = {
@@ -56,13 +60,17 @@ class EdgeCasesPhase15TestCase(TestCase):
             "schema": {"fields": [{"name": "id", "type": "string"}]}
             # No servers field
         }
-        
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
+
         self.assertIsNotNone(hub_contract)
         self.assertNotIn('servers', hub_contract)
         self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
-    
+
     def test_missing_servicelevels_handling(self):
         """Test normalization when servicelevels are missing."""
         odcs_contract = {
@@ -74,13 +82,17 @@ class EdgeCasesPhase15TestCase(TestCase):
             "schema": {"fields": [{"name": "id", "type": "string"}]}
             # No slaProperties field
         }
-        
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
+
         self.assertIsNotNone(hub_contract)
         self.assertNotIn('servicelevels', hub_contract)
         self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
-    
+
     def test_broken_lineage_link_handling(self):
         """Test handling of broken lineage links."""
         # Create source contract
@@ -100,7 +112,7 @@ class EdgeCasesPhase15TestCase(TestCase):
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE
         )
-        
+
         # Create contract with broken lineage link (references non-existent contract)
         odcs_contract = {
             "apiVersion": "odcs/v3",
@@ -121,13 +133,17 @@ class EdgeCasesPhase15TestCase(TestCase):
                 }]
             }
         }
-        
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
+
         self.assertIsNotNone(hub_contract)
         # Should normalize but with warnings about broken links
         self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
-        
+
         # Try to resolve the broken link
         ref = LineageReference(
             namespace="ns1",
@@ -136,10 +152,10 @@ class EdgeCasesPhase15TestCase(TestCase):
             field="field1"
         )
         result = resolve_lineage_reference(ref)
-        
+
         # Should detect broken link
         self.assertTrue(ref.is_broken())
-    
+
     def test_circular_lineage_reference(self):
         """Test handling of circular lineage references."""
         # Create two contracts that reference each other
@@ -166,7 +182,7 @@ class EdgeCasesPhase15TestCase(TestCase):
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE
         )
-        
+
         contract2 = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -190,18 +206,18 @@ class EdgeCasesPhase15TestCase(TestCase):
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE
         )
-        
+
         # Test traversal with cycle detection
         traverser = LineageTraverser()
         result = traverser.traverse_top_down(
             contract_id=str(contract1.id),
             max_depth=10
         )
-        
+
         # Should detect cycle and stop traversal
         self.assertIsNotNone(result)
         # Should not exceed max depth due to cycle detection
-    
+
     def test_lineage_depth_limit(self):
         """Test lineage traversal with depth limits."""
         # Create chain of contracts
@@ -231,18 +247,18 @@ class EdgeCasesPhase15TestCase(TestCase):
                 status=ContractStatus.ACTIVE
             )
             contracts.append(contract)
-        
+
         # Test traversal with depth limit
         traverser = LineageTraverser()
         result = traverser.traverse_top_down(
             contract_id=str(contracts[0].id),
             max_depth=2
         )
-        
+
         # Should respect depth limit
         self.assertIsNotNone(result)
         # Should not traverse beyond depth 2
-    
+
     def test_invalid_contact_data(self):
         """Test handling of invalid contact data."""
         odcs_contract = {
@@ -257,16 +273,20 @@ class EdgeCasesPhase15TestCase(TestCase):
                 {"email": "valid@example.com"}  # Valid entry
             ]
         }
-        
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
+
         self.assertIsNotNone(hub_contract)
         # Should normalize with warnings about invalid data
         self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
         # Valid contact should be extracted
         if 'contact' in hub_contract:
             self.assertGreater(len(hub_contract['contact']), 0)
-    
+
     def test_invalid_server_data(self):
         """Test handling of invalid server data."""
         odcs_contract = {
@@ -281,16 +301,20 @@ class EdgeCasesPhase15TestCase(TestCase):
                 {"type": "s3", "url": "s3://bucket"}  # Valid entry
             ]
         }
-        
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
+
         self.assertIsNotNone(hub_contract)
         # Should normalize with warnings
         self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
         # Valid server should be extracted
         if 'servers' in hub_contract:
             self.assertGreater(len(hub_contract['servers']), 0)
-    
+
     def test_empty_arrays_handling(self):
         """Test handling of empty arrays."""
         odcs_contract = {
@@ -303,16 +327,20 @@ class EdgeCasesPhase15TestCase(TestCase):
             "servers": [],  # Empty array
             "support": []  # Empty array
         }
-        
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
+
         self.assertIsNotNone(hub_contract)
         # Should normalize successfully
         self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
         # Empty arrays should be handled gracefully
         if 'servers' in hub_contract:
             self.assertEqual(len(hub_contract['servers']), 0)
-    
+
     def test_null_values_handling(self):
         """Test handling of null values."""
         odcs_contract = {
@@ -325,16 +353,20 @@ class EdgeCasesPhase15TestCase(TestCase):
             "servers": None,  # Null value
             "support": None  # Null value
         }
-        
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(odcs_contract),
+            format="JSON",
+            spec_type="ODCS"
+        )
+
         self.assertIsNotNone(hub_contract)
         # Should normalize successfully
         self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
         # Null values should be handled gracefully
         self.assertNotIn('servers', hub_contract)
         self.assertNotIn('support', hub_contract)
-    
+
     def test_very_large_contract_json(self):
         """Test handling of very large contract JSON."""
         # Create contract with very large JSON (>1MB)
@@ -345,7 +377,7 @@ class EdgeCasesPhase15TestCase(TestCase):
             "schema": {"fields": [{"name": "id", "type": "string"}]},
             "large_field": "x" * 2 * 1024 * 1024  # 2MB string
         }
-        
+
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -357,12 +389,12 @@ class EdgeCasesPhase15TestCase(TestCase):
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE
         )
-        
+
         # Should be able to retrieve contract
         retrieved = Contract.objects.get(id=contract.id)
         self.assertIsNotNone(retrieved)
         self.assertIsNotNone(retrieved.hub_contract_json)
-    
+
     def test_malformed_json_handling(self):
         """Test handling of malformed JSON in original_raw."""
         # This should be caught during parsing, not normalization
@@ -379,7 +411,7 @@ class EdgeCasesPhase15TestCase(TestCase):
                 normalization_status=NormalizationStatus.NORMALIZATION_FAILED,
                 status=ContractStatus.DRAFT
             )
-            
+
             # Contract should be created but with failed status
             self.assertIsNotNone(contract)
             self.assertEqual(contract.normalization_status, NormalizationStatus.NORMALIZATION_FAILED)

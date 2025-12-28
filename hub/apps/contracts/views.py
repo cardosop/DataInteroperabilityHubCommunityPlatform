@@ -83,6 +83,9 @@ from .serializers import ContractCreateSerializer, ContractSerializer, ContractU
 from .services import ContractService
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.observability.otel_metrics import (
+    odcs_export_duration_seconds,
+    odcs_export_size_bytes,
+    odcs_export_total,
     odps_export_duration_seconds,
     odps_export_size_bytes,
     odps_export_total,
@@ -342,7 +345,7 @@ def _categorize_export_size(size_bytes: int) -> str:
         - ODCS (original_spec_type: "ODCS") - Open Data Contract Standard v3.0.2+
 
         If `original_spec_type` is not provided, it will be auto-detected.
-        Note: Only ODCS is supported. The Data Contract Specification (DCS) has been deprecated.
+        Supported spec types: ODCS (Open Data Contract Standard) and ODPS (Open Data Product Standard).
         """,
         request=ContractCreateSerializer,
         responses={
@@ -418,6 +421,48 @@ class ContractViewSet(viewsets.ModelViewSet):
         return True
 
     lookup_field = "id"
+
+    def get_object(self):
+        """
+        Override get_object to ensure tenant context is properly set.
+        This is critical for custom actions that use get_object().
+        """
+        # Ensure tenant_id is set on request if not already set
+        # This is important for custom actions where middleware might not have run
+        if not hasattr(self.request, "tenant_id") or not self.request.tenant_id:
+            # Get tenant_id from user (for tests where middleware doesn't run)
+            if hasattr(self.request, "user") and self.request.user and not self.request.user.is_anonymous:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                try:
+                    db_user = User.objects.only("tenant_id").get(id=self.request.user.id)
+                    if db_user.tenant_id:
+                        # Store as UUID (not string) to match get_queryset() expectations
+                        # get_queryset() will convert string to UUID, but storing as UUID is more reliable
+                        self.request.tenant_id = db_user.tenant_id
+                        # Also set tenant object if available
+                        if not hasattr(self.request, "tenant") or not self.request.tenant:
+                            from hub.apps.tenants.models import Tenant
+                            try:
+                                self.request.tenant = Tenant.objects.get(id=db_user.tenant_id)
+                            except Tenant.DoesNotExist:
+                                pass
+                except User.DoesNotExist:
+                    pass
+
+        # ROOT CAUSE FIX: Ensure tenant_id is a UUID before calling get_queryset()
+        # get_queryset() can handle string conversion, but ensuring UUID here is more reliable
+        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
+            import uuid
+            if isinstance(self.request.tenant_id, str):
+                try:
+                    self.request.tenant_id = uuid.UUID(self.request.tenant_id)
+                except (ValueError, TypeError):
+                    # Invalid UUID - this will cause get_queryset() to return empty queryset
+                    pass
+
+        # Call parent get_object which uses get_queryset()
+        return super().get_object()
 
     def initialize_request(self, request, *args, **kwargs):
         """
@@ -3098,9 +3143,13 @@ class ContractViewSet(viewsets.ModelViewSet):
         - `yaml`: Export as YAML
 
         **Behavior:**
-        - For `odcs` format: Returns original_raw if available, otherwise generates from HubContract
+        - For `odcs` format: Returns original_raw if available and matches requested version, otherwise generates from HubContract
         - For `odps` format: Generates ODPS document from HubContract
         - For `hubcontract` format: Returns hub_contract_json directly
+
+        **Version Parameter:**
+        - For `odcs` format: ODCS version (e.g., 3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, 2.2.2). If not provided, uses original version or defaults to 3.0.2
+        - For `odps` format: ODPS version (e.g., 4.1). Defaults to 4.1 if not provided
 
         **Response:**
         - Returns contract content in requested format
@@ -3125,7 +3174,7 @@ class ContractViewSet(viewsets.ModelViewSet):
                 name="version",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description="ODPS version for export (e.g., 4.1). Only used when format=odps (default: 4.1)",
+                description="Version for export. For ODCS format: 3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, or 2.2.2 (default: detected from contract or 3.0.2). For ODPS format: e.g., 4.1 (default: 4.1)",
                 required=False,
             ),
         ],
@@ -3138,6 +3187,23 @@ class ContractViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=["get"], url_path="export")
     def export_contract(self, request, id=None):
+        # ROOT CAUSE FIX: Ensure self.request and self.kwargs are set correctly
+        # This is critical for custom URL handlers where these might not be set properly
+        # DRF normally sets these in initial(), but custom handlers might not call it
+        self.request = request
+        # Ensure kwargs contains 'id' if passed as parameter
+        # CRITICAL: get_object() uses self.kwargs[lookup_url_kwarg] to get the ID
+        # So we must ensure 'id' is in self.kwargs
+        if not hasattr(self, "kwargs") or not self.kwargs:
+            self.kwargs = {}
+        # If 'id' is passed as parameter but not in kwargs, add it
+        if id and "id" not in self.kwargs:
+            self.kwargs["id"] = id
+        # Also ensure lookup_url_kwarg is set (get_object() uses it)
+        if not hasattr(self, "lookup_url_kwarg") or not self.lookup_url_kwarg:
+            self.lookup_url_kwarg = "id"
+        if not hasattr(self, "lookup_field") or not self.lookup_field:
+            self.lookup_field = "id"
         """
         Export a contract in various formats.
 
@@ -3161,8 +3227,78 @@ class ContractViewSet(viewsets.ModelViewSet):
             import logging
             logger = logging.getLogger(__name__)
 
+            # ROOT CAUSE FIX: Ensure tenant_id is set on request before calling get_object()
+            # This is critical for custom URL handlers where middleware might not have run
+            # The get_object() override also does this, but doing it here ensures it's set before get_queryset() is called
+            if not hasattr(self.request, "tenant_id") or not self.request.tenant_id:
+                if hasattr(self.request, "user") and self.request.user and not self.request.user.is_anonymous:
+                    from django.contrib.auth import get_user_model
+                    User = get_user_model()
+                    try:
+                        db_user = User.objects.only("tenant_id").get(id=self.request.user.id)
+                        if db_user.tenant_id:
+                            self.request.tenant_id = db_user.tenant_id  # UUID from database
+                    except User.DoesNotExist:
+                        pass
 
-            contract = self.get_object()
+            # Ensure tenant_id is UUID (not string) for proper filtering in get_queryset()
+            if hasattr(self.request, "tenant_id") and self.request.tenant_id:
+                import uuid
+                if isinstance(self.request.tenant_id, str):
+                    try:
+                        self.request.tenant_id = uuid.UUID(self.request.tenant_id)
+                    except (ValueError, TypeError):
+                        pass
+
+            # ROOT CAUSE FIX: Try get_object() first (proper tenant filtering)
+            # If it fails, use manual retrieval as fallback for robustness
+            contract = None
+            contract_id = self.kwargs.get("id") or self.kwargs.get("pk")
+
+            try:
+                contract = self.get_object()
+            except Http404:
+                # ROOT CAUSE FIX: If get_object() fails, try manual retrieval as fallback
+                # This provides robustness for custom URL handlers where viewset initialization might differ
+                if contract_id:
+                    # Get tenant_id from request or user
+                    tenant_id = None
+                    if hasattr(self.request, "tenant_id") and self.request.tenant_id:
+                        tenant_id = self.request.tenant_id
+                    elif hasattr(self.request, "user") and self.request.user and not self.request.user.is_anonymous:
+                        from django.contrib.auth import get_user_model
+                        User = get_user_model()
+                        try:
+                            db_user = User.objects.only("tenant_id").get(id=self.request.user.id)
+                            if db_user.tenant_id:
+                                tenant_id = db_user.tenant_id
+                        except User.DoesNotExist:
+                            pass
+
+                    if tenant_id:
+                        try:
+                            # Try to get contract directly with tenant_id filter
+                            import uuid
+                            if isinstance(tenant_id, str):
+                                tenant_id = uuid.UUID(tenant_id)
+                            if isinstance(contract_id, str):
+                                try:
+                                    contract_id = uuid.UUID(contract_id)
+                                except (ValueError, TypeError):
+                                    pass
+
+                            contract = Contract.objects.get(id=contract_id, tenant_id=tenant_id)
+                        except (Contract.DoesNotExist, ValueError, TypeError):
+                            # Re-raise Http404 if contract not found
+                            raise Http404("Contract not found")
+                    else:
+                        raise Http404("Contract not found: No tenant_id available")
+                else:
+                    raise Http404("Contract ID is required")
+
+            # Ensure contract was retrieved
+            if contract is None:
+                raise Http404("Contract not found")
 
             # Get format parameter (default: hubcontract)
             # CRITICAL: Check query parameter FIRST before any format suffix handling
@@ -3196,13 +3332,25 @@ class ContractViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Get version parameter (only used for ODPS format, default: 4.1)
+            # Get version parameter (used for ODPS and ODCS formats)
+            # For ODPS: default is "4.1"
+            # For ODCS: default is detected from contract or "3.0.2"
+            version_param = None
             if hasattr(request, "query_params"):
-                odps_version = request.query_params.get("version", "4.1").strip()
+                version_param = request.query_params.get("version", "").strip()
             elif hasattr(request, "GET"):
-                odps_version = request.GET.get("version", "4.1").strip()
+                version_param = request.GET.get("version", "").strip()
+
+            # Set defaults based on format type
+            if format_type == "odps":
+                odps_version = version_param if version_param else "4.1"
+                odcs_version = None
+            elif format_type == "odcs":
+                odcs_version = version_param if version_param else None
+                odps_version = None
             else:
-                odps_version = "4.1"
+                odps_version = None
+                odcs_version = None
 
             # Handle different format types
             if format_type == "hubcontract":
@@ -3237,63 +3385,261 @@ class ContractViewSet(viewsets.ModelViewSet):
                     return Response(contract_data, content_type="application/json")
 
             elif format_type == "odcs":
-                # Export as ODCS format
-                # Prefer original_raw if available, otherwise generate from HubContract
-                if contract.original_raw and contract.original_spec_type == OriginalSpecType.ODCS:
-                    # Return original ODCS format
-                    original_format = contract.original_format.lower()
+                # Export as ODCS format (Task 9.5.4.1.4.1)
+                # Prefer original_raw if available and matches requested version, otherwise generate
 
-                    # Convert to requested output format if needed
-                    if output_format == original_format:
-                        # Same format, return as-is
-                        if output_format == "yaml":
-                            from django.http import HttpResponse
-                            return HttpResponse(contract.original_raw, content_type="application/x-yaml")
-                        else:
-                            # For JSON, parse the original_raw and return as dict
-                            # DRF will serialize it properly
-                            import json
-                            contract_data = json.loads(contract.original_raw)
-                            return Response(contract_data, content_type="application/json")
-                    else:
-                        # Need to convert format
-                        # parse_contract is now imported at the top of the file
+                # Get tenant_id for metrics
+                tenant_id = _get_tenant_id_from_request(request)
+
+                # Validate ODCS version if provided
+                if odcs_version:
+                    try:
+                        from hub.apps.contracts.odcs_validation import validate_odcs_version
+                        validate_odcs_version(odcs_version)
+                    except Exception as e:
+                        # Record failure metric
                         try:
-                            # Parse original contract
-                            contract_data = parse_contract(contract.original_raw, contract.original_format)
-
-                            # Format in requested output format
-                            if output_format == "yaml":
-                                from django.http import HttpResponse
-                                from hub.apps.contracts.odps_generator import format_odps_as_yaml
-
-                                output = format_odps_as_yaml(contract_data)
-                                return HttpResponse(output, content_type="application/x-yaml")
-                            else:  # json
-                                # Return as JSON (DRF will serialize it automatically)
-                                return Response(contract_data, content_type="application/json")
-                        except Exception as e:
-                            return Response(
-                                {"error": f"Failed to convert ODCS format: {str(e)}"},
-                                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            )
-                else:
-                    # No original_raw or not ODCS, try to generate from HubContract
-                    if not contract.hub_contract_json:
+                            odcs_export_total.labels(
+                                status="failure",
+                                format=output_format,
+                                version=odcs_version or "unknown",
+                                tenant_id=tenant_id
+                            ).inc()
+                        except Exception:
+                            pass  # Don't fail on metrics recording
                         return Response(
-                            {
-                                "error": "Contract has no original_raw or hub_contract_json. Cannot export as ODCS format."
-                            },
+                            {"error": f"Invalid ODCS version: {str(e)}"},
                             status=status.HTTP_400_BAD_REQUEST,
                         )
 
-                    # TODO: Implement HubContract → ODCS generation if needed
-                    # For now, return error if original_raw is not available
+                # Start timing for export duration metric
+                export_start_time = time.time()
+
+                try:
+                    from hub.apps.contracts.odcs_generator import (
+                        generate_odcs_from_hubcontract,
+                    )
+                    from hub.apps.contracts.odcs_format_converter import (
+                        format_odcs_as_json,
+                        format_odcs_as_yaml,
+                    )
+                    from hub.apps.contracts.odcs_version_detection import detect_odcs_version
+                    from hub.apps.contracts.odcs_errors import (
+                        ODCSExportError,
+                        ODCSGenerationError,
+                    )
+
+                    odcs_doc = None
+                    final_version = None
+                    use_original = False
+
+                    # Check if original_raw is available and matches requested version
+                    # original_raw can be empty string, so check for truthiness and non-empty
+                    if contract.original_raw and contract.original_raw.strip() and contract.original_spec_type == OriginalSpecType.ODCS:
+                        try:
+                            # Parse original contract to detect version
+                            original_contract_data = parse_contract(contract.original_raw, contract.original_format)
+                            original_version = detect_odcs_version(original_contract_data)
+
+                            # Use original if:
+                            # 1. No version requested (use original version)
+                            # 2. Requested version matches original version
+                            if not odcs_version or original_version == odcs_version:
+                                odcs_doc = original_contract_data
+                                final_version = original_version if original_version != "unknown" else (odcs_version or "3.0.2")
+                                use_original = True
+                            else:
+                                # Version mismatch - need to generate
+                                final_version = odcs_version
+                        except Exception as e:
+                            # If parsing fails, fall through to generation
+                            logger.warning(f"Failed to parse original ODCS contract: {str(e)}, will generate instead")
+
+                    # Generate from HubContract if original not used
+                    if not use_original:
+                        # ROOT CAUSE FIX: Check if hub_contract_json exists and is not empty
+                        # Empty dict {} is falsy but we want to attempt generation to get proper error
+                        if contract.hub_contract_json is None:
+                            # Record failure metric
+                            try:
+                                odcs_export_total.labels(
+                                    status="failure",
+                                    format=output_format,
+                                    version=odcs_version or "unknown",
+                                    tenant_id=tenant_id
+                                ).inc()
+                            except Exception:
+                                pass
+                            return Response(
+                                {
+                                    "error": "Contract has no original_raw or hub_contract_json. Cannot export as ODCS format."
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+
+                        # Generate ODCS from HubContract
+                        # ROOT CAUSE FIX: Attempt generation even if hub_contract_json is empty/invalid
+                        # This allows proper error handling (500) for generation failures vs missing data (400)
+                        try:
+                            odcs_doc = generate_odcs_from_hubcontract(
+                                hub_contract=contract.hub_contract_json,
+                                target_version=odcs_version,
+                                tenant_id=tenant_id
+                            )
+                            # Detect final version from generated document
+                            final_version = detect_odcs_version(odcs_doc)
+                            if final_version == "unknown":
+                                final_version = odcs_version or "3.0.2"
+                        except ODCSGenerationError as e:
+                            # Record failure metric
+                            try:
+                                odcs_export_total.labels(
+                                    status="failure",
+                                    format=output_format,
+                                    version=odcs_version or "unknown",
+                                    tenant_id=tenant_id
+                                ).inc()
+                            except Exception:
+                                pass
+                            return Response(
+                                {
+                                    "error": f"Failed to generate ODCS document: {str(e)}",
+                                    "details": getattr(e, "context", {})
+                                },
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            )
+                        except Exception as e:
+                            # Record failure metric
+                            try:
+                                odcs_export_total.labels(
+                                    status="failure",
+                                    format=output_format,
+                                    version=odcs_version or "unknown",
+                                    tenant_id=tenant_id
+                                ).inc()
+                            except Exception:
+                                pass
+                            logger.error(f"Failed to generate ODCS export: {str(e)}", exc_info=True)
+                            return Response(
+                                {"error": f"Failed to generate ODCS export: {str(e)}"},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            )
+
+                    # Format output
+                    # Ensure odcs_doc is not None (should never happen, but safety check)
+                    if odcs_doc is None:
+                        # Record failure metric
+                        try:
+                            odcs_export_total.labels(
+                                status="failure",
+                                format=output_format,
+                                version=final_version or "unknown",
+                                tenant_id=tenant_id
+                            ).inc()
+                        except Exception:
+                            pass
+                        return Response(
+                            {"error": "Failed to generate ODCS document: document is None"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
+
+                    try:
+                        if output_format == "yaml":
+                            output = format_odcs_as_yaml(odcs_doc)
+                            content_type = "application/x-yaml"
+                        else:  # json
+                            output = format_odcs_as_json(odcs_doc)
+                            content_type = "application/json"
+                    except ODCSExportError as e:
+                        # Record failure metric
+                        try:
+                            odcs_export_total.labels(
+                                status="failure",
+                                format=output_format,
+                                version=final_version or "unknown",
+                                tenant_id=tenant_id
+                            ).inc()
+                        except Exception:
+                            pass
+                        return Response(
+                            {
+                                "error": f"Failed to format ODCS document: {str(e)}",
+                                "details": getattr(e, "context", {})
+                            },
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
+                    except Exception as e:
+                        # Record failure metric
+                        try:
+                            odcs_export_total.labels(
+                                status="failure",
+                                format=output_format,
+                                version=final_version or "unknown",
+                                tenant_id=tenant_id
+                            ).inc()
+                        except Exception:
+                            pass
+                        logger.error(f"Failed to format ODCS export: {str(e)}", exc_info=True)
+                        return Response(
+                            {"error": f"Failed to format ODCS export: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
+
+                    # Calculate export duration and size for metrics
+                    export_duration = time.time() - export_start_time
+                    export_size_bytes = len(output.encode('utf-8'))
+                    size_category = _categorize_export_size(export_size_bytes)
+
+                    # Record metrics (Task 9.5.4.1.4.1)
+                    try:
+                        odcs_export_duration_seconds.labels(
+                            format=output_format,
+                            size_category=size_category,
+                            version=final_version or "unknown",
+                            tenant_id=tenant_id
+                        ).observe(export_duration)
+
+                        odcs_export_size_bytes.labels(
+                            format=output_format,
+                            version=final_version or "unknown",
+                            tenant_id=tenant_id
+                        ).observe(export_size_bytes)
+
+                        # Record export success
+                        odcs_export_total.labels(
+                            status="success",
+                            format=output_format,
+                            version=final_version or "unknown",
+                            tenant_id=tenant_id
+                        ).inc()
+                    except Exception:
+                        pass  # Don't fail on metrics recording
+
+                    # Return response
+                    if output_format == "yaml":
+                        from django.http import HttpResponse
+                        return HttpResponse(output, content_type=content_type)
+                    else:
+                        # For JSON, parse back to dict for DRF serialization
+                        import json
+                        contract_data = json.loads(output)
+                        return Response(contract_data, content_type=content_type)
+
+                except Exception as e:
+                    # Record failure metric
+                    try:
+                        odcs_export_total.labels(
+                            status="failure",
+                            format=output_format if 'output_format' in locals() else "unknown",
+                            version=odcs_version or "unknown",
+                            tenant_id=tenant_id
+                        ).inc()
+                    except Exception:
+                        pass
+                    logger.error(f"ODCS export endpoint error: {str(e)}", exc_info=True)
                     return Response(
-                        {
-                            "error": "ODCS export requires original_raw. HubContract → ODCS generation not yet implemented."
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
+                        {"error": f"ODCS export failed: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
             elif format_type == "odps":
@@ -3331,9 +3677,12 @@ class ContractViewSet(viewsets.ModelViewSet):
                             pass
 
                     # Generate ODPS document
+                    # ROOT CAUSE FIX: Ensure target_version is a string (not None)
+                    # generate_odps_from_hubcontract expects str, not Optional[str]
+                    odps_target_version = odps_version if odps_version else "4.1"
                     odps_doc = generate_odps_from_hubcontract(
                         hub_contract=contract.hub_contract_json,
-                        target_version=odps_version,
+                        target_version=odps_target_version,
                         original_odcs_contract=original_odcs_contract,
                         original_odcs_url=None,
                     )
@@ -3433,8 +3782,14 @@ class ContractViewSet(viewsets.ModelViewSet):
         **Query Parameters:**
         - `format` (optional): Specify the desired output format. Defaults to `hubcontract`.
         - `output_format` (optional): Specify the desired serialization format (yaml or json). Defaults to `json`.
+        - `version` (optional): Specify the version for ODPS or ODCS format. For ODPS, defaults to `4.1`. For ODCS, defaults to detected version or `3.0.2`.
 
-        Returns a file download with appropriate Content-Disposition header.
+        **Behavior:**
+        - For `odcs` format: Returns original_raw if available and matches requested version, otherwise generates from HubContract
+        - For `odps` format: Generates ODPS document from HubContract
+        - For `hubcontract` format: Returns hub_contract_json directly
+
+        Returns a file download with appropriate Content-Disposition header (filename includes version for ODCS format).
         """,
         parameters=[
             OpenApiParameter(
@@ -3455,7 +3810,7 @@ class ContractViewSet(viewsets.ModelViewSet):
                 name="version",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description="ODPS version for download (e.g., 4.1). Only used when format=odps (default: 4.1)",
+                description="Version for download (e.g., ODPS 4.1, ODCS 3.0.2). Only used when format=odps or format=odcs (default: latest for format)",
                 required=False,
             ),
         ],
@@ -3530,13 +3885,25 @@ class ContractViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Get version parameter (only used for ODPS format, default: 4.1)
+            # Get version parameter (for ODPS and ODCS formats)
+            # For ODPS: default is "4.1"
+            # For ODCS: default is detected from contract or "3.0.2"
+            version_param = None
             if hasattr(request, "query_params"):
-                odps_version = request.query_params.get("version", "4.1").strip()
+                version_param = request.query_params.get("version", "").strip()
             elif hasattr(request, "GET"):
-                odps_version = request.GET.get("version", "4.1").strip()
+                version_param = request.GET.get("version", "").strip()
+
+            # Set defaults based on format type
+            if format_type == "odps":
+                odps_version = version_param if version_param else "4.1"
+                odcs_version = None
+            elif format_type == "odcs":
+                odcs_version = version_param if version_param else None
+                odps_version = None
             else:
-                odps_version = "4.1"
+                odps_version = None
+                odcs_version = None
 
             # Generate filename based on contract and format
             # Try to get name from hub_contract_json, otherwise use contract ID
@@ -3562,7 +3929,12 @@ class ContractViewSet(viewsets.ModelViewSet):
                 extension = "json"
                 content_type = "application/json"
 
-            filename = f"{contract_name}.{format_type}.{extension}"
+            # Build filename with version for ODCS format
+            if format_type == "odcs" and odcs_version:
+                # Include version in filename: {name}-v{version}.odcs.{ext}
+                filename = f"{contract_name}-v{odcs_version}.{format_type}.{extension}"
+            else:
+                filename = f"{contract_name}.{format_type}.{extension}"
 
             # Handle different format types (reuse export logic)
             if format_type == "hubcontract":
@@ -3601,61 +3973,185 @@ class ContractViewSet(viewsets.ModelViewSet):
                     return response
 
             elif format_type == "odcs":
-                # Download as ODCS format
-                if not contract.original_raw:
-                    # For now, return error if original_raw is not available
-                    return Response(
-                        {
-                            "error": "ODCS download requires original_raw. HubContract → ODCS generation not yet implemented."
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                # Download as ODCS format (Task 9.5.4.1.5.1)
+                # Prefer original_raw if available and matches requested version, otherwise generate
 
-                original_format = contract.original_format.lower()
+                # Get tenant_id for metrics
+                tenant_id = _get_tenant_id_from_request(request)
 
-                # Convert to requested output format if needed
-                if output_format == original_format:
-                    # Same format, return as-is
-                    if output_format == "yaml":
-                        response = HttpResponse(contract.original_raw, content_type=content_type)
-                        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-                        return response
-                    else:
-                        # For JSON, parse the original_raw and return as dict
-                        # Then serialize back to JSON for download
-                        import json
-                        contract_data = json.loads(contract.original_raw)
-                        output = json.dumps(contract_data, indent=2, ensure_ascii=False)
-                        response = HttpResponse(output, content_type=content_type)
-                        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-                        return response
-                else:
-                    # Need to convert format
-                    # parse_contract is now imported at the top of the file
+                # Validate ODCS version if provided
+                if odcs_version:
                     try:
-                        # Parse original contract
-                        contract_data = parse_contract(contract.original_raw, contract.original_format)
-
-                        # Format in requested output format
-                        if output_format == "yaml":
-                            from hub.apps.contracts.odps_generator import format_odps_as_yaml
-
-                            output = format_odps_as_yaml(contract_data)
-                            response = HttpResponse(output, content_type=content_type)
-                            response["Content-Disposition"] = f'attachment; filename="{filename}"'
-                            return response
-                        else:  # json
-                            # Return as JSON
-                            import json
-                            output = json.dumps(contract_data, indent=2, ensure_ascii=False)
-                            response = HttpResponse(output, content_type=content_type)
-                            response["Content-Disposition"] = f'attachment; filename="{filename}"'
-                            return response
+                        from hub.apps.contracts.odcs_validation import validate_odcs_version
+                        validate_odcs_version(odcs_version)
                     except Exception as e:
                         return Response(
-                            {"error": f"Failed to convert ODCS format: {str(e)}"},
+                            {"error": f"Invalid ODCS version: {str(e)}"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                # Start timing for export duration metric
+                export_start_time = time.time()
+
+                try:
+                    from hub.apps.contracts.odcs_generator import (
+                        generate_odcs_from_hubcontract,
+                    )
+                    from hub.apps.contracts.odcs_format_converter import (
+                        format_odcs_as_json,
+                        format_odcs_as_yaml,
+                    )
+                    from hub.apps.contracts.odcs_version_detection import detect_odcs_version
+                    from hub.apps.contracts.odcs_errors import (
+                        ODCSExportError,
+                        ODCSGenerationError,
+                    )
+
+                    odcs_doc = None
+                    final_version = None
+                    use_original = False
+
+                    # Check if original_raw is available and matches requested version
+                    if contract.original_raw and contract.original_raw.strip() and contract.original_spec_type == OriginalSpecType.ODCS:
+                        try:
+                            # Parse original contract to detect version
+                            original_contract_data = parse_contract(contract.original_raw, contract.original_format)
+                            original_version = detect_odcs_version(original_contract_data)
+
+                            # Use original if:
+                            # 1. No version requested (use original version)
+                            # 2. Requested version matches original version
+                            if not odcs_version or original_version == odcs_version:
+                                odcs_doc = original_contract_data
+                                final_version = original_version if original_version != "unknown" else (odcs_version or "3.0.2")
+                                use_original = True
+                            else:
+                                # Version mismatch - need to generate
+                                final_version = odcs_version
+                        except Exception as e:
+                            # If parsing fails, fall through to generation
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Failed to parse original ODCS contract: {str(e)}, will generate instead")
+
+                    # Generate from HubContract if original not used
+                    if not use_original:
+                        # Check if hub_contract_json exists
+                        if contract.hub_contract_json is None:
+                            return Response(
+                                {
+                                    "error": "Contract has no original_raw or hub_contract_json. Cannot download as ODCS format."
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+
+                        # Generate ODCS from HubContract
+                        # Attempt generation even if hub_contract_json is empty/invalid to get proper error handling
+                        try:
+                            odcs_doc = generate_odcs_from_hubcontract(
+                                hub_contract=contract.hub_contract_json,
+                                target_version=odcs_version,
+                                tenant_id=tenant_id
+                            )
+                            # Detect final version from generated document
+                            final_version = detect_odcs_version(odcs_doc)
+                            if final_version == "unknown":
+                                final_version = odcs_version or "3.0.2"
+                        except ODCSGenerationError as e:
+                            return Response(
+                                {
+                                    "error": f"Failed to generate ODCS document: {str(e)}",
+                                    "details": getattr(e, "context", {})
+                                },
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            )
+                        except Exception as e:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.error(f"Failed to generate ODCS download: {str(e)}", exc_info=True)
+                            return Response(
+                                {"error": f"Failed to generate ODCS download: {str(e)}"},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            )
+
+                    # Ensure odcs_doc is not None
+                    if odcs_doc is None:
+                        return Response(
+                            {"error": "Failed to retrieve or generate ODCS document."},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
+
+                    # Update filename with final version if not already set
+                    if final_version and not filename.endswith(f"-v{final_version}.{format_type}.{extension}"):
+                        # Rebuild filename with detected/generated version
+                        filename = f"{contract_name}-v{final_version}.{format_type}.{extension}"
+
+                    # Format output
+                    try:
+                        if output_format == "yaml":
+                            output = format_odcs_as_yaml(odcs_doc)
+                        else:  # json
+                            output = format_odcs_as_json(odcs_doc)
+                    except ODCSExportError as e:
+                        return Response(
+                            {
+                                "error": f"Failed to format ODCS document: {str(e)}",
+                                "details": getattr(e, "context", {})
+                            },
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
+                    except Exception as e:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to format ODCS download: {str(e)}", exc_info=True)
+                        return Response(
+                            {"error": f"Failed to format ODCS download: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
+
+                    # Calculate export duration and size for metrics
+                    export_duration = time.time() - export_start_time
+                    export_size_bytes = len(output.encode('utf-8'))
+                    size_category = _categorize_export_size(export_size_bytes)
+
+                    # Record metrics (Task 9.5.4.1.5.1)
+                    try:
+                        odcs_export_duration_seconds.labels(
+                            format=output_format,
+                            size_category=size_category,
+                            version=final_version or "unknown",
+                            tenant_id=tenant_id
+                        ).observe(export_duration)
+
+                        odcs_export_size_bytes.labels(
+                            format=output_format,
+                            version=final_version or "unknown",
+                            tenant_id=tenant_id
+                        ).observe(export_size_bytes)
+
+                        # Record export success
+                        odcs_export_total.labels(
+                            status="success",
+                            format=output_format,
+                            version=final_version or "unknown",
+                            tenant_id=tenant_id
+                        ).inc()
+                    except Exception:
+                        pass  # Don't fail on metrics recording
+
+                    # Return response with Content-Disposition header
+                    response = HttpResponse(output, content_type=content_type)
+                    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                    return response
+
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"ODCS download endpoint error: {str(e)}", exc_info=True)
+                    return Response(
+                        {"error": f"ODCS download failed: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
 
             elif format_type == "odps":
                 # Download as ODPS format
@@ -3683,9 +4179,12 @@ class ContractViewSet(viewsets.ModelViewSet):
                         pass
 
                 try:
+                    # ROOT CAUSE FIX: Ensure target_version is a string (not None)
+                    # generate_odps_from_hubcontract expects str, not Optional[str]
+                    odps_target_version = odps_version if odps_version else "4.1"
                     odps_doc = generate_odps_from_hubcontract(
                         hub_contract=contract.hub_contract_json,
-                        target_version=odps_version,
+                        target_version=odps_target_version,
                         original_odcs_contract=original_odcs_contract,
                         original_odcs_url=None,
                     )
@@ -3952,5 +4451,383 @@ class ContractViewSet(viewsets.ModelViewSet):
             logger.error(f"Generate ODPS endpoint error: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"Generate ODPS failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @extend_schema(
+        summary="Get payment gateways",
+        description="""
+        Get payment gateways from an ODPS contract.
+
+        Returns all payment gateways configured in the contract's marketplace section.
+        Payment gateways are stored in marketplace.x_odps.payment_gateways.
+
+        **Requirements:**
+        - Contract must be an ODPS contract (original_spec_type must be 'ODPS')
+        - Contract must have hub_contract_json with marketplace.x_odps.payment_gateways
+
+        **Response:**
+        - Returns dictionary of payment gateways (key: gateway ID, value: gateway config)
+        - Returns empty dictionary if no payment gateways are configured
+        """,
+        responses={
+            200: inline_serializer(
+                name='PaymentGatewaysResponse',
+                fields={
+                    'payment_gateways': serializers.DictField(
+                        help_text='Dictionary of payment gateways (key: gateway ID, value: gateway config)'
+                    ),
+                }
+            ),
+            400: OpenApiResponse(description="Contract is not an ODPS contract or has invalid data"),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "ODPS"],
+    )
+    @action(detail=True, methods=["get"], url_path="payment-gateways")
+    def payment_gateways(self, request, id=None):
+        """
+        Get payment gateways from ODPS contract.
+
+        GET /api/v1/contracts/{id}/payment-gateways/
+
+        Returns all payment gateways configured in the contract.
+        """
+        self.check_auditor_permissions(request, "payment_gateways")
+
+        try:
+            from django.http import Http404
+            contract = self.get_object()
+
+            # Get tenant and user from request
+            tenant_id = _get_tenant_id_from_request(request)
+            user_id = None
+            if hasattr(request, 'user') and request.user and not request.user.is_anonymous:
+                user_id = str(request.user.id)
+
+            # Use PaymentGatewayService to get payment gateways
+            from hub.apps.marketplace.payment_gateway_service import PaymentGatewayService
+            from hub.apps.core.services.base import NotFoundError as ServiceNotFoundError, ValidationError as ServiceValidationError
+
+            try:
+                payment_gateway_service = PaymentGatewayService(
+                    tenant_id=tenant_id,
+                    user_id=user_id
+                )
+                payment_gateways = payment_gateway_service.list_payment_gateways(str(contract.id))
+
+                return Response(
+                    {
+                        "payment_gateways": payment_gateways,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            except ServiceNotFoundError as e:
+                return Response(
+                    {
+                        "error": str(e),
+                        "error_code": "CONTRACT_NOT_FOUND",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            except ServiceValidationError as e:
+                return Response(
+                    {
+                        "error": str(e),
+                        "error_code": "VALIDATION_ERROR",
+                        "details": getattr(e, 'details', {}),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        except Http404:
+            # Re-raise Http404 so it can be handled by DRF's exception handler
+            raise
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to get payment gateways: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"Failed to get payment gateways: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @extend_schema(
+        summary="Get product strategy",
+        description="""
+        Get product strategy from an ODPS contract (ODPS 4.1+).
+
+        Returns the product strategy configured in the contract.
+        Product strategy is stored in extensions.x_odps.product_strategy or
+        info.x_odps.product_strategy as fallback.
+
+        **Requirements:**
+        - Contract must be an ODPS contract (original_spec_type must be 'ODPS')
+        - Contract must be ODPS version 4.1 or higher
+        - Contract must have hub_contract_json with product strategy data
+
+        **Response:**
+        - Returns product strategy dictionary with objectives, strategicAlignment, productKPIs,
+          targetAudience, valueProposition
+        - Returns null if no product strategy is configured
+        """,
+        responses={
+            200: inline_serializer(
+                name='ProductStrategyResponse',
+                fields={
+                    'product_strategy': serializers.DictField(
+                        help_text='Product strategy dictionary with objectives, strategicAlignment, productKPIs, etc.'
+                    ),
+                }
+            ),
+            400: OpenApiResponse(description="Contract is not an ODPS contract, not ODPS 4.1+, or has invalid data"),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "ODPS"],
+    )
+    @action(detail=True, methods=["get"], url_path="product-strategy")
+    def product_strategy(self, request, id=None):
+        """
+        Get product strategy from ODPS contract (ODPS 4.1+).
+
+        GET /api/v1/contracts/{id}/product-strategy/
+
+        Returns the product strategy configured in the contract.
+        """
+        self.check_auditor_permissions(request, "product_strategy")
+
+        try:
+            from django.http import Http404
+            contract = self.get_object()
+
+            # Verify contract is ODPS type
+            if contract.original_spec_type != 'ODPS':
+                return Response(
+                    {
+                        "error": f"Contract {contract.id} is not an ODPS contract (got {contract.original_spec_type})",
+                        "error_code": "VALIDATION_ERROR",
+                        "details": {'contract_id': str(contract.id), 'spec_type': contract.original_spec_type}
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Verify ODPS version is 4.1 or higher
+            try:
+                version_parts = contract.original_spec_version.split(".")
+                major_version = int(version_parts[0]) if version_parts else 0
+                minor_version = int(version_parts[1]) if len(version_parts) > 1 else 0
+
+                if major_version < 4 or (major_version == 4 and minor_version < 1):
+                    return Response(
+                        {
+                            "error": f"Product strategy is only available for ODPS 4.1+ contracts (got {contract.original_spec_version})",
+                            "error_code": "VALIDATION_ERROR",
+                            "details": {'contract_id': str(contract.id), 'odps_version': contract.original_spec_version}
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except (ValueError, IndexError, AttributeError):
+                # Version parsing failed, but continue - let the service handle it
+                pass
+
+            # Get HubContract data
+            hub_contract = contract.hub_contract_json
+            if not hub_contract or not isinstance(hub_contract, dict):
+                # Contract may not have been normalized yet, or normalization failed
+                # Return null product strategy instead of error
+                return Response(
+                    {
+                        "product_strategy": None,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            # Get product strategy - check extensions.x_odps.product_strategy first (preferred location)
+            product_strategy = None
+            extensions = hub_contract.get("extensions", {})
+            if isinstance(extensions, dict):
+                x_odps = extensions.get("x_odps", {})
+                if isinstance(x_odps, dict):
+                    product_strategy = x_odps.get("product_strategy")
+                    if product_strategy is not None and isinstance(product_strategy, dict):
+                        return Response(
+                            {
+                                "product_strategy": product_strategy,
+                            },
+                            status=status.HTTP_200_OK,
+                        )
+
+            # Fallback to info.x_odps.product_strategy
+            info = hub_contract.get("info", {})
+            if isinstance(info, dict):
+                x_odps = info.get("x_odps", {})
+                if isinstance(x_odps, dict):
+                    product_strategy = x_odps.get("product_strategy")
+                    if product_strategy is not None and isinstance(product_strategy, dict):
+                        return Response(
+                            {
+                                "product_strategy": product_strategy,
+                            },
+                            status=status.HTTP_200_OK,
+                        )
+
+            # No product strategy found - return null
+            return Response(
+                {
+                    "product_strategy": None,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Http404:
+            # Re-raise Http404 so it can be handled by DRF's exception handler
+            raise
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to get product strategy: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"Failed to get product strategy: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @extend_schema(
+        summary="Get product details",
+        description="""
+        Get product details from an ODPS contract for a specific language.
+
+        Returns the product details configured in the contract for the specified language.
+        Product details are extracted from original_raw ODPS document's product.details[lang]
+        structure. If original_raw is not available, attempts to reconstruct from hub_contract_json.
+
+        **Requirements:**
+        - Contract must be an ODPS contract (original_spec_type must be 'ODPS')
+        - Language code must be a valid ISO 639-1 code (e.g., "en", "fi", "es")
+        - Product details may not be available for all languages
+
+        **Response:**
+        - Returns product details dictionary with productID, name, description, productVersion,
+          category, tags for the specified language
+        - Returns null if product details are not available for the specified language
+        """,
+        responses={
+            200: inline_serializer(
+                name='ProductDetailsResponse',
+                fields={
+                    'product_details': serializers.DictField(
+                        help_text='Product details dictionary with productID, name, description, productVersion, category, tags for the specified language'
+                    ),
+                }
+            ),
+            400: OpenApiResponse(description="Contract is not an ODPS contract or invalid language code"),
+            404: OpenApiResponse(description="Contract not found"),
+        },
+        tags=["Contracts", "ODPS"],
+    )
+    @action(detail=True, methods=["get"], url_path="product-details")
+    def product_details(self, request, id=None):
+        """
+        Get product details from ODPS contract for a specific language.
+
+        GET /api/v1/contracts/{id}/product-details/?lang={lang}
+
+        Returns the product details configured in the contract for the specified language.
+        """
+        self.check_auditor_permissions(request, "product_details")
+
+        try:
+            from django.http import Http404
+            contract = self.get_object()
+
+            # Verify contract is ODPS type
+            if contract.original_spec_type != 'ODPS':
+                return Response(
+                    {
+                        "error": f"Contract {contract.id} is not an ODPS contract (got {contract.original_spec_type})",
+                        "error_code": "VALIDATION_ERROR",
+                        "details": {'contract_id': str(contract.id), 'spec_type': contract.original_spec_type}
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Get language parameter (default to "en")
+            lang = request.query_params.get('lang', 'en')
+            if not isinstance(lang, str) or len(lang) != 2:
+                return Response(
+                    {
+                        "error": f"Invalid language code: {lang}. Must be a valid ISO 639-1 code (2 characters)",
+                        "error_code": "VALIDATION_ERROR",
+                        "details": {'lang': lang}
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            lang = lang.lower()
+
+            # First, try to extract from original_raw (most accurate)
+            product_details = None
+            if contract.original_raw:
+                try:
+                    import json
+                    odps_data = json.loads(contract.original_raw)
+                    if isinstance(odps_data, dict):
+                        product = odps_data.get("product", {})
+                        if isinstance(product, dict):
+                            details = product.get("details", {})
+                            if isinstance(details, dict):
+                                lang_details = details.get(lang)
+                                if lang_details is not None and isinstance(lang_details, dict):
+                                    product_details = lang_details
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    # If JSON parsing fails, try to reconstruct from hub_contract_json
+                    pass
+
+            # Fallback: reconstruct from hub_contract_json
+            if product_details is None:
+                hub_contract = contract.hub_contract_json
+                if hub_contract and isinstance(hub_contract, dict):
+                    info = hub_contract.get("info", {})
+                    if isinstance(info, dict):
+                        product_id = hub_contract.get("id")
+                        name = info.get("name")
+                        description = info.get("description")
+                        version = info.get("version")
+                        category = info.get("category")
+                        tags = info.get("tags")
+                        if not isinstance(tags, list):
+                            tags = None
+
+                        # Only return if we have at least productID or name
+                        if product_id or name:
+                            product_details = {}
+                            if product_id:
+                                product_details["productID"] = product_id
+                            if name:
+                                product_details["name"] = name
+                            if description:
+                                product_details["description"] = description
+                            if version:
+                                product_details["productVersion"] = version
+                            if category:
+                                product_details["category"] = category
+                            if tags:
+                                product_details["tags"] = tags
+
+            # Return product details (may be None if not available)
+            return Response(
+                {
+                    "product_details": product_details,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Http404:
+            # Re-raise Http404 so it can be handled by DRF's exception handler
+            raise
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to get product details: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"Failed to get product details: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

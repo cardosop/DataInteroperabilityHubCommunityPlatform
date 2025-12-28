@@ -26,13 +26,13 @@ class APIEndpointCSRFExemptMiddleware(MiddlewareMixin):
         # Exempt all /api/v1/ endpoints from CSRF
         if request.path.startswith('/api/v1/'):
             # Check if request has API key or Bearer token authentication
-            has_api_key = request.headers.get('X-API-Key') is not None
-            has_bearer_token = (
-                request.headers.get('Authorization', '').startswith('Bearer ')
-            )
+            auth_header = request.headers.get('Authorization', '')
+            has_api_key_header = request.headers.get('X-API-Key') is not None
+            has_bearer_token = auth_header.startswith('Bearer ')
+            has_api_key_auth = auth_header.startswith('ApiKey ')
 
-            # Exempt if using API key or Bearer token
-            if has_api_key or has_bearer_token:
+            # Exempt if using API key (via X-API-Key header or Authorization: ApiKey) or Bearer token
+            if has_api_key_header or has_bearer_token or has_api_key_auth:
                 # Mark the view as CSRF exempt
                 # This is done by setting an attribute that CSRF middleware checks
                 setattr(request, '_dont_enforce_csrf_checks', True)

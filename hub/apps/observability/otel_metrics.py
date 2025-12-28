@@ -630,6 +630,74 @@ odcs_normalization_regression_total = _CounterWrapper(
     expected_labels=('version', 'regression_type', 'tenant_id')
 )
 
+# ODCS Generation Metrics (Task 9.5.4.1.2.1)
+odcs_generation_total = _CounterWrapper(
+    'odcs_generation_total',
+    'Total number of ODCS generation operations (all versions)',
+    unit='1',
+    expected_labels=('status', 'version', 'tenant_id')
+)
+
+odcs_generation_duration_seconds = _HistogramWrapper(
+    'odcs_generation_duration_seconds',
+    'ODCS generation duration in seconds',
+    unit='s',
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
+    expected_labels=('status', 'version', 'tenant_id')
+)
+
+odcs_generation_success_rate = _UpDownCounterWrapper(
+    'odcs_generation_success_rate',
+    'ODCS generation success rate (0-1)',
+    unit='1',
+    expected_labels=('tenant_id',)
+)
+
+# Transformation Pipeline Metrics (Task 9.5.1.7.1)
+transformation_pipeline_created_total = _CounterWrapper(
+    'transformation_pipeline_created_total',
+    'Total number of transformation pipelines created',
+    unit='1',
+    expected_labels=('tenant_id',)
+)
+
+transformation_pipeline_execution_duration_seconds = _HistogramWrapper(
+    'transformation_pipeline_execution_duration_seconds',
+    'Transformation pipeline execution duration in seconds',
+    unit='s',
+    buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0),
+    expected_labels=('status', 'tenant_id')
+)
+
+transformation_pipeline_execution_success_rate = _UpDownCounterWrapper(
+    'transformation_pipeline_execution_success_rate',
+    'Transformation pipeline execution success rate (0-1)',
+    unit='1',
+    expected_labels=('tenant_id',)
+)
+
+transformation_pipeline_execution_queue_depth = _UpDownCounterWrapper(
+    'transformation_pipeline_execution_queue_depth',
+    'Number of transformation pipeline executions in queue',
+    unit='1',
+    expected_labels=('status', 'tenant_id')
+)
+
+transformation_preview_generation_duration_seconds = _HistogramWrapper(
+    'transformation_preview_generation_duration_seconds',
+    'Transformation preview generation duration in seconds',
+    unit='s',
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+    expected_labels=('tenant_id',)
+)
+
+transformation_wrangling_operations_total = _CounterWrapper(
+    'transformation_wrangling_operations_total',
+    'Total number of transformation wrangling operations',
+    unit='1',
+    expected_labels=('operation_type', 'status', 'tenant_id')
+)
+
 
 # ============================================================================
 # Histogram Metrics
@@ -708,6 +776,35 @@ odps_export_total = _CounterWrapper(
     'Total number of ODPS export operations',
     unit='1',
     expected_labels=('status', 'format', 'tenant_id')
+)
+
+# ODCS Export Duration (Task 9.5.4.1.4.1)
+# Buckets optimized for export operations (typically faster than ref resolution)
+odcs_export_duration_seconds = _HistogramWrapper(
+    'odcs_export_duration_seconds',
+    'Duration of ODCS export operations in seconds',
+    unit='s',
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+    expected_labels=('format', 'size_category', 'version', 'tenant_id')
+)
+
+# ODCS Export Size (Task 9.5.4.1.4.1)
+# Buckets optimized for export sizes (bytes)
+odcs_export_size_bytes = _HistogramWrapper(
+    'odcs_export_size_bytes',
+    'Size of ODCS export output in bytes',
+    unit='By',
+    buckets=(1024, 10240, 102400, 1048576, 10485760, 104857600, 1073741824),
+    expected_labels=('format', 'version', 'tenant_id')
+)
+
+# ODCS Export Total (Task 9.5.4.1.4.1)
+# Counter to track export attempts with status for failure rate alerts
+odcs_export_total = _CounterWrapper(
+    'odcs_export_total',
+    'Total number of ODCS export operations',
+    unit='1',
+    expected_labels=('status', 'format', 'version', 'tenant_id')
 )
 
 # ODPS Linking Metrics (Task 6.6.2)

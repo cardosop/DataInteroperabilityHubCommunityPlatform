@@ -1,0 +1,39 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}ODPS Normalization Failed{% endblock %}
+
+{% block content %}
+<h2>ODPS Normalization Failed</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>Your ODPS contract normalization has failed.</p>
+<p><strong>Contract ID:</strong> {{ contract_id }}</p>
+{% if contract_url %}
+<p>View contract details:</p>
+<p style="text-align: center;">
+    <a href="{{ contract_url }}" class="button">View Contract</a>
+</p>
+{% endif %}
+{% if odps_version %}
+<p><strong>ODPS Version:</strong> {{ odps_version }}</p>
+{% endif %}
+{% if error_code %}
+<p><strong>Error Code:</strong> {{ error_code }}</p>
+{% endif %}
+{% if error_message %}
+<p><strong>Error Message:</strong></p>
+<div class="code">{{ error_message }}</div>
+{% endif %}
+{% if errors %}
+<p><strong>Errors:</strong></p>
+<div class="code">
+    {% for error in errors %}
+    <div>{{ error }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+{% if field_path %}
+<p><strong>Field Path:</strong> {{ field_path }}</p>
+{% endif %}
+<p>Please review the errors and correct your ODPS document. If the problem persists, contact support.</p>
+{% endblock %}
+

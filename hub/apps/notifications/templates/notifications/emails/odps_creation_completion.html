@@ -1,0 +1,31 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}ODPS Contract Created{% endblock %}
+
+{% block content %}
+<h2>ODPS Contract Created Successfully</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>Your ODPS contract has been created successfully.</p>
+<p><strong>Contract ID:</strong> {{ contract_id }}</p>
+{% if contract_url %}
+<p>View contract details:</p>
+<p style="text-align: center;">
+    <a href="{{ contract_url }}" class="button">View Contract</a>
+</p>
+{% endif %}
+{% if odps_version %}
+<p><strong>ODPS Version:</strong> {{ odps_version }}</p>
+{% endif %}
+{% if normalization_status %}
+<p><strong>Normalization Status:</strong> {{ normalization_status }}</p>
+{% endif %}
+{% if normalization_warnings %}
+<p><strong>Warnings:</strong></p>
+<div class="code">
+    {% for warning in normalization_warnings %}
+    <div>{{ warning }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+

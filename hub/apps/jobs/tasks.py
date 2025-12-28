@@ -407,6 +407,12 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
     elif job_type == JobType.ODPS_LINKING:
         return _execute_odps_linking_job(job_obj)
 
+    elif job_type == JobType.TRANSFORMATION_PIPELINE_EXECUTION:
+        return _execute_transformation_pipeline_job(job_obj)
+
+    elif job_type == JobType.VIRTUAL_QUERY_EXECUTION:
+        return _execute_virtual_query_job(job_obj)
+
     else:
         raise ValueError(f"Unknown job type: {job_type}")
 
@@ -912,6 +918,11 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
             dataset = Dataset.objects.get(id=resource_id)
             search_index = SearchIndexer.index_dataset(dataset)
             indexed_type = "dataset"
+        elif resource_type == "VIRTUAL_DATASET":
+            from hub.apps.virtualization.models import VirtualDataset
+            virtual_dataset = VirtualDataset.objects.get(id=resource_id)
+            search_index = SearchIndexer.index_virtual_dataset(virtual_dataset)
+            indexed_type = "virtual_dataset"
         else:
             raise ValueError(f"Unknown resource type for indexing: {resource_type}")
 
@@ -938,6 +949,11 @@ def _execute_search_index_update_job(job_obj: Job) -> dict:
     except Dataset.DoesNotExist:
         raise ValueError(f"Dataset {resource_id} not found")
     except Exception as e:
+        # Check if it's a VirtualDataset.DoesNotExist
+        from hub.apps.virtualization.models import VirtualDataset
+        if isinstance(e, VirtualDataset.DoesNotExist):
+            raise ValueError(f"VirtualDataset {resource_id} not found")
+        # Log and re-raise other exceptions
         logger.error(
             "Search index update job failed",
             exc_info=True,
@@ -2450,6 +2466,30 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
                 message="Failed to publish ODPS linking completion event"
             )
 
+        # Send notification email for ODPS linking status (Task 8.4.4)
+        try:
+            from hub.apps.notifications.tasks import send_odps_linking_status_email
+            send_odps_linking_status_email.delay(
+                odps_contract_id=odps_contract_id,
+                status="completed",
+                status_message="ODPS linking completed successfully",
+                odcs_contract_id=odcs_contract_id,
+                progress_percentage=100.0,
+                current_phase="completed",
+                validation_passed=True,
+                user_id=user_id,
+                tenant_id=tenant_id
+            )
+        except Exception as e:
+            # Log but don't fail job if notification fails
+            logger.warning(
+                "odps_linking_notification_failed",
+                job_id=str(job_obj.id),
+                odps_contract_id=odps_contract_id,
+                error=str(e),
+                message="Failed to send ODPS linking status notification (non-critical)"
+            )
+
         logger.info(
             "odps_linking_job_completed",
             job_id=str(job_obj.id),
@@ -2482,6 +2522,530 @@ def _execute_odps_linking_job(job_obj: Job) -> dict:
             message=f"ODPS linking job failed: {str(e)}"
         )
         raise Exception(f"ODPS linking failed: {str(e)}") from e
+
+
+@transaction.atomic
+def _execute_transformation_pipeline_job(job_obj: Job) -> dict:
+    """
+    Execute transformation pipeline execution job.
+
+    Uses transaction.atomic for database operations and implements
+    idempotency checking using execution_id as idempotency key.
+
+    Args:
+        job_obj: Job instance
+
+    Returns:
+        Result dictionary with execution results
+
+    Raises:
+        ValueError: For validation errors
+        Exception: For execution errors
+    """
+    from hub.apps.transformation.models import PipelineExecution, ExecutionStatus
+    from hub.apps.transformation.services import TransformationService
+    from hub.apps.transformation.exceptions import (
+        TransformationExecutionError,
+        TransformationValidationError
+    )
+
+    execution_id = job_obj.resource_id
+    if not execution_id:
+        raise ValueError("execution_id is required in resource_id")
+
+    try:
+        # Use select_for_update to prevent concurrent execution
+        execution = PipelineExecution.objects.select_for_update().get(id=execution_id)
+    except PipelineExecution.DoesNotExist:
+        raise ValueError(f"PipelineExecution {execution_id} not found")
+
+    # Idempotency check: if execution is already in terminal state, return existing result
+    # This uses execution_id as the idempotency key (as per requirements)
+    if execution.is_terminal():
+        logger.warning(
+            "transformation_pipeline_execution_already_terminal",
+            job_id=str(job_obj.id),
+            execution_id=str(execution.id),
+            status=execution.status,
+            message=f"Execution {execution_id} is already in terminal state: {execution.status} (idempotency check)"
+        )
+        return {
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "skipped": True,
+            "reason": "Already in terminal state (idempotent retry)",
+            "idempotency_key": execution.idempotency_key or str(execution.id)
+        }
+
+    # Sync execution status from job before starting
+    execution.sync_status_from_job()
+
+    # Check if execution was cancelled
+    if execution.status == ExecutionStatus.CANCELLED:
+        logger.info(
+            "transformation_pipeline_execution_cancelled",
+            job_id=str(job_obj.id),
+            execution_id=str(execution.id),
+            message=f"Execution {execution_id} was cancelled, skipping job execution"
+        )
+        return {
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "skipped": True,
+            "reason": "Execution was cancelled"
+        }
+
+    # Mark execution as started
+    execution.mark_started()
+    execution.add_log_entry(f"Job {job_obj.id} started processing", "INFO")
+
+    try:
+        # Get execution details from job
+        details = job_obj.details_json or {}
+        pipeline_id = details.get("pipeline_id")
+        asset_id = details.get("asset_id")
+        execution_mode = details.get("execution_mode", "ASYNC")
+
+        if not pipeline_id or not asset_id:
+            raise ValueError("pipeline_id and asset_id are required in job details")
+
+        # Initialize service
+        service = TransformationService(
+            tenant_id=str(execution.pipeline.tenant_id),
+            user_id=str(job_obj.created_by.id) if job_obj.created_by else None
+        )
+
+        # Execute pipeline synchronously (job worker handles async execution)
+        # The actual transformation logic would be called here
+        execution.add_log_entry("Executing pipeline transformation steps", "INFO")
+
+        # Run quality check on input asset
+        input_quality_metrics = service._run_quality_check(
+            asset_id,
+            str(execution.pipeline.tenant_id),
+            execution
+        )
+
+        # Run compliance check on input asset
+        input_compliance_status = service._run_compliance_check(
+            asset_id,
+            str(execution.pipeline.tenant_id),
+            execution
+        )
+
+        # Execute pipeline (sync execution within async job)
+        result_data = service._execute_pipeline_sync(
+            execution.pipeline,
+            asset_id,
+            execution,
+            str(execution.pipeline.tenant_id),
+            str(job_obj.created_by.id) if job_obj.created_by else None
+        )
+
+        # Store metrics and result asset
+        from hub.apps.assets.models import Asset
+        source_asset = Asset.objects.get(id=asset_id, tenant_id=str(execution.pipeline.tenant_id))
+
+        execution.mark_completed(
+            result_asset=source_asset,  # Placeholder: use source asset as result for now
+            metrics={
+                "execution_mode": execution_mode,
+                "input_quality_metrics": input_quality_metrics,
+                "input_compliance_status": input_compliance_status,
+                **result_data
+            }
+        )
+
+        # Sync execution status from job to ensure consistency
+        execution.sync_status_from_job()
+
+        # Publish completion event
+        duration_ms = int(execution.get_duration_seconds() * 1000) if execution.get_duration_seconds() else None
+        try:
+            service.publish_pipeline_execution_completed(
+                pipeline_id=str(execution.pipeline.id),
+                execution_id=str(execution.id),
+                duration_ms=duration_ms,
+                records_processed=result_data.get("rows_processed"),
+                quality_metrics=input_quality_metrics,
+                tenant_id=str(execution.pipeline.tenant_id),
+                user_id=str(job_obj.created_by.id) if job_obj.created_by else None
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to publish pipeline execution completed event: {e}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "error": str(e)
+                },
+                exc_info=True
+            )
+
+        # Create audit log for completion
+        try:
+            from hub.apps.audit.utils import create_audit_event
+            duration_seconds = execution.get_duration_seconds()
+            duration_ms = int(duration_seconds * 1000) if duration_seconds else None
+
+            completion_details = {
+                "execution_id": str(execution.id),
+                "pipeline_id": str(execution.pipeline.id),
+                "asset_id": asset_id,
+                "execution_mode": execution.execution_mode.value if hasattr(execution.execution_mode, 'value') else str(execution.execution_mode),
+                "duration_seconds": duration_seconds,
+                "duration_ms": duration_ms,
+                "quality_metrics": input_quality_metrics
+            }
+
+            # Add result_asset_id if available
+            if execution.result_asset:
+                completion_details["result_asset_id"] = str(execution.result_asset.id)
+
+            # Add records_processed if available
+            if result_data and "rows_processed" in result_data:
+                completion_details["records_processed"] = result_data["rows_processed"]
+
+            create_audit_event(
+                resource_type="TRANSFORMATION_PIPELINE",
+                action="EXECUTION_COMPLETED",
+                actor_user=job_obj.created_by,
+                tenant=execution.pipeline.tenant,
+                resource_id=str(execution.pipeline.id),
+                result="SUCCESS",
+                details=completion_details
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to create audit log for execution completion: {e}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "error": str(e)
+                },
+                exc_info=True
+            )
+
+        # Send notification email for completion
+        try:
+            from hub.apps.notifications.tasks import send_pipeline_execution_completion_email
+            send_pipeline_execution_completion_email.delay(str(execution.id))
+        except Exception as e:
+            logger.warning(
+                f"Failed to send pipeline execution completion notification: {e}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "error": str(e)
+                },
+                exc_info=True
+            )
+
+        logger.info(
+            "transformation_pipeline_execution_completed",
+            job_id=str(job_obj.id),
+            execution_id=str(execution.id),
+            pipeline_id=str(execution.pipeline.id),
+            message=f"Transformation pipeline execution {execution_id} completed successfully"
+        )
+
+        return {
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "duration_seconds": execution.get_duration_seconds(),
+            "rows_processed": result_data.get("rows_processed", 0)
+        }
+
+    except (TransformationValidationError, TransformationExecutionError) as e:
+        error_msg = str(e)
+        duration_ms = int(execution.get_duration_seconds() * 1000) if execution.get_duration_seconds() else None
+
+        # Execute compensation logic for multi-service operations
+        try:
+            from hub.apps.transformation.compensation import TransformationPipelineCompensation
+            compensation = TransformationPipelineCompensation(execution)
+            compensation_result = compensation.compensate(
+                rollback_execution=True,
+                cleanup_job=True,  # Cleanup job on failure
+                cleanup_result_asset=True,
+                publish_compensation_events=True
+            )
+            logger.info(
+                f"Compensation completed for job execution {execution.id}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "job_id": str(job_obj.id),
+                    "compensation_result": compensation_result
+                }
+            )
+        except Exception as comp_error:
+            logger.exception(
+                f"Compensation failed for job execution {execution.id}: {comp_error}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "job_id": str(job_obj.id),
+                    "compensation_error": str(comp_error)
+                }
+            )
+            # Still mark execution as failed even if compensation fails
+            execution.mark_failed(error_message=error_msg)
+
+        # Sync execution status from job to ensure consistency
+        execution.sync_status_from_job()
+
+        # Publish failure event
+        try:
+            service = TransformationService(
+                tenant_id=str(execution.pipeline.tenant_id),
+                user_id=str(job_obj.created_by.id) if job_obj.created_by else None
+            )
+            service.publish_pipeline_execution_failed(
+                pipeline_id=str(execution.pipeline.id),
+                execution_id=str(execution.id),
+                error_message=error_msg,
+                error_code=getattr(e, 'error_code', None),
+                error_details=getattr(e, 'details', None),
+                duration_ms=duration_ms,
+                tenant_id=str(execution.pipeline.tenant_id),
+                user_id=str(job_obj.created_by.id) if job_obj.created_by else None
+            )
+        except Exception as e2:
+            logger.warning(
+                f"Failed to publish pipeline execution failed event: {e2}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "error": str(e2)
+                },
+                exc_info=True
+            )
+
+        # Create audit log for failure
+        try:
+            from hub.apps.audit.utils import create_audit_event
+            duration_seconds = execution.get_duration_seconds()
+            duration_ms = int(duration_seconds * 1000) if duration_seconds else None
+
+            failure_details = {
+                "execution_id": str(execution.id),
+                "pipeline_id": str(execution.pipeline.id),
+                "asset_id": asset_id,
+                "execution_mode": execution.execution_mode.value if hasattr(execution.execution_mode, 'value') else str(execution.execution_mode),
+                "error_message": error_msg,
+                "error_code": getattr(e, 'error_code', None),
+                "duration_seconds": duration_seconds,
+                "duration_ms": duration_ms
+            }
+
+            # Add error details if available
+            error_details = getattr(e, 'details', None)
+            if error_details:
+                failure_details["error_details"] = error_details
+
+            create_audit_event(
+                resource_type="TRANSFORMATION_PIPELINE",
+                action="EXECUTION_FAILED",
+                actor_user=job_obj.created_by,
+                tenant=execution.pipeline.tenant,
+                resource_id=str(execution.pipeline.id),
+                result="FAILURE",
+                details=failure_details
+            )
+        except Exception as e2:
+            logger.warning(
+                f"Failed to create audit log for execution failure: {e2}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "error": str(e2)
+                },
+                exc_info=True
+            )
+
+        # Send notification email for failure
+        try:
+            from hub.apps.notifications.tasks import send_pipeline_execution_failure_email
+            send_pipeline_execution_failure_email.delay(str(execution.id))
+        except Exception as e2:
+            logger.warning(
+                f"Failed to send pipeline execution failure notification: {e2}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "error": str(e2)
+                },
+                exc_info=True
+            )
+
+        logger.error(
+            "transformation_pipeline_execution_failed",
+            job_id=str(job_obj.id),
+            execution_id=str(execution.id),
+            pipeline_id=str(execution.pipeline.id),
+            error=error_msg,
+            error_code=getattr(e, 'error_code', None),
+            exc_info=True,
+            message=f"Transformation pipeline execution {execution_id} failed: {error_msg}"
+        )
+        raise Exception(f"Transformation pipeline execution failed: {error_msg}") from e
+
+    except Exception as e:
+        error_msg = f"Unexpected error during transformation pipeline execution: {str(e)}"
+
+        # Execute compensation logic for unexpected errors
+        try:
+            from hub.apps.transformation.compensation import TransformationPipelineCompensation
+            compensation = TransformationPipelineCompensation(execution)
+            compensation_result = compensation.compensate(
+                rollback_execution=True,
+                cleanup_job=True,
+                cleanup_result_asset=True,
+                publish_compensation_events=True
+            )
+            logger.info(
+                f"Compensation completed for unexpected error in execution {execution.id}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "job_id": str(job_obj.id),
+                    "compensation_result": compensation_result
+                }
+            )
+        except Exception as comp_error:
+            logger.exception(
+                f"Compensation failed for unexpected error in execution {execution.id}: {comp_error}",
+                extra={
+                    "execution_id": str(execution.id),
+                    "job_id": str(job_obj.id),
+                    "compensation_error": str(comp_error)
+                }
+            )
+            # Still mark execution as failed even if compensation fails
+            execution.mark_failed(error_message=error_msg)
+
+        # Sync execution status from job to ensure consistency
+        execution.sync_status_from_job()
+
+        logger.error(
+            "transformation_pipeline_execution_error",
+            job_id=str(job_obj.id),
+            execution_id=str(execution.id),
+            error=str(e),
+            exc_info=True,
+            message=f"Unexpected error during transformation pipeline execution: {str(e)}"
+        )
+        raise Exception(f"Transformation pipeline execution error: {str(e)}") from e
+
+
+@transaction.atomic
+def _execute_virtual_query_job(job_obj: Job) -> dict:
+    """
+    Execute virtual query execution job.
+
+    Executes a virtual dataset query asynchronously.
+
+    Args:
+        job_obj: Job instance
+
+    Returns:
+        Result dictionary with execution results
+
+    Raises:
+        ValueError: For validation errors
+        Exception: For execution errors
+    """
+    from hub.apps.virtualization.models import QueryExecution, QueryExecutionStatus
+    from hub.apps.virtualization.services import VirtualizationService
+
+    execution_id = job_obj.resource_id
+    if not execution_id:
+        raise ValueError("execution_id is required in resource_id")
+
+    try:
+        # Use select_for_update to prevent concurrent execution
+        execution = QueryExecution.objects.select_for_update().get(id=execution_id)
+    except QueryExecution.DoesNotExist:
+        raise ValueError(f"QueryExecution {execution_id} not found")
+
+    # Idempotency check: if execution is already in terminal state, return existing result
+    if execution.is_completed():
+        logger.warning(
+            "virtual_query_execution_already_terminal",
+            job_id=str(job_obj.id),
+            execution_id=str(execution.id),
+            status=execution.status,
+            message=f"Execution {execution_id} is already in terminal state: {execution.status} (idempotency check)"
+        )
+        return {
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "skipped": True,
+            "reason": "Already in terminal state (idempotent retry)"
+        }
+
+    # Check if execution was cancelled
+    if execution.status == QueryExecutionStatus.CANCELLED:
+        logger.info(
+            "virtual_query_execution_cancelled",
+            job_id=str(job_obj.id),
+            execution_id=str(execution.id),
+            message=f"Execution {execution_id} was cancelled, skipping job execution"
+        )
+        return {
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "skipped": True,
+            "reason": "Execution was cancelled"
+        }
+
+    # Mark execution as started
+    execution.mark_started()
+    execution.add_log_entry("INFO", f"Job {job_obj.id} started processing")
+
+    try:
+        # Get execution details from job
+        details = job_obj.details_json or {}
+        virtual_dataset_id = str(execution.virtual_dataset_id)
+        timeout_seconds = details.get("timeout_seconds", 3600)
+
+        # Initialize service
+        service = VirtualizationService(
+            tenant_id=str(execution.virtual_dataset.tenant_id),
+            user_id=str(job_obj.created_by.id) if job_obj.created_by else None
+        )
+
+        # Execute query synchronously (job worker handles async execution)
+        execution.add_log_entry("INFO", "Executing virtual dataset query")
+
+        # Execute the query using the sync method (job worker provides async execution)
+        execution = service._execute_query_sync(
+            execution,
+            execution.virtual_dataset,
+            execution.parameters or {},
+            timeout_seconds
+        )
+
+        execution.add_log_entry("INFO", f"Query execution completed successfully")
+
+        # Sync execution status from job to ensure consistency
+        execution.sync_status_from_job()
+
+        return {
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "row_count": execution.get_metric("rows_processed", 0),
+            "duration_ms": execution.get_metric("duration_ms", 0)
+        }
+
+    except Exception as e:
+        error_msg = str(e)
+        execution.mark_failed(error_message=error_msg)
+
+        # Sync execution status from job to ensure consistency
+        execution.sync_status_from_job()
+
+        logger.error(
+            "virtual_query_execution_error",
+            job_id=str(job_obj.id),
+            execution_id=str(execution.id),
+            error=error_msg,
+            exc_info=True,
+            message=f"Error during virtual query execution: {error_msg}"
+        )
+        raise Exception(f"Virtual query execution error: {error_msg}") from e
 
 
 def check_job_timeouts():

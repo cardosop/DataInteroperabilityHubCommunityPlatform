@@ -775,6 +775,209 @@ product:
         result = self.runner.invoke(cli, ['jobs', 'get', job_data['id']])
         assert result.exit_code == 0
 
+    def test_contracts_export_odcs_with_version_real_api(self):
+        """Test contracts export with ODCS format and version using real API"""
+        import tempfile
+        import os
+        import re
+        import json
+
+        # Create an ODCS contract via API
+        odcs_content = json.dumps({
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "cli-test-export-odcs",
+            "name": "CLI Test Contract for ODCS Export",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nullable": False
+                    }
+                ]
+            }
+        })
+
+        # Create contract via API
+        contract_data = self._create_contract_via_api(
+            asset_id=None,
+            original_raw=odcs_content,
+            original_format='JSON',
+            original_spec_type='ODCS'
+        )
+
+        contract_id = contract_data['id']
+
+        # Test export with ODCS format and version
+        result = self.runner.invoke(cli, [
+            'contracts', 'export', contract_id,
+            '--format', 'odcs',
+            '--version', '3.0.2',
+            '--output-format', 'json'
+        ])
+
+        assert result.exit_code == 0, f"CLI failed with output: {result.output}"
+        # Should either show export success or return JSON content
+        assert 'exported successfully' in result.output.lower() or 'apiVersion' in result.output.lower() or 'odcs' in result.output.lower()
+
+    def test_contracts_export_odcs_with_version_yaml_real_api(self):
+        """Test contracts export with ODCS format, version, and YAML output using real API"""
+        import tempfile
+        import os
+        import json
+
+        # Create an ODCS contract via API
+        odcs_content = json.dumps({
+            "apiVersion": "odcs.io/v3.0.1",
+            "kind": "DataContract",
+            "id": "cli-test-export-odcs-yaml",
+            "name": "CLI Test Contract for ODCS Export YAML",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nullable": False
+                    }
+                ]
+            }
+        })
+
+        # Create contract via API
+        contract_data = self._create_contract_via_api(
+            asset_id=None,
+            original_raw=odcs_content,
+            original_format='JSON',
+            original_spec_type='ODCS'
+        )
+
+        contract_id = contract_data['id']
+
+        # Test export with ODCS format, version, and YAML output
+        result = self.runner.invoke(cli, [
+            'contracts', 'export', contract_id,
+            '--format', 'odcs',
+            '--version', '3.0.1',
+            '--output-format', 'yaml'
+        ])
+
+        assert result.exit_code == 0, f"CLI failed with output: {result.output}"
+        # Should either show export success or return YAML content
+        assert 'exported successfully' in result.output.lower() or 'apiVersion' in result.output.lower() or 'odcs' in result.output.lower()
+
+    def test_contracts_export_odcs_invalid_version_real_api(self):
+        """Test contracts export with ODCS format and invalid version using real API"""
+        import json
+
+        # Create an ODCS contract via API
+        odcs_content = json.dumps({
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "cli-test-export-odcs-invalid",
+            "name": "CLI Test Contract for Invalid Version",
+            "version": "1.0.0"
+        })
+
+        # Create contract via API
+        contract_data = self._create_contract_via_api(
+            asset_id=None,
+            original_raw=odcs_content,
+            original_format='JSON',
+            original_spec_type='ODCS'
+        )
+
+        contract_id = contract_data['id']
+
+        # Test export with invalid ODCS version (should fail validation before API call)
+        result = self.runner.invoke(cli, [
+            'contracts', 'export', contract_id,
+            '--format', 'odcs',
+            '--version', 'invalid-version'
+        ])
+
+        assert result.exit_code != 0, "Should fail with invalid version"
+        assert 'Invalid ODCS version format' in result.output or 'invalid' in result.output.lower()
+
+    def test_contracts_export_odcs_unsupported_version_real_api(self):
+        """Test contracts export with ODCS format and unsupported version using real API"""
+        import json
+
+        # Create an ODCS contract via API
+        odcs_content = json.dumps({
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "cli-test-export-odcs-unsupported",
+            "name": "CLI Test Contract for Unsupported Version",
+            "version": "1.0.0"
+        })
+
+        # Create contract via API
+        contract_data = self._create_contract_via_api(
+            asset_id=None,
+            original_raw=odcs_content,
+            original_format='JSON',
+            original_spec_type='ODCS'
+        )
+
+        contract_id = contract_data['id']
+
+        # Test export with unsupported ODCS version (should fail validation before API call)
+        result = self.runner.invoke(cli, [
+            'contracts', 'export', contract_id,
+            '--format', 'odcs',
+            '--version', '99.99.99'
+        ])
+
+        assert result.exit_code != 0, "Should fail with unsupported version"
+        assert 'not supported' in result.output.lower()
+
+    def test_contracts_export_odcs_version_preview_real_api(self):
+        """Test contracts export with ODCS format and preview version using real API"""
+        import json
+
+        # Create an ODCS contract via API with preview version
+        odcs_content = json.dumps({
+            "apiVersion": "odcs.io/v3.0.0-preview",
+            "kind": "DataContract",
+            "id": "cli-test-export-odcs-preview",
+            "name": "CLI Test Contract for Preview Version",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nullable": False
+                    }
+                ]
+            }
+        })
+
+        # Create contract via API
+        contract_data = self._create_contract_via_api(
+            asset_id=None,
+            original_raw=odcs_content,
+            original_format='JSON',
+            original_spec_type='ODCS'
+        )
+
+        contract_id = contract_data['id']
+
+        # Test export with ODCS preview version
+        result = self.runner.invoke(cli, [
+            'contracts', 'export', contract_id,
+            '--format', 'odcs',
+            '--version', '3.0.0-preview',
+            '--output-format', 'json'
+        ])
+
+        assert result.exit_code == 0, f"CLI failed with output: {result.output}"
+        # Should either show export success or return content
+        assert 'exported successfully' in result.output.lower() or 'apiVersion' in result.output.lower() or 'odcs' in result.output.lower()
+
     def test_config_commands(self):
         """Test config commands (no API needed)"""
         # Test config get

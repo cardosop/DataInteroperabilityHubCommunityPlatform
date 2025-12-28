@@ -13,10 +13,8 @@ from datahub_interoperability.errors import (
     ODPSValidationError,
     ODPSExportError,
     ODPSLinkingError,
-    NotFoundError,
-    ODPSValidationError,
-    ODPSExportError,
-    ODPSLinkingError,
+    ODCSValidationError,
+    ODCSExportError,
     NotFoundError,
     ValidationError,
 )
@@ -1448,3 +1446,304 @@ async def test_export_odps_not_found_error(contracts_api, client):
     # NotFoundError may be wrapped in ODPSError by error handler
     with pytest.raises((NotFoundError, ODPSError)):
         await contracts_api.export_odps(contract_id, format="json")
+
+
+# ODCS Export Tests
+
+@pytest.mark.asyncio
+async def test_export_odcs_json(contracts_api, client):
+    """Test exporting contract as ODCS format in JSON."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    expected_response = {
+        "apiVersion": "odcs.io/v3.0.2",
+        "kind": "DataContract",
+        "id": "test-contract",
+        "name": "Test Contract",
+        "version": "1.0.0",
+    }
+
+    from unittest.mock import MagicMock, PropertyMock
+    import json
+    mock_response = MagicMock()
+    mock_response.headers = {"Content-Type": "application/json"}
+    # Set text as a property so it's accessible
+    type(mock_response).text = PropertyMock(return_value=json.dumps(expected_response))
+    mock_response.json = MagicMock(return_value=expected_response)
+
+    client.request = AsyncMock(return_value=mock_response)
+
+    result = await contracts_api.export_odcs(contract_id, format="json")
+
+    assert result == expected_response
+    client.request.assert_called_once_with(
+        "GET",
+        f"contracts/{contract_id}/export/",
+        params={"format": "odcs", "output_format": "json"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_yaml(contracts_api, client):
+    """Test exporting contract as ODCS format in YAML."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    yaml_content = "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-contract"
+
+    from unittest.mock import MagicMock
+    mock_response = MagicMock()
+    mock_response.headers = {"Content-Type": "application/x-yaml"}
+    mock_response.text = yaml_content
+
+    client.request = AsyncMock(return_value=mock_response)
+
+    result = await contracts_api.export_odcs(contract_id, format="yaml")
+
+    assert result == {"content": yaml_content, "format": "yaml"}
+    client.request.assert_called_once_with(
+        "GET",
+        f"contracts/{contract_id}/export/",
+        params={"format": "odcs", "output_format": "yaml"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_with_version(contracts_api, client):
+    """Test exporting contract as ODCS format with version parameter."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    expected_response = {
+        "apiVersion": "odcs.io/v3.0.2",
+        "kind": "DataContract",
+        "id": "test-contract",
+    }
+
+    from unittest.mock import MagicMock, PropertyMock
+    import json
+    mock_response = MagicMock()
+    mock_response.headers = {"Content-Type": "application/json"}
+    # Set text as a property so it's accessible
+    type(mock_response).text = PropertyMock(return_value=json.dumps(expected_response))
+    mock_response.json = MagicMock(return_value=expected_response)
+
+    client.request = AsyncMock(return_value=mock_response)
+
+    result = await contracts_api.export_odcs(contract_id, version="3.0.2", format="json")
+
+    assert result == expected_response
+    client.request.assert_called_once_with(
+        "GET",
+        f"contracts/{contract_id}/export/",
+        params={"format": "odcs", "output_format": "json", "version": "3.0.2"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_invalid_format(contracts_api):
+    """Test that invalid format raises ODCSValidationError."""
+    with pytest.raises(ODCSValidationError) as exc_info:
+        await contracts_api.export_odcs("123e4567-e89b-12d3-a456-426614174000", format="xml")
+    assert exc_info.value.code == "INVALID_VALUE"
+    assert "format" in exc_info.value.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_invalid_contract_id_empty(contracts_api):
+    """Test that empty contract_id raises ODCSValidationError."""
+    with pytest.raises(ODCSValidationError) as exc_info:
+        await contracts_api.export_odcs("", format="json")
+    assert exc_info.value.code == "REQUIRED_FIELD_MISSING"
+    assert "contract_id" in exc_info.value.message.lower() or "required" in exc_info.value.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_invalid_contract_id_not_uuid(contracts_api):
+    """Test that non-UUID contract_id raises ODCSValidationError."""
+    with pytest.raises(ODCSValidationError) as exc_info:
+        await contracts_api.export_odcs("not-a-uuid", format="json")
+    assert exc_info.value.code == "INVALID_VALUE"
+    assert "uuid" in exc_info.value.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_invalid_contract_id_type(contracts_api):
+    """Test that non-string contract_id raises ODCSValidationError."""
+    with pytest.raises(ODCSValidationError) as exc_info:
+        await contracts_api.export_odcs(123, format="json")  # type: ignore
+    assert exc_info.value.code == "INVALID_DATA_TYPE"
+    assert "string" in exc_info.value.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_invalid_version_format(contracts_api):
+    """Test that invalid version format raises ODCSValidationError."""
+    with pytest.raises(ODCSValidationError) as exc_info:
+        await contracts_api.export_odcs("123e4567-e89b-12d3-a456-426614174000", version="invalid", format="json")
+    assert exc_info.value.code == "INVALID_VALUE"
+    assert "version" in exc_info.value.message.lower() or "format" in exc_info.value.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_invalid_version_type(contracts_api):
+    """Test that non-string version raises ODCSValidationError."""
+    with pytest.raises(ODCSValidationError) as exc_info:
+        await contracts_api.export_odcs("123e4567-e89b-12d3-a456-426614174000", version=3.02, format="json")  # type: ignore
+    assert exc_info.value.code == "INVALID_DATA_TYPE"
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_unsupported_version(contracts_api):
+    """Test that unsupported version raises ODCSValidationError."""
+    with pytest.raises(ODCSValidationError) as exc_info:
+        await contracts_api.export_odcs("123e4567-e89b-12d3-a456-426614174000", version="99.99.99", format="json")
+    assert exc_info.value.code == "INVALID_VALUE"
+    assert "not supported" in exc_info.value.message.lower() or "supported" in exc_info.value.message.lower()
+
+
+@pytest.mark.parametrize("version", ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"])
+@pytest.mark.asyncio
+async def test_export_odcs_valid_versions(contracts_api, client, version):
+    """Test that all supported ODCS versions are accepted."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    expected_response = {
+        "apiVersion": f"odcs.io/v{version}",
+        "kind": "DataContract",
+        "id": "test-contract",
+    }
+
+    from unittest.mock import MagicMock, PropertyMock
+    import json
+    mock_response = MagicMock()
+    mock_response.headers = {"Content-Type": "application/json"}
+    # Set text as a property so it's accessible
+    type(mock_response).text = PropertyMock(return_value=json.dumps(expected_response))
+    mock_response.json = MagicMock(return_value=expected_response)
+
+    client.request = AsyncMock(return_value=mock_response)
+
+    result = await contracts_api.export_odcs(contract_id, version=version, format="json")
+
+    assert result == expected_response
+    client.request.assert_called_once_with(
+        "GET",
+        f"contracts/{contract_id}/export/",
+        params={"format": "odcs", "output_format": "json", "version": version}
+    )
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_api_error_mapping(contracts_api, client):
+    """Test that API errors are properly mapped to ODCS errors."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    from datahub_interoperability.errors import DataHubError
+
+    client.request = AsyncMock(side_effect=DataHubError("Export failed", "ODCS_EXPORT_ERROR", 500))
+
+    # API errors should be mapped to ODCSExportError (not ODCSValidationError)
+    with pytest.raises(ODCSExportError):
+        await contracts_api.export_odcs(contract_id, format="json")
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_not_found_error(contracts_api, client):
+    """Test that 404 errors are properly handled."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+
+    from datahub_interoperability.errors import NotFoundError, ODCSError
+
+    client.request = AsyncMock(side_effect=NotFoundError("Contract not found"))
+
+    # NotFoundError may be wrapped in ODCSError by error handler
+    with pytest.raises((NotFoundError, ODCSError)):
+        await contracts_api.export_odcs(contract_id, format="json")
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_network_error(contracts_api, client):
+    """Test that network errors are properly handled."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    from datahub_interoperability.errors import NetworkError
+
+    client.request = AsyncMock(side_effect=NetworkError("Connection timeout"))
+
+    # Network errors should be re-raised as NetworkError
+    with pytest.raises(NetworkError):
+        await contracts_api.export_odcs(contract_id, format="json")
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_json_double_encoded(contracts_api, client):
+    """Test that double-encoded JSON responses are handled correctly."""
+    import json
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    # Simulate double-encoded JSON (API returns JSON string containing JSON)
+    inner_json = {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract", "id": "test-contract"}
+    double_encoded = json.dumps(json.dumps(inner_json))
+
+    from unittest.mock import MagicMock, PropertyMock
+    mock_response = MagicMock()
+    mock_response.headers = {"Content-Type": "application/json"}
+    type(mock_response).text = PropertyMock(return_value=double_encoded)
+    mock_response.json = MagicMock(return_value=json.dumps(inner_json))  # First decode
+
+    client.request = AsyncMock(return_value=mock_response)
+
+    result = await contracts_api.export_odcs(contract_id, format="json")
+
+    assert result == inner_json
+    client.request.assert_called_once_with(
+        "GET",
+        f"contracts/{contract_id}/export/",
+        params={"format": "odcs", "output_format": "json"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_yaml_content_type_detection(contracts_api, client):
+    """Test that YAML format is detected from Content-Type header even if format param is json."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    yaml_content = "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-contract"
+
+    from unittest.mock import MagicMock
+    mock_response = MagicMock()
+    # Content-Type indicates YAML even though format param might be json
+    mock_response.headers = {"Content-Type": "application/x-yaml; charset=utf-8"}
+    mock_response.text = yaml_content
+
+    client.request = AsyncMock(return_value=mock_response)
+
+    result = await contracts_api.export_odcs(contract_id, format="yaml")
+
+    assert result == {"content": yaml_content, "format": "yaml"}
+    assert "yaml" in result["format"]
+
+
+@pytest.mark.asyncio
+async def test_export_odcs_json_content_type_variations(contracts_api, client):
+    """Test that various JSON Content-Type headers are handled correctly."""
+    contract_id = "123e4567-e89b-12d3-a456-426614174000"
+    expected_response = {
+        "apiVersion": "odcs.io/v3.0.2",
+        "kind": "DataContract",
+        "id": "test-contract",
+    }
+
+    from unittest.mock import MagicMock, PropertyMock
+    import json
+
+    # Test different Content-Type variations
+    content_types = [
+        "application/json",
+        "application/json; charset=utf-8",
+        "application/json;charset=utf-8",
+        "text/json",
+    ]
+
+    for content_type in content_types:
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": content_type}
+        type(mock_response).text = PropertyMock(return_value=json.dumps(expected_response))
+        mock_response.json = MagicMock(return_value=expected_response)
+
+        client.request = AsyncMock(return_value=mock_response)
+
+        result = await contracts_api.export_odcs(contract_id, format="json")
+
+        assert result == expected_response, f"Failed for Content-Type: {content_type}"

@@ -1071,6 +1071,36 @@ class ProductCreationWorkflow:
             tenant_id=tenant_id
         )
 
+        # Send notification email for ODPS creation completion or normalization failure (Task 8.4.4)
+        if user:
+            try:
+                from hub.apps.notifications.tasks import (
+                    send_odps_creation_completion_email,
+                    send_odps_normalization_failure_email
+                )
+                if final_norm_status == NormalizationStatus.NORMALIZATION_FAILED:
+                    # Send normalization failure notification
+                    error_message = '; '.join(odps_normalization_errors) if odps_normalization_errors else "ODPS normalization failed"
+                    send_odps_normalization_failure_email.delay(
+                        contract_id=str(odps_contract_obj.id),
+                        error_message=error_message,
+                        error_code="ODPS_NORMALIZATION_ERROR",
+                        errors=odps_normalization_errors,
+                        field_path=None
+                    )
+                else:
+                    # Send creation completion notification
+                    send_odps_creation_completion_email.delay(str(odps_contract_obj.id))
+            except Exception as e:
+                # Log but don't fail ODPS creation if notification fails
+                logger.warning(
+                    "odps_creation_notification_failed",
+                    workflow_instance_id=str(instance.id),
+                    odps_contract_id=str(odps_contract_obj.id),
+                    error=str(e),
+                    message="Failed to send ODPS notification (non-critical)"
+                )
+
         return {
             "odps_contract_id": str(odps_contract_obj.id),
             "state": {
@@ -1211,6 +1241,30 @@ class ProductCreationWorkflow:
             except Exception as e:
                 logger.warning(f"Failed to publish ODPS linking status event: {e}")
 
+            # Send notification email for ODPS linking status (Task 8.4.4)
+            try:
+                from hub.apps.notifications.tasks import send_odps_linking_status_email
+                send_odps_linking_status_email.delay(
+                    odps_contract_id=odps_contract_id,
+                    status="completed",
+                    status_message="Contracts linked successfully",
+                    odcs_contract_id=odcs_contract_id,
+                    progress_percentage=100.0,
+                    current_phase="completed",
+                    validation_passed=True,
+                    user_id=str(user_id) if user_id else None,
+                    tenant_id=str(tenant_id) if tenant_id else None
+                )
+            except Exception as e:
+                # Log but don't fail linking if notification fails
+                logger.warning(
+                    "odps_linking_notification_failed",
+                    workflow_instance_id=str(instance.id),
+                    odps_contract_id=odps_contract_id,
+                    error=str(e),
+                    message="Failed to send ODPS linking status notification (non-critical)"
+                )
+
             return {
                 "linked": True,
                 "odps_contract_id": odps_contract_id,
@@ -1241,6 +1295,31 @@ class ProductCreationWorkflow:
                 )
             except Exception as event_error:
                 logger.warning(f"Failed to publish ODPS linking status event: {event_error}")
+
+            # Send notification email for ODPS linking failure (Task 8.4.4)
+            try:
+                from hub.apps.notifications.tasks import send_odps_linking_status_email
+                send_odps_linking_status_email.delay(
+                    odps_contract_id=odps_contract_id,
+                    status="failed",
+                    status_message=f"Linking validation failed: {str(e)}",
+                    odcs_contract_id=odcs_contract_id,
+                    progress_percentage=50.0,
+                    current_phase="validation",
+                    validation_passed=False,
+                    user_id=str(user_id) if user_id else None,
+                    tenant_id=str(tenant_id) if tenant_id else None
+                )
+            except Exception as notify_error:
+                # Log but don't fail linking if notification fails
+                logger.warning(
+                    "odps_linking_notification_failed",
+                    workflow_instance_id=str(instance.id),
+                    odps_contract_id=odps_contract_id,
+                    error=str(notify_error),
+                    message="Failed to send ODPS linking failure notification (non-critical)"
+                )
+
             # Re-raise validation errors as-is (they're already ODPSLinkingError subclasses)
             raise
         except Contract.DoesNotExist as e:

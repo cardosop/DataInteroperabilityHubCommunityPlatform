@@ -24,21 +24,43 @@ class DQServiceClient:
     """
 
     def __init__(self):
-        # In test environment, use localhost instead of service name
-        default_url = 'http://dq-service:8083'
-        if hasattr(settings, 'TESTING') and settings.TESTING:
-            # Check if we're in a test environment
-            import os
-            if os.getenv('TEST_ENVIRONMENT') == 'staging':
-                default_url = 'http://localhost:8083'
-            elif os.getenv('TEST_ENVIRONMENT') == 'default':
-                default_url = 'http://localhost:8083'
-            # Also check if running pytest
-            import sys
-            if 'pytest' in sys.modules or 'unittest' in sys.modules:
-                default_url = 'http://localhost:8083'
+        import os
+        import sys
 
-        self.base_url = getattr(settings, 'DQ_SERVICE_URL', default_url)
+        # Priority: 1. Environment variable, 2. Settings, 3. Default based on context
+        # Check environment variable first (set by Docker Compose)
+        env_url = os.getenv('DQ_SERVICE_URL')
+        if env_url:
+            default_url = env_url
+        else:
+            # Check settings
+            default_url = getattr(settings, 'DQ_SERVICE_URL', None)
+            if not default_url:
+                # Determine default based on context
+                is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
+                is_test_env = 'pytest' in sys.modules or 'unittest' in sys.modules
+
+                if is_in_docker and is_test_env:
+                    # In Docker test environment, try test service names first, then localhost
+                    # Test services might be on different network, so try localhost with mapped port
+                    import socket
+                    try:
+                        socket.gethostbyname('dq-service-test')
+                        default_url = 'http://dq-service-test:8083'
+                    except socket.gaierror:
+                        # Test service not on same network, try localhost with test port
+                        default_url = 'http://localhost:8084'  # Test port from docker-compose.test.yml
+                elif is_in_docker:
+                    # In Docker (non-test), use service name
+                    default_url = 'http://dq-service:8083'
+                elif is_test_env:
+                    # Running tests on host machine, use localhost
+                    default_url = 'http://localhost:8083'
+                else:
+                    # Production/default: use service name
+                    default_url = 'http://dq-service:8083'
+
+        self.base_url = default_url
         self.timeout = getattr(settings, 'DQ_SERVICE_TIMEOUT', 1800)  # 30 minutes default
         if not self.base_url.endswith('/'):
             self.base_url = self.base_url.rstrip('/')

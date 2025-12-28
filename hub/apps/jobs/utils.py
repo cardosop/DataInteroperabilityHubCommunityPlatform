@@ -31,6 +31,7 @@ JOB_TIMEOUTS = {
     JobType.ODPS_EXPORT: 300,  # 5 minutes
     JobType.ODPS_SEMANTIC_MAPPING: 600,  # 10 minutes
     JobType.ODPS_LINKING: 300,  # 5 minutes
+    JobType.VIRTUAL_QUERY_EXECUTION: 3600,  # 1 hour (virtual queries can be long-running)
 }
 
 # Maximum retry attempts per job type

@@ -484,7 +484,7 @@ class RefResolver:
         except Exception:
             pass  # Stats tracking failure should not affect caching
 
-        # Track in Prometheus metrics (Task 6.2.1)
+        # Track cache hit in Prometheus metrics
         try:
             tenant_id = self.tenant_id or 'unknown'
             odps_ref_cache_hits_total.labels(tenant_id=tenant_id).inc()
@@ -503,7 +503,7 @@ class RefResolver:
         except Exception:
             pass  # Stats tracking failure should not affect caching
 
-        # Track in Prometheus metrics (Task 6.2.1)
+        # Track cache miss in Prometheus metrics
         try:
             tenant_id = self.tenant_id or 'unknown'
             odps_ref_cache_misses_total.labels(tenant_id=tenant_id).inc()
@@ -851,7 +851,7 @@ class RefResolver:
             ValueError: If ref_path format is invalid
             ODPSRefResolutionError: If reference cannot be resolved
         """
-        # Track metrics (Task 6.2.1)
+        # Track ODPS reference resolution metrics
         start_time = time.time()
         tenant_id = self.tenant_id or 'unknown'
         ref_type = RefMode.INTERNAL.value
@@ -984,13 +984,13 @@ class RefResolver:
                 user_id=self.user_id,
             )
 
-            # Track metrics (Task 6.2.1)
+            # Track successful reference resolution metrics
             odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
             odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
 
             return resolved_value
         except (ODPSRefResolutionError, ValueError) as e:
-            # Track failure metrics (Task 6.2.1)
+            # Track reference resolution failure metrics
             duration = time.time() - start_time
             error_type = type(e).__name__
             odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
@@ -1018,7 +1018,7 @@ class RefResolver:
         Raises:
             ODPSRefResolutionError: If reference cannot be resolved or security validation fails
         """
-        # Track metrics (Task 6.2.1)
+        # Track ODPS reference resolution metrics
         start_time = time.time()
         tenant_id = self.tenant_id or 'unknown'
         ref_type = RefMode.LOCAL.value
@@ -1268,13 +1268,13 @@ class RefResolver:
                 metadata={'file_extension': file_extension},
             )
 
-            # Track success metrics (Task 6.2.1)
+            # Track successful reference resolution metrics
             odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
             odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
 
             return data
         except ODPSRefResolutionError as e:
-            # Track failure metrics (Task 6.2.1)
+            # Track reference resolution failure metrics
             duration = time.time() - start_time
             error_type = type(e).__name__
             odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
@@ -1303,7 +1303,7 @@ class RefResolver:
         Raises:
             ODPSRefResolutionError: If reference cannot be resolved or validation fails
         """
-        # Track metrics (Task 6.2.1)
+        # Track ODPS reference resolution metrics
         start_time = time.time()
         tenant_id = self.tenant_id or 'unknown'
         ref_type = RefMode.EXTERNAL.value
@@ -1387,7 +1387,7 @@ class RefResolver:
                     cache_hit=True,
                     size_bytes=len(json.dumps(cached_data)),
                 )
-                # Track success metrics (Task 6.2.1)
+                # Track successful reference resolution metrics
                 odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
                 odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
                 return cached_data
@@ -1432,7 +1432,7 @@ class RefResolver:
                     size_bytes=content_length,
                 )
 
-                # Track success metrics (Task 6.2.1)
+                # Track successful reference resolution metrics
                 odps_ref_resolution_total.labels(ref_type=ref_type, status='success', tenant_id=tenant_id).inc()
                 odps_ref_resolution_duration_seconds.labels(ref_type=ref_type, tenant_id=tenant_id).observe(duration)
 
@@ -1461,7 +1461,7 @@ class RefResolver:
                 error_type="TimeoutException",
                 error_message=f"External $ref URL '{ref_path}' timed out after {self.timeout_per_ref}s",
             )
-            # Track failure metrics (Task 6.2.1)
+            # Track reference resolution failure metrics
             odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
             odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type='TimeoutException', tenant_id=tenant_id).inc()
             odps_external_fetch_failures_total.labels(error_type='TimeoutException', tenant_id=tenant_id).inc()
@@ -1475,7 +1475,7 @@ class RefResolver:
         except httpx.HTTPStatusError as e:
             duration = time.time() - start_time
             error_type = f'HTTPStatusError_{e.response.status_code}'
-            # Track failure metrics (Task 6.2.1)
+            # Track reference resolution failure metrics
             odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
             odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
             odps_external_fetch_failures_total.labels(error_type=error_type, tenant_id=tenant_id).inc()
@@ -1489,7 +1489,7 @@ class RefResolver:
         except httpx.RequestError as e:
             duration = time.time() - start_time
             error_type = 'RequestError'
-            # Track failure metrics (Task 6.2.1)
+            # Track reference resolution failure metrics
             odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
             odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
             odps_external_fetch_failures_total.labels(error_type=error_type, tenant_id=tenant_id).inc()
@@ -1503,7 +1503,7 @@ class RefResolver:
         except json.JSONDecodeError as e:
             duration = time.time() - start_time
             error_type = 'JSONDecodeError'
-            # Track failure metrics (Task 6.2.1)
+            # Track reference resolution failure metrics
             odps_ref_resolution_total.labels(ref_type=ref_type, status='failure', tenant_id=tenant_id).inc()
             odps_ref_resolution_failures_total.labels(ref_type=ref_type, error_type=error_type, tenant_id=tenant_id).inc()
             odps_external_fetch_failures_total.labels(error_type=error_type, tenant_id=tenant_id).inc()

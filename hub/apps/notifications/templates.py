@@ -23,18 +23,18 @@ def render_email_template(
 ) -> Dict[str, str]:
     """
     Render email template to HTML and plain text.
-    
+
     Args:
         template_name: Name of the HTML template (e.g., 'notifications/emails/user_invitation.html')
         context: Template context variables
         text_template_name: Optional name of plain text template (auto-generated from HTML if not provided)
-    
+
     Returns:
         Dict with 'html' and 'text' keys containing rendered content
     """
     # Render HTML template
     html_content = render_to_string(template_name, context)
-    
+
     # Generate plain text from HTML if text template not provided
     if text_template_name:
         text_content = render_to_string(text_template_name, context)
@@ -55,7 +55,7 @@ def render_email_template(
             text_content = html.unescape(text_content)
             # Clean up whitespace
             text_content = re.sub(r'\s+', ' ', text_content).strip()
-    
+
     return {
         'html': html_content,
         'text': text_content
@@ -65,7 +65,7 @@ def render_email_template(
 def get_base_url() -> str:
     """
     Get base URL for email links.
-    
+
     Returns:
         Base URL from settings or default
     """
@@ -79,10 +79,10 @@ def get_base_url() -> str:
 def build_invitation_url(token: str) -> str:
     """
     Build invitation acceptance URL.
-    
+
     Args:
         token: Invitation token
-    
+
     Returns:
         Full invitation URL
     """
@@ -93,10 +93,10 @@ def build_invitation_url(token: str) -> str:
 def build_password_reset_url(token: str) -> str:
     """
     Build password reset URL.
-    
+
     Args:
         token: Password reset token
-    
+
     Returns:
         Full password reset URL
     """
@@ -107,13 +107,55 @@ def build_password_reset_url(token: str) -> str:
 def build_job_url(job_id: str) -> str:
     """
     Build job detail URL.
-    
+
     Args:
         job_id: Job UUID
-    
+
     Returns:
         Full job URL
     """
     base_url = get_base_url()
     return f"{base_url}/api/v1/jobs/{job_id}"
+
+
+def build_contract_url(contract_id: str) -> str:
+    """
+    Build contract detail URL.
+
+    Args:
+        contract_id: Contract UUID
+
+    Returns:
+        Full contract URL
+    """
+    base_url = get_base_url()
+    return f"{base_url}/api/v1/contracts/{contract_id}"
+
+
+def build_pipeline_url(pipeline_id: str) -> str:
+    """
+    Build pipeline detail URL.
+
+    Args:
+        pipeline_id: Pipeline UUID
+
+    Returns:
+        Full pipeline URL
+    """
+    base_url = get_base_url()
+    return f"{base_url}/api/v1/transformation/pipelines/{pipeline_id}"
+
+
+def build_pipeline_execution_url(execution_id: str) -> str:
+    """
+    Build pipeline execution detail URL.
+
+    Args:
+        execution_id: Execution UUID
+
+    Returns:
+        Full pipeline execution URL
+    """
+    base_url = get_base_url()
+    return f"{base_url}/api/v1/transformation/executions/{execution_id}"
 

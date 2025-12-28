@@ -6,8 +6,7 @@ Includes in-memory caching for performance optimization.
 """
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
-from functools import lru_cache
+from typing import Dict, Any
 
 # In-memory cache for loaded schemas (per-version)
 # Key: normalized version string (e.g., "4.1", "3.x")

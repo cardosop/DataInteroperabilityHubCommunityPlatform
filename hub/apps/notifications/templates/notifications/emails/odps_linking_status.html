@@ -1,0 +1,39 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}ODPS Linking Status{% endblock %}
+
+{% block content %}
+<h2>ODPS Linking Status Update</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>Your ODPS contract linking status has been updated.</p>
+<p><strong>ODPS Contract ID:</strong> {{ odps_contract_id }}</p>
+{% if odcs_contract_id %}
+<p><strong>ODCS Contract ID:</strong> {{ odcs_contract_id }}</p>
+{% endif %}
+<p><strong>Status:</strong> {{ status }}</p>
+{% if status_message %}
+<p><strong>Message:</strong> {{ status_message }}</p>
+{% endif %}
+{% if progress_percentage is not None %}
+<p><strong>Progress:</strong> {{ progress_percentage }}%</p>
+{% endif %}
+{% if current_phase %}
+<p><strong>Current Phase:</strong> {{ current_phase }}</p>
+{% endif %}
+{% if odps_contract_url %}
+<p>View ODPS contract:</p>
+<p style="text-align: center;">
+    <a href="{{ odps_contract_url }}" class="button">View ODPS Contract</a>
+</p>
+{% endif %}
+{% if odcs_contract_url %}
+<p>View ODCS contract:</p>
+<p style="text-align: center;">
+    <a href="{{ odcs_contract_url }}" class="button">View ODCS Contract</a>
+</p>
+{% endif %}
+{% if validation_passed is not None %}
+<p><strong>Validation:</strong> {% if validation_passed %}Passed{% else %}Failed{% endif %}</p>
+{% endif %}
+{% endblock %}
+

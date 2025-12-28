@@ -185,17 +185,17 @@ class ODPSNormalizerBase(ABC):
             hub_contract = self._initialize_hub_contract(contract_data, spec_version)
 
             # Normalize contract sections (common across all versions)
-            # Task 1.4.2: ODPS → HubContract info mapping
+            # ODPS → HubContract info mapping
             self._normalize_info(contract_data, hub_contract, warnings)
-            # Task 1.4.3: ODPS → HubContract quality mapping
+            # ODPS → HubContract quality mapping
             self._normalize_quality(contract_data, hub_contract, warnings)
-            # Task 1.4.4: ODPS → HubContract lifecycle mapping
+            # ODPS → HubContract lifecycle mapping
             self._normalize_lifecycle(contract_data, hub_contract, warnings)
-            # Task 1.4.5: ODPS → HubContract marketplace mapping
+            # ODPS → HubContract marketplace mapping
             self._normalize_marketplace(contract_data, hub_contract, warnings)
             # Minimal schema normalization (populate from product.dataSchema if available)
             self._normalize_schema_minimal(contract_data, hub_contract, warnings)
-            # Task 1.4.6: ODPS contract extraction
+            # ODPS contract extraction
             self._extract_contract(contract_data, hub_contract, warnings)
 
             # Version-specific field mappings (hook for subclasses)

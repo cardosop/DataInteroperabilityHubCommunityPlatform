@@ -236,7 +236,7 @@ class ContractCreationWorkflow:
             spec_type=original_spec_type
         )
 
-        # Check for critical errors (parsing errors, DCS rejection, or any normalization failure)
+        # Check for critical errors (parsing errors or any normalization failure)
         if norm_status == NormalizationStatus.NORMALIZATION_FAILED:
             if norm_errors:
                 parsing_errors = [
@@ -246,15 +246,9 @@ class ContractCreationWorkflow:
                         'failed to normalize contract'
                     ])
                 ]
-                dcs_rejection_errors = [
-                    e for e in norm_errors
-                    if any(keyword in e.lower() for keyword in [
-                        'data contract specification', 'dcs', 'no longer supported'
-                    ])
-                ]
 
-                if parsing_errors or dcs_rejection_errors:
-                    error_code = 'DCS_NOT_SUPPORTED' if dcs_rejection_errors else 'INVALID_SPEC_FORMAT'
+                if parsing_errors:
+                    error_code = 'INVALID_SPEC_FORMAT'
                     raise ValueError(f"{error_code}: {norm_errors[0]}")
                 else:
                     # Generic normalization failure

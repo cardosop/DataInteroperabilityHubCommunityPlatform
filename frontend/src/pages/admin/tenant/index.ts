@@ -1,2 +1,0 @@
-export { TenantAdminPage } from './TenantAdminPage'
-

@@ -283,6 +283,62 @@ def validate_odps_version(version: Optional[str]) -> None:
         )
 
 
+def validate_odcs_version(version: Optional[str]) -> None:
+    """
+    Validate ODCS version format.
+
+    Validates that the version string matches the expected format and is a supported version.
+    ODCS versions follow the format: major.minor[.patch] or major.minor[-suffix]
+    Supported versions: 3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, 2.2.2
+
+    Args:
+        version: Version string to validate (e.g., "3.0.2", "3.0.1", "3.0.0-preview", "2.2.2")
+
+    Raises:
+        ODPSParameterError: If version format is invalid or version is not supported
+
+    Example:
+        >>> validate_odcs_version("3.0.2")  # Valid
+        >>> validate_odcs_version("3.0.0-preview")  # Valid
+        >>> validate_odcs_version("invalid")  # Raises ODPSParameterError
+        >>> validate_odcs_version("99.99.99")  # Raises ODPSParameterError (not supported)
+    """
+    if version is None:
+        return  # Optional parameter, None is valid
+
+    if not isinstance(version, str):
+        raise ODPSParameterError(
+            message=f"ODCS version must be a string, got {type(version).__name__}",
+            error_code="INVALID_VERSION_FORMAT",
+            context={'version': version},
+            suggestion="ODCS version should be a string (e.g., '3.0.2', '3.0.0-preview')"
+        )
+
+    version = version.strip()
+
+    # ODCS version format: major.minor[.patch] or major.minor[-suffix]
+    # Examples: "3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"
+    version_pattern = r'^\d+\.\d+(\.\d+)?(-[a-zA-Z0-9-]+)?$'
+    if not re.match(version_pattern, version):
+        raise ODPSParameterError(
+            message=f"Invalid ODCS version format: {version}",
+            error_code="INVALID_VERSION_FORMAT",
+            context={'version': version},
+            suggestion="ODCS version should be in format 'X.Y' or 'X.Y.Z' or 'X.Y-suffix' (e.g., '3.0.2', '3.0.0-preview')"
+        )
+
+    # Check if version is supported
+    # Supported ODCS versions (must match backend supported versions)
+    supported_versions = ['2.2.2', '3.0.0', '3.0.0-preview', '3.0.1', '3.0.2']
+    if version not in supported_versions:
+        raise ODPSParameterError(
+            message=f"ODCS version '{version}' is not supported. Supported versions: {', '.join(supported_versions)}",
+            error_code="UNSUPPORTED_VERSION",
+            context={'version': version, 'supported_versions': supported_versions},
+            suggestion=f"Use one of the supported versions: {', '.join(supported_versions)}"
+        )
+
+
 def validate_contract_id(contract_id: str, id_type: str = "contract") -> None:
     """
     Validate contract ID format.

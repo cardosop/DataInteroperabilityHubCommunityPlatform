@@ -11,7 +11,7 @@ from unittest import TestCase
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import (
     ODCSNormalizer,
-    normalize_odcs_to_hubcontract,
+    normalize_contract,
     NormalizationResult,
 )
 
@@ -67,7 +67,7 @@ class ODCSNormalizerRegressionTest(TestCase):
         assert result.hub_contract["info"]["name"] == "Test Contract"
 
     def test_normalize_odcs_to_hubcontract_function_unchanged(self):
-        """Test that normalize_odcs_to_hubcontract() function still works."""
+        """Test that normalize_contract() produces the same results as the deprecated function."""
         contract_data = {
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
@@ -81,9 +81,13 @@ class ODCSNormalizerRegressionTest(TestCase):
             }
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(contract_data)
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(contract_data),
+            format="JSON",
+            spec_type="ODCS"
+        )
 
-        # Check that return format is unchanged (tuple)
+        # Check that return format is correct
         assert isinstance(hub_contract, dict)
         assert isinstance(status, NormalizationStatus)
         assert isinstance(errors, list)
@@ -95,7 +99,7 @@ class ODCSNormalizerRegressionTest(TestCase):
         assert hub_contract["info"]["name"] == "Test Contract"
 
     def test_normalize_odcs_to_hubcontract_produces_same_output(self):
-        """Test that normalize_odcs_to_hubcontract() produces the same output as before."""
+        """Test that normalize_contract() produces the same output as the deprecated function."""
         contract_data = {
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
@@ -121,7 +125,11 @@ class ODCSNormalizerRegressionTest(TestCase):
             }
         }
 
-        hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(contract_data)
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=json.dumps(contract_data),
+            format="JSON",
+            spec_type="ODCS"
+        )
 
         # Check that all expected fields are present
         assert hub_contract is not None
