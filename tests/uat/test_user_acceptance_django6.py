@@ -32,7 +32,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 class ContractCreationWorkflowTest(TestCase):
     """Test contract creation workflow"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
@@ -44,7 +44,7 @@ class ContractCreationWorkflowTest(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
-        
+
         # Create test asset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -52,7 +52,7 @@ class ContractCreationWorkflowTest(TestCase):
             name="UAT Asset",
             status=AssetStatus.DRAFT
         )
-    
+
     def test_contract_creation_workflow(self):
         """Test complete contract creation workflow"""
         # 1. Create contract
@@ -67,25 +67,25 @@ class ContractCreationWorkflowTest(TestCase):
             },
             format='json'
         )
-        
+
         # Should return 201 (created), 400 (bad request), 404 (not found), or 405 (method not allowed)
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
                                              status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED])
-        
+
         if response.status_code == status.HTTP_201_CREATED:
             contract_id = response.data.get('id')
-            
+
             # 2. Retrieve contract
             retrieve_response = self.client.get(f'/api/v1/contracts/{contract_id}/')
             self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
-            
+
             # 3. Verify contract data
             self.assertEqual(retrieve_response.data.get('status'), ContractStatus.DRAFT)
 
 
 class AssetOnboardingWorkflowTest(TestCase):
     """Test asset onboarding workflow"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
@@ -97,7 +97,7 @@ class AssetOnboardingWorkflowTest(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
-    
+
     def test_data_first_onboarding_workflow(self):
         """Test data-first onboarding workflow"""
         # 1. Upload file
@@ -110,10 +110,10 @@ class AssetOnboardingWorkflowTest(TestCase):
             },
             format='json'
         )
-        
+
         if file_response.status_code in [200, 201]:
             file_id = file_response.data.get('file_id')
-            
+
             # 2. Create asset
             asset_response = self.client.post(
                 '/api/v1/assets/',
@@ -124,11 +124,11 @@ class AssetOnboardingWorkflowTest(TestCase):
                 },
                 format='json'
             )
-            
+
             # Should create asset
             self.assertIn(asset_response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
                                                       status.HTTP_404_NOT_FOUND])
-    
+
     def test_contract_first_onboarding_workflow(self):
         """Test contract-first onboarding workflow"""
         # 1. Create contract
@@ -142,7 +142,7 @@ class AssetOnboardingWorkflowTest(TestCase):
             },
             format='json'
         )
-        
+
         # Should create contract
         self.assertIn(contract_response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
                                                       status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED])
@@ -150,7 +150,7 @@ class AssetOnboardingWorkflowTest(TestCase):
 
 class DataQualityChecksTest(TestCase):
     """Test data quality checks"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
@@ -162,7 +162,7 @@ class DataQualityChecksTest(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
-        
+
         # Create test asset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -170,19 +170,19 @@ class DataQualityChecksTest(TestCase):
             name="DQ Check Asset",
             status=AssetStatus.DRAFT
         )
-    
+
     def test_data_quality_check_workflow(self):
         """Test data quality check workflow"""
         # Create DQ run
         response = self.client.post(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'profile': 'intake_basic_gx'
             },
             format='json'
         )
-        
+
         # Should return 201 (created) or 400/503/404
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
                                              status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND])
@@ -190,7 +190,7 @@ class DataQualityChecksTest(TestCase):
 
 class ComplianceChecksTest(TestCase):
     """Test compliance checks"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
@@ -202,7 +202,7 @@ class ComplianceChecksTest(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
-        
+
         # Create test asset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -210,19 +210,19 @@ class ComplianceChecksTest(TestCase):
             name="Compliance Check Asset",
             status=AssetStatus.DRAFT
         )
-    
+
     def test_compliance_check_workflow(self):
         """Test compliance check workflow"""
         # Create compliance run
         response = self.client.post(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'regulations': ['GDPR', 'CCPA']
             },
             format='json'
         )
-        
+
         # Should return 201 (created) or 400/503/404
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
                                              status.HTTP_503_SERVICE_UNAVAILABLE, status.HTTP_404_NOT_FOUND])
@@ -230,7 +230,7 @@ class ComplianceChecksTest(TestCase):
 
 class SemanticMappingTest(TestCase):
     """Test semantic mapping"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
@@ -242,7 +242,7 @@ class SemanticMappingTest(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
-    
+
     def test_semantic_mapping_workflow(self):
         """Test semantic mapping workflow"""
         # Test URI resolution
@@ -250,14 +250,14 @@ class SemanticMappingTest(TestCase):
             '/api/v1/semantic/resolve-uri/',
             {'uri': 'http://example.org/resource'}
         )
-        
+
         # Should return 200, 404, or 503
         self.assertIn(response.status_code, [200, 404, 503])
 
 
 class MarketplaceFunctionalityTest(TestCase):
     """Test marketplace functionality"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
@@ -269,7 +269,7 @@ class MarketplaceFunctionalityTest(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
-        
+
         # Create test asset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -277,19 +277,19 @@ class MarketplaceFunctionalityTest(TestCase):
             name="Marketplace Asset",
             status=AssetStatus.ACTIVE
         )
-    
+
     def test_marketplace_listing_workflow(self):
         """Test marketplace listing workflow"""
         # List marketplace listings
         response = self.client.get('/api/v1/marketplace/listings/')
-        
+
         # Should return 200 or 404
         self.assertIn(response.status_code, [200, 404])
 
 
 class UserWorkflowsTest(TestCase):
     """Test all user workflows"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
@@ -301,7 +301,7 @@ class UserWorkflowsTest(TestCase):
             status=UserStatus.ACTIVE
         )
         self.client.force_authenticate(user=self.user)
-    
+
     def test_complete_user_journey(self):
         """Test complete user journey"""
         # 1. Create asset
@@ -314,15 +314,15 @@ class UserWorkflowsTest(TestCase):
             },
             format='json'
         )
-        
+
         # Should create asset
         self.assertIn(asset_response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
                                                    status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED])
-        
+
         # 2. Create contract
         if asset_response.status_code == status.HTTP_201_CREATED:
             asset_id = asset_response.data.get('id')
-            
+
             contract_response = self.client.post(
                 '/api/v1/contracts/',
                 {
@@ -334,7 +334,7 @@ class UserWorkflowsTest(TestCase):
                 },
                 format='json'
             )
-            
+
             # Should create contract
             self.assertIn(contract_response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST,
                                                           status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED])

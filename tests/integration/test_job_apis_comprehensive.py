@@ -66,7 +66,7 @@ class TestJobListAPI(TestCase):
 
     def test_list_jobs_success_empty(self):
         """Test listing jobs when no jobs exist"""
-        response = self.client.get("/api/v1/jobs/jobs/")
+        response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response is paginated, so check for 'results' key
@@ -88,7 +88,7 @@ class TestJobListAPI(TestCase):
             created_by=self.user,
         )
 
-        response = self.client.get("/api/v1/jobs/jobs/")
+        response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
@@ -109,7 +109,7 @@ class TestJobListAPI(TestCase):
             )
             jobs.append(job)
 
-        response = self.client.get("/api/v1/jobs/jobs/")
+        response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
@@ -128,7 +128,7 @@ class TestJobListAPI(TestCase):
             )
 
         # First page
-        response = self.client.get("/api/v1/jobs/jobs/?page=1&page_size=10")
+        response = self.client.get("/api/v1/jobs/?page=1&page_size=10")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Check if pagination is used (response might be paginated or not depending on settings)
@@ -161,7 +161,7 @@ class TestJobListAPI(TestCase):
         )
 
         # Filter by PENDING
-        response = self.client.get("/api/v1/jobs/jobs/?status=PENDING")
+        response = self.client.get("/api/v1/jobs/?status=PENDING")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response is paginated, so check for 'results' key
@@ -188,7 +188,7 @@ class TestJobListAPI(TestCase):
         )
 
         # Filter by DQ_RUN
-        response = self.client.get("/api/v1/jobs/jobs/?type=DQ_RUN")
+        response = self.client.get("/api/v1/jobs/?type=DQ_RUN")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response is paginated, so check for 'results' key
@@ -221,7 +221,7 @@ class TestJobListAPI(TestCase):
         )
 
         # Filter by DQ_RUN and PENDING
-        response = self.client.get("/api/v1/jobs/jobs/?type=DQ_RUN&status=PENDING")
+        response = self.client.get("/api/v1/jobs/?type=DQ_RUN&status=PENDING")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response is paginated, so check for 'results' key
@@ -256,7 +256,7 @@ class TestJobListAPI(TestCase):
             created_by=self.user,
         )
 
-        response = self.client.get("/api/v1/jobs/jobs/")
+        response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
@@ -290,7 +290,7 @@ class TestJobListAPI(TestCase):
             created_by=self.user,
         )
 
-        response = self.client.get("/api/v1/jobs/jobs/?ordering=created_at")
+        response = self.client.get("/api/v1/jobs/?ordering=created_at")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
@@ -313,7 +313,7 @@ class TestJobListAPI(TestCase):
 
     def test_list_jobs_invalid_status_filter(self):
         """Test filtering with invalid status"""
-        response = self.client.get("/api/v1/jobs/jobs/?status=INVALID_STATUS")
+        response = self.client.get("/api/v1/jobs/?status=INVALID_STATUS")
 
         # Should return empty list or 400, depending on implementation
         # Most implementations return empty list for invalid filters
@@ -324,7 +324,7 @@ class TestJobListAPI(TestCase):
 
     def test_list_jobs_invalid_type_filter(self):
         """Test filtering with invalid type"""
-        response = self.client.get("/api/v1/jobs/jobs/?type=INVALID_TYPE")
+        response = self.client.get("/api/v1/jobs/?type=INVALID_TYPE")
 
         # Should return empty list or 400, depending on implementation
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -334,7 +334,7 @@ class TestJobListAPI(TestCase):
 
     def test_list_jobs_invalid_ordering(self):
         """Test ordering with invalid field"""
-        response = self.client.get("/api/v1/jobs/jobs/?ordering=invalid_field")
+        response = self.client.get("/api/v1/jobs/?ordering=invalid_field")
 
         # Should return 400 or ignore invalid ordering
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -356,7 +356,7 @@ class TestJobListAPI(TestCase):
         times = []
         for _ in range(20):
             start_time = time.time()
-            response = self.client.get("/api/v1/jobs/jobs/")
+            response = self.client.get("/api/v1/jobs/")
             elapsed = (time.time() - start_time) * 1000  # Convert to milliseconds
             times.append(elapsed)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -397,7 +397,7 @@ class TestJobListAPI(TestCase):
         )
 
         # List jobs - should only see own tenant's jobs
-        response = self.client.get("/api/v1/jobs/jobs/")
+        response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
@@ -423,7 +423,7 @@ class TestJobListAPI(TestCase):
         )
 
         # List jobs - should see none
-        response = self.client.get("/api/v1/jobs/jobs/")
+        response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         jobs_list = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
@@ -434,7 +434,7 @@ class TestJobListAPI(TestCase):
         """Test unauthorized access without authentication"""
         self.client.force_authenticate(user=None)
 
-        response = self.client.get("/api/v1/jobs/jobs/")
+        response = self.client.get("/api/v1/jobs/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -476,7 +476,7 @@ class TestJobRetrieveAPI(TestCase):
 
     def test_retrieve_job_success_pending(self):
         """Test retrieving a pending job"""
-        response = self.client.get(f"/api/v1/jobs/jobs/{self.job.id}/")
+        response = self.client.get(f"/api/v1/jobs/{self.job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(str(response.data["id"]), str(self.job.id))
@@ -493,7 +493,7 @@ class TestJobRetrieveAPI(TestCase):
             started_at=timezone.now(),
         )
 
-        response = self.client.get(f"/api/v1/jobs/jobs/{running_job.id}/")
+        response = self.client.get(f"/api/v1/jobs/{running_job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(str(response.data["id"]), str(running_job.id))
@@ -509,7 +509,7 @@ class TestJobRetrieveAPI(TestCase):
             result_json={"score": 95, "checks_passed": 10},
         )
 
-        response = self.client.get(f"/api/v1/jobs/jobs/{completed_job.id}/")
+        response = self.client.get(f"/api/v1/jobs/{completed_job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(str(response.data["id"]), str(completed_job.id))
@@ -526,7 +526,7 @@ class TestJobRetrieveAPI(TestCase):
             error_message="Test error message",
         )
 
-        response = self.client.get(f"/api/v1/jobs/jobs/{failed_job.id}/")
+        response = self.client.get(f"/api/v1/jobs/{failed_job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(str(response.data["id"]), str(failed_job.id))
@@ -545,7 +545,7 @@ class TestJobRetrieveAPI(TestCase):
             details_json={"progress": 50, "current_step": "Validating data"},
         )
 
-        response = self.client.get(f"/api/v1/jobs/jobs/{job.id}/")
+        response = self.client.get(f"/api/v1/jobs/{job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNotNone(response.data.get("details_json"))
@@ -564,7 +564,7 @@ class TestJobRetrieveAPI(TestCase):
             result_json={"score": 95, "checks": [{"name": "check1", "passed": True}]},
         )
 
-        response = self.client.get(f"/api/v1/jobs/jobs/{job.id}/")
+        response = self.client.get(f"/api/v1/jobs/{job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNotNone(response.data.get("result_json"))
@@ -580,7 +580,7 @@ class TestJobRetrieveAPI(TestCase):
         times = []
         for _ in range(20):
             start_time = time.time()
-            response = self.client.get(f"/api/v1/jobs/jobs/{self.job.id}/")
+            response = self.client.get(f"/api/v1/jobs/{self.job.id}/")
             elapsed = (time.time() - start_time) * 1000  # Convert to milliseconds
             times.append(elapsed)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -613,14 +613,14 @@ class TestJobRetrieveAPI(TestCase):
         )
 
         # Try to retrieve other tenant's job
-        response = self.client.get(f"/api/v1/jobs/jobs/{other_job.id}/")
+        response = self.client.get(f"/api/v1/jobs/{other_job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_job_not_found(self):
         """Test retrieving non-existent job"""
         fake_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/jobs/jobs/{fake_id}/")
+        response = self.client.get(f"/api/v1/jobs/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -628,7 +628,7 @@ class TestJobRetrieveAPI(TestCase):
         """Test unauthorized access without authentication"""
         self.client.force_authenticate(user=None)
 
-        response = self.client.get(f"/api/v1/jobs/jobs/{self.job.id}/")
+        response = self.client.get(f"/api/v1/jobs/{self.job.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -669,7 +669,7 @@ class TestJobCancelAPI(TestCase):
             created_by=self.user,
         )
 
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], JobStatus.CANCELLED.value)
@@ -689,7 +689,7 @@ class TestJobCancelAPI(TestCase):
             started_at=timezone.now(),
         )
 
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], JobStatus.CANCELLED.value)
@@ -709,7 +709,7 @@ class TestJobCancelAPI(TestCase):
             created_by=self.user,
         )
 
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", response.data)
@@ -728,7 +728,7 @@ class TestJobCancelAPI(TestCase):
             error_message="Test error",
         )
 
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", response.data)
@@ -747,7 +747,7 @@ class TestJobCancelAPI(TestCase):
             completed_at=timezone.now(),
         )
 
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", response.data)
@@ -755,7 +755,7 @@ class TestJobCancelAPI(TestCase):
     def test_cancel_job_error_not_found(self):
         """Test cancelling non-existent job"""
         fake_id = uuid.uuid4()
-        response = self.client.post(f"/api/v1/jobs/jobs/{fake_id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{fake_id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -776,7 +776,7 @@ class TestJobCancelAPI(TestCase):
         )
 
         # Try to cancel other tenant's job
-        response = self.client.post(f"/api/v1/jobs/jobs/{other_job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{other_job.id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -794,7 +794,7 @@ class TestJobCancelAPI(TestCase):
         )
 
         self.client.force_authenticate(user=None)
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -813,7 +813,7 @@ class TestJobCancelAPI(TestCase):
             resource_type="JOB", action="JOB_CANCELLED"
         ).count()
 
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 

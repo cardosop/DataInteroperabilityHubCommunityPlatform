@@ -159,3 +159,31 @@ def build_pipeline_execution_url(execution_id: str) -> str:
     base_url = get_base_url()
     return f"{base_url}/api/v1/transformation/executions/{execution_id}"
 
+
+def build_marketplace_sync_job_url(sync_job_id: str) -> str:
+    """
+    Build marketplace sync job detail URL.
+
+    Args:
+        sync_job_id: Sync job UUID
+
+    Returns:
+        Full marketplace sync job URL
+    """
+    base_url = get_base_url()
+    return f"{base_url}/api/v1/integrations/marketplace/sync/{sync_job_id}/"
+
+
+def build_marketplace_connection_url(connection_id: str) -> str:
+    """
+    Build marketplace connection detail URL.
+
+    Args:
+        connection_id: Connection UUID
+
+    Returns:
+        Full marketplace connection URL
+    """
+    base_url = get_base_url()
+    return f"{base_url}/api/v1/integrations/marketplace/connections/{connection_id}/"
+

@@ -1,0 +1,2273 @@
+{
+  "generated_at": "2025-12-28T14:20:51.165638",
+  "summary": {
+    "total_services": 31,
+    "total_integrations": 18,
+    "total_service_calls": 1920,
+    "services": [
+      "api-service",
+      "asset",
+      "cli",
+      "compliance-service",
+      "contract",
+      "datacontract",
+      "datacontract-service",
+      "dataset",
+      "dq",
+      "dq-service",
+      "event-bus-health-service",
+      "event-schema-registry-service",
+      "governance",
+      "grafana",
+      "ingestion",
+      "jaeger",
+      "lineage",
+      "normalization",
+      "observability-service",
+      "prefect-integration",
+      "prefect-server",
+      "prometheus",
+      "sdk",
+      "search-service",
+      "semantic-service",
+      "unknown",
+      "versioning",
+      "webhook-service",
+      "worker-service",
+      "workflow-engine-service",
+      "workflow-registry-service"
+    ]
+  },
+  "service_integrations": {
+    "api-service": {
+      "outbound": {
+        "worker-service": {
+          "call_count": 131,
+          "endpoints": [
+            "redis-queue",
+            "http://datacontract-service:8080",
+            "http://localhost:8080",
+            "/health",
+            "unknown",
+            "http://localhost:8080/webhooks/payment",
+            "http://127.0.0.1:8080/webhooks/payment"
+          ],
+          "client_types": []
+        },
+        "dq-service": {
+          "call_count": 123,
+          "endpoints": [
+            "unknown",
+            "/.dockerenv",
+            "http://dq-service-test:8083",
+            "http://dq-service:8083",
+            "http://localhost:8083",
+            "/health",
+            "/api/v1/dq/runs/"
+          ],
+          "client_types": []
+        },
+        "compliance-service": {
+          "call_count": 79,
+          "endpoints": [
+            "unknown",
+            "http://compliance-service:8082",
+            "http://localhost:8082",
+            "/health"
+          ],
+          "client_types": []
+        },
+        "datacontract-service": {
+          "call_count": 59,
+          "endpoints": [
+            "unknown",
+            "http://datacontract-service:8080",
+            "http://localhost:8080",
+            "/health",
+            "http://localhost:8080/webhooks/payment",
+            "http://127.0.0.1:8080/webhooks/payment"
+          ],
+          "client_types": []
+        },
+        "semantic-service": {
+          "call_count": 106,
+          "endpoints": [
+            "unknown",
+            "http://semantic-service:8081",
+            "http://localhost:8081",
+            "http://localhost:8081/health",
+            "/health"
+          ],
+          "client_types": []
+        },
+        "search-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        },
+        "observability-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        },
+        "webhook-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        },
+        "workflow-engine-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        },
+        "workflow-registry-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/healthz"
+          ],
+          "client_types": []
+        },
+        "event-bus-health-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        },
+        "event-schema-registry-service": {
+          "call_count": 1,
+          "endpoints": [
+            "unknown"
+          ],
+          "client_types": []
+        }
+      },
+      "inbound": {
+        "cli": {
+          "call_count": 126,
+          "endpoints": [
+            "unknown",
+            "http://localhost:8000/api/v1",
+            "http://localhost:8000/api/v1/",
+            "/home/ph/Desktop/DataInteroperabilityHub",
+            "http://localhost:8000/api/v1/health/",
+            "http://localhost:8000/api/v1/assets/assets/",
+            "http://localhost:8000/api/v1/contracts/",
+            "/app/hub/manage.py",
+            "http://invalid-host:8000/api/v1",
+            "http://test.example.com/api/v1"
+          ],
+          "client_types": []
+        },
+        "sdk": {
+          "call_count": 63,
+          "endpoints": [
+            "http://localhost:8000/api/v1",
+            "unknown",
+            "/home/ph/Desktop/DataInteroperabilityHub"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "router_name": "api-gateway",
+          "path_prefix": null,
+          "host_pattern": "api.hub.local",
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "cors-middleware"
+          ],
+          "type": "traefik"
+        },
+        {
+          "ingress_name": "api-service-ingress",
+          "host": "api.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 694,
+      "endpoint_count": 27,
+      "endpoints": [
+        "/.dockerenv",
+        "/api/v1/dq/runs/",
+        "/app/hub/manage.py",
+        "/health",
+        "/healthz",
+        "/home/ph/Desktop/DataInteroperabilityHub",
+        "http://127.0.0.1:8080/webhooks/payment",
+        "http://compliance-service:8082",
+        "http://datacontract-service:8080",
+        "http://dq-service-test:8083",
+        "http://dq-service:8083",
+        "http://invalid-host:8000/api/v1",
+        "http://localhost:8000/api/v1",
+        "http://localhost:8000/api/v1/",
+        "http://localhost:8000/api/v1/assets/assets/",
+        "http://localhost:8000/api/v1/contracts/",
+        "http://localhost:8000/api/v1/health/",
+        "http://localhost:8080",
+        "http://localhost:8080/webhooks/payment",
+        "http://localhost:8081",
+        "http://localhost:8081/health",
+        "http://localhost:8082",
+        "http://localhost:8083",
+        "http://semantic-service:8081",
+        "http://test.example.com/api/v1",
+        "redis-queue",
+        "unknown"
+      ]
+    },
+    "worker-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 131,
+          "endpoints": [
+            "redis-queue",
+            "http://datacontract-service:8080",
+            "http://localhost:8080",
+            "/health",
+            "unknown",
+            "http://localhost:8080/webhooks/payment",
+            "http://127.0.0.1:8080/webhooks/payment"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 131,
+      "endpoint_count": 7,
+      "endpoints": [
+        "/health",
+        "http://127.0.0.1:8080/webhooks/payment",
+        "http://datacontract-service:8080",
+        "http://localhost:8080",
+        "http://localhost:8080/webhooks/payment",
+        "redis-queue",
+        "unknown"
+      ]
+    },
+    "cli": {
+      "outbound": {
+        "api-service": {
+          "call_count": 126,
+          "endpoints": [
+            "unknown",
+            "http://localhost:8000/api/v1",
+            "http://localhost:8000/api/v1/",
+            "/home/ph/Desktop/DataInteroperabilityHub",
+            "http://localhost:8000/api/v1/health/",
+            "http://localhost:8000/api/v1/assets/assets/",
+            "http://localhost:8000/api/v1/contracts/",
+            "/app/hub/manage.py",
+            "http://invalid-host:8000/api/v1",
+            "http://test.example.com/api/v1"
+          ],
+          "client_types": []
+        }
+      },
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 126,
+      "endpoint_count": 10,
+      "endpoints": [
+        "/app/hub/manage.py",
+        "/home/ph/Desktop/DataInteroperabilityHub",
+        "http://invalid-host:8000/api/v1",
+        "http://localhost:8000/api/v1",
+        "http://localhost:8000/api/v1/",
+        "http://localhost:8000/api/v1/assets/assets/",
+        "http://localhost:8000/api/v1/contracts/",
+        "http://localhost:8000/api/v1/health/",
+        "http://test.example.com/api/v1",
+        "unknown"
+      ]
+    },
+    "sdk": {
+      "outbound": {
+        "api-service": {
+          "call_count": 63,
+          "endpoints": [
+            "http://localhost:8000/api/v1",
+            "unknown",
+            "/home/ph/Desktop/DataInteroperabilityHub"
+          ],
+          "client_types": []
+        }
+      },
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 63,
+      "endpoint_count": 3,
+      "endpoints": [
+        "/home/ph/Desktop/DataInteroperabilityHub",
+        "http://localhost:8000/api/v1",
+        "unknown"
+      ]
+    },
+    "dq-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 123,
+          "endpoints": [
+            "unknown",
+            "/.dockerenv",
+            "http://dq-service-test:8083",
+            "http://dq-service:8083",
+            "http://localhost:8083",
+            "/health",
+            "/api/v1/dq/runs/"
+          ],
+          "client_types": []
+        },
+        "unknown": {
+          "call_count": 82,
+          "endpoints": [
+            "unknown",
+            "/api/v1/dq/runs/"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "router_name": "dq-service",
+          "path_prefix": "/api/v1/dq",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        },
+        {
+          "ingress_name": "dq-service-ingress",
+          "host": "dq.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 205,
+      "endpoint_count": 8,
+      "endpoints": [
+        "/.dockerenv",
+        "/api/v1/dq",
+        "/api/v1/dq/runs/",
+        "/health",
+        "http://dq-service-test:8083",
+        "http://dq-service:8083",
+        "http://localhost:8083",
+        "unknown"
+      ]
+    },
+    "compliance-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 79,
+          "endpoints": [
+            "unknown",
+            "http://compliance-service:8082",
+            "http://localhost:8082",
+            "/health"
+          ],
+          "client_types": []
+        },
+        "unknown": {
+          "call_count": 54,
+          "endpoints": [
+            "unknown"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "router_name": "compliance-service",
+          "path_prefix": "/api/v1/compliance",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        },
+        {
+          "ingress_name": "compliance-service-ingress",
+          "host": "compliance.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [
+        {
+          "class_name": "ComplianceServiceClient",
+          "base_url": "http://localhost:8082",
+          "file_path": "hub/apps/compliance/service_client.py",
+          "methods": [
+            {
+              "method_name": "health_check",
+              "endpoints": [
+                "/health"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "scan_file",
+              "endpoints": [
+                "/scan-file"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            }
+          ]
+        }
+      ],
+      "call_count": 133,
+      "endpoint_count": 6,
+      "endpoints": [
+        "/api/v1/compliance",
+        "/health",
+        "/scan-file",
+        "http://compliance-service:8082",
+        "http://localhost:8082",
+        "unknown"
+      ]
+    },
+    "datacontract-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 59,
+          "endpoints": [
+            "unknown",
+            "http://datacontract-service:8080",
+            "http://localhost:8080",
+            "/health",
+            "http://localhost:8080/webhooks/payment",
+            "http://127.0.0.1:8080/webhooks/payment"
+          ],
+          "client_types": []
+        },
+        "unknown": {
+          "call_count": 31,
+          "endpoints": [
+            "unknown"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "ingress_name": "datacontract-service-ingress",
+          "host": "datacontract.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 90,
+      "endpoint_count": 6,
+      "endpoints": [
+        "/health",
+        "http://127.0.0.1:8080/webhooks/payment",
+        "http://datacontract-service:8080",
+        "http://localhost:8080",
+        "http://localhost:8080/webhooks/payment",
+        "unknown"
+      ]
+    },
+    "semantic-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 106,
+          "endpoints": [
+            "unknown",
+            "http://semantic-service:8081",
+            "http://localhost:8081",
+            "http://localhost:8081/health",
+            "/health"
+          ],
+          "client_types": []
+        },
+        "unknown": {
+          "call_count": 99,
+          "endpoints": [
+            "unknown",
+            "http://localhost:3030"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "router_name": "semantic-service",
+          "path_prefix": "/api/v1/semantic",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        },
+        {
+          "ingress_name": "semantic-service-ingress",
+          "host": "semantic.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [
+        {
+          "class_name": "SemanticServiceClient",
+          "base_url": "http://localhost:8081",
+          "file_path": "hub/apps/semantic/service_client.py",
+          "methods": [
+            {
+              "method_name": "health_check",
+              "endpoints": [
+                "/health"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "map_contract",
+              "endpoints": [
+                "/map/contract"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "map_asset",
+              "endpoints": [
+                "/map/asset"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "map_dataset",
+              "endpoints": [
+                "/map/dataset"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "map_odps",
+              "endpoints": [
+                "/map/odps"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "query_sparql",
+              "endpoints": [
+                "/sparql"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            },
+            {
+              "method_name": "resolve_uri",
+              "endpoints": [
+                "/id/"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "get_ontology",
+              "endpoints": [
+                "/ontology"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "get_jsonld_context",
+              "endpoints": [
+                "/context.jsonld"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            }
+          ]
+        }
+      ],
+      "call_count": 205,
+      "endpoint_count": 15,
+      "endpoints": [
+        "/api/v1/semantic",
+        "/context.jsonld",
+        "/health",
+        "/id/",
+        "/map/asset",
+        "/map/contract",
+        "/map/dataset",
+        "/map/odps",
+        "/ontology",
+        "/sparql",
+        "http://localhost:3030",
+        "http://localhost:8081",
+        "http://localhost:8081/health",
+        "http://semantic-service:8081",
+        "unknown"
+      ]
+    },
+    "search-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "router_name": "search-service",
+          "path_prefix": "/api/v1/search",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        },
+        {
+          "ingress_name": "search-service-ingress",
+          "host": "search.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 1,
+      "endpoint_count": 2,
+      "endpoints": [
+        "/api/v1/search",
+        "/health"
+      ]
+    },
+    "observability-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "router_name": "observability-service",
+          "path_prefix": "/api/v1/observability",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        },
+        {
+          "ingress_name": "observability-service-ingress",
+          "host": "observability.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 1,
+      "endpoint_count": 2,
+      "endpoints": [
+        "/api/v1/observability",
+        "/health"
+      ]
+    },
+    "webhook-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [
+        {
+          "router_name": "webhook-service",
+          "path_prefix": "/api/v1/webhooks",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        },
+        {
+          "ingress_name": "webhook-service-ingress",
+          "host": "webhook.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 1,
+      "endpoint_count": 2,
+      "endpoints": [
+        "/api/v1/webhooks",
+        "/health"
+      ]
+    },
+    "workflow-engine-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 1,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/health"
+      ]
+    },
+    "workflow-registry-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/healthz"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 1,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/healthz"
+      ]
+    },
+    "event-bus-health-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 1,
+          "endpoints": [
+            "/health"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 1,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/health"
+      ]
+    },
+    "event-schema-registry-service": {
+      "outbound": {},
+      "inbound": {
+        "api-service": {
+          "call_count": 1,
+          "endpoints": [
+            "unknown"
+          ],
+          "client_types": []
+        }
+      },
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 1,
+      "endpoint_count": 1,
+      "endpoints": [
+        "unknown"
+      ]
+    },
+    "unknown": {
+      "outbound": {
+        "compliance-service": {
+          "call_count": 54,
+          "endpoints": [
+            "unknown"
+          ],
+          "client_types": []
+        },
+        "dq-service": {
+          "call_count": 82,
+          "endpoints": [
+            "unknown",
+            "/api/v1/dq/runs/"
+          ],
+          "client_types": []
+        },
+        "datacontract-service": {
+          "call_count": 31,
+          "endpoints": [
+            "unknown"
+          ],
+          "client_types": []
+        },
+        "semantic-service": {
+          "call_count": 99,
+          "endpoints": [
+            "unknown",
+            "http://localhost:3030"
+          ],
+          "client_types": []
+        }
+      },
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [],
+      "call_count": 266,
+      "endpoint_count": 3,
+      "endpoints": [
+        "/api/v1/dq/runs/",
+        "http://localhost:3030",
+        "unknown"
+      ]
+    },
+    "dq": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [
+        {
+          "class_name": "DQServiceClient",
+          "base_url": "http://dq-service:8083",
+          "file_path": "hub/apps/dq/service_client.py",
+          "methods": [
+            {
+              "method_name": "health_check",
+              "endpoints": [
+                "/health"
+              ],
+              "http_methods": [
+                "GET"
+              ]
+            },
+            {
+              "method_name": "run_dq",
+              "endpoints": [
+                "/run"
+              ],
+              "http_methods": [
+                "POST"
+              ]
+            }
+          ]
+        }
+      ],
+      "call_count": 0,
+      "endpoint_count": 2,
+      "endpoints": [
+        "/health",
+        "/run"
+      ]
+    },
+    "datacontract": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [],
+      "service_clients": [
+        {
+          "class_name": "DataContractCLIClient",
+          "base_url": "http://localhost:8080",
+          "file_path": "hub/apps/contracts/cli_client.py",
+          "methods": [
+            {
+              "method_name": "validate",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
+              "method_name": "lint",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
+              "method_name": "convert",
+              "endpoints": [],
+              "http_methods": []
+            },
+            {
+              "method_name": "health_check",
+              "endpoints": [],
+              "http_methods": []
+            }
+          ]
+        }
+      ],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "contract": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "contract-service",
+          "path_prefix": "/api/v1/contracts",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1/contracts"
+      ]
+    },
+    "asset": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "asset-service",
+          "path_prefix": "/api/v1/assets",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1/assets"
+      ]
+    },
+    "dataset": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "dataset-service",
+          "path_prefix": "/api/v1/datasets",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1/datasets"
+      ]
+    },
+    "lineage": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "lineage-service",
+          "path_prefix": "/api/v1/lineage",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1/lineage"
+      ]
+    },
+    "governance": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "governance-service",
+          "path_prefix": "/api/v1/governance",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1/governance"
+      ]
+    },
+    "ingestion": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "ingestion-service",
+          "path_prefix": "/api/v1/ingestion",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1/ingestion"
+      ]
+    },
+    "versioning": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "versioning-service",
+          "path_prefix": "/api/v1/versioning",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1/versioning"
+      ]
+    },
+    "normalization": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "router_name": "normalization-service",
+          "path_prefix": "/api/v1/normalization",
+          "host_pattern": null,
+          "middlewares": [
+            "auth-middleware",
+            "rate-limit-middleware",
+            "tracing-middleware"
+          ],
+          "type": "traefik"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 1,
+      "endpoints": [
+        "/api/v1/normalization"
+      ]
+    },
+    "prometheus": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "prometheus-ingress",
+          "host": "prometheus.example.com",
+          "path": "/",
+          "namespace": "monitoring",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "jaeger": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "jaeger-ingress",
+          "host": "jaeger.example.com",
+          "path": "/",
+          "namespace": "monitoring",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "prefect-server": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "prefect-server-ingress",
+          "host": "prefect-api.example.com",
+          "path": "/",
+          "namespace": "prefect",
+          "type": "kubernetes-ingress"
+        },
+        {
+          "ingress_name": "prefect-server-ingress",
+          "host": "prefect-ui.example.com",
+          "path": "/",
+          "namespace": "prefect",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "grafana": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "grafana-ingress",
+          "host": "grafana.example.com",
+          "path": "/",
+          "namespace": "monitoring",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    },
+    "prefect-integration": {
+      "outbound": {},
+      "inbound": {},
+      "gateway_routes": [
+        {
+          "ingress_name": "prefect-integration-ingress",
+          "host": "prefect-integration.example.com",
+          "path": "/",
+          "namespace": "default",
+          "type": "kubernetes-ingress"
+        }
+      ],
+      "service_clients": [],
+      "call_count": 0,
+      "endpoint_count": 0,
+      "endpoints": []
+    }
+  },
+  "integration_matrix": {
+    "api-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 79,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 59,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 123,
+      "event-bus-health-service": 1,
+      "event-schema-registry-service": 1,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 1,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 1,
+      "semantic-service": 106,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 1,
+      "worker-service": 131,
+      "workflow-engine-service": 1,
+      "workflow-registry-service": 1
+    },
+    "asset": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "cli": {
+      "api-service": 126,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "compliance-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "contract": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "datacontract": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "datacontract-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "dataset": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "dq": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "dq-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "event-bus-health-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "event-schema-registry-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "governance": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "grafana": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "ingestion": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "jaeger": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "lineage": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "normalization": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "observability-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "prefect-integration": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "prefect-server": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "prometheus": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "sdk": {
+      "api-service": 63,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "search-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "semantic-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "unknown": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 54,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 31,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 82,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 99,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "versioning": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "webhook-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "worker-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "workflow-engine-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    },
+    "workflow-registry-service": {
+      "api-service": 0,
+      "asset": 0,
+      "cli": 0,
+      "compliance-service": 0,
+      "contract": 0,
+      "datacontract": 0,
+      "datacontract-service": 0,
+      "dataset": 0,
+      "dq": 0,
+      "dq-service": 0,
+      "event-bus-health-service": 0,
+      "event-schema-registry-service": 0,
+      "governance": 0,
+      "grafana": 0,
+      "ingestion": 0,
+      "jaeger": 0,
+      "lineage": 0,
+      "normalization": 0,
+      "observability-service": 0,
+      "prefect-integration": 0,
+      "prefect-server": 0,
+      "prometheus": 0,
+      "sdk": 0,
+      "search-service": 0,
+      "semantic-service": 0,
+      "unknown": 0,
+      "versioning": 0,
+      "webhook-service": 0,
+      "worker-service": 0,
+      "workflow-engine-service": 0,
+      "workflow-registry-service": 0
+    }
+  }
+}

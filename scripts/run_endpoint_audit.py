@@ -41,13 +41,13 @@ import json
 if __name__ == '__main__':
     urls_file = 'hub/apps/api/urls.py'
     auditor = EndpointAuditor()
-    
+
     results = auditor.audit(
         urls_file,
         check_duplicates=True,
         check_naming=True,
     )
-    
+
     # Output JSON to stdout (only JSON, no other output)
     output = auditor.output_json(results)
     sys.stdout.write(output)

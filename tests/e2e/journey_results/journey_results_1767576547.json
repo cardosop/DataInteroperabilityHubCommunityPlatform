@@ -1,0 +1,98 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.03265500068664551
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-003-5949cd5c",
+      "journey_name": "Scheduled Ingestion Setup",
+      "persona": "Data Engineer / Contract Author",
+      "status": "completed",
+      "start_time": 1767576547.6858735,
+      "end_time": 1767576547.7185285,
+      "duration": 0.03265500068664551,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576547.685883,
+          "end_time": 1767576547.7113411,
+          "duration": 0.025458097457885742,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Ingestion Configuration",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576547.7113535,
+          "end_time": 1767576547.7153223,
+          "duration": 0.003968715667724609,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Configure Source Connection",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576547.7153313,
+          "end_time": 1767576547.7158866,
+          "duration": 0.0005552768707275391,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Set Schedule",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576547.7158897,
+          "end_time": 1767576547.7163079,
+          "duration": 0.0004181861877441406,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Activate Ingestion",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576547.716311,
+          "end_time": 1767576547.7185235,
+          "duration": 0.0022125244140625,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "e3c94564-5813-432a-8564-8293aaf7f876",
+        "ingestion_id": "33f6d1ec-abc5-451b-a55b-97685bd2d288"
+      }
+    }
+  ],
+  "exported_at": "2026-01-05T01:29:07.718621"
+}

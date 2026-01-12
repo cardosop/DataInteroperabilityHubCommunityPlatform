@@ -62,6 +62,52 @@ fuseki_interactions_total = Counter(
     ['service', 'operation', 'status']
 )
 
+fuseki_store_duration_seconds = Histogram(
+    'fuseki_store_duration_seconds',
+    'Fuseki graph storage duration in seconds (actual commit time)',
+    ['service', 'operation'],
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
+)
+
+# Dataset existence check cache metrics
+dataset_existence_cache_hits_total = Counter(
+    'dataset_existence_cache_hits_total',
+    'Total number of dataset existence cache hits',
+    ['service']
+)
+
+dataset_existence_cache_misses_total = Counter(
+    'dataset_existence_cache_misses_total',
+    'Total number of dataset existence cache misses',
+    ['service']
+)
+
+dataset_existence_check_duration_seconds = Histogram(
+    'dataset_existence_check_duration_seconds',
+    'Duration of dataset existence checks in seconds',
+    ['service', 'cache_status'],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
+)
+
+# Connection Pool Metrics (Task 9.10.2.5.7.1.5)
+http_connection_reuse_total = Counter(
+    'http_connection_reuse_total',
+    'Total number of HTTP connection reuses',
+    ['service', 'operation']
+)
+
+http_connection_new_total = Counter(
+    'http_connection_new_total',
+    'Total number of new HTTP connections created',
+    ['service', 'operation']
+)
+
+http_connection_pool_size = Gauge(
+    'http_connection_pool_size',
+    'Current HTTP connection pool size',
+    ['service']
+)
+
 # DQ Service Metrics
 dq_runs_total = Counter(
     'dq_runs_total',
@@ -146,6 +192,20 @@ odps_semantic_mapping_success_rate = Gauge(
     'odps_semantic_mapping_success_rate',
     'ODPS semantic mapping success rate (0-1)',
     ['service', 'tenant_id']
+)
+
+# Semantic Service Retry Metrics (Task 9.10.2.5.7.1.1)
+semantic_uri_resolution_retries_total = Counter(
+    'semantic_uri_resolution_retries_total',
+    'Total number of URI resolution retries',
+    ['service', 'status_code', 'reason']
+)
+
+semantic_uri_resolution_retry_delay_seconds = Histogram(
+    'semantic_uri_resolution_retry_delay_seconds',
+    'URI resolution retry delay in seconds',
+    ['service', 'status_code'],
+    buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0)
 )
 
 

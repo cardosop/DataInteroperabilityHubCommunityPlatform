@@ -385,7 +385,8 @@ class JobFactoryEnhanced:
     @staticmethod
     def create_job(
         tenant: Optional[Tenant] = None,
-        type: JobType = JobType.DQ_RUN,
+        type: Optional[JobType] = None,
+        job_type: Optional[JobType] = None,  # Alias for type for backward compatibility
         status: JobStatus = JobStatus.PENDING,
         resource_type: Optional[str] = None,
         resource_id: Optional[uuid.UUID] = None,
@@ -402,7 +403,8 @@ class JobFactoryEnhanced:
 
         Args:
             tenant: Tenant instance (nullable for system jobs)
-            type: Job type
+            type: Job type (preferred parameter name)
+            job_type: Job type (alias for type, for backward compatibility)
             status: Job status
             resource_type: Resource type
             resource_id: Resource ID
@@ -417,6 +419,14 @@ class JobFactoryEnhanced:
         Returns:
             Job instance
         """
+        # Handle job_type alias for backward compatibility
+        if job_type is not None:
+            if type is not None and type != job_type:
+                raise ValueError("Cannot specify both 'type' and 'job_type' with different values")
+            type = job_type
+        elif type is None:
+            type = JobType.DQ_RUN  # Default value
+
         if tenant is None and resource_type:
             tenant = TenantFactory.create_tenant()
 

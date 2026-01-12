@@ -38,7 +38,7 @@ class AssetOperationsE2ETest(E2ETestBase):
     def test_create_asset_success(self):
         """Test creating an asset"""
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'test-asset',
                 'name': 'Test Asset',
@@ -84,12 +84,12 @@ class AssetOperationsE2ETest(E2ETestBase):
         asset2_obj.save()
         
         # List all assets
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data['results']), 2)
         
         # Filter by status
-        response = self.client.get(f'/api/v1/assets/assets/?status={AssetStatus.DRAFT}')
+        response = self.client.get(f'/api/v1/assets/?status={AssetStatus.DRAFT}')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_statuses = {a['status'] for a in response.data['results']}
         # Should only contain DRAFT assets (may include other assets if filter doesn't work)
@@ -100,7 +100,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         """Test retrieving asset details"""
         asset_id = self.create_asset(key='details-test', name='Details Test')
         
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(asset_id))
@@ -118,7 +118,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         
         # Update with correct version
         response = self.client.patch(
-            f'/api/v1/assets/assets/{asset_id}/',
+            f'/api/v1/assets/{asset_id}/',
             {
                 'name': 'Updated Name',
                 'version': current_version
@@ -145,7 +145,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         
         # Update with wrong version
         response = self.client.patch(
-            f'/api/v1/assets/assets/{asset_id}/',
+            f'/api/v1/assets/{asset_id}/',
             {
                 'name': 'Updated Name',
                 'version': current_version - 1  # Wrong version
@@ -225,7 +225,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         
         # Activate asset
         response = self.client.post(
-            f'/api/v1/assets/assets/{asset_id}/activate/',
+            f'/api/v1/assets/{asset_id}/activate/',
             {'version': asset.version},
             format='json'
         )
@@ -257,7 +257,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         
         asset = Asset.objects.get(id=asset_id)
         response = self.client.post(
-            f'/api/v1/assets/assets/{asset_id}/activate/',
+            f'/api/v1/assets/{asset_id}/activate/',
             {'version': asset.version},
             format='json'
         )
@@ -284,7 +284,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         
         # Attach contract
         response = self.client.post(
-            f'/api/v1/assets/assets/{asset_id}/contracts/',
+            f'/api/v1/assets/{asset_id}/contracts/',
             {'contract_id': contract_id},
             format='json'
         )
@@ -327,7 +327,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         
         asset.refresh_from_db()
         response = self.client.post(
-            f'/api/v1/assets/assets/{asset_id}/activate/',
+            f'/api/v1/assets/{asset_id}/activate/',
             {'version': asset.version},
             format='json'
         )
@@ -340,7 +340,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         """Test deleting an asset"""
         asset_id = self.create_asset(key='delete-test', name='Delete Test')
         
-        response = self.client.delete(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.delete(f'/api/v1/assets/{asset_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -363,7 +363,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         asset2 = self.create_asset(key='search-2', name='Product Data Asset')
         
         # Search by name
-        response = self.client.get('/api/v1/assets/assets/?search=Customer')
+        response = self.client.get('/api/v1/assets/?search=Customer')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_names = {a['name'] for a in response.data['results']}
         self.assertIn('Customer Data Asset', asset_names)
@@ -374,7 +374,7 @@ class AssetOperationsE2ETest(E2ETestBase):
         asset2 = self.create_asset(key='domain-2', name='Finance Asset', domain='finance')
         
         # Filter by domain
-        response = self.client.get('/api/v1/assets/assets/?domain=sales')
+        response = self.client.get('/api/v1/assets/?domain=sales')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_domains = {a.get('domain') for a in response.data['results'] if a.get('domain')}
         self.assertIn('sales', asset_domains)

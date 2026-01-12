@@ -41,6 +41,7 @@ from hub.apps.files.services import FileService
 from hub.apps.assets.services import AssetService
 from hub.apps.core.services.base import NotFoundError, ValidationError as ServiceValidationError
 from hub.apps.audit.utils import create_audit_event
+from .versioning_service import VersioningService
 
 
 def _generate_mock_file_content(file_obj, file_format: str) -> bytes:
@@ -274,11 +275,17 @@ class DatasetViewSet(viewsets.ModelViewSet):
             created_by=request.user
         )
 
-        # Initialize version history
-        from hub.apps.datasets.versioning import VersionHistoryManager
-        VersionHistoryManager.create_version(
-            dataset=dataset,
-            parent_version=parent_version,
+        # Initialize version history using VersioningService (publishes events)
+        tenant_id_str = str(tenant.id)
+        user_id_str = str(request.user.id) if request.user else None
+        versioning_service = VersioningService(
+            tenant_id=tenant_id_str,
+            user_id=user_id_str
+        )
+        versioning_service.create_version(
+            dataset_id=str(dataset.id),
+            tenant_id=tenant_id_str,
+            parent_version_id=str(parent_version.id) if parent_version else None,
             is_current=True
         )
 
@@ -417,8 +424,8 @@ class DatasetViewSet(viewsets.ModelViewSet):
         """
         List or create dataset versions.
 
-        GET /api/v1/datasets/datasets/{id}/versions/ - List all versions
-        POST /api/v1/datasets/datasets/{id}/versions/ - Create a new version
+        GET /api/v1/datasets/{id}/versions/ - List all versions
+        POST /api/v1/datasets/{id}/versions/ - Create a new version
         """
         dataset = self.get_object()
 
@@ -446,11 +453,17 @@ class DatasetViewSet(viewsets.ModelViewSet):
                 created_by=request.user
             )
 
-            # Initialize version history
-            from .versioning import VersionHistoryManager
-            VersionHistoryManager.create_version(
-                dataset=new_dataset,
-                parent_version=parent_version,
+            # Initialize version history using VersioningService (publishes events)
+            tenant_id_str = str(dataset.tenant.id)
+            user_id_str = str(request.user.id) if request.user else None
+            versioning_service = VersioningService(
+                tenant_id=tenant_id_str,
+                user_id=user_id_str
+            )
+            versioning_service.create_version(
+                dataset_id=str(new_dataset.id),
+                tenant_id=tenant_id_str,
+                parent_version_id=str(parent_version.id) if parent_version else None,
                 semantic_version=serializer.validated_data.get('semantic_version'),
                 version_tags=serializer.validated_data.get('version_tags', []),
                 is_current=True
@@ -508,7 +521,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
         """
         Compare two dataset versions.
 
-        GET /api/v1/datasets/datasets/{id}/versions/compare/?version1={uuid}&version2={uuid}
+        GET /api/v1/datasets/{id}/versions/compare/?version1={uuid}&version2={uuid}
         If version1/version2 not provided, compares parent version with current version.
         """
         dataset = self.get_object()

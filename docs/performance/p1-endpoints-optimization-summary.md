@@ -1,7 +1,7 @@
 # P1 Endpoints Performance Optimization Summary
 
-**Date**: 2025-01-15  
-**Task**: 0.9.2.2 - Performance enhancements for P1 endpoints  
+**Date**: 2025-01-15
+**Task**: 0.9.2.2 - Performance enhancements for P1 endpoints
 **Status**: ✅ Complete
 
 ---
@@ -11,7 +11,7 @@
 Comprehensive performance optimization for three critical P1 endpoints:
 1. **GET `/api/v1/marketplace/listings/`** - Marketplace listings endpoint
 2. **GET `/api/v1/search/search/`** - Search endpoint
-3. **GET `/api/v1/dq/dq-runs/{id}/results/`** - DQ run results endpoint (newly created)
+3. **GET `/api/v1/dq/runs/{id}/results/`** - DQ run results endpoint (newly created)
 
 All optimizations follow engineering best practices:
 - ✅ No mocks or stubs - all tests use real services
@@ -27,7 +27,7 @@ All optimizations follow engineering best practices:
 |----------|------------|--------|
 | GET `/api/v1/marketplace/listings/` | < 500ms | ✅ Optimized |
 | GET `/api/v1/search/search/` | < 200ms | ✅ Optimized |
-| GET `/api/v1/dq/dq-runs/{id}/results/` | < 500ms | ✅ Optimized |
+| GET `/api/v1/dq/runs/{id}/results/` | < 500ms | ✅ Optimized |
 
 ---
 
@@ -39,7 +39,7 @@ All optimizations follow engineering best practices:
 - **select_related Optimization**: Added `select_related('tenant', 'asset')` to base queryset
   - Eliminates N+1 queries when serializing listings
   - Reduces queries from ~8-10 to ~3-4 per request
-  
+
 - **Tenant Caching**: Implemented 5-minute TTL cache for tenant lookups
   - Reduces database queries from 1-2 per request to 0 (after cache warmup)
   - Cache key: `tenant:{tenant_id}`
@@ -80,7 +80,7 @@ All optimizations follow engineering best practices:
 
 ---
 
-### 3. GET `/api/v1/dq/dq-runs/{id}/results/` Optimizations
+### 3. GET `/api/v1/dq/runs/{id}/results/` Optimizations
 
 #### New Endpoint Creation
 - **Enhanced Results Endpoint**: Created new `/results/` endpoint with comprehensive response
@@ -219,7 +219,7 @@ pytest hub/apps/marketplace/tests/test_performance.py::MarketplacePerformanceTes
 | **GET /api/v1/search/search/** | | | |
 | P95 Response Time | ~250-400ms | < 200ms | ✅ Meets target |
 | Query Count | 6-8 queries | 3-4 queries (1-2 with cache) | 50-75% reduction |
-| **GET /api/v1/dq/dq-runs/{id}/results/** | | | |
+| **GET /api/v1/dq/runs/{id}/results/** | | | |
 | P95 Response Time | N/A (new endpoint) | < 500ms | ✅ Meets target |
 | Query Count | N/A (new endpoint) | 3-4 queries (0-1 with cache) | Optimized from start |
 
@@ -270,7 +270,7 @@ pytest hub/apps/marketplace/tests/test_performance.py::MarketplacePerformanceTes
 ### Performance Targets Met
 - ✅ GET `/api/v1/marketplace/listings/` - P95 < 500ms
 - ✅ GET `/api/v1/search/search/` - P95 < 200ms
-- ✅ GET `/api/v1/dq/dq-runs/{id}/results/` - P95 < 500ms
+- ✅ GET `/api/v1/dq/runs/{id}/results/` - P95 < 500ms
 
 ### Query Optimization Validated
 - ✅ Marketplace listings: < 5 queries
@@ -300,7 +300,7 @@ The optimizations are production-ready, maintainable, and follow engineering bes
 
 ---
 
-**Next Steps**: 
+**Next Steps**:
 1. Run performance tests in CI/CD pipeline
 2. Monitor performance in production
 3. Integrate background job queue for async operations

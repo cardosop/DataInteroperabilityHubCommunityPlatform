@@ -145,6 +145,84 @@ kubectl create secret generic prefect-server-secrets \
 
 **Production Recommendation**: Use External Secrets Operator or HashiCorp Vault.
 
+#### 2.1 Marketplace Connector Secrets
+
+The API Service and Worker Service require marketplace connector secrets. Update the following Secret files:
+
+**API Service Secrets** (`k8s/api-service/base/secret.yaml`):
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-service-secrets
+type: Opaque
+stringData:
+  # dados.gov.br Swagger API (NOT CKAN) - JWT Bearer token
+  DADOS_GOV_BR_API_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  # CKAN instances (demo.ckan.org, data.gov) - Standard API key
+  CKAN_TEST_API_KEY: "your-ckan-test-api-key-here"
+  # Backward compatibility (deprecated)
+  CKAN_DADOS_GOV_BR_API_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  # Snowflake Data Marketplace connector configuration
+  SNOWFLAKE_ACCOUNT: "xy12345.us-east-1"
+  SNOWFLAKE_USER: "MARKETPLACE_USER"
+  SNOWFLAKE_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  SNOWFLAKE_WAREHOUSE: "MARKETPLACE_WAREHOUSE"
+  SNOWFLAKE_ROLE: "MARKETPLACE_ROLE"
+  SNOWFLAKE_DATABASE: "MARKETPLACE_DB"
+```
+
+**Worker Service Secrets** (`k8s/worker-service/base/secret.yaml`):
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: worker-service-secrets
+type: Opaque
+stringData:
+  # Same marketplace secrets as API Service
+  DADOS_GOV_BR_API_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  CKAN_TEST_API_KEY: "your-ckan-test-api-key-here"
+  CKAN_DADOS_GOV_BR_API_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  SNOWFLAKE_ACCOUNT: "xy12345.us-east-1"
+  SNOWFLAKE_USER: "MARKETPLACE_USER"
+  SNOWFLAKE_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  SNOWFLAKE_WAREHOUSE: "MARKETPLACE_WAREHOUSE"
+  SNOWFLAKE_ROLE: "MARKETPLACE_ROLE"
+  SNOWFLAKE_DATABASE: "MARKETPLACE_DB"
+```
+
+**Create Secrets from Command Line:**
+```bash
+# Create API Service secrets
+kubectl create secret generic api-service-secrets \
+  --from-literal=DADOS_GOV_BR_API_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' \
+  --from-literal=CKAN_TEST_API_KEY='your-ckan-test-api-key-here' \
+  --from-literal=SNOWFLAKE_ACCOUNT='xy12345.us-east-1' \
+  --from-literal=SNOWFLAKE_USER='MARKETPLACE_USER' \
+  --from-literal=SNOWFLAKE_TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' \
+  --from-literal=SNOWFLAKE_WAREHOUSE='MARKETPLACE_WAREHOUSE' \
+  --from-literal=SNOWFLAKE_ROLE='MARKETPLACE_ROLE' \
+  --from-literal=SNOWFLAKE_DATABASE='MARKETPLACE_DB' \
+  --namespace=default \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Create Worker Service secrets
+kubectl create secret generic worker-service-secrets \
+  --from-literal=DADOS_GOV_BR_API_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' \
+  --from-literal=CKAN_TEST_API_KEY='your-ckan-test-api-key-here' \
+  --from-literal=SNOWFLAKE_ACCOUNT='xy12345.us-east-1' \
+  --from-literal=SNOWFLAKE_USER='MARKETPLACE_USER' \
+  --from-literal=SNOWFLAKE_TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' \
+  --from-literal=SNOWFLAKE_WAREHOUSE='MARKETPLACE_WAREHOUSE' \
+  --from-literal=SNOWFLAKE_ROLE='MARKETPLACE_ROLE' \
+  --from-literal=SNOWFLAKE_DATABASE='MARKETPLACE_DB' \
+  --namespace=default \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**Production Recommendation**: Use External Secrets Operator or HashiCorp Vault to manage secrets. See [Marketplace Secrets Documentation](../k8s/MARKETPLACE_SECRETS.md) for details.
+
 ### 3. Deploy to Staging
 
 ```bash
@@ -292,6 +370,163 @@ kubectl logs -n prefect -l app=prefect-server --tail=100
 - `WEBHOOK_RETRY_MAX_ATTEMPTS` - Max retry attempts (default: 5)
 - `WEBHOOK_RETRY_BACKOFF_SECONDS` - Retry backoff (default: "1,5,30,300,1800")
 - `WEBHOOK_TIMEOUT_SECONDS` - Request timeout (default: 30)
+
+---
+
+## Marketplace Environment Variables
+
+The Data Interoperability Hub supports integration with multiple marketplace instances for harvesting data. This section documents all marketplace-related environment variables and configuration requirements.
+
+### Marketplace Environment Variables Reference
+
+| Variable | Description | Required | Default | Example | ConfigMap/Secret |
+|----------|-------------|----------|---------|---------|------------------|
+| `DADOS_GOV_BR_API_KEY` | JWT Bearer token for dados.gov.br Swagger API (NOT CKAN). Format: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` | Yes* | None | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` | Secret |
+| `CKAN_DADOS_GOV_BR_API_KEY` | **DEPRECATED** - Use `DADOS_GOV_BR_API_KEY` instead. Still supported for backward compatibility. | No | None | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` | Secret |
+| `CKAN_TEST_URL` | Marketplace connector instance URL for testing (supports both CKAN and Swagger). Used for test instances like demo.ckan.org. | No | `https://demo.ckan.org` | `https://demo.ckan.org` or `https://dados.gov.br` | ConfigMap |
+| `CKAN_TEST_API_KEY` | API key for CKAN test instances (demo.ckan.org, data.gov). Not required for dados.gov.br (uses JWT token). | No | None | `test-key-abc123...` | Secret |
+| `SNOWFLAKE_ACCOUNT` | Snowflake account identifier (e.g., `xy12345.us-east-1`). Required for Snowflake Data Marketplace connector. | No** | None | `xy12345.us-east-1` | Secret |
+| `SNOWFLAKE_USER` | Snowflake user name for authentication. Required for Snowflake Data Marketplace connector. | No** | None | `MARKETPLACE_USER` | Secret |
+| `SNOWFLAKE_TOKEN` | Snowflake authentication token (JWT or OAuth token). Required for Snowflake Data Marketplace connector. | No** | None | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` | Secret |
+| `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse name for executing queries. Required for Snowflake Data Marketplace connector. | No** | None | `MARKETPLACE_WAREHOUSE` | Secret |
+| `SNOWFLAKE_ROLE` | Snowflake role for access control. Required for Snowflake Data Marketplace connector. | No** | None | `MARKETPLACE_ROLE` | Secret |
+| `SNOWFLAKE_DATABASE` | Snowflake database name for marketplace data. Required for Snowflake Data Marketplace connector. | No** | None | `MARKETPLACE_DB` | Secret |
+| `MOCK_SERVER_URL` | Mock server URL for testing marketplace connectors (internal service). Used for integration testing. | No | `http://mock-server.default.svc.cluster.local:8080` | `http://mock-server.default.svc.cluster.local:8080` | ConfigMap |
+
+\* Required for dados.gov.br Swagger API connector. Other CKAN instances (demo.ckan.org, data.gov) use standard API keys and don't require JWT tokens.
+
+\** Required if using Snowflake Data Marketplace connector. All Snowflake variables must be set together.
+
+### Marketplace Configuration Requirements
+
+#### 1. dados.gov.br (Brazilian Government Open Data Portal)
+
+**Type**: Swagger API (NOT CKAN)
+**Base URL**: `https://dados.gov.br`
+**Authentication**: JWT Bearer token
+**Connector**: `DadosGovBrConnector` (Swagger-based)
+
+**Required Configuration:**
+- **Secret**: `DADOS_GOV_BR_API_KEY` (JWT token format: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`)
+- **ConfigMap**: Not required (uses default Swagger spec URL)
+
+**Kubernetes Configuration:**
+```yaml
+# In Secret (api-service-secrets or worker-service-secrets)
+stringData:
+  DADOS_GOV_BR_API_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+**Notes:**
+- Uses custom Swagger APIs (`/dados/api/publico/conjuntos-dados`), NOT standard CKAN APIs
+- Swagger spec automatically loaded from `https://dados.gov.br/v3/api-docs`
+- JWT token must be valid and not expired
+- Backward compatibility: `CKAN_DADOS_GOV_BR_API_KEY` still works but is deprecated
+
+#### 2. CKAN Instances (demo.ckan.org, data.gov)
+
+**Type**: Standard CKAN API
+**Base URLs**:
+- `https://demo.ckan.org` (default test instance)
+- `https://data.gov` (US Government Open Data Portal)
+**Authentication**: Standard CKAN API key (not JWT token)
+**Connector**: `CKANConnector` (standard CKAN API)
+
+**Required Configuration:**
+- **ConfigMap**: `CKAN_TEST_URL` (instance URL)
+- **Secret**: `CKAN_TEST_API_KEY` (API key from CKAN instance)
+
+**Kubernetes Configuration:**
+```yaml
+# In ConfigMap (api-service-config or worker-service-config)
+data:
+  CKAN_TEST_URL: "https://demo.ckan.org"
+
+# In Secret (api-service-secrets or worker-service-secrets)
+stringData:
+  CKAN_TEST_API_KEY: "your-ckan-test-api-key-here"
+```
+
+**Notes:**
+- API keys can be obtained from CKAN instance user profile
+- Standard CKAN API key format (not JWT token)
+- API keys should have read permissions for harvest operations
+
+#### 3. Snowflake Data Marketplace
+
+**Type**: Snowflake Data Marketplace
+**Authentication**: Snowflake account, user, token, warehouse, role, database
+**Connector**: Snowflake Data Marketplace connector
+
+**Required Configuration** (all must be set together):
+- **Secret**: `SNOWFLAKE_ACCOUNT` (account identifier)
+- **Secret**: `SNOWFLAKE_USER` (user name)
+- **Secret**: `SNOWFLAKE_TOKEN` (authentication token)
+- **Secret**: `SNOWFLAKE_WAREHOUSE` (warehouse name)
+- **Secret**: `SNOWFLAKE_ROLE` (role name)
+- **Secret**: `SNOWFLAKE_DATABASE` (database name)
+
+**Kubernetes Configuration:**
+```yaml
+# In Secret (api-service-secrets or worker-service-secrets)
+stringData:
+  SNOWFLAKE_ACCOUNT: "xy12345.us-east-1"
+  SNOWFLAKE_USER: "MARKETPLACE_USER"
+  SNOWFLAKE_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  SNOWFLAKE_WAREHOUSE: "MARKETPLACE_WAREHOUSE"
+  SNOWFLAKE_ROLE: "MARKETPLACE_ROLE"
+  SNOWFLAKE_DATABASE: "MARKETPLACE_DB"
+```
+
+**Notes:**
+- All Snowflake variables must be set together
+- Token can be JWT or OAuth token format
+- Account identifier format: `xy12345.us-east-1` (account.region)
+- See [Snowflake Data Marketplace Documentation](https://docs.snowflake.com/user-guide/gen-conn-config)
+
+#### 4. Mock Server (Testing)
+
+**Type**: Mock server for integration testing
+**Base URL**: `http://mock-server.default.svc.cluster.local:8080` (internal Kubernetes service)
+**Authentication**: None (testing only)
+**Purpose**: Simulate marketplace APIs for testing
+
+**Required Configuration:**
+- **ConfigMap**: `MOCK_SERVER_URL` (default: `http://mock-server.default.svc.cluster.local:8080`)
+
+**Kubernetes Configuration:**
+```yaml
+# In ConfigMap (api-service-config or worker-service-config)
+data:
+  MOCK_SERVER_URL: "http://mock-server.default.svc.cluster.local:8080"
+```
+
+**Notes:**
+- Only used in development/testing environments
+- Internal Kubernetes service (not exposed externally)
+- Used for integration testing of marketplace connectors
+
+### ConfigMap and Secret Management
+
+**ConfigMaps** (Non-sensitive configuration):
+- `api-service-config` / `worker-service-config`
+- Contains: `CKAN_TEST_URL`, `MOCK_SERVER_URL`
+- Can be version controlled (no secrets)
+
+**Secrets** (Sensitive credentials):
+- `api-service-secrets` / `worker-service-secrets`
+- Contains: All API keys, tokens, and credentials
+- **MUST NOT** be committed to Git
+- Use External Secrets Operator or HashiCorp Vault in production
+
+**Production Best Practices:**
+1. **Use External Secrets Manager**: AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, GCP Secret Manager
+2. **Enable Encryption at Rest**: Kubernetes Secrets are base64 encoded by default (not encrypted)
+3. **Rotate Credentials Regularly**: Rotate API keys and tokens every 90 days
+4. **Use Least Privilege**: API keys should have minimal required permissions
+5. **Monitor Access**: Enable audit logging for secret access
+
+For detailed marketplace connector deployment and troubleshooting, see [Marketplace Connector Deployment Runbook](./runbooks/marketplace-connector-deployment.md) and [Marketplace Secrets Documentation](../k8s/MARKETPLACE_SECRETS.md).
 
 ---
 

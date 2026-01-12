@@ -88,12 +88,12 @@ class DatasetOperationsE2ETest(E2ETestBase):
         dataset_id2 = self.create_dataset(file_id2, asset_id)
         
         # List datasets
-        response = self.client.get('/api/v1/datasets/datasets/')
+        response = self.client.get('/api/v1/datasets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data['results']), 2)
         
         # Filter by asset
-        response = self.client.get(f'/api/v1/datasets/datasets/?asset_id={asset_id}')
+        response = self.client.get(f'/api/v1/datasets/?asset_id={asset_id}')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         dataset_ids = {d['id'] for d in response.data['results']}
         self.assertIn(str(dataset_id1), dataset_ids)
@@ -108,7 +108,7 @@ class DatasetOperationsE2ETest(E2ETestBase):
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
         
-        response = self.client.get(f'/api/v1/datasets/datasets/{dataset_id}/')
+        response = self.client.get(f'/api/v1/datasets/{dataset_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(dataset_id))
@@ -204,7 +204,7 @@ class DatasetOperationsE2ETest(E2ETestBase):
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
         
-        response = self.client.delete(f'/api/v1/datasets/datasets/{dataset_id}/')
+        response = self.client.delete(f'/api/v1/datasets/{dataset_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         

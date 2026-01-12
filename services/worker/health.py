@@ -14,15 +14,15 @@ import redis
 def healthz(request=None):
     """
     Liveness probe endpoint.
-    
+
     Returns 200 OK if worker process is running (no deep checks).
     Used by Kubernetes to determine if container should be restarted.
-    
+
     GET /healthz
-    
+
     Args:
         request: Django request object (optional, not used)
-    
+
     Returns:
         If request is None: (status_code, response_data) tuple
         If request is provided: JsonResponse
@@ -41,19 +41,19 @@ def healthz(request=None):
 def ready(request=None):
     """
     Readiness probe endpoint.
-    
+
     Returns 200 OK if all dependencies are ready (database, Redis).
     Returns 503 if any dependency is unavailable.
     Used by Kubernetes to determine if service can accept traffic.
-    
+
     GET /ready
-    
+
     Args:
         request: Django request object (optional, not used)
     """
     checks = {}
     all_ready = True
-    
+
     # Check database connection
     try:
         with connection.cursor() as cursor:
@@ -62,16 +62,17 @@ def ready(request=None):
     except Exception as e:
         checks['database'] = f'unhealthy: {str(e)}'
         all_ready = False
-    
-    # Check Redis connection (required for job queues)
+
+    # Check Redis queue connection (required for job queues)
     try:
-        r = redis.from_url(settings.REDIS_URL)
+        from hub.apps.core.redis_pools import get_redis_queue_client
+        r = get_redis_queue_client()
         r.ping()
-        checks['redis'] = 'ok'
+        checks['redis_queue'] = 'ok'
     except Exception as e:
-        checks['redis'] = f'unhealthy: {str(e)}'
+        checks['redis_queue'] = f'unhealthy: {str(e)}'
         all_ready = False
-    
+
     # Check cache backend (may be same as Redis)
     try:
         cache.get('health_check_test', None)
@@ -79,7 +80,7 @@ def ready(request=None):
     except Exception as e:
         checks['cache'] = f'unhealthy: {str(e)}'
         all_ready = False
-    
+
     if all_ready:
         response_data = {
             'status': 'ready',

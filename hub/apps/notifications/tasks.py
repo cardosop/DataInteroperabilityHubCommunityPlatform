@@ -19,7 +19,9 @@ from .templates import (
     build_job_url,
     build_contract_url,
     build_pipeline_url,
-    build_pipeline_execution_url
+    build_pipeline_execution_url,
+    build_marketplace_sync_job_url,
+    build_marketplace_connection_url
 )
 from .models import EmailDelivery, EmailType, EmailDeliveryStatus
 
@@ -1007,6 +1009,299 @@ def send_pipeline_execution_failure_email(execution_id: str):
         logger.error(
             "pipeline_execution_failure_email_error",
             execution_id=execution_id,
+            error=str(e),
+            exc_info=True
+        )
+        raise
+
+
+@job('job_low', timeout=60)
+def send_marketplace_sync_completion_email(sync_job_id: str):
+    """
+    Send marketplace sync completion notification email.
+
+    Args:
+        sync_job_id: Marketplace sync job UUID
+    """
+    try:
+        from hub.apps.integrations.models import MarketplaceSyncJob
+
+        sync_job = MarketplaceSyncJob.objects.select_related(
+            'connection', 'connection__tenant', 'tenant'
+        ).get(id=sync_job_id)
+
+        # Get user from connection or tenant
+        user = None
+        if sync_job.connection and hasattr(sync_job.connection, 'created_by') and sync_job.connection.created_by:
+            user = sync_job.connection.created_by
+        elif sync_job.tenant and hasattr(sync_job.tenant, 'users') and sync_job.tenant.users.exists():
+            user = sync_job.tenant.users.first()
+
+        if not user:
+            logger.warning(
+                "marketplace_sync_completion_email_no_user",
+                sync_job_id=sync_job_id,
+                message="Sync job has no associated user"
+            )
+            return
+
+        # Build sync job URL
+        sync_job_url = build_marketplace_sync_job_url(str(sync_job.id))
+
+        # Calculate duration
+        duration_seconds = None
+        duration_formatted = None
+        if sync_job.completed_at and sync_job.created_at:
+            duration_seconds = (sync_job.completed_at - sync_job.created_at).total_seconds()
+            if duration_seconds > 0:
+                if duration_seconds < 60:
+                    duration_formatted = f"{int(duration_seconds)} seconds"
+                elif duration_seconds < 3600:
+                    minutes = int(duration_seconds / 60)
+                    seconds = int(duration_seconds % 60)
+                    duration_formatted = f"{minutes} minute{'s' if minutes != 1 else ''} {seconds} second{'s' if seconds != 1 else ''}"
+                else:
+                    hours = int(duration_seconds / 3600)
+                    minutes = int((duration_seconds % 3600) / 60)
+                    duration_formatted = f"{hours} hour{'s' if hours != 1 else ''} {minutes} minute{'s' if minutes != 1 else ''}"
+
+        # Prepare template context
+        context = {
+            'user': user,
+            'sync_job_id': str(sync_job.id),
+            'marketplace_type': sync_job.connection.marketplace_type if sync_job.connection else 'Unknown',
+            'direction': sync_job.direction,
+            'connection_name': sync_job.connection.name if sync_job.connection else 'Unknown',
+            'items_synced': sync_job.items_synced,
+            'duration_formatted': duration_formatted,
+            'sync_job_url': sync_job_url
+        }
+
+        # Send email
+        result = send_email_async(
+            email_type=EmailType.MARKETPLACE_SYNC_COMPLETION.value,
+            to_email=user.email,
+            subject=f"Marketplace Sync Completed: {sync_job.connection.name if sync_job.connection else 'Sync Job'}",
+            template_name='notifications/emails/marketplace_sync_completion.html',
+            context=context,
+            tenant_id=str(sync_job.tenant.id) if sync_job.tenant else None,
+            user_id=str(user.id)
+        )
+
+        logger.info(
+            "marketplace_sync_completion_email_sent",
+            sync_job_id=sync_job_id,
+            email=user.email,
+            success=result.get('success', False)
+        )
+
+        return result
+
+    except MarketplaceSyncJob.DoesNotExist:
+        logger.error(
+            "marketplace_sync_completion_email_sync_job_not_found",
+            sync_job_id=sync_job_id
+        )
+        raise
+    except Exception as e:
+        logger.error(
+            "marketplace_sync_completion_email_error",
+            sync_job_id=sync_job_id,
+            error=str(e),
+            exc_info=True
+        )
+        raise
+
+
+@job('job_low', timeout=60)
+def send_marketplace_sync_failure_email(sync_job_id: str):
+    """
+    Send marketplace sync failure notification email.
+
+    Args:
+        sync_job_id: Marketplace sync job UUID
+    """
+    try:
+        from hub.apps.integrations.models import MarketplaceSyncJob
+
+        sync_job = MarketplaceSyncJob.objects.select_related(
+            'connection', 'connection__tenant', 'tenant'
+        ).get(id=sync_job_id)
+
+        # Get user from connection or tenant
+        user = None
+        if sync_job.connection and hasattr(sync_job.connection, 'created_by') and sync_job.connection.created_by:
+            user = sync_job.connection.created_by
+        elif sync_job.tenant and hasattr(sync_job.tenant, 'users') and sync_job.tenant.users.exists():
+            user = sync_job.tenant.users.first()
+
+        if not user:
+            logger.warning(
+                "marketplace_sync_failure_email_no_user",
+                sync_job_id=sync_job_id,
+                message="Sync job has no associated user"
+            )
+            return
+
+        # Build sync job URL
+        sync_job_url = build_marketplace_sync_job_url(str(sync_job.id))
+
+        # Get error message from errors list
+        error_message = None
+        if sync_job.errors:
+            if isinstance(sync_job.errors, list):
+                if len(sync_job.errors) > 0:
+                    error_entry = sync_job.errors[0]
+                    if isinstance(error_entry, dict):
+                        error_message = error_entry.get('message', str(error_entry))
+                    else:
+                        error_message = str(error_entry)
+            else:
+                error_message = str(sync_job.errors)
+
+        # Prepare template context
+        context = {
+            'user': user,
+            'sync_job_id': str(sync_job.id),
+            'marketplace_type': sync_job.connection.marketplace_type if sync_job.connection else 'Unknown',
+            'direction': sync_job.direction,
+            'connection_name': sync_job.connection.name if sync_job.connection else 'Unknown',
+            'items_synced': sync_job.items_synced,
+            'items_failed': sync_job.items_failed,
+            'error_message': error_message,
+            'sync_job_url': sync_job_url
+        }
+
+        # Send email
+        result = send_email_async(
+            email_type=EmailType.MARKETPLACE_SYNC_FAILURE.value,
+            to_email=user.email,
+            subject=f"Marketplace Sync Failed: {sync_job.connection.name if sync_job.connection else 'Sync Job'}",
+            template_name='notifications/emails/marketplace_sync_failure.html',
+            context=context,
+            tenant_id=str(sync_job.tenant.id) if sync_job.tenant else None,
+            user_id=str(user.id)
+        )
+
+        logger.info(
+            "marketplace_sync_failure_email_sent",
+            sync_job_id=sync_job_id,
+            email=user.email,
+            success=result.get('success', False)
+        )
+
+        return result
+
+    except MarketplaceSyncJob.DoesNotExist:
+        logger.error(
+            "marketplace_sync_failure_email_sync_job_not_found",
+            sync_job_id=sync_job_id
+        )
+        raise
+    except Exception as e:
+        logger.error(
+            "marketplace_sync_failure_email_error",
+            sync_job_id=sync_job_id,
+            error=str(e),
+            exc_info=True
+        )
+        raise
+
+
+@job('job_low', timeout=60)
+def send_marketplace_connection_test_failure_email(
+    connection_id: str,
+    error_message: str,
+    tested_at: Optional[str] = None,
+    user_id: Optional[str] = None,
+    tenant_id: Optional[str] = None
+):
+    """
+    Send marketplace connection test failure notification email.
+
+    Args:
+        connection_id: Connection UUID
+        error_message: Error message from connection test
+        tested_at: Optional ISO format timestamp of when test was performed
+        user_id: Optional user ID (if not provided, will try to get from connection)
+        tenant_id: Optional tenant ID (if not provided, will try to get from connection)
+    """
+    try:
+        from hub.apps.integrations.models import MarketplaceConnection
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+
+        connection = MarketplaceConnection.objects.select_related('tenant').get(id=connection_id)
+
+        # Determine user - prefer provided user_id, fallback to connection.created_by
+        user = None
+        effective_user_id = user_id
+        if effective_user_id:
+            try:
+                user = User.objects.get(id=effective_user_id)
+            except User.DoesNotExist:
+                pass
+
+        if not user and hasattr(connection, 'created_by') and connection.created_by:
+            user = connection.created_by
+            effective_user_id = str(connection.created_by.id)
+
+        if not user:
+            logger.warning(
+                "marketplace_connection_test_failure_email_no_user",
+                connection_id=connection_id,
+                message="No user found for connection test failure email"
+            )
+            return
+
+        # Determine effective tenant_id
+        effective_tenant_id = tenant_id or (str(connection.tenant.id) if connection.tenant else None)
+
+        # Build connection URL
+        connection_url = build_marketplace_connection_url(str(connection.id))
+
+        # Prepare template context
+        context = {
+            'user': user,
+            'connection_name': connection.name,
+            'connection_id': str(connection.id),
+            'marketplace_type': connection.marketplace_type,
+            'error_message': error_message,
+            'tested_at': tested_at,
+            'connection_url': connection_url
+        }
+
+        # Send email
+        result = send_email_async(
+            email_type=EmailType.MARKETPLACE_CONNECTION_TEST_FAILURE.value,
+            to_email=user.email,
+            subject=f"Connection Test Failed: {connection.name}",
+            template_name='notifications/emails/marketplace_connection_test_failure.html',
+            context=context,
+            tenant_id=effective_tenant_id,
+            user_id=effective_user_id
+        )
+
+        logger.info(
+            "marketplace_connection_test_failure_email_sent",
+            connection_id=connection_id,
+            email=user.email,
+            success=result.get('success', False)
+        )
+
+        return result
+
+    except MarketplaceConnection.DoesNotExist:
+        logger.error(
+            "marketplace_connection_test_failure_email_connection_not_found",
+            connection_id=connection_id
+        )
+        raise
+    except Exception as e:
+        logger.error(
+            "marketplace_connection_test_failure_email_error",
+            connection_id=connection_id,
             error=str(e),
             exc_info=True
         )

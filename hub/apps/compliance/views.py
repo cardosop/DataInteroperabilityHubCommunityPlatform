@@ -99,7 +99,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         """
         Create a new compliance run.
 
-        POST /compliance-runs
+        POST /runs
         Body: {
             "asset_id": "uuid" (optional),
             "dataset_id": "uuid" (optional),
@@ -282,6 +282,21 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         """Retrieve compliance run by ID"""
         return super().retrieve(request, *args, **kwargs)
 
+    def update(self, request, *args, **kwargs):
+        """Update compliance run (full update)"""
+        self.check_auditor_permissions(request, 'update')
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Update compliance run (partial update)"""
+        self.check_auditor_permissions(request, 'partial_update')
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete compliance run"""
+        self.check_auditor_permissions(request, 'destroy')
+        return super().destroy(request, *args, **kwargs)
+
     @extend_schema(
         operation_id='get_compliance_run_results',
         responses={
@@ -315,7 +330,7 @@ class ComplianceRunViewSet(viewsets.ModelViewSet):
         """
         Get enhanced compliance run results with detailed violation information.
 
-        GET /api/v1/compliance/compliance-runs/{id}/results/
+        GET /api/v1/compliance/runs/{id}/results/
 
         Returns detailed compliance results including:
         - Violation details with remediation suggestions

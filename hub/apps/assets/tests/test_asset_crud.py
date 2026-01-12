@@ -51,7 +51,7 @@ class AssetCRUDTest(TestCase):
             "visibility": AssetVisibility.INTERNAL
         }
         
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)
@@ -86,7 +86,7 @@ class AssetCRUDTest(TestCase):
             "name": "Second Asset"
         }
         
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("already exists", response.data["error"])
@@ -102,7 +102,7 @@ class AssetCRUDTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.get(f"/api/v1/assets/assets/{asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{asset.id}/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(asset.id))
@@ -126,7 +126,7 @@ class AssetCRUDTest(TestCase):
             "version": asset.version
         }
         
-        response = self.client.patch(f"/api/v1/assets/assets/{asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{asset.id}/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Updated Asset")
@@ -155,7 +155,7 @@ class AssetCRUDTest(TestCase):
             "version": 1  # Old version
         }
         
-        response = self.client.patch(f"/api/v1/assets/assets/{asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{asset.id}/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertIn("CONCURRENT_MODIFICATION", response.data["code"])
@@ -173,7 +173,7 @@ class AssetCRUDTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.delete(f"/api/v1/assets/assets/{asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{asset.id}/")
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -205,7 +205,7 @@ class AssetCRUDTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_ids = [a["id"] for a in response.data["results"]]
@@ -235,7 +235,7 @@ class AssetCRUDTest(TestCase):
         )
         
         # Filter by marketing domain
-        response = self.client.get("/api/v1/assets/assets/?domain=marketing")
+        response = self.client.get("/api/v1/assets/?domain=marketing")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_ids = [a["id"] for a in response.data["results"]]
@@ -263,7 +263,7 @@ class AssetCRUDTest(TestCase):
         )
         
         # Filter by DRAFT status
-        response = self.client.get("/api/v1/assets/assets/?status=DRAFT")
+        response = self.client.get("/api/v1/assets/?status=DRAFT")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_ids = [a["id"] for a in response.data["results"]]
@@ -271,7 +271,7 @@ class AssetCRUDTest(TestCase):
         self.assertNotIn(str(active_asset.id), asset_ids)
         
         # Filter by ACTIVE status
-        response = self.client.get("/api/v1/assets/assets/?status=ACTIVE")
+        response = self.client.get("/api/v1/assets/?status=ACTIVE")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_ids = [a["id"] for a in response.data["results"]]
@@ -291,7 +291,7 @@ class AssetCRUDTest(TestCase):
         )
         
         # Filter by invalid status
-        response = self.client.get("/api/v1/assets/assets/?status=INVALID_STATUS")
+        response = self.client.get("/api/v1/assets/?status=INVALID_STATUS")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 0)
@@ -315,7 +315,7 @@ class AssetCRUDTest(TestCase):
         )
         
         # Order by name ascending
-        response = self.client.get("/api/v1/assets/assets/?ordering=name")
+        response = self.client.get("/api/v1/assets/?ordering=name")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         names = [a["name"] for a in response.data["results"]]
@@ -325,7 +325,7 @@ class AssetCRUDTest(TestCase):
         self.assertLess(asset_a_index, asset_b_index)
         
         # Order by name descending
-        response = self.client.get("/api/v1/assets/assets/?ordering=-name")
+        response = self.client.get("/api/v1/assets/?ordering=-name")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         names = [a["name"] for a in response.data["results"]]
@@ -355,7 +355,7 @@ class AssetCRUDTest(TestCase):
         )
         
         # Search for "Searchable"
-        response = self.client.get("/api/v1/assets/assets/?search=Searchable")
+        response = self.client.get("/api/v1/assets/?search=Searchable")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_ids = [a["id"] for a in response.data["results"]]
@@ -385,7 +385,7 @@ class AssetCRUDTest(TestCase):
         )
         
         # Filter by domain and status
-        response = self.client.get("/api/v1/assets/assets/?domain=marketing&status=ACTIVE")
+        response = self.client.get("/api/v1/assets/?domain=marketing&status=ACTIVE")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_ids = [a["id"] for a in response.data["results"]]

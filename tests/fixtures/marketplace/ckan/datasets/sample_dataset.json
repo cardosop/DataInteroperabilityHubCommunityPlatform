@@ -1,0 +1,39 @@
+{
+  "id": "sample-dataset-1",
+  "name": "sample-dataset-1",
+  "title": "Sample Dataset 1",
+  "notes": "This is a sample dataset for testing purposes. It contains various data points and resources.",
+  "tags": [
+    {
+      "id": "tag-1",
+      "name": "environment",
+      "vocabulary_id": null,
+      "display_name": "Environment"
+    },
+    {
+      "id": "tag-2",
+      "name": "data",
+      "vocabulary_id": null,
+      "display_name": "Data"
+    }
+  ],
+  "organization": {
+    "id": "test-org",
+    "name": "test-org",
+    "title": "Test Organization",
+    "description": "Test organization for CKAN fixtures"
+  },
+  "license_id": "cc-by",
+  "license_title": "Creative Commons Attribution",
+  "author": "Test Author",
+  "author_email": "author@example.com",
+  "maintainer": "Test Maintainer",
+  "maintainer_email": "maintainer@example.com",
+  "version": "1.0.0",
+  "metadata_created": "2024-01-15T10:00:00Z",
+  "metadata_modified": "2024-01-20T15:30:00Z",
+  "creator_user_id": "user-123",
+  "type": "dataset",
+  "state": "active"
+}
+

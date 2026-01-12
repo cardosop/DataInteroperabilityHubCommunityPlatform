@@ -71,7 +71,7 @@ class JWTAuthenticationTest(AuthenticationRegressionTest):
         
         # Use token for authenticated request
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
     
     def test_jwt_token_refresh(self):
@@ -124,7 +124,7 @@ class APIKeyAuthenticationTest(AuthenticationRegressionTest):
         
         # Use API key for authentication
         response = self.client.get(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             HTTP_AUTHORIZATION="ApiKey test-api-key-123"
         )
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
@@ -244,12 +244,12 @@ class AuthorizationTest(AuthenticationRegressionTest):
         """Test authenticated user can access resources"""
         self.client.force_authenticate(user=self.user)
         
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
     
     def test_unauthenticated_access(self):
         """Test unauthenticated user cannot access resources"""
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
     def test_tenant_isolation(self):
@@ -276,7 +276,7 @@ class AuthorizationTest(AuthenticationRegressionTest):
         
         # Try to access with other user
         self.client.force_authenticate(user=other_user)
-        response = self.client.get(f'/api/v1/assets/assets/{asset.id}/')
+        response = self.client.get(f'/api/v1/assets/{asset.id}/')
         
         # Should be forbidden (tenant isolation)
         self.assertIn(response.status_code, [
@@ -303,7 +303,7 @@ class TokenValidationTest(AuthenticationRegressionTest):
     def test_invalid_token_rejected(self):
         """Test invalid token is rejected"""
         self.client.credentials(HTTP_AUTHORIZATION='Bearer invalid-token')
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
     def test_expired_token_rejected(self):
@@ -312,6 +312,6 @@ class TokenValidationTest(AuthenticationRegressionTest):
         # This depends on JWT implementation
         # For now, verify invalid tokens are rejected
         self.client.credentials(HTTP_AUTHORIZATION='Bearer expired-token')
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 

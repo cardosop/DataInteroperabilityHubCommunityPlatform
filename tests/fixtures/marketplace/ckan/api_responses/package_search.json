@@ -1,0 +1,78 @@
+{
+  "success": true,
+  "result": {
+    "count": 3,
+    "results": [
+      {
+        "id": "sample-dataset-1",
+        "name": "sample-dataset-1",
+        "title": "Sample Dataset 1",
+        "notes": "This is a sample dataset for testing purposes",
+        "tags": [
+          {"name": "environment", "vocabulary_id": null},
+          {"name": "data", "vocabulary_id": null}
+        ],
+        "organization": {
+          "id": "test-org",
+          "name": "test-org",
+          "title": "Test Organization"
+        },
+        "license_id": "cc-by",
+        "license_title": "Creative Commons Attribution",
+        "author": "Test Author",
+        "maintainer": "test@example.com",
+        "version": "1.0.0",
+        "metadata_created": "2024-01-15T10:00:00Z",
+        "metadata_modified": "2024-01-20T15:30:00Z",
+        "resources": [
+          {
+            "id": "resource-1",
+            "name": "Sample Resource",
+            "description": "Sample resource description",
+            "url": "https://example.com/data.csv",
+            "format": "CSV",
+            "size": 1024,
+            "mimetype": "text/csv",
+            "created": "2024-01-15T10:00:00Z",
+            "last_modified": "2024-01-15T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "sample-dataset-2",
+        "name": "sample-dataset-2",
+        "title": "Sample Dataset 2",
+        "notes": "Another sample dataset",
+        "tags": [
+          {"name": "economic", "vocabulary_id": null}
+        ],
+        "organization": {
+          "id": "test-org",
+          "name": "test-org",
+          "title": "Test Organization"
+        },
+        "license_id": "odc-pddl",
+        "metadata_created": "2024-01-16T09:00:00Z",
+        "metadata_modified": "2024-01-16T09:00:00Z",
+        "resources": []
+      },
+      {
+        "id": "sample-dataset-3",
+        "name": "sample-dataset-3",
+        "title": "Sample Dataset 3",
+        "notes": "Third sample dataset",
+        "tags": [],
+        "organization": {
+          "id": "other-org",
+          "name": "other-org",
+          "title": "Other Organization"
+        },
+        "metadata_created": "2024-01-17T08:00:00Z",
+        "metadata_modified": "2024-01-17T08:00:00Z",
+        "resources": []
+      }
+    ],
+    "search_facets": {}
+  }
+}
+

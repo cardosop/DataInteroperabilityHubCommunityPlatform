@@ -40,8 +40,8 @@ class ExportEndpointsIntegrationTest(TestCase):
     Comprehensive integration tests for all export endpoints.
 
     Tests cover:
-    - Contract export endpoint (/api/v1/contracts/contracts/{id}/export/)
-    - Contract download endpoint (/api/v1/contracts/contracts/{id}/download/)
+    - Contract export endpoint (/api/v1/contracts/{id}/export/)
+    - Contract download endpoint (/api/v1/contracts/{id}/download/)
     - Marketplace download endpoint (/api/v1/marketplace/listings/{id}/download/)
     - Format conversion and data integrity
     """
@@ -269,7 +269,7 @@ class ExportEndpointsIntegrationTest(TestCase):
         for format_type in formats:
             with self.subTest(format=format_type):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+                    f"/api/v1/contracts/{self.contract.id}/export/",
                     {"format": format_type, "output_format": "json"},
                 )
 
@@ -297,7 +297,7 @@ class ExportEndpointsIntegrationTest(TestCase):
         for format_type in formats:
             with self.subTest(format=format_type):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+                    f"/api/v1/contracts/{self.contract.id}/export/",
                     {"format": format_type, "output_format": "yaml"},
                 )
 
@@ -327,7 +327,7 @@ class ExportEndpointsIntegrationTest(TestCase):
         for format_type in formats:
             with self.subTest(format=format_type):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+                    f"/api/v1/contracts/{self.contract.id}/download/",
                     {"format": format_type, "output_format": "json"},
                 )
 
@@ -351,7 +351,7 @@ class ExportEndpointsIntegrationTest(TestCase):
         for format_type in formats:
             with self.subTest(format=format_type):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+                    f"/api/v1/contracts/{self.contract.id}/download/",
                     {"format": format_type, "output_format": "yaml"},
                 )
 
@@ -425,14 +425,14 @@ class ExportEndpointsIntegrationTest(TestCase):
 
         # Export as HubContract
         hubcontract_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
         hubcontract_data = json.loads(hubcontract_response.content)
 
         # Export as ODPS
         odps_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odps", "output_format": "json"},
         )
         odps_data = json.loads(odps_response.content)
@@ -451,14 +451,14 @@ class ExportEndpointsIntegrationTest(TestCase):
 
         # Export as ODCS
         odcs_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odcs", "output_format": "json"},
         )
         odcs_data = json.loads(odcs_response.content)
 
         # Export as HubContract
         hubcontract_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
         hubcontract_data = json.loads(hubcontract_response.content)
@@ -477,14 +477,14 @@ class ExportEndpointsIntegrationTest(TestCase):
 
         # Export as JSON
         json_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
         json_data = json.loads(json_response.content)
 
         # Export as YAML
         yaml_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "yaml"},
         )
         yaml_data = yaml.safe_load(yaml_response.content)
@@ -505,14 +505,14 @@ class ExportEndpointsIntegrationTest(TestCase):
 
         # Export
         export_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
         export_data = json.loads(export_response.content)
 
         # Download
         download_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "hubcontract", "output_format": "json"},
         )
         download_data = json.loads(download_response.content)
@@ -531,7 +531,7 @@ class ExportEndpointsIntegrationTest(TestCase):
 
         # Export from contract endpoint
         export_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odps", "output_format": "json"},
         )
         export_data = json.loads(export_response.content)
@@ -559,14 +559,14 @@ class ExportEndpointsIntegrationTest(TestCase):
 
         # Get data from contract export
         export_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
         export_data = json.loads(export_response.content)
 
         # Get data from contract download
         download_response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "hubcontract", "output_format": "json"},
         )
         download_data = json.loads(download_response.content)
@@ -599,8 +599,8 @@ class ExportEndpointsIntegrationTest(TestCase):
         formats = ["hubcontract", "odcs", "odps"]
         output_formats = ["json", "yaml"]
         endpoints = [
-            ("export", f"/api/v1/contracts/contracts/{self.contract.id}/export/"),
-            ("download", f"/api/v1/contracts/contracts/{self.contract.id}/download/"),
+            ("export", f"/api/v1/contracts/{self.contract.id}/export/"),
+            ("download", f"/api/v1/contracts/{self.contract.id}/download/"),
         ]
 
         for endpoint_name, endpoint_url in endpoints:

@@ -1,11 +1,8 @@
 """
 Transformation Business Rules
 
-Comprehensive business rules validation for transformation pipelines, including:
-- Pipeline structure validation
-- Node compatibility validation
-- Schema alignment validation
-- Asset compatibility validation
+Comprehensive business rules validation for transformation pipelines, extending
+the BusinessRules base class with transformation-specific validation logic.
 
 All validation methods follow engineering best practices:
 - No mocks/stubs - use real services and models
@@ -14,11 +11,15 @@ All validation methods follow engineering best practices:
 - Follow DRY, SOLID, and clean code principles
 """
 import logging
-from typing import Dict, List, Any, Optional, Set, Tuple
-from dataclasses import dataclass
+from typing import Dict, List, Any, Optional, Set
+from dataclasses import dataclass, field
 
-from django.core.exceptions import ValidationError as DjangoValidationError
-
+from hub.apps.core.business_rules.base import (
+    BusinessRules,
+    RuleExecutionContext,
+    ValidationResult,
+)
+from hub.apps.core.business_rules.registry import register_rule
 from hub.apps.transformation.models import (
     TransformationPipeline,
     TransformationNode,
@@ -33,36 +34,50 @@ from hub.apps.transformation.exceptions import (
 )
 from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
-from hub.apps.datasets.schema_evolution import (
-    SchemaEvolutionTracker,
-    CompatibilityLevel
-)
-from hub.apps.core.services.base import PermissionError
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ValidationResult:
-    """Result of a validation operation"""
-    is_valid: bool
-    errors: List[str]
-    warnings: List[str]
-    details: Dict[str, Any]
+class TransformationRuleExecutionContext(RuleExecutionContext):
+    """
+    Extended execution context for transformation business rules.
 
-    def __bool__(self):
-        return self.is_valid
+    Adds transformation-specific context:
+    - pipeline: The transformation pipeline being validated
+    - source_asset: Optional source asset
+    - target_asset: Optional target asset
+    """
+    pipeline: Optional[TransformationPipeline] = None
+    source_asset: Optional[Asset] = None
+    target_asset: Optional[Asset] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert context to dictionary for caching/logging."""
+        base_dict = super().to_dict()
+        base_dict.update({
+            'pipeline_id': str(self.pipeline.id) if self.pipeline else None,
+            'source_asset_id': str(self.source_asset.id) if self.source_asset else None,
+            'target_asset_id': str(self.target_asset.id) if self.target_asset else None,
+        })
+        return base_dict
 
 
-class TransformationBusinessRules:
+@register_rule(
+    rule_name="transformation_pipeline_validation",
+    description="Validates transformation pipeline structure, node compatibility, and asset compatibility",
+    tags=["transformation", "pipeline", "validation"],
+    priority=10
+)
+class TransformationBusinessRules(BusinessRules):
     """
     Business rules validator for transformation pipelines.
 
-    Validates:
-    - Pipeline structure and definition
-    - Node compatibility and ordering
-    - Schema alignment between assets and pipeline
-    - Asset compatibility with pipeline requirements
+    Extends BusinessRules base class with transformation-specific validation:
+    - Pipeline structure validation
+    - Node compatibility validation
+    - Schema alignment validation
+    - Asset compatibility validation
     """
 
     # Valid node types
@@ -87,16 +102,103 @@ class TransformationBusinessRules:
         NodeType.OUTPUT: set()  # Output nodes don't require specific fields
     }
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+    def get_rule_name(self) -> str:
+        """Return the rule name for metrics and logging."""
+        return "TransformationBusinessRules"
+
+    def validate(
+        self,
+        context: Optional[RuleExecutionContext] = None,
+        *args,
+        **kwargs
+    ) -> ValidationResult:
         """
-        Initialize TransformationBusinessRules.
+        Main validation method required by BusinessRules base class.
+
+        This method orchestrates all transformation validation checks.
+        It can be called with a TransformationRuleExecutionContext or a standard
+        RuleExecutionContext. If a standard context is provided, it extracts
+        pipeline and assets from kwargs or context.metadata.
 
         Args:
-            tenant_id: Optional tenant ID for tenant-specific validation
-            user_id: Optional user ID for permission and cross-tenant validation
+            context: Optional rule execution context
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments:
+                - pipeline: TransformationPipeline instance (required)
+                - source_asset: Optional source Asset instance
+                - target_asset: Optional target Asset instance
+                - validation_type: Optional validation type filter
+                    ('structure', 'node_compatibility', 'schema_alignment',
+                     'asset_compatibility', 'all')
+
+        Returns:
+            ValidationResult with validation status and details
         """
-        self.tenant_id = tenant_id
-        self.user_id = user_id
+        # Extract pipeline and assets from context or kwargs
+        if isinstance(context, TransformationRuleExecutionContext):
+            pipeline = context.pipeline
+            source_asset = context.source_asset
+            target_asset = context.target_asset
+        else:
+            # Try to get from kwargs first
+            pipeline = kwargs.get('pipeline')
+            source_asset = kwargs.get('source_asset')
+            target_asset = kwargs.get('target_asset')
+
+            # If not in kwargs, try to get from context.metadata or context.resource
+            if not pipeline:
+                if context and hasattr(context, 'resource') and isinstance(context.resource, TransformationPipeline):
+                    pipeline = context.resource
+                elif context and hasattr(context, 'metadata'):
+                    pipeline = context.metadata.get('pipeline')
+
+            if not source_asset:
+                if context and hasattr(context, 'metadata'):
+                    source_asset = context.metadata.get('source_asset')
+
+            if not target_asset:
+                if context and hasattr(context, 'metadata'):
+                    target_asset = context.metadata.get('target_asset')
+
+        if not pipeline:
+            return ValidationResult(
+                is_valid=False,
+                errors=["Pipeline is required for transformation validation"],
+                details={"validation_type": "missing_pipeline"}
+            )
+
+        # Determine which validations to run
+        validation_type = kwargs.get('validation_type', 'all')
+
+        # Run appropriate validations
+        if validation_type == 'structure':
+            return self.validate_pipeline_structure(pipeline, raise_on_error=False)
+        elif validation_type == 'node_compatibility':
+            return self.validate_node_compatibility(pipeline, raise_on_error=False)
+        elif validation_type == 'schema_alignment':
+            if not source_asset:
+                return ValidationResult(
+                    is_valid=False,
+                    errors=["Source asset is required for schema alignment validation"],
+                    details={"validation_type": "schema_alignment"}
+                )
+            return self.validate_schema_alignment(
+                pipeline, source_asset, target_asset, raise_on_error=False
+            )
+        elif validation_type == 'asset_compatibility':
+            if not source_asset:
+                return ValidationResult(
+                    is_valid=False,
+                    errors=["Source asset is required for asset compatibility validation"],
+                    details={"validation_type": "asset_compatibility"}
+                )
+            return self.validate_asset_compatibility(
+                pipeline, source_asset, target_asset, raise_on_error=False
+            )
+        else:  # 'all' or default
+            return self.validate_all(
+                pipeline, source_asset, target_asset, raise_on_error=False
+            )
 
     def validate_pipeline_structure(
         self,
@@ -714,9 +816,16 @@ class TransformationBusinessRules:
                 if isinstance(transform_expr, str):
                     # Extract field references from transform expression
                     import re
+                    # Pattern to match field names, handling method calls (e.g., "name.upper()" -> "name")
+                    # Match identifiers that are not followed by a dot (method calls) or are at the start
+                    # This pattern matches: field names, but excludes method names after dots
+                    # First, remove method calls (e.g., "name.upper()" -> "name")
+                    # Replace method calls with just the field name
+                    transform_expr_cleaned = re.sub(r'\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(', '.', transform_expr)
+                    # Now extract field names
                     field_pattern = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
-                    matches = re.findall(field_pattern, transform_expr)
-                    keywords = {"and", "or", "not", "in", "is", "null", "true", "false", "if", "else", "sum", "avg", "count", "min", "max"}
+                    matches = re.findall(field_pattern, transform_expr_cleaned)
+                    keywords = {"and", "or", "not", "in", "is", "null", "true", "false", "if", "else", "sum", "avg", "count", "min", "max", "len", "str", "int", "float", "bool"}
                     referenced_fields.update(m for m in matches if m.lower() not in keywords)
                 elif isinstance(transform_expr, dict):
                     # If transform_expression is a dict, extract field names from values
@@ -738,9 +847,11 @@ class TransformationBusinessRules:
 
         Validates:
         - Source asset is in a valid state (ACTIVE, has dataset)
-        - Source asset format is compatible with pipeline
+        - Asset schema matches pipeline input schema
+        - Asset data format is compatible (CSV, JSON, Parquet, etc.)
+        - Asset size is validated (for execution mode selection: sync vs async)
+        - User has access to asset (cross-tenant access validation)
         - Target asset (if provided) is compatible
-        - Asset schemas are compatible with pipeline operations
 
         Args:
             pipeline: TransformationPipeline instance
@@ -764,7 +875,7 @@ class TransformationBusinessRules:
 
         # Validate source asset status
         from hub.apps.assets.models import AssetStatus
-        valid_source_statuses = [AssetStatus.ACTIVE.value, AssetStatus.PUBLIC.value]
+        valid_source_statuses = [AssetStatus.ACTIVE[0], AssetStatus.PUBLIC[0]]
         if source_asset.status not in valid_source_statuses:
             errors.append(
                 f"Source asset '{source_asset.name}' must be ACTIVE or PUBLIC. "
@@ -781,24 +892,66 @@ class TransformationBusinessRules:
                 f"Source asset '{source_asset.name}' has no dataset"
             )
             details["asset_compatibility_checks"]["source_dataset_exists"] = False
-        else:
-            details["asset_compatibility_checks"]["source_dataset_exists"] = True
-            details["source_dataset_format"] = source_dataset.format
-            details["source_dataset_version"] = source_dataset.version
-
-            # Validate dataset format is supported
-            supported_formats = {"CSV", "JSON", "PARQUET"}
-            if source_dataset.format not in supported_formats:
-                warnings.append(
-                    f"Source dataset format '{source_dataset.format}' may not be fully supported. "
-                    f"Supported formats: {', '.join(supported_formats)}"
+            result = ValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=warnings,
+                details=details
+            )
+            if raise_on_error:
+                raise AssetCompatibilityError(
+                    message="Source asset has no dataset",
+                    error_code=AssetCompatibilityError.ERROR_CODE_ASSET_INCOMPATIBLE,
+                    pipeline_id=str(pipeline.id),
+                    asset_id=str(source_asset.id),
+                    source_asset_id=str(source_asset.id),
+                    target_asset_id=str(target_asset.id) if target_asset else None,
+                    details=details,
+                    tenant_id=self.tenant_id
                 )
+            return result
+
+        details["asset_compatibility_checks"]["source_dataset_exists"] = True
+        details["source_dataset_format"] = source_dataset.format
+        details["source_dataset_version"] = source_dataset.version
+
+        # 1. Validate asset schema matches pipeline input schema
+        schema_validation_result = self._validate_asset_schema_compatibility(
+            pipeline, source_asset, source_dataset
+        )
+        errors.extend(schema_validation_result["errors"])
+        warnings.extend(schema_validation_result["warnings"])
+        details["asset_compatibility_checks"]["schema_validation"] = schema_validation_result["details"]
+
+        # 2. Validate asset data format (CSV, JSON, Parquet, etc.)
+        format_validation_result = self._validate_asset_format_compatibility(
+            source_dataset
+        )
+        errors.extend(format_validation_result["errors"])
+        warnings.extend(format_validation_result["warnings"])
+        details["asset_compatibility_checks"]["format_validation"] = format_validation_result["details"]
+
+        # 3. Validate asset size (for execution mode selection: sync vs async)
+        size_validation_result = self._validate_asset_size_for_execution_mode(
+            source_dataset
+        )
+        errors.extend(size_validation_result["errors"])
+        warnings.extend(size_validation_result["warnings"])
+        details["asset_compatibility_checks"]["size_validation"] = size_validation_result["details"]
+
+        # 4. Validate asset access (user has access to asset)
+        access_validation_result = self._validate_asset_access(
+            source_asset
+        )
+        errors.extend(access_validation_result["errors"])
+        warnings.extend(access_validation_result["warnings"])
+        details["asset_compatibility_checks"]["access_validation"] = access_validation_result["details"]
 
         # Validate target asset if provided
         if target_asset:
             details["target_asset_id"] = str(target_asset.id)
 
-            valid_target_statuses = [AssetStatus.ACTIVE.value, AssetStatus.DRAFT.value]
+            valid_target_statuses = [AssetStatus.ACTIVE[0], AssetStatus.DRAFT[0]]
             if target_asset.status not in valid_target_statuses:
                 errors.append(
                     f"Target asset '{target_asset.name}' must be ACTIVE or DRAFT. "
@@ -941,6 +1094,350 @@ class TransformationBusinessRules:
 
         return result
 
+    def _validate_asset_schema_compatibility(
+        self,
+        pipeline: TransformationPipeline,
+        source_asset: Asset,
+        source_dataset: "Dataset"
+    ) -> Dict[str, Any]:
+        """
+        Validate asset schema matches pipeline input schema.
+
+        Args:
+            pipeline: TransformationPipeline instance
+            source_asset: Source asset
+            source_dataset: Source dataset
+
+        Returns:
+            Dictionary with errors, warnings, and details
+        """
+        errors = []
+        warnings = []
+        details = {
+            "asset_schema_valid": False,
+            "pipeline_input_schema_exists": False,
+            "schema_fields_match": False,
+            "missing_fields": [],
+            "type_mismatches": []
+        }
+
+        # Get asset schema from dataset
+        asset_schema = source_dataset.schema_json
+        if not asset_schema:
+            errors.append(
+                f"Source asset '{source_asset.name}' dataset has no schema"
+            )
+            return {"errors": errors, "warnings": warnings, "details": details}
+
+        asset_fields = asset_schema.get("fields", [])
+        if not isinstance(asset_fields, list):
+            errors.append("Asset schema 'fields' must be a list")
+            return {"errors": errors, "warnings": warnings, "details": details}
+
+        # Create field map from asset schema
+        asset_field_map = {}
+        for field_dict in asset_fields:
+            field_name = field_dict.get("name")
+            if field_name:
+                asset_field_map[field_name] = {
+                    "data_type": field_dict.get("data_type") or field_dict.get("type", "string"),
+                    "nullable": field_dict.get("nullable", True)
+                }
+
+        details["asset_field_count"] = len(asset_field_map)
+        details["asset_fields"] = list(asset_field_map.keys())
+
+        # Extract pipeline input schema
+        pipeline_input_schema = pipeline.pipeline_definition.get("input_schema")
+        if not pipeline_input_schema:
+            # If no explicit input schema, extract from referenced fields in steps
+            referenced_fields = self._extract_referenced_fields(pipeline)
+            if referenced_fields:
+                pipeline_input_schema = {"fields": [{"name": f} for f in referenced_fields]}
+                details["pipeline_input_schema_source"] = "extracted_from_steps"
+            else:
+                warnings.append(
+                    "Pipeline does not define an input schema and no fields could be extracted from steps. "
+                    "Schema validation skipped."
+                )
+                details["pipeline_input_schema_exists"] = False
+                return {"errors": errors, "warnings": warnings, "details": details}
+        else:
+            details["pipeline_input_schema_source"] = "explicit"
+
+        details["pipeline_input_schema_exists"] = True
+
+        # Parse pipeline input schema fields
+        pipeline_fields = pipeline_input_schema.get("fields", [])
+        if not isinstance(pipeline_fields, list):
+            # Handle case where pipeline_input_schema is a dict with field names as keys
+            if isinstance(pipeline_input_schema, dict):
+                pipeline_fields = [
+                    {"name": name, **info} if isinstance(info, dict) else {"name": name}
+                    for name, info in pipeline_input_schema.items()
+                ]
+            else:
+                errors.append("Pipeline input schema 'fields' must be a list or dictionary")
+                return {"errors": errors, "warnings": warnings, "details": details}
+
+        pipeline_field_map = {}
+        for field_info in pipeline_fields:
+            if isinstance(field_info, dict):
+                field_name = field_info.get("name")
+                if field_name:
+                    pipeline_field_map[field_name] = {
+                        "data_type": field_info.get("data_type") or field_info.get("type", "string"),
+                        "nullable": field_info.get("nullable", True)
+                    }
+            elif isinstance(field_info, str):
+                pipeline_field_map[field_info] = {
+                    "data_type": "string",
+                    "nullable": True
+                }
+
+        details["pipeline_field_count"] = len(pipeline_field_map)
+        details["pipeline_fields"] = list(pipeline_field_map.keys())
+
+        # Validate all pipeline fields exist in asset schema
+        missing_fields = set(pipeline_field_map.keys()) - set(asset_field_map.keys())
+        if missing_fields:
+            errors.append(
+                f"Pipeline requires fields that are not present in asset schema: "
+                f"{', '.join(sorted(missing_fields))}"
+            )
+            details["missing_fields"] = list(missing_fields)
+        else:
+            details["schema_fields_match"] = True
+
+        # Check for type compatibility (warnings only, as types can be coerced)
+        type_mismatches = []
+        for field_name in pipeline_field_map.keys():
+            if field_name in asset_field_map:
+                pipeline_type = pipeline_field_map[field_name]["data_type"].lower()
+                asset_type = asset_field_map[field_name]["data_type"].lower()
+
+                # Type compatibility mapping
+                compatible_types = {
+                    "integer": {"integer", "number", "long", "int"},
+                    "float": {"float", "number", "double", "decimal"},
+                    "string": {"string", "text", "varchar"},
+                    "boolean": {"boolean", "bool"},
+                    "date": {"date", "datetime", "timestamp"},
+                    "datetime": {"datetime", "timestamp", "date"}
+                }
+
+                # Check if types are compatible
+                is_compatible = (
+                    pipeline_type == asset_type or
+                    pipeline_type in compatible_types.get(asset_type, set()) or
+                    asset_type in compatible_types.get(pipeline_type, set())
+                )
+
+                if not is_compatible:
+                    type_mismatches.append({
+                        "field": field_name,
+                        "asset_type": asset_type,
+                        "pipeline_type": pipeline_type
+                    })
+
+        if type_mismatches:
+            warnings.append(
+                f"Type mismatches detected between asset schema and pipeline input schema: "
+                f"{len(type_mismatches)} field(s) may require type coercion"
+            )
+            details["type_mismatches"] = type_mismatches
+
+        details["asset_schema_valid"] = len(missing_fields) == 0
+
+        return {"errors": errors, "warnings": warnings, "details": details}
+
+    def _validate_asset_format_compatibility(
+        self,
+        source_dataset: "Dataset"
+    ) -> Dict[str, Any]:
+        """
+        Validate asset data format (CSV, JSON, Parquet, etc.).
+
+        Args:
+            source_dataset: Source dataset
+
+        Returns:
+            Dictionary with errors, warnings, and details
+        """
+        errors = []
+        warnings = []
+        details = {
+            "format_valid": False,
+            "format": source_dataset.format,
+            "supported_format": False
+        }
+
+        # Supported formats
+        supported_formats = {"CSV", "JSON", "PARQUET"}
+        format_upper = source_dataset.format.upper() if source_dataset.format else None
+
+        if not format_upper:
+            errors.append("Dataset format is not specified")
+            return {"errors": errors, "warnings": warnings, "details": details}
+
+        if format_upper not in supported_formats:
+            errors.append(
+                f"Dataset format '{source_dataset.format}' is not supported. "
+                f"Supported formats: {', '.join(sorted(supported_formats))}"
+            )
+            details["supported_format"] = False
+        else:
+            details["supported_format"] = True
+            details["format_valid"] = True
+
+        # Additional format-specific validations
+        if format_upper == "CSV":
+            # CSV-specific validations could be added here
+            pass
+        elif format_upper == "JSON":
+            # JSON-specific validations could be added here
+            pass
+        elif format_upper == "PARQUET":
+            # Parquet-specific validations could be added here
+            pass
+
+        return {"errors": errors, "warnings": warnings, "details": details}
+
+    def _validate_asset_size_for_execution_mode(
+        self,
+        source_dataset: "Dataset"
+    ) -> Dict[str, Any]:
+        """
+        Validate asset size for execution mode selection (sync vs async).
+
+        Args:
+            source_dataset: Source dataset
+
+        Returns:
+            Dictionary with errors, warnings, and details
+        """
+        errors = []
+        warnings = []
+        details = {
+            "size_valid": False,
+            "execution_mode": None,
+            "row_count": None,
+            "file_size": None,
+            "size_threshold_exceeded": False
+        }
+
+        # Execution mode selection thresholds (matching TransformationService)
+        SYNC_ROW_THRESHOLD = 10000
+        SYNC_SIZE_THRESHOLD = 10 * 1024 * 1024  # 10MB
+
+        # Get row count
+        row_count = source_dataset.row_count
+        details["row_count"] = row_count
+
+        # Get file size
+        file_size = 0
+        if source_dataset.file:
+            file_size = source_dataset.file.size or 0
+        details["file_size"] = file_size
+        details["file_size_mb"] = round(file_size / (1024 * 1024), 2) if file_size else 0
+
+        # Validate size information is available
+        if row_count is None and file_size == 0:
+            warnings.append(
+                "Asset size information (row_count and file_size) is not available. "
+                "Execution mode will default to ASYNC."
+            )
+            details["execution_mode"] = "ASYNC"
+            details["size_valid"] = True  # Not an error, just a warning
+            return {"errors": errors, "warnings": warnings, "details": details}
+
+        # Determine execution mode based on thresholds
+        if row_count is not None and row_count < SYNC_ROW_THRESHOLD:
+            details["execution_mode"] = "SYNC"
+            details["size_threshold_exceeded"] = False
+            details["size_valid"] = True
+        elif file_size > 0 and file_size < SYNC_SIZE_THRESHOLD:
+            details["execution_mode"] = "SYNC"
+            details["size_threshold_exceeded"] = False
+            details["size_valid"] = True
+        else:
+            details["execution_mode"] = "ASYNC"
+            details["size_threshold_exceeded"] = True
+            details["size_valid"] = True
+
+        details["sync_row_threshold"] = SYNC_ROW_THRESHOLD
+        details["sync_size_threshold_mb"] = round(SYNC_SIZE_THRESHOLD / (1024 * 1024), 2)
+
+        return {"errors": errors, "warnings": warnings, "details": details}
+
+    def _validate_asset_access(
+        self,
+        source_asset: Asset
+    ) -> Dict[str, Any]:
+        """
+        Validate user has access to asset.
+
+        Args:
+            source_asset: Source asset
+
+        Returns:
+            Dictionary with errors, warnings, and details
+        """
+        errors = []
+        warnings = []
+        details = {
+            "access_valid": False,
+            "access_allowed": False,
+            "cross_tenant": False,
+            "entitlement_required": False
+        }
+
+        # If no tenant_id or user_id, skip access validation (will be handled elsewhere)
+        if not self.tenant_id:
+            warnings.append(
+                "tenant_id not provided, skipping asset access validation"
+            )
+            details["access_valid"] = True  # Not an error, just skipped
+            return {"errors": errors, "warnings": warnings, "details": details}
+
+        # Check if cross-tenant access
+        is_cross_tenant = str(source_asset.tenant_id) != self.tenant_id
+        details["cross_tenant"] = is_cross_tenant
+
+        if not is_cross_tenant:
+            # Same tenant - access allowed
+            details["access_allowed"] = True
+            details["access_valid"] = True
+            return {"errors": errors, "warnings": warnings, "details": details}
+
+        # Cross-tenant access - validate using existing method
+        if not self.user_id:
+            warnings.append(
+                "user_id not provided for cross-tenant asset access validation. "
+                "Access validation skipped."
+            )
+            details["access_valid"] = True  # Not an error, just skipped
+            return {"errors": errors, "warnings": warnings, "details": details}
+
+        # Use existing cross-tenant access validation
+        access_result = self._validate_cross_tenant_asset_access(source_asset, "READ")
+        access_allowed = access_result.get("allowed", False)
+        details["access_allowed"] = bool(access_allowed)
+        details["entitlement_required"] = bool(access_result.get("entitlement_required", False))
+
+        if not access_allowed:
+            access_reason = access_result.get("reason") or "Access denied"
+            errors.append(
+                f"Access denied to source asset '{source_asset.name}'. "
+                f"Reason: {access_reason}"
+            )
+            details["access_reason"] = str(access_reason)
+            details["access_valid"] = False
+        else:
+            details["access_valid"] = True
+
+        return {"errors": errors, "warnings": warnings, "details": details}
+
     def validate_cross_tenant_operations(
         self,
         pipeline: TransformationPipeline,
@@ -969,6 +1466,8 @@ class TransformationBusinessRules:
             TransformationValidationError: If validation fails and raise_on_error is True
             PermissionError: If cross-tenant access is denied
         """
+        from hub.apps.core.services.base import PermissionError
+
         errors = []
         warnings = []
         details = {
@@ -1152,9 +1651,197 @@ class TransformationBusinessRules:
         result["allowed"] = True
         return result
 
+    def _estimate_compute_quota(
+        self,
+        pipeline: TransformationPipeline
+    ) -> Dict[str, float]:
+        """
+        Estimate compute quota requirements (CPU, memory) from pipeline definition.
+
+        Estimates based on:
+        - Number of pipeline steps/nodes
+        - Node types (complex operations require more resources)
+        - Execution mode (sync vs async)
+
+        Args:
+            pipeline: TransformationPipeline instance
+
+        Returns:
+            Dictionary with estimated compute quota:
+            - cpu_cores: Estimated CPU cores required
+            - memory_gb: Estimated memory in GB required
+            - compute_hours: Estimated compute hours per execution
+        """
+        steps = pipeline.pipeline_definition.get("steps", [])
+        node_count = len(steps)
+
+        # Base compute requirements per node
+        # CPU: 0.5 cores per node (minimum), 1.0 for complex operations
+        # Memory: 1 GB per node (minimum), 2 GB for complex operations
+        base_cpu_per_node = 0.5
+        base_memory_per_node_gb = 1.0
+
+        # Complex node types require more resources
+        complex_node_types = {NodeType.JOIN.upper(), NodeType.AGGREGATE.upper(), NodeType.TRANSFORM.upper()}
+
+        def get_node_type(step):
+            """Extract node_type from step, checking node_config first"""
+            node_config = step.get("node_config", {})
+            node_type = node_config.get("node_type") or step.get("node_type")
+            return node_type.upper() if node_type else None
+
+        complex_node_count = sum(
+            1 for step in steps
+            if get_node_type(step) in complex_node_types
+        )
+
+        # Calculate CPU requirements
+        # Base: 0.5 cores per node
+        # Complex nodes: additional 0.5 cores each
+        cpu_cores = (node_count * base_cpu_per_node) + (complex_node_count * 0.5)
+
+        # Calculate memory requirements
+        # Base: 1 GB per node
+        # Complex nodes: additional 1 GB each
+        memory_gb = (node_count * base_memory_per_node_gb) + (complex_node_count * 1.0)
+
+        # Estimate compute hours per execution
+        # Base: 0.1 hours per node
+        # Complex nodes: additional 0.1 hours each
+        compute_hours_per_execution = (node_count * 0.1) + (complex_node_count * 0.1)
+
+        return {
+            "cpu_cores": cpu_cores,
+            "memory_gb": memory_gb,
+            "compute_hours": compute_hours_per_execution
+        }
+
+    def _estimate_storage_quota(
+        self,
+        pipeline: TransformationPipeline,
+        source_asset: Optional[Asset] = None
+    ) -> Dict[str, float]:
+        """
+        Estimate storage quota requirements for pipeline results.
+
+        Estimates based on:
+        - Source asset size (if available)
+        - Pipeline transformation type (filtering reduces size, joins increase)
+        - Number of output nodes
+
+        Args:
+            pipeline: TransformationPipeline instance
+            source_asset: Optional source asset to estimate from
+
+        Returns:
+            Dictionary with estimated storage quota:
+            - storage_gb: Estimated storage in GB required for results
+        """
+        steps = pipeline.pipeline_definition.get("steps", [])
+        node_count = len(steps)
+
+        # Base storage estimation
+        # If source asset size is available, use it as baseline
+        base_storage_gb = 0.0
+        if source_asset:
+            # Try to get dataset size if available
+            try:
+                if hasattr(source_asset, 'dataset') and source_asset.dataset:
+                    dataset = source_asset.dataset
+                    if hasattr(dataset, 'size_bytes') and dataset.size_bytes:
+                        base_storage_gb = dataset.size_bytes / (1024.0 ** 3)  # Convert bytes to GB
+            except Exception:
+                pass
+
+        # If no source size available, estimate based on node count
+        # Base: 0.1 GB per node (for metadata and intermediate results)
+        if base_storage_gb == 0.0:
+            base_storage_gb = node_count * 0.1
+
+        # Estimate result storage based on transformation types
+        # Filter operations: reduce size by ~50%
+        # Join operations: increase size by ~100% (worst case)
+        # Aggregate operations: reduce size significantly (~80% reduction)
+        # Transform operations: similar size (~10% increase)
+
+        def get_node_type(step):
+            """Extract node_type from step, checking node_config first"""
+            node_config = step.get("node_config", {})
+            node_type = node_config.get("node_type") or step.get("node_type")
+            return node_type.upper() if node_type else None
+
+        filter_count = sum(
+            1 for step in steps
+            if get_node_type(step) == NodeType.FILTER.upper()
+        )
+        join_count = sum(
+            1 for step in steps
+            if get_node_type(step) == NodeType.JOIN.upper()
+        )
+        aggregate_count = sum(
+            1 for step in steps
+            if get_node_type(step) == NodeType.AGGREGATE.upper()
+        )
+
+        # Apply transformation multipliers
+        storage_multiplier = 1.0
+        storage_multiplier -= filter_count * 0.1  # Filters reduce size
+        storage_multiplier += join_count * 0.5  # Joins increase size
+        storage_multiplier -= aggregate_count * 0.3  # Aggregates reduce size significantly
+
+        # Ensure multiplier is reasonable (at least 0.1)
+        storage_multiplier = max(0.1, storage_multiplier)
+
+        estimated_storage_gb = base_storage_gb * storage_multiplier
+
+        # Add overhead for metadata and intermediate results
+        # 10% overhead for metadata
+        estimated_storage_gb *= 1.1
+
+        return {
+            "storage_gb": estimated_storage_gb
+        }
+
+    def _estimate_query_quota(
+        self,
+        pipeline: TransformationPipeline,
+        is_preview: bool = False
+    ) -> Dict[str, float]:
+        """
+        Estimate query quota requirements for preview operations.
+
+        Estimates based on:
+        - Pipeline complexity (number of nodes)
+        - Preview mode (preview operations consume query quota)
+
+        Args:
+            pipeline: TransformationPipeline instance
+            is_preview: Whether this is a preview operation
+
+        Returns:
+            Dictionary with estimated query quota:
+            - query_quota: Estimated query quota units required
+        """
+        if not is_preview:
+            # Non-preview operations don't consume query quota
+            return {"query_quota": 0.0}
+
+        steps = pipeline.pipeline_definition.get("steps", [])
+        node_count = len(steps)
+
+        # Base query quota: 1 unit per preview operation
+        # Additional quota based on complexity: 0.5 units per node
+        query_quota = 1.0 + (node_count * 0.5)
+
+        return {
+            "query_quota": query_quota
+        }
+
     def validate_resource_quota(
         self,
         pipeline: TransformationPipeline,
+        source_asset: Optional[Asset] = None,
+        is_preview: bool = False,
         raise_on_error: bool = True
     ) -> ValidationResult:
         """
@@ -1163,10 +1850,15 @@ class TransformationBusinessRules:
         Validates:
         - Tenant job concurrency limits (via TenantService.get_tenant_job_limits)
         - Tenant queued job limits
-        - Pipeline node count limits (if applicable)
+        - Compute quota (CPU, memory limits) via GovernanceService
+        - Storage quota (result storage limits) via GovernanceService
+        - Query quota (for preview operations) via GovernanceService
+        - Tenant-level quota validation via GovernanceService
 
         Args:
             pipeline: TransformationPipeline instance
+            source_asset: Optional source asset for storage estimation
+            is_preview: Whether this is a preview operation (affects query quota)
             raise_on_error: If True, raise ResourceQuotaExceededError on validation failure
 
         Returns:
@@ -1266,20 +1958,107 @@ class TransformationBusinessRules:
                 exc_info=True
             )
             warnings.append(
-                f"Could not validate resource quota: {str(e)}. "
+                f"Could not validate job concurrency quota: {str(e)}. "
+                f"Proceeding with other quota validations."
+            )
+            details["quota_checks"]["job_limits_validation_error"] = str(e)
+
+        # Estimate resource requirements
+        compute_quota = self._estimate_compute_quota(pipeline)
+        storage_quota = self._estimate_storage_quota(pipeline, source_asset)
+        query_quota = self._estimate_query_quota(pipeline, is_preview)
+
+        details["quota_checks"]["estimated_compute"] = compute_quota
+        details["quota_checks"]["estimated_storage"] = storage_quota
+        details["quota_checks"]["estimated_query"] = query_quota
+
+        # Integrate with GovernanceService for quota validation
+        try:
+            from hub.apps.governance.services import GovernanceService
+            from hub.apps.core.services.base import ValidationError
+
+            governance_service = GovernanceService(
+                tenant_id=self.tenant_id,
+                user_id=self.user_id
+            )
+
+            # Build requested quota dictionary for GovernanceService
+            requested_quota = {
+                "storage_gb": storage_quota["storage_gb"],
+                "compute_hours": compute_quota["compute_hours"]
+            }
+
+            # Add query quota if this is a preview operation
+            if is_preview and query_quota["query_quota"] > 0:
+                requested_quota["query_quota"] = query_quota["query_quota"]
+
+            details["quota_checks"]["requested_quota"] = requested_quota
+
+            # Validate quota allocation via GovernanceService
+            try:
+                validated_quota = governance_service.validate_resource_quota_allocation(
+                    tenant_id=self.tenant_id,
+                    requested_quota=requested_quota
+                )
+                details["quota_checks"]["validated_quota"] = validated_quota
+                details["quota_checks"]["governance_validation_passed"] = True
+
+                # Enforce tenant-level resource limits
+                governance_service.check_tenant_resource_limits(
+                    tenant_id=self.tenant_id,
+                    requested_quota=validated_quota
+                )
+                details["quota_checks"]["tenant_limits_check_passed"] = True
+
+            except ValidationError as e:
+                # GovernanceService validation failed
+                error_message = str(e)
+                errors.append(
+                    f"Resource quota validation failed: {error_message}"
+                )
+                details["quota_checks"]["governance_validation_passed"] = False
+                details["quota_checks"]["governance_validation_error"] = error_message
+
+                # Determine which quota type was exceeded
+                if "storage" in error_message.lower() or "storage_gb" in error_message.lower():
+                    details["quota_checks"]["storage_quota_exceeded"] = True
+                    quota_type = "storage"
+                    limit = requested_quota.get("storage_gb")
+                    current = None  # GovernanceService doesn't return current usage
+                elif "compute" in error_message.lower() or "compute_hours" in error_message.lower():
+                    details["quota_checks"]["compute_quota_exceeded"] = True
+                    quota_type = "compute"
+                    limit = requested_quota.get("compute_hours")
+                    current = None
+                elif "query" in error_message.lower() or "query_quota" in error_message.lower():
+                    details["quota_checks"]["query_quota_exceeded"] = True
+                    quota_type = "query"
+                    limit = requested_quota.get("query_quota")
+                    current = None
+                else:
+                    quota_type = "unknown"
+                    limit = None
+                    current = None
+
+                details["quota_checks"]["quota_type"] = quota_type
+                details["quota_checks"]["quota_exceeded"] = True
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to validate resource quota via GovernanceService for tenant {self.tenant_id}: {e}",
+                exc_info=True
+            )
+            warnings.append(
+                f"Could not validate resource quota via GovernanceService: {str(e)}. "
                 f"Proceeding with pipeline validation."
             )
-            details["quota_checks"]["validation_error"] = str(e)
+            details["quota_checks"]["governance_service_error"] = str(e)
+            details["quota_checks"]["governance_validation_passed"] = None
 
         # Check pipeline node count limits (optional, for future use)
         steps = pipeline.pipeline_definition.get("steps", [])
         node_count = len(steps)
         details["quota_checks"]["pipeline_node_count"] = node_count
-
-        # Future: Add node count limits if needed
-        # max_nodes = limits.get("max_pipeline_nodes", 100)
-        # if node_count > max_nodes:
-        #     errors.append(...)
 
         result = ValidationResult(
             is_valid=len(errors) == 0,
@@ -1290,20 +2069,34 @@ class TransformationBusinessRules:
 
         if not result.is_valid and raise_on_error:
             # Determine which quota was exceeded
-            quota_type = "concurrency"
+            quota_type = details["quota_checks"].get("quota_type", "concurrency")
             limit = details["quota_checks"].get("max_job_concurrency")
             current = details["quota_checks"].get("running_jobs", 0)
 
-            if details["quota_checks"].get("queue_limit_exceeded"):
+            # Check for specific quota types
+            if details["quota_checks"].get("storage_quota_exceeded"):
+                quota_type = "storage"
+                limit = details["quota_checks"]["estimated_storage"].get("storage_gb")
+                error_code = ResourceQuotaExceededError.ERROR_CODE_STORAGE_LIMIT
+            elif details["quota_checks"].get("compute_quota_exceeded"):
+                quota_type = "compute"
+                limit = details["quota_checks"]["estimated_compute"].get("compute_hours")
+                error_code = ResourceQuotaExceededError.ERROR_CODE_MEMORY_LIMIT
+            elif details["quota_checks"].get("query_quota_exceeded"):
+                quota_type = "query"
+                limit = details["quota_checks"]["estimated_query"].get("query_quota")
+                error_code = ResourceQuotaExceededError.ERROR_CODE_QUOTA_EXCEEDED
+            elif details["quota_checks"].get("queue_limit_exceeded"):
                 quota_type = "queue"
                 limit = details["quota_checks"].get("max_queued_jobs")
                 current = details["quota_checks"].get("queued_jobs", 0)
+                error_code = ResourceQuotaExceededError.ERROR_CODE_QUOTA_EXCEEDED
+            else:
+                error_code = ResourceQuotaExceededError.ERROR_CODE_CONCURRENT_EXECUTIONS_LIMIT
 
             raise ResourceQuotaExceededError(
                 message="Resource quota exceeded for pipeline execution",
-                error_code=ResourceQuotaExceededError.ERROR_CODE_CONCURRENT_EXECUTIONS_LIMIT
-                if quota_type == "concurrency"
-                else ResourceQuotaExceededError.ERROR_CODE_QUOTA_EXCEEDED,
+                error_code=error_code,
                 quota_type=quota_type,
                 limit=limit,
                 current=current,
@@ -1342,6 +2135,8 @@ class TransformationBusinessRules:
         Raises:
             PermissionError: If permission validation fails and raise_on_error is True
         """
+        from hub.apps.core.services.base import PermissionError
+
         errors = []
         warnings = []
         details = {
@@ -1495,927 +2290,3 @@ class TransformationBusinessRules:
             raise PermissionError(error_msg)
 
         return result
-
-
-class ExecutionBusinessRules:
-    """
-    Business rules validator for pipeline execution decisions.
-
-    Validates and determines:
-    - Resource limits (job concurrency, queue depth)
-    - Execution mode selection (SYNC vs ASYNC)
-    - Timeout validation and configuration
-
-    All validation methods follow engineering best practices:
-    - No mocks/stubs - use real services and models
-    - Fix root causes, not symptoms
-    - Comprehensive error messages with context
-    - Follow DRY, SOLID, and clean code principles
-    """
-
-    # Execution mode selection thresholds
-    SYNC_ROW_THRESHOLD = 10000  # < 10,000 rows = SYNC
-    SYNC_SIZE_THRESHOLD = 10 * 1024 * 1024  # < 10MB = SYNC
-
-    # Timeout limits (in seconds)
-    MIN_TIMEOUT_SECONDS = 60  # Minimum 1 minute
-    MAX_TIMEOUT_SECONDS = 7200  # Maximum 2 hours
-    DEFAULT_SYNC_TIMEOUT = 300  # 5 minutes for SYNC
-    DEFAULT_ASYNC_TIMEOUT = 3600  # 1 hour for ASYNC
-
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
-        """
-        Initialize ExecutionBusinessRules.
-
-        Args:
-            tenant_id: Optional tenant ID for tenant-specific validation
-            user_id: Optional user ID for user-specific validation
-        """
-        self.tenant_id = tenant_id
-        self.user_id = user_id
-
-    def validate_resource_limits(
-        self,
-        pipeline: Optional[TransformationPipeline] = None,
-        raise_on_error: bool = True
-    ) -> ValidationResult:
-        """
-        Validate resource limits for pipeline execution.
-
-        Validates:
-        - Tenant job concurrency limits (via TenantService.get_tenant_job_limits)
-        - Tenant queued job limits
-        - Worker capacity availability
-
-        Args:
-            pipeline: Optional TransformationPipeline instance (for context)
-            raise_on_error: If True, raise ResourceQuotaExceededError on validation failure
-
-        Returns:
-            ValidationResult with validation status and details
-
-        Raises:
-            ResourceQuotaExceededError: If resource limits are exceeded and raise_on_error is True
-        """
-        errors = []
-        warnings = []
-        details = {
-            "resource_checks": {}
-        }
-
-        if pipeline:
-            details["pipeline_id"] = str(pipeline.id)
-
-        if not self.tenant_id:
-            errors.append("tenant_id is required for resource limit validation")
-            details["resource_checks"]["tenant_id_provided"] = False
-            result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
-            )
-            if raise_on_error:
-                raise TransformationValidationError(
-                    "tenant_id is required for resource limit validation",
-                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
-                    details=details,
-                    tenant_id=self.tenant_id
-                )
-            return result
-
-        details["resource_checks"]["tenant_id_provided"] = True
-
-        # Get tenant job limits
-        try:
-            from hub.apps.tenants.services import get_tenant_job_limits
-            from hub.apps.jobs.utils import check_tenant_job_limits
-            from django.core.cache import cache
-
-            limits = get_tenant_job_limits(self.tenant_id)
-            max_concurrency = limits["max_job_concurrency"]
-            max_queued = limits["max_queued_jobs"]
-
-            details["resource_checks"]["max_job_concurrency"] = max_concurrency
-            details["resource_checks"]["max_queued_jobs"] = max_queued
-
-            # Check tenant job limits
-            can_create_job, error_message = check_tenant_job_limits(self.tenant_id)
-
-            if not can_create_job:
-                # Get current counts for detailed error message
-                running_key = f"job:tenant:{self.tenant_id}:running"
-                queued_key = f"job:tenant:{self.tenant_id}:queued"
-                running_count = cache.get(running_key, 0)
-                queued_count = cache.get(queued_key, 0)
-
-                details["resource_checks"]["running_jobs"] = running_count
-                details["resource_checks"]["queued_jobs"] = queued_count
-
-                if running_count >= max_concurrency:
-                    errors.append(
-                        f"Tenant has reached maximum concurrent job limit ({max_concurrency}). "
-                        f"Current running jobs: {running_count}. Please wait for jobs to complete."
-                    )
-                    details["resource_checks"]["concurrency_limit_exceeded"] = True
-                else:
-                    details["resource_checks"]["concurrency_limit_exceeded"] = False
-
-                if queued_count >= max_queued:
-                    errors.append(
-                        f"Tenant has reached maximum queued job limit ({max_queued}). "
-                        f"Current queued jobs: {queued_count}. Please wait for queue to process."
-                    )
-                    details["resource_checks"]["queue_limit_exceeded"] = True
-                else:
-                    details["resource_checks"]["queue_limit_exceeded"] = False
-
-                details["resource_checks"]["resource_limit_exceeded"] = True
-            else:
-                # Get current counts for informational purposes
-                running_key = f"job:tenant:{self.tenant_id}:running"
-                queued_key = f"job:tenant:{self.tenant_id}:queued"
-                running_count = cache.get(running_key, 0)
-                queued_count = cache.get(queued_key, 0)
-
-                details["resource_checks"]["running_jobs"] = running_count
-                details["resource_checks"]["queued_jobs"] = queued_count
-                details["resource_checks"]["concurrency_limit_exceeded"] = False
-                details["resource_checks"]["queue_limit_exceeded"] = False
-                details["resource_checks"]["resource_limit_exceeded"] = False
-
-                # Add warnings if approaching limits
-                if running_count >= max_concurrency * 0.8:
-                    warnings.append(
-                        f"Tenant is approaching concurrent job limit ({running_count}/{max_concurrency}). "
-                        f"Consider waiting before starting new executions."
-                    )
-                if queued_count >= max_queued * 0.8:
-                    warnings.append(
-                        f"Tenant is approaching queued job limit ({queued_count}/{max_queued}). "
-                        f"Consider waiting before starting new executions."
-                    )
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to validate resource limits: {e}",
-                extra={
-                    "tenant_id": self.tenant_id,
-                    "pipeline_id": str(pipeline.id) if pipeline else None,
-                    "error": str(e)
-                },
-                exc_info=True
-            )
-            errors.append(f"Failed to validate resource limits: {str(e)}")
-            details["resource_checks"]["validation_error"] = str(e)
-
-        result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
-        )
-
-        if not result.is_valid and raise_on_error:
-            error_msg = f"Resource limits exceeded: {', '.join(errors)}"
-            raise ResourceQuotaExceededError(
-                error_msg,
-                error_code=ResourceQuotaExceededError.ERROR_CODE_QUOTA_EXCEEDED,
-                details=details,
-                tenant_id=self.tenant_id
-            )
-
-        return result
-
-    def select_execution_mode(
-        self,
-        asset_id: str,
-        force_mode: Optional[str] = None,
-        pipeline: Optional[TransformationPipeline] = None
-    ) -> str:
-        """
-        Select execution mode (SYNC or ASYNC) based on dataset size and other factors.
-
-        Selection criteria:
-        - Force mode (if provided) takes precedence
-        - Dataset row count: < 10,000 rows = SYNC, otherwise ASYNC
-        - Dataset file size: < 10MB = SYNC, otherwise ASYNC
-        - Default to ASYNC if dataset info unavailable
-        - Consider tenant resource limits (prefer SYNC if resources available)
-
-        Args:
-            asset_id: Asset ID to check dataset size
-            force_mode: Optional forced execution mode (SYNC, ASYNC) - takes precedence
-            pipeline: Optional TransformationPipeline instance (for context)
-
-        Returns:
-            Execution mode string (SYNC or ASYNC)
-
-        Raises:
-            TransformationValidationError: If asset not found or invalid
-        """
-        from hub.apps.transformation.models import ExecutionMode
-
-        # Force mode takes precedence
-        if force_mode:
-            forced_mode = force_mode.upper()
-            # Check if forced_mode matches ExecutionMode values (handle both string and tuple formats)
-            sync_value = ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
-            async_value = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
-
-            if forced_mode in [sync_value, async_value]:
-                logger.info(
-                    f"Execution mode forced to {forced_mode}",
-                    extra={
-                        "asset_id": asset_id,
-                        "tenant_id": self.tenant_id,
-                        "forced_mode": forced_mode
-                    }
-                )
-                return forced_mode
-            else:
-                logger.warning(
-                    f"Invalid force_mode {force_mode}, ignoring and using auto-selection",
-                    extra={
-                        "asset_id": asset_id,
-                        "tenant_id": self.tenant_id,
-                        "invalid_mode": force_mode
-                    }
-                )
-
-        if not self.tenant_id:
-            logger.warning(
-                "tenant_id not provided, defaulting to ASYNC mode",
-                extra={"asset_id": asset_id}
-            )
-            # Return ASYNC string value
-            async_value = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
-            return async_value
-
-        try:
-            from hub.apps.assets.models import Asset
-
-            asset = Asset.objects.get(id=asset_id, tenant_id=self.tenant_id)
-            latest_dataset = asset.datasets.order_by('-version').first()
-
-            if not latest_dataset:
-                # Default to ASYNC if no dataset info available
-                logger.info(
-                    "No dataset found for asset, defaulting to ASYNC mode",
-                    extra={
-                        "asset_id": asset_id,
-                        "tenant_id": self.tenant_id
-                    }
-                )
-                # Return ASYNC string value
-                async_value = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
-                return async_value
-
-            # Use row_count if available, otherwise use file size
-            row_count = latest_dataset.row_count
-            file_size = latest_dataset.file.size if latest_dataset.file else 0
-
-            # Check resource availability - prefer SYNC if resources are available
-            # Only switch to ASYNC if we can confirm resources are explicitly exhausted
-            resources_available = True  # Default to available
-            try:
-                resource_result = self.validate_resource_limits(pipeline=pipeline, raise_on_error=False)
-                # Only consider resources unavailable if validation explicitly failed
-                # (not if there was an error checking)
-                if not resource_result.is_valid and len(resource_result.errors) > 0:
-                    # Check if the error is specifically about resource limits being exceeded
-                    error_messages = ' '.join(resource_result.errors).lower()
-                    if 'limit' in error_messages or 'quota' in error_messages:
-                        resources_available = False
-            except Exception as e:
-                # If we can't check resources, assume they're available (lenient approach)
-                logger.debug(
-                    f"Could not check resource limits for execution mode selection: {e}. "
-                    f"Assuming resources available.",
-                    extra={
-                        "asset_id": asset_id,
-                        "tenant_id": self.tenant_id,
-                        "error": str(e)
-                    }
-                )
-                resources_available = True  # Assume available if check fails
-
-            # Selection logic
-            selected_mode = None
-
-            # Get ExecutionMode string values (handle tuple format)
-            sync_value = ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
-            async_value = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
-
-            # Check row count threshold
-            if row_count is not None:
-                if row_count < self.SYNC_ROW_THRESHOLD:
-                    selected_mode = sync_value
-                else:
-                    selected_mode = async_value
-            # Check file size threshold
-            elif file_size > 0:
-                if file_size < self.SYNC_SIZE_THRESHOLD:
-                    selected_mode = sync_value
-                else:
-                    selected_mode = async_value
-            else:
-                # No size information available, default to ASYNC
-                selected_mode = async_value
-
-            # If resources are limited, prefer ASYNC even for small datasets
-            if selected_mode == sync_value and not resources_available:
-                logger.info(
-                    "Resources limited, switching from SYNC to ASYNC mode",
-                    extra={
-                        "asset_id": asset_id,
-                        "tenant_id": self.tenant_id,
-                        "row_count": row_count,
-                        "file_size": file_size
-                    }
-                )
-                selected_mode = async_value
-
-            logger.info(
-                f"Selected execution mode: {selected_mode}",
-                extra={
-                    "asset_id": asset_id,
-                    "tenant_id": self.tenant_id,
-                    "selected_mode": selected_mode,
-                    "row_count": row_count,
-                    "file_size": file_size,
-                    "resources_available": resources_available
-                }
-            )
-
-            return selected_mode
-
-        except Asset.DoesNotExist:
-            error_msg = f"Asset {asset_id} not found"
-            logger.error(
-                error_msg,
-                extra={
-                    "asset_id": asset_id,
-                    "tenant_id": self.tenant_id
-                }
-            )
-            raise TransformationValidationError(
-                error_msg,
-                error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE,
-                details={"asset_id": asset_id},
-                tenant_id=self.tenant_id
-            )
-        except Exception as e:
-            logger.warning(
-                f"Error selecting execution mode, defaulting to ASYNC: {e}",
-                extra={
-                    "asset_id": asset_id,
-                    "tenant_id": self.tenant_id,
-                    "error": str(e)
-                },
-                exc_info=True
-            )
-            # Return ASYNC string value
-            async_value = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
-            return async_value
-
-    def validate_timeout(
-        self,
-        timeout_seconds: Optional[int],
-        execution_mode: Optional[str] = None,
-        raise_on_error: bool = True
-    ) -> ValidationResult:
-        """
-        Validate timeout configuration for pipeline execution.
-
-        Validates:
-        - Timeout is within acceptable range (MIN_TIMEOUT_SECONDS to MAX_TIMEOUT_SECONDS)
-        - Timeout is appropriate for execution mode (SYNC vs ASYNC)
-        - Timeout is not unreasonably short for the operation type
-
-        Args:
-            timeout_seconds: Timeout in seconds (None uses default)
-            execution_mode: Optional execution mode (SYNC, ASYNC) for mode-specific validation
-            raise_on_error: If True, raise TransformationValidationError on validation failure
-
-        Returns:
-            ValidationResult with validation status and details
-
-        Raises:
-            TransformationValidationError: If timeout is invalid and raise_on_error is True
-        """
-        errors = []
-        warnings = []
-        details = {
-            "timeout_validation": {}
-        }
-
-        # Get ExecutionMode string values (handle tuple format) - needed throughout method
-        sync_value = ExecutionMode.SYNC[0] if isinstance(ExecutionMode.SYNC, tuple) else ExecutionMode.SYNC
-        async_value = ExecutionMode.ASYNC[0] if isinstance(ExecutionMode.ASYNC, tuple) else ExecutionMode.ASYNC
-
-        # If no timeout provided, use defaults based on execution mode
-        if timeout_seconds is None:
-            if execution_mode == sync_value:
-                timeout_seconds = self.DEFAULT_SYNC_TIMEOUT
-            elif execution_mode == async_value:
-                timeout_seconds = self.DEFAULT_ASYNC_TIMEOUT
-            else:
-                timeout_seconds = self.DEFAULT_ASYNC_TIMEOUT  # Default to ASYNC timeout
-
-            details["timeout_validation"]["timeout_provided"] = False
-            details["timeout_validation"]["default_timeout_used"] = timeout_seconds
-            warnings.append(
-                f"No timeout specified, using default: {timeout_seconds} seconds "
-                f"({timeout_seconds // 60} minutes)"
-            )
-        else:
-            details["timeout_validation"]["timeout_provided"] = True
-            details["timeout_validation"]["specified_timeout"] = timeout_seconds
-
-        details["timeout_validation"]["timeout_seconds"] = timeout_seconds
-        details["timeout_validation"]["execution_mode"] = execution_mode
-
-        # Validate timeout range
-        if timeout_seconds < self.MIN_TIMEOUT_SECONDS:
-            errors.append(
-                f"Timeout ({timeout_seconds} seconds) is below minimum allowed "
-                f"({self.MIN_TIMEOUT_SECONDS} seconds / {self.MIN_TIMEOUT_SECONDS // 60} minutes). "
-                f"Pipeline execution may fail prematurely."
-            )
-            details["timeout_validation"]["below_minimum"] = True
-        else:
-            details["timeout_validation"]["below_minimum"] = False
-
-        if timeout_seconds > self.MAX_TIMEOUT_SECONDS:
-            errors.append(
-                f"Timeout ({timeout_seconds} seconds) exceeds maximum allowed "
-                f"({self.MAX_TIMEOUT_SECONDS} seconds / {self.MAX_TIMEOUT_SECONDS // 60} minutes). "
-                f"This may cause resource exhaustion."
-            )
-            details["timeout_validation"]["exceeds_maximum"] = True
-        else:
-            details["timeout_validation"]["exceeds_maximum"] = False
-
-        # Validate timeout appropriateness for execution mode
-        if execution_mode:
-            if execution_mode == sync_value:
-                # SYNC executions should typically be shorter
-                if timeout_seconds > self.DEFAULT_ASYNC_TIMEOUT:
-                    warnings.append(
-                        f"SYNC execution timeout ({timeout_seconds} seconds) is longer than "
-                        f"typical ASYNC timeout ({self.DEFAULT_ASYNC_TIMEOUT} seconds). "
-                        f"Consider using ASYNC mode for long-running operations."
-                    )
-                    details["timeout_validation"]["sync_timeout_too_long"] = True
-                else:
-                    details["timeout_validation"]["sync_timeout_too_long"] = False
-
-                # SYNC executions should have reasonable minimum
-                if timeout_seconds < 120:  # Less than 2 minutes
-                    warnings.append(
-                        f"SYNC execution timeout ({timeout_seconds} seconds) may be too short. "
-                        f"Consider at least 2 minutes for reliable completion."
-                    )
-                    details["timeout_validation"]["sync_timeout_too_short"] = True
-                else:
-                    details["timeout_validation"]["sync_timeout_too_short"] = False
-
-            elif execution_mode == async_value:
-                # ASYNC executions can be longer, but warn if very long
-                if timeout_seconds > self.MAX_TIMEOUT_SECONDS * 0.9:  # > 90% of max
-                    warnings.append(
-                        f"ASYNC execution timeout ({timeout_seconds} seconds) is very close to "
-                        f"maximum ({self.MAX_TIMEOUT_SECONDS} seconds). Consider breaking into "
-                        f"smaller operations."
-                    )
-                    details["timeout_validation"]["async_timeout_very_long"] = True
-                else:
-                    details["timeout_validation"]["async_timeout_very_long"] = False
-
-        result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
-        )
-
-        if not result.is_valid and raise_on_error:
-            error_msg = f"Timeout validation failed: {', '.join(errors)}"
-            raise TransformationValidationError(
-                error_msg,
-                error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE,
-                details=details,
-                tenant_id=self.tenant_id
-            )
-
-        return result
-
-    def validate_compute_quota(
-        self,
-        raise_on_error: bool = True
-    ) -> ValidationResult:
-        """
-        Validate compute quota (concurrent job executions).
-
-        Checks if tenant has capacity for additional concurrent job executions
-        based on max_job_concurrency limit from TenantService.get_tenant_job_limits().
-
-        Args:
-            raise_on_error: If True, raise ResourceQuotaExceededError on validation failure
-
-        Returns:
-            ValidationResult with validation status and details
-
-        Raises:
-            ResourceQuotaExceededError: If compute quota is exceeded and raise_on_error is True
-        """
-        errors = []
-        warnings = []
-        details = {
-            "quota_type": "compute",
-            "quota_checks": {}
-        }
-
-        if not self.tenant_id:
-            errors.append("tenant_id is required for compute quota validation")
-            details["quota_checks"]["tenant_id_provided"] = False
-            result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
-            )
-            if raise_on_error:
-                raise ResourceQuotaExceededError(
-                    message="tenant_id is required for compute quota validation",
-                    error_code=ResourceQuotaExceededError.ERROR_CODE_CONCURRENT_EXECUTIONS_LIMIT,
-                    quota_type="compute",
-                    tenant_id=self.tenant_id,
-                    user_id=self.user_id,
-                    details=details
-                )
-            return result
-
-        details["quota_checks"]["tenant_id_provided"] = True
-
-        try:
-            from hub.apps.tenants.services import get_tenant_job_limits
-            from hub.apps.jobs.utils import check_tenant_job_limits
-            from django.core.cache import cache
-
-            # Get tenant job limits
-            limits = get_tenant_job_limits(self.tenant_id)
-            max_concurrency = limits["max_job_concurrency"]
-            max_queued = limits["max_queued_jobs"]
-
-            details["quota_checks"]["max_job_concurrency"] = max_concurrency
-            details["quota_checks"]["max_queued_jobs"] = max_queued
-
-            # Check tenant job limits (concurrency and queue depth)
-            can_create_job, error_message = check_tenant_job_limits(self.tenant_id)
-
-            if not can_create_job:
-                # Get current counts for detailed error message
-                running_key = f"job:tenant:{self.tenant_id}:running"
-                queued_key = f"job:tenant:{self.tenant_id}:queued"
-                running_count = cache.get(running_key, 0)
-                queued_count = cache.get(queued_key, 0)
-
-                details["quota_checks"]["running_jobs"] = running_count
-                details["quota_checks"]["queued_jobs"] = queued_count
-
-                if running_count >= max_concurrency:
-                    errors.append(
-                        f"Tenant has reached maximum concurrent job limit ({max_concurrency}). "
-                        f"Current running jobs: {running_count}. Please wait for jobs to complete."
-                    )
-                    details["quota_checks"]["concurrency_limit_exceeded"] = True
-                    details["quota_checks"]["limit"] = max_concurrency
-                    details["quota_checks"]["current"] = running_count
-                else:
-                    details["quota_checks"]["concurrency_limit_exceeded"] = False
-
-                if queued_count >= max_queued:
-                    errors.append(
-                        f"Tenant has reached maximum queued job limit ({max_queued}). "
-                        f"Current queued jobs: {queued_count}. Please wait for queue to process."
-                    )
-                    details["quota_checks"]["queue_limit_exceeded"] = True
-                    details["quota_checks"]["limit"] = max_queued
-                    details["quota_checks"]["current"] = queued_count
-                else:
-                    details["quota_checks"]["queue_limit_exceeded"] = False
-
-                details["quota_checks"]["quota_exceeded"] = True
-            else:
-                # Get current counts for informational purposes
-                running_key = f"job:tenant:{self.tenant_id}:running"
-                queued_key = f"job:tenant:{self.tenant_id}:queued"
-                running_count = cache.get(running_key, 0)
-                queued_count = cache.get(queued_key, 0)
-
-                details["quota_checks"]["running_jobs"] = running_count
-                details["quota_checks"]["queued_jobs"] = queued_count
-                details["quota_checks"]["quota_exceeded"] = False
-                details["quota_checks"]["concurrency_limit_exceeded"] = False
-                details["quota_checks"]["queue_limit_exceeded"] = False
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to check compute quota for tenant {self.tenant_id}: {e}",
-                exc_info=True
-            )
-            warnings.append(
-                f"Could not validate compute quota: {str(e)}. "
-                f"Proceeding with execution."
-            )
-            details["quota_checks"]["validation_error"] = str(e)
-
-        result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
-        )
-
-        if not result.is_valid and raise_on_error:
-            # Determine which quota was exceeded
-            quota_type = "concurrency"
-            limit = details["quota_checks"].get("max_job_concurrency")
-            current = details["quota_checks"].get("running_jobs", 0)
-
-            if details["quota_checks"].get("queue_limit_exceeded"):
-                quota_type = "queue"
-                limit = details["quota_checks"].get("max_queued_jobs")
-                current = details["quota_checks"].get("queued_jobs", 0)
-
-            raise ResourceQuotaExceededError(
-                message="Compute quota exceeded for pipeline execution",
-                error_code=ResourceQuotaExceededError.ERROR_CODE_CONCURRENT_EXECUTIONS_LIMIT,
-                quota_type=quota_type,
-                limit=limit,
-                current=current,
-                tenant_id=self.tenant_id,
-                user_id=self.user_id,
-                details=details
-            )
-
-        return result
-
-    def validate_storage_quota(
-        self,
-        required_storage_bytes: Optional[int] = None,
-        raise_on_error: bool = True
-    ) -> ValidationResult:
-        """
-        Validate storage quota.
-
-        Checks:
-        - File size limits (max_file_size_bytes from tenant config)
-        - Total storage usage (if tracked)
-
-        Args:
-            required_storage_bytes: Optional required storage in bytes for the operation
-            raise_on_error: If True, raise ResourceQuotaExceededError on validation failure
-
-        Returns:
-            ValidationResult with validation status and details
-
-        Raises:
-            ResourceQuotaExceededError: If storage quota is exceeded and raise_on_error is True
-        """
-        errors = []
-        warnings = []
-        details = {
-            "quota_type": "storage",
-            "quota_checks": {}
-        }
-
-        if not self.tenant_id:
-            errors.append("tenant_id is required for storage quota validation")
-            details["quota_checks"]["tenant_id_provided"] = False
-            result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
-            )
-            if raise_on_error:
-                raise ResourceQuotaExceededError(
-                    message="tenant_id is required for storage quota validation",
-                    error_code=ResourceQuotaExceededError.ERROR_CODE_STORAGE_LIMIT,
-                    quota_type="storage",
-                    tenant_id=self.tenant_id,
-                    user_id=self.user_id,
-                    details=details
-                )
-            return result
-
-        details["quota_checks"]["tenant_id_provided"] = True
-
-        try:
-            from hub.apps.tenants.services import get_tenant_file_size_limit
-
-            # Get tenant file size limit
-            max_file_size = get_tenant_file_size_limit(self.tenant_id)
-            details["quota_checks"]["max_file_size_bytes"] = max_file_size
-
-            # Check file size limit if required storage is specified
-            if required_storage_bytes is not None:
-                details["quota_checks"]["required_storage_bytes"] = required_storage_bytes
-                if required_storage_bytes > max_file_size:
-                    errors.append(
-                        f"Required storage ({required_storage_bytes} bytes) exceeds "
-                        f"maximum file size limit ({max_file_size} bytes)."
-                    )
-                    details["quota_checks"]["file_size_limit_exceeded"] = True
-                    details["quota_checks"]["limit"] = max_file_size
-                    details["quota_checks"]["current"] = required_storage_bytes
-                else:
-                    details["quota_checks"]["file_size_limit_exceeded"] = False
-
-            # TODO: Add total storage usage check when storage tracking is implemented
-            # This would check if tenant's total storage usage + required_storage_bytes
-            # exceeds a total storage quota limit
-            details["quota_checks"]["total_storage_check"] = "not_implemented"
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to check storage quota for tenant {self.tenant_id}: {e}",
-                exc_info=True
-            )
-            warnings.append(
-                f"Could not validate storage quota: {str(e)}. "
-                f"Proceeding with execution."
-            )
-            details["quota_checks"]["validation_error"] = str(e)
-
-        result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
-        )
-
-        if not result.is_valid and raise_on_error:
-            raise ResourceQuotaExceededError(
-                message="Storage quota exceeded for pipeline execution",
-                error_code=ResourceQuotaExceededError.ERROR_CODE_STORAGE_LIMIT,
-                quota_type="storage",
-                limit=details["quota_checks"].get("max_file_size_bytes"),
-                current=details["quota_checks"].get("required_storage_bytes"),
-                tenant_id=self.tenant_id,
-                user_id=self.user_id,
-                details=details
-            )
-
-        return result
-
-    def validate_query_quota(
-        self,
-        raise_on_error: bool = True
-    ) -> ValidationResult:
-        """
-        Validate query quota (for preview operations).
-
-        Checks if tenant has quota remaining for query/preview operations
-        using rate limiting for SPARQL_QUERY or CATALOG_READ categories.
-
-        Args:
-            raise_on_error: If True, raise ResourceQuotaExceededError on validation failure
-
-        Returns:
-            ValidationResult with validation status and details
-
-        Raises:
-            ResourceQuotaExceededError: If query quota is exceeded and raise_on_error is True
-        """
-        errors = []
-        warnings = []
-        details = {
-            "quota_type": "query",
-            "quota_checks": {}
-        }
-
-        if not self.tenant_id:
-            errors.append("tenant_id is required for query quota validation")
-            details["quota_checks"]["tenant_id_provided"] = False
-            result = ValidationResult(
-                is_valid=False,
-                errors=errors,
-                warnings=warnings,
-                details=details
-            )
-            if raise_on_error:
-                raise ResourceQuotaExceededError(
-                    message="tenant_id is required for query quota validation",
-                    error_code=ResourceQuotaExceededError.ERROR_CODE_QUOTA_EXCEEDED,
-                    quota_type="query",
-                    tenant_id=self.tenant_id,
-                    user_id=self.user_id,
-                    details=details
-                )
-            return result
-
-        details["quota_checks"]["tenant_id_provided"] = True
-
-        try:
-            from hub.apps.rate_limiting.quota import QuotaManager
-            from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
-
-            # Check SPARQL query quota (for semantic/preview queries)
-            has_sparql_quota, sparql_quota_info = QuotaManager.check_quota(
-                tenant_id=self.tenant_id,
-                category=EndpointCategory.SPARQL_QUERY,
-                window=TimeWindow.DAILY
-            )
-
-            details["quota_checks"]["sparql_query"] = {
-                "has_quota": has_sparql_quota,
-                "limit": sparql_quota_info.get("limit"),
-                "used": sparql_quota_info.get("used"),
-                "remaining": sparql_quota_info.get("remaining")
-            }
-
-            if not has_sparql_quota:
-                errors.append(
-                    f"Tenant has exceeded SPARQL query quota. "
-                    f"Limit: {sparql_quota_info.get('limit')}, "
-                    f"Used: {sparql_quota_info.get('used')}, "
-                    f"Remaining: {sparql_quota_info.get('remaining')}."
-                )
-                details["quota_checks"]["sparql_query_limit_exceeded"] = True
-                details["quota_checks"]["limit"] = sparql_quota_info.get("limit")
-                details["quota_checks"]["current"] = sparql_quota_info.get("used")
-            else:
-                details["quota_checks"]["sparql_query_limit_exceeded"] = False
-
-            # Check catalog read quota (for preview operations)
-            has_catalog_quota, catalog_quota_info = QuotaManager.check_quota(
-                tenant_id=self.tenant_id,
-                category=EndpointCategory.CATALOG_READ,
-                window=TimeWindow.DAILY
-            )
-
-            details["quota_checks"]["catalog_read"] = {
-                "has_quota": has_catalog_quota,
-                "limit": catalog_quota_info.get("limit"),
-                "used": catalog_quota_info.get("used"),
-                "remaining": catalog_quota_info.get("remaining")
-            }
-
-            if not has_catalog_quota:
-                errors.append(
-                    f"Tenant has exceeded catalog read quota. "
-                    f"Limit: {catalog_quota_info.get('limit')}, "
-                    f"Used: {catalog_quota_info.get('used')}, "
-                    f"Remaining: {catalog_quota_info.get('remaining')}."
-                )
-                details["quota_checks"]["catalog_read_limit_exceeded"] = True
-                # Update limit/current if not already set or if catalog is more restrictive
-                if "limit" not in details["quota_checks"] or (
-                    catalog_quota_info.get("used", 0) > details["quota_checks"].get("current", 0)
-                ):
-                    details["quota_checks"]["limit"] = catalog_quota_info.get("limit")
-                    details["quota_checks"]["current"] = catalog_quota_info.get("used")
-            else:
-                details["quota_checks"]["catalog_read_limit_exceeded"] = False
-
-            details["quota_checks"]["quota_exceeded"] = (
-                details["quota_checks"].get("sparql_query_limit_exceeded", False) or
-                details["quota_checks"].get("catalog_read_limit_exceeded", False)
-            )
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to check query quota for tenant {self.tenant_id}: {e}",
-                exc_info=True
-            )
-            warnings.append(
-                f"Could not validate query quota: {str(e)}. "
-                f"Proceeding with execution."
-            )
-            details["quota_checks"]["validation_error"] = str(e)
-
-        result = ValidationResult(
-            is_valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings,
-            details=details
-        )
-
-        if not result.is_valid and raise_on_error:
-            raise ResourceQuotaExceededError(
-                message="Query quota exceeded for preview operations",
-                error_code=ResourceQuotaExceededError.ERROR_CODE_QUOTA_EXCEEDED,
-                quota_type="query",
-                limit=details["quota_checks"].get("limit"),
-                current=details["quota_checks"].get("current"),
-                tenant_id=self.tenant_id,
-                user_id=self.user_id,
-                details=details
-            )
-
-        return result
-

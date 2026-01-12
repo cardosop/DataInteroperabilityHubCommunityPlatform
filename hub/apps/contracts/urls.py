@@ -16,6 +16,7 @@ router = DefaultRouter()
 router.register(r"", ContractViewSet, basename="contract")
 
 
+
 # Custom function-based view for lineage visualization that bypasses DRF format suffix routing
 # This allows ?format=dot and ?format=mermaid query parameters to work without conflicts
 # from DRF's format suffix patterns
@@ -474,8 +475,12 @@ def download_contract_custom(request, id=None, *args, **kwargs):
 urlpatterns = [
     # Custom visualization endpoint without format suffix patterns
     # This must come BEFORE the router URLs to take precedence
+    # ROOT CAUSE FIX: Pattern does NOT include 'contracts/' prefix because parent URL
+    # (hub/apps/api/urls.py line 20) already includes 'contracts/' prefix.
+    # Including 'contracts/' here would cause duplication: /api/v1/contracts/contracts/{id}/...
+    # The correct pattern is: /api/v1/contracts/{id}/lineage/visualization/
     re_path(
-        r"^contracts/(?P<id>[^/.]+)/lineage/visualization/$",
+        r"^(?P<id>[^/.]+)/lineage/visualization/$",
         lineage_visualization_custom,
         name="contract-lineage-visualization-custom",
     ),

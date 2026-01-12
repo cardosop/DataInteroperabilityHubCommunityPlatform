@@ -72,7 +72,7 @@ class DQServiceIntegrationTest(IntegrationRegressionTest):
     def test_dq_run_creation(self):
         """Test creating a DQ run"""
         response = self.client.post(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'profile': 'intake_basic_gx'
@@ -85,7 +85,7 @@ class DQServiceIntegrationTest(IntegrationRegressionTest):
             dq_run_id = response.data['id']
 
             # Verify DQ run was created
-            retrieve_response = self.client.get(f'/api/v1/dq/dq-runs/{dq_run_id}/')
+            retrieve_response = self.client.get(f'/api/v1/dq/runs/{dq_run_id}/')
             self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
             self.assertEqual(retrieve_response.data['id'], dq_run_id)
 
@@ -110,7 +110,7 @@ class DQServiceIntegrationTest(IntegrationRegressionTest):
         )
 
         # Retrieve DQ run
-        response = self.client.get(f'/api/v1/dq/dq-runs/{dq_run.id}/')
+        response = self.client.get(f'/api/v1/dq/runs/{dq_run.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['status'], 'PENDING')
 
@@ -151,7 +151,7 @@ class DQServiceIntegrationTest(IntegrationRegressionTest):
         )
 
         # List DQ runs
-        response = self.client.get('/api/v1/dq/dq-runs/')
+        response = self.client.get('/api/v1/dq/runs/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, (list, dict))
 
@@ -162,7 +162,7 @@ class ComplianceServiceIntegrationTest(IntegrationRegressionTest):
     def test_compliance_run_creation(self):
         """Test creating a compliance run"""
         response = self.client.post(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'scan_mode': 'internal'
@@ -175,7 +175,7 @@ class ComplianceServiceIntegrationTest(IntegrationRegressionTest):
             compliance_run_id = response.data['id']
 
             # Verify compliance run was created
-            retrieve_response = self.client.get(f'/api/v1/compliance/compliance-runs/{compliance_run_id}/')
+            retrieve_response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')
             self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
             self.assertEqual(retrieve_response.data['id'], compliance_run_id)
 
@@ -198,7 +198,7 @@ class ComplianceServiceIntegrationTest(IntegrationRegressionTest):
         )
 
         # Retrieve compliance run
-        response = self.client.get(f'/api/v1/compliance/compliance-runs/{compliance_run.id}/')
+        response = self.client.get(f'/api/v1/compliance/runs/{compliance_run.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['status'], 'PENDING')
 
@@ -235,7 +235,7 @@ class ComplianceServiceIntegrationTest(IntegrationRegressionTest):
         )
 
         # List compliance runs
-        response = self.client.get('/api/v1/compliance/compliance-runs/')
+        response = self.client.get('/api/v1/compliance/runs/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, (list, dict))
 
@@ -243,7 +243,7 @@ class ComplianceServiceIntegrationTest(IntegrationRegressionTest):
         """Test different compliance scan modes"""
         # Test internal scan mode
         response = self.client.post(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'scan_mode': 'internal'
@@ -254,7 +254,7 @@ class ComplianceServiceIntegrationTest(IntegrationRegressionTest):
 
         # Test external scan mode
         response = self.client.post(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'scan_mode': 'external'
@@ -637,7 +637,7 @@ class CrossServiceIntegrationTest(IntegrationRegressionTest):
         """Test DQ and compliance services working together"""
         # Create DQ run
         dq_response = self.client.post(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'profile': 'intake_basic_gx'
@@ -647,7 +647,7 @@ class CrossServiceIntegrationTest(IntegrationRegressionTest):
 
         # Create compliance run
         compliance_response = self.client.post(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'scan_mode': 'internal'

@@ -1,7 +1,7 @@
 """
 Integration tests for ODPS generation endpoint (Task 3.5.3)
 
-Comprehensive integration tests for POST /api/v1/contracts/contracts/{id}/generate-odps/ endpoint:
+Comprehensive integration tests for POST /api/v1/contracts/{id}/generate-odps/ endpoint:
 1. Success scenarios (generate ODPS from HubContract)
 2. Error scenarios (missing hub_contract_json, invalid parameters)
 3. Edge cases (different ODPS versions, output formats, ODCS embedding)
@@ -141,7 +141,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         """Test successful ODPS generation with default parameters"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {},
             format='json'
         )
@@ -181,7 +181,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         """Test successful ODPS generation with custom target version"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {'target_version': '4.0'},
             format='json'
         )
@@ -195,7 +195,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         """Test successful ODPS generation with YAML output format"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {'output_format': 'yaml'},
             format='json'
         )
@@ -210,7 +210,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         """Test successful ODPS generation with ODCS contract embedding"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {'embed_odcs': True},
             format='json'
         )
@@ -233,7 +233,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         """Test successful ODPS generation without ODCS contract embedding"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {'embed_odcs': False},
             format='json'
         )
@@ -274,7 +274,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
 
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{minimal_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{minimal_contract.id}/generate-odps/',
             {},
             format='json'
         )
@@ -296,7 +296,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         """Test error when contract has no hub_contract_json"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract_no_hub.id}/generate-odps/',
+            f'/api/v1/contracts/{self.contract_no_hub.id}/generate-odps/',
             {},
             format='json'
         )
@@ -309,7 +309,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         """Test error when target_version is invalid"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {'target_version': ''},  # Empty string
             format='json'
         )
@@ -322,7 +322,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         """Test error when output_format is invalid"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {'output_format': 'xml'},  # Invalid format
             format='json'
         )
@@ -338,7 +338,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
 
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{non_existent_id}/generate-odps/',
+            f'/api/v1/contracts/{non_existent_id}/generate-odps/',
             {},
             format='json'
         )
@@ -368,7 +368,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
 
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{invalid_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{invalid_contract.id}/generate-odps/',
             {},
             format='json'
         )
@@ -397,7 +397,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
         # Try to generate ODPS for contract in different tenant
         self.client.force_authenticate(user=other_user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {},
             format='json'
         )
@@ -410,7 +410,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
     def test_generate_odps_unauthenticated(self):
         """Test that unauthenticated users cannot generate ODPS"""
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/generate-odps/',
             {},
             format='json'
         )
@@ -491,7 +491,7 @@ class ODPSGenerationEndpointIntegrationTest(TestCase):
 
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{comprehensive_contract.id}/generate-odps/',
+            f'/api/v1/contracts/{comprehensive_contract.id}/generate-odps/',
             {},
             format='json'
         )

@@ -75,7 +75,7 @@ if LOCUST_AVAILABLE:
                 params["status"] = random.choice(["DRAFT", "ACTIVE", "ARCHIVED"])
 
             with self.client.get(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 params=params,
                 catch_response=True,
@@ -104,7 +104,7 @@ if LOCUST_AVAILABLE:
             }
 
             with self.client.post(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 json=contract_data,
                 catch_response=True,
@@ -129,7 +129,7 @@ if LOCUST_AVAILABLE:
             contract_id = random.choice(self.contract_ids)
 
             with self.client.get(
-                f"/api/v1/contracts/contracts/{contract_id}/",
+                f"/api/v1/contracts/{contract_id}/",
                 headers=self.headers,
                 catch_response=True,
                 name="stress_get_contract",
@@ -153,7 +153,7 @@ if LOCUST_AVAILABLE:
             }
 
             with self.client.get(
-                "/api/v1/assets/assets/",
+                "/api/v1/assets/",
                 headers=self.headers,
                 params=params,
                 catch_response=True,
@@ -176,7 +176,7 @@ if LOCUST_AVAILABLE:
             }
 
             with self.client.post(
-                "/api/v1/assets/assets/",
+                "/api/v1/assets/",
                 headers=self.headers,
                 json=asset_data,
                 catch_response=True,
@@ -202,7 +202,7 @@ if LOCUST_AVAILABLE:
             }
 
             with self.client.get(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 params=params,
                 catch_response=True,
@@ -236,7 +236,7 @@ if LOCUST_AVAILABLE:
         def overload_rapid_requests(self):
             """Generate rapid-fire requests to overload the system."""
             with self.client.get(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 catch_response=True,
                 name="overload_rapid_requests",
@@ -268,7 +268,7 @@ if LOCUST_AVAILABLE:
             }
 
             with self.client.post(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 json=large_contract,
                 catch_response=True,

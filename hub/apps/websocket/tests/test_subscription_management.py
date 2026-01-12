@@ -10,7 +10,7 @@ These tests verify:
 import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
-from django.test import TestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
 from hub.apps.websocket.protocol import (
@@ -22,28 +22,21 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
 
 
-class WebSocketSubscriptionManagementTest(TestCase):
+class WebSocketSubscriptionManagementTest(AsyncWebSocketTestCase):
     """Test WebSocket subscription management functionality."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.tenant2 = Tenant.objects.create(
-            name="Test Tenant 2",
-            slug="test-tenant-2"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
+        self.tenant = self.create_unique_tenant()
+        self.tenant2 = self.create_unique_tenant(name_prefix="Test Tenant 2", slug_prefix="test-tenant-2")
+        self.user = self.create_unique_user(
+            tenant=self.tenant,
             password="testpass123",
-            tenant=self.tenant
         )
-        self.user2 = User.objects.create_user(
-            email="test2@example.com",
+        self.user2 = self.create_unique_user(
+            tenant=self.tenant2,
             password="testpass123",
-            tenant=self.tenant2
+            email_prefix="test2",
         )
 
     def _create_consumer(self, user=None, tenant=None):

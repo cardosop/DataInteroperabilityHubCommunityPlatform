@@ -72,7 +72,7 @@ class AssetActivationTest(TestCase):
         
         # Activate asset
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -97,7 +97,7 @@ class AssetActivationTest(TestCase):
         
         # Try to activate without contract
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -138,7 +138,7 @@ class AssetActivationTest(TestCase):
         
         # Try to activate
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -199,7 +199,7 @@ class AssetActivationTest(TestCase):
         
         # Try to activate
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -260,7 +260,7 @@ class AssetActivationTest(TestCase):
         
         # Try to activate
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -304,7 +304,7 @@ class AssetActivationTest(TestCase):
         
         # Activate asset (should succeed for contract-only)
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -348,7 +348,7 @@ class AssetActivationTest(TestCase):
         
         # Try to activate with old version
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": 1},  # Old version
             format="json"
         )
@@ -371,7 +371,7 @@ class AssetActivationTest(TestCase):
         
         # Try to activate again
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -394,7 +394,7 @@ class AssetActivationTest(TestCase):
         
         # Try to activate
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )

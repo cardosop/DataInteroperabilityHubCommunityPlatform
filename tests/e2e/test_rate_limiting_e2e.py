@@ -48,7 +48,7 @@ class RateLimitingE2ETest(E2ETestBase):
             }
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         successful_requests = 0
         rate_limited_requests = 0
         
@@ -88,7 +88,7 @@ class RateLimitingE2ETest(E2ETestBase):
             }
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         successful_requests = 0
         rate_limited_requests = 0
         
@@ -116,7 +116,7 @@ class RateLimitingE2ETest(E2ETestBase):
             }
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         successful_requests = 0
         rate_limited_requests = 0
         
@@ -170,7 +170,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_per_endpoint_category_catalog_read(self):
         """Test catalog read endpoint category has specific rate limits"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make request to catalog read endpoint
         response = self.client.get(endpoint)
@@ -192,7 +192,7 @@ class RateLimitingE2ETest(E2ETestBase):
             }
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         response = self.client.get(endpoint)
         
         # Should use tenant config limit (if headers present)
@@ -221,7 +221,7 @@ class RateLimitingE2ETest(E2ETestBase):
             }
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         response = self.client.get(endpoint)
         
         # Should be capped at platform maximum
@@ -238,7 +238,7 @@ class RateLimitingE2ETest(E2ETestBase):
             tenant=self.tenant
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make requests as user 1
         response1 = self.client.get(endpoint)
@@ -304,7 +304,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_headers_present(self):
         """Test that rate limit headers are present in responses"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         response = self.client.get(endpoint)
         
         # Should have rate limit headers (if rate limiting is enabled and tenant is set)
@@ -325,7 +325,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_remaining_decreases(self):
         """Test that rate limit remaining decreases with requests"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         remaining_values = []
         
         # Make 5 requests
@@ -345,7 +345,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_reset_time_accuracy(self):
         """Test that reset time is accurate"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         response = self.client.get(endpoint)
         
         if 'X-RateLimit-Reset' in response.headers:
@@ -367,7 +367,7 @@ class RateLimitingE2ETest(E2ETestBase):
             }
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make requests until rate limited
         rate_limited_response = None
@@ -397,7 +397,7 @@ class RateLimitingE2ETest(E2ETestBase):
             }
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make requests until rate limited
         rate_limited_response = None
@@ -432,7 +432,7 @@ class RateLimitingE2ETest(E2ETestBase):
             }
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make requests at the start of window
         for i in range(5):
@@ -457,7 +457,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_concurrent_requests(self):
         """Test rate limiting with concurrent requests"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         responses = []
         
         def make_request():
@@ -485,7 +485,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_header_accuracy(self):
         """Test that rate limit headers are accurate"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make first request
         response1 = self.client.get(endpoint)
@@ -532,7 +532,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_all_windows_checked(self):
         """Test that all time windows (burst, sustained, daily) are checked"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make request
         response = self.client.get(endpoint)
@@ -561,7 +561,7 @@ class RateLimitingE2ETest(E2ETestBase):
             tenant=other_tenant
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make request from current tenant
         response1 = self.client.get(endpoint)

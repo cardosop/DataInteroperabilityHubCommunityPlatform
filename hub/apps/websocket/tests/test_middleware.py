@@ -5,8 +5,7 @@ Comprehensive tests for WebSocket authentication middleware.
 import pytest
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
-from django.db import connections
-from django.test import TestCase
+from django.db import connections, close_old_connections
 
 from hub.apps.auth.models import APIKey
 from hub.apps.tenants.models import Tenant
@@ -14,12 +13,13 @@ from hub.apps.websocket.middleware.auth import (
     get_user_from_api_key,
     get_user_from_token,
 )
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 
 User = get_user_model()
 
 
-@pytest.mark.django_db(transaction=False)
-class TestWebSocketAuthMiddleware(TestCase):
+@pytest.mark.django_db(transaction=True)
+class TestWebSocketAuthMiddleware(AsyncWebSocketTestCase):
     """Test WebSocket authentication middleware."""
 
     def setUp(self):
@@ -128,18 +128,19 @@ class TestWebSocketAuthMiddleware(TestCase):
         except Exception:
             pass
 
-        # Create tenant
+        # Create tenant with unique name/slug to avoid conflicts
+        import uuid
+        unique_id = uuid.uuid4().hex[:8]
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {unique_id}",
+            slug=f"test-tenant-{unique_id}",
             status="ACTIVE",
         )
 
-        # Create user
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
+        # Create user with unique email to avoid conflicts
+        self.user = self.create_unique_user(
             tenant=self.tenant,
+            password="testpass123",
         )
 
         # #region agent log
@@ -290,14 +291,17 @@ class TestWebSocketAuthMiddleware(TestCase):
         """Test getting user from valid API key."""
         # Create API key using database_sync_to_async to ensure proper connection handling
         # database_sync_to_async will handle connection management automatically
+        plaintext_key = "test-api-key-valid"
+        key_hash = APIKey.hash_key(plaintext_key)
         api_key_obj = await database_sync_to_async(APIKey.objects.create)(
+            tenant=self.tenant,
             user=self.user,
             name="Test API Key",
-            key="test-api-key-valid",
+            key_hash=key_hash,
         )
 
         # Now test async lookup
-        user = await get_user_from_api_key(api_key_obj.key)
+        user = await get_user_from_api_key(plaintext_key)
 
         self.assertIsNotNone(user)
         self.assertEqual(user.id, self.user.id)
@@ -309,16 +313,22 @@ class TestWebSocketAuthMiddleware(TestCase):
         self.assertIsNone(user)
 
     async def test_get_user_from_api_key_inactive(self):
-        """Test getting user from inactive API key."""
-        # Create inactive API key using database_sync_to_async to ensure proper connection handling
+        """Test getting user from expired (inactive) API key."""
+        # Create expired API key using database_sync_to_async to ensure proper connection handling
         # database_sync_to_async will handle connection management automatically
+        from django.utils import timezone
+        from datetime import timedelta
+
+        plaintext_key = "test-api-key-inactive"
+        key_hash = APIKey.hash_key(plaintext_key)
         api_key_obj = await database_sync_to_async(APIKey.objects.create)(
+            tenant=self.tenant,
             user=self.user,
             name="Test API Key",
-            key="test-api-key-inactive",
-            is_active=False,
+            key_hash=key_hash,
+            expires_at=timezone.now() - timedelta(days=1),  # Expired yesterday
         )
 
-        user = await get_user_from_api_key(api_key_obj.key)
+        user = await get_user_from_api_key(plaintext_key)
 
         self.assertIsNone(user)

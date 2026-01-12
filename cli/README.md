@@ -312,6 +312,312 @@ datahub jobs cancel <job-id>
 datahub jobs watch <job-id>
 ```
 
+### Marketplace
+
+The CLI provides comprehensive support for marketplace integration, allowing you to manage connections, sync jobs, connectors, and mappings between Hub assets and external marketplace listings.
+
+#### Marketplace Connections
+
+```bash
+# List available connector types
+datahub marketplace connectors list
+
+# Get connector information
+datahub marketplace connectors info SNOWFLAKE_DATA_MARKETPLACE
+
+# Create marketplace connection
+datahub marketplace connections create \
+  --marketplace-type SNOWFLAKE_DATA_MARKETPLACE \
+  --name "Snowflake Production" \
+  --config '{"account": "myaccount", "user": "myuser", "token": "mytoken"}'
+
+# List connections
+datahub marketplace connections list
+
+# Get connection details
+datahub marketplace connections get <connection-id>
+
+# Test connection
+datahub marketplace connections test <connection-id>
+
+# Update connection
+datahub marketplace connections update <connection-id> --name "Updated Name"
+
+# Delete connection
+datahub marketplace connections delete <connection-id>
+```
+
+#### Marketplace Sync Jobs
+
+```bash
+# Start sync job (PULL from marketplace)
+datahub marketplace sync start \
+  --connection-id <connection-id> \
+  --direction PULL
+
+# Start sync job (PUSH to marketplace)
+datahub marketplace sync start \
+  --connection-id <connection-id> \
+  --direction PUSH \
+  --asset-ids <asset-id-1>,<asset-id-2>
+
+# List sync jobs
+datahub marketplace sync list
+
+# Get sync job details
+datahub marketplace sync get <sync-job-id>
+
+# Watch sync job progress
+datahub marketplace sync get <sync-job-id> --watch
+
+# Cancel sync job
+datahub marketplace sync cancel <sync-job-id>
+```
+
+#### Marketplace Mappings
+
+```bash
+# List mappings
+datahub marketplace mappings list
+
+# Get mapping details
+datahub marketplace mappings get <mapping-id>
+
+# Delete mapping
+datahub marketplace mappings delete <mapping-id>
+```
+
+For detailed marketplace usage examples and workflows, see the [Marketplace Usage Guide](docs/MARKETPLACE_USAGE.md).
+
+### BaaS (Backend as a Service)
+
+The CLI provides comprehensive support for BaaS platform operations, including API key management, usage tracking, and developer portal access.
+
+#### API Key Management
+
+```bash
+# Create a new API key
+datahub baas api-keys create --name "My API Key" --tier FREE
+
+# Create API key with expiration date
+datahub baas api-keys create \
+  --name "Temporary Key" \
+  --tier PRO \
+  --expires-at "2025-12-31T23:59:59Z"
+
+# List API keys
+datahub baas api-keys list
+
+# List API keys with tier filter
+datahub baas api-keys list --tier PRO
+
+# Get API key details
+datahub baas api-keys get <api-key-id>
+
+# Update API key
+datahub baas api-keys update <api-key-id> --name "Updated Name"
+
+# Revoke API key
+datahub baas api-keys revoke <api-key-id>
+```
+
+#### Developer Portal Documentation
+
+```bash
+# Show API documentation (default: HTML format)
+datahub baas docs show
+
+# Show API documentation in JSON format
+datahub baas docs show --format json
+
+# Show API documentation in Markdown format
+datahub baas docs show --format markdown
+
+# Get OpenAPI schema (default: JSON)
+datahub baas docs openapi
+
+# Get OpenAPI schema in YAML format
+datahub baas docs openapi --format yaml
+
+# List SDK download links
+datahub baas docs sdks
+
+# List SDK download links in JSON format
+datahub baas docs sdks --format json
+```
+
+#### Usage Tracking
+
+```bash
+# Get API usage statistics
+datahub baas usage get
+
+# Get usage statistics for specific time range
+datahub baas usage get --start-date "2025-01-01" --end-date "2025-01-31"
+```
+
+For detailed BaaS usage examples and workflows, see the [BaaS Usage Guide](docs/BAAS_USAGE.md).
+
+### ML (Machine Learning) / ODH (Open Data Hub)
+
+The CLI provides comprehensive support for ML model management, training, and inference operations with ODH (Open Data Hub) integration.
+
+#### Model Registry
+
+```bash
+# List ML models
+datahub ml models list
+
+# List models with filters
+datahub ml models list --asset-id <asset-id> --status TRAINED --limit 50
+
+# Get model details
+datahub ml models get <model-id>
+
+# Create a new ML model link
+datahub ml models create \
+  --odh-model-id <odh-model-id> \
+  --odh-model-name "My Model" \
+  --odh-model-version "1.0.0" \
+  --model-type CLASSIFICATION \
+  --asset-id <asset-id> \
+  --contract-id <contract-id>
+
+# Update model
+datahub ml models update <model-id> \
+  --asset-id <new-asset-id> \
+  --status DEPLOYED
+
+# Delete model
+datahub ml models delete <model-id>
+
+# List all versions of a model
+datahub ml models versions <model-id>
+```
+
+#### Training Jobs
+
+```bash
+# Submit a training job
+datahub ml training submit \
+  --model-id <model-id> \
+  --dataset-id <dataset-id> \
+  --config training-config.json
+
+# List training jobs
+datahub ml training list
+
+# List training jobs for a specific model
+datahub ml training list --model-id <model-id> --status RUNNING
+
+# Get training job details
+datahub ml training get <job-id>
+
+# Cancel a training job
+datahub ml training cancel <job-id>
+
+# Get training job logs
+datahub ml training logs <job-id>
+```
+
+#### Inference Deployments
+
+```bash
+# Deploy a model for inference
+datahub ml inference deploy \
+  --model-id <model-id> \
+  --config deployment-config.json
+
+# Run inference prediction
+datahub ml inference predict \
+  --deployment-id <deployment-id> \
+  --input-data input.json
+
+# List inference deployments
+datahub ml inference list
+
+# Get deployment details
+datahub ml inference get <deployment-id>
+
+# Undeploy a model
+datahub ml inference undeploy <deployment-id>
+
+# Get inference metrics
+datahub ml inference metrics <deployment-id>
+```
+
+#### Model Serving
+
+Model serving provides API endpoints for deploying models as production-ready services with contract validation, quality monitoring, and A/B testing capabilities.
+
+```bash
+# Deploy a model for serving
+datahub ml serving deploy \
+  --model-id <model-id> \
+  --endpoint /api/v1/models/my-model
+
+# Run prediction via serving endpoint
+datahub ml serving predict \
+  --model-id <model-id> \
+  --input input.json
+
+# List serving deployments
+datahub ml serving list
+
+# Get serving deployment details
+datahub ml serving get <serving-id>
+
+# Undeploy a serving deployment
+datahub ml serving undeploy <serving-id>
+
+# Get serving metrics (accuracy, latency, error rate, data drift)
+datahub ml serving metrics <serving-id>
+```
+
+#### A/B Testing
+
+A/B testing allows you to compare model variants by splitting traffic between a base model and a variant model.
+
+```bash
+# Create an A/B test
+datahub ml serving ab-test create \
+  --model-id <base-model-id> \
+  --variant-id <variant-model-id> \
+  --traffic-split "50:50"
+
+# List A/B tests
+datahub ml serving ab-test list
+
+# Get A/B test details with metrics
+datahub ml serving ab-test get <ab-test-id>
+```
+
+#### Model Types
+
+Supported model types:
+- `CLASSIFICATION` - Classification models
+- `REGRESSION` - Regression models
+- `CLUSTERING` - Clustering models
+- `NLP` - Natural Language Processing models
+- `COMPUTER_VISION` - Computer Vision models
+- `RECOMMENDATION` - Recommendation models
+- `TIME_SERIES` - Time Series models
+- `ANOMALY_DETECTION` - Anomaly Detection models
+- `OTHER` - Other model types
+
+#### Model Status
+
+Model status values:
+- `TRAINING` - Model is currently being trained
+- `TRAINED` - Model training completed successfully
+- `DEPLOYED` - Model is deployed for inference
+- `FAILED` - Model training or deployment failed
+- `ARCHIVED` - Model is archived
+
+For detailed ML/ODH usage examples and workflows, see the [ODH Usage Guide](docs/ODH_USAGE.md).
+
+For detailed model serving and A/B testing usage examples and workflows, see the [Model Serving Usage Guide](docs/MODEL_SERVING_USAGE.md).
+
 ## Output Formats
 
 Most commands support `--format` option to choose output format:
@@ -404,6 +710,10 @@ datahub contracts unlink-odps <odcs-contract-id>
 ## Additional Documentation
 
 - **[ODPS Usage Guide](docs/ODPS_USAGE.md)** - Comprehensive guide for ODPS (Open Data Product Standard) commands, workflows, and examples
+- **[Marketplace Usage Guide](docs/MARKETPLACE_USAGE.md)** - Complete guide for marketplace integration commands, workflows, and examples
+- **[BaaS Usage Guide](docs/BAAS_USAGE.md)** - Complete guide for BaaS (Backend as a Service) platform commands, workflows, and examples
+- **[ODH Usage Guide](docs/ODH_USAGE.md)** - Complete guide for ML/ODH (Open Data Hub) commands, workflows, and examples
+- **[Model Serving Usage Guide](docs/MODEL_SERVING_USAGE.md)** - Complete guide for model serving and A/B testing commands, workflows, and examples
 
 ## Development
 

@@ -344,7 +344,7 @@ class TenantManagementE2ETest(E2ETestBase):
         # Try to create an asset (should fail if suspension is enforced)
         # The middleware queries the database for tenant_id from request.user.id
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'test-asset',
                 'name': 'Test Asset'
@@ -371,7 +371,7 @@ class TenantManagementE2ETest(E2ETestBase):
             
             # Create a test request and manually run middleware
             factory = RequestFactory()
-            test_request = factory.post('/api/v1/assets/assets/')
+            test_request = factory.post('/api/v1/assets/')
             # Ensure user is fresh from database
             suspended_user.refresh_from_db()
             test_request.user = suspended_user
@@ -425,7 +425,7 @@ class TenantManagementE2ETest(E2ETestBase):
         self.client.force_authenticate(user=suspended_user)
         
         # Try to read the asset (should work)
-        response = self.client.get(f'/api/v1/assets/assets/{asset}/')
+        response = self.client.get(f'/api/v1/assets/{asset}/')
         
         # Note: This will fail if asset belongs to different tenant (expected)
         # But if it's the same tenant, read should work

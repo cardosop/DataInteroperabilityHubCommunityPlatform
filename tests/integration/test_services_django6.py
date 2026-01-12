@@ -384,7 +384,7 @@ class MicroservicesIntegrationTest(TestCase):
         
         # Test DQ service integration
         response = self.client.post(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'profile': 'intake_basic_gx'

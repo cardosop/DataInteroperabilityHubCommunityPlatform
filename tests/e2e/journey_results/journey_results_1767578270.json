@@ -1,0 +1,176 @@
+{
+  "summary": {
+    "total_journeys": 6,
+    "completed": 6,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 2.86102294921875e-06
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-001-d5d94d37",
+      "journey_name": "Test DPO-001",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1767578270.7530699,
+      "end_time": 1767578270.753079,
+      "duration": 9.059906005859375e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578270.753074,
+          "end_time": 1767578270.753078,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "DPO-002-8928ab64",
+      "journey_name": "Test DPO-002",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1767578270.753085,
+      "end_time": 1767578270.7530875,
+      "duration": 2.6226043701171875e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578270.7530859,
+          "end_time": 1767578270.753087,
+          "duration": 1.1920928955078125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "DPO-003-ac75584c",
+      "journey_name": "Test DPO-003",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1767578270.753091,
+      "end_time": 1767578270.7530925,
+      "duration": 1.430511474609375e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578270.7530916,
+          "end_time": 1767578270.7530923,
+          "duration": 7.152557373046875e-07,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "DPO-004-1655d0bc",
+      "journey_name": "Test DPO-004",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1767578270.7530959,
+      "end_time": 1767578270.7530975,
+      "duration": 1.6689300537109375e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578270.7530968,
+          "end_time": 1767578270.7530975,
+          "duration": 7.152557373046875e-07,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "DPO-005-e7900c89",
+      "journey_name": "Test DPO-005",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1767578270.7531009,
+      "end_time": 1767578270.7531018,
+      "duration": 9.5367431640625e-07,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578270.753101,
+          "end_time": 1767578270.7531018,
+          "duration": 7.152557373046875e-07,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "journey_id": "DPO-006-46ade6dc",
+      "journey_name": "Test DPO-006",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1767578270.753105,
+      "end_time": 1767578270.7531064,
+      "duration": 1.430511474609375e-06,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Test Step",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578270.7531054,
+          "end_time": 1767578270.7531064,
+          "duration": 9.5367431640625e-07,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-05T01:57:50.753186"
+}

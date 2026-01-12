@@ -568,7 +568,7 @@ class JourneyDC003DownloadPurchasedDataTests(E2ETestBase):
             self.assertIsNotNone(our_entitlement, "Entitlement should exist for purchased asset")
         
         # Try to download file (may fail if entitlement check not implemented in file download endpoint)
-        response = self.client.get(f'/api/v1/files/files/{file_id}/download/')
+        response = self.client.get(f'/api/v1/files/{file_id}/download/')
         # Should succeed if entitlement check passes, or fail if not implemented
         self.assertIn(response.status_code, [
             status.HTTP_200_OK,
@@ -600,7 +600,7 @@ class JourneyDC003DownloadPurchasedDataTests(E2ETestBase):
         # Consumer tries to download without entitlement
         self.client.force_authenticate(user=self.consumer_user)
         
-        response = self.client.get(f'/api/v1/files/files/{file_id}/download/')
+        response = self.client.get(f'/api/v1/files/{file_id}/download/')
         # Should fail if entitlement check is implemented
         self.assertIn(response.status_code, [
             status.HTTP_403_FORBIDDEN,
@@ -729,7 +729,7 @@ class JourneyDC005ReviewAssetQualityTests(E2ETestBase):
         )
         
         # Get health score
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/health-score/?breakdown=true')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/health-score/?breakdown=true')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         health_data = response.data
         self.assertIn('health_score', health_data)
@@ -737,7 +737,7 @@ class JourneyDC005ReviewAssetQualityTests(E2ETestBase):
         # Consumer can also view quality if they have access
         self.client.force_authenticate(user=self.consumer_user)
         
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/health-score/')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/health-score/')
         self.assertIn(response.status_code, [
             status.HTTP_200_OK,
             status.HTTP_404_NOT_FOUND,

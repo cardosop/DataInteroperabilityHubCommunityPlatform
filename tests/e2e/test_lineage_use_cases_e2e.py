@@ -738,7 +738,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_contract_lineage_api_endpoint(self):
         """Test contract-level lineage API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/lineage/contracts/"
+            f"/api/v1/contracts/{self.contract_id}/lineage/contracts/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -748,7 +748,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_model_lineage_api_endpoint(self):
         """Test model-level lineage API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/models/APIModel/lineage/"
+            f"/api/v1/contracts/{self.contract_id}/models/APIModel/lineage/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -758,7 +758,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_field_lineage_api_endpoint(self):
         """Test field-level lineage API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/fields/api_field/lineage/"
+            f"/api/v1/contracts/{self.contract_id}/fields/api_field/lineage/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -767,7 +767,7 @@ class LineageAPIE2ETest(E2ETestBase):
 
     def test_full_lineage_api_endpoint(self):
         """Test full lineage API endpoint"""
-        response = self.client.get(f"/api/v1/contracts/contracts/{self.contract_id}/lineage/full/")
+        response = self.client.get(f"/api/v1/contracts/{self.contract_id}/lineage/full/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("upstream", response.data)
@@ -776,7 +776,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_lineage_visualization_json_api_endpoint(self):
         """Test lineage visualization JSON API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/lineage/visualization/",
+            f"/api/v1/contracts/{self.contract_id}/lineage/visualization/",
             {"format": "json"},
         )
 
@@ -787,7 +787,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_lineage_visualization_dot_api_endpoint(self):
         """Test lineage visualization DOT API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/lineage/visualization/",
+            f"/api/v1/contracts/{self.contract_id}/lineage/visualization/",
             {"format": "dot"},
         )
 
@@ -798,7 +798,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_lineage_visualization_mermaid_api_endpoint(self):
         """Test lineage visualization Mermaid API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/lineage/visualization/",
+            f"/api/v1/contracts/{self.contract_id}/lineage/visualization/",
             {"format": "mermaid"},
         )
 
@@ -810,7 +810,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_impact_analysis_api_endpoint(self):
         """Test impact analysis API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/impact-analysis/"
+            f"/api/v1/contracts/{self.contract_id}/impact-analysis/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -821,7 +821,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_impact_analysis_model_level_api_endpoint(self):
         """Test model-level impact analysis API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/impact-analysis/",
+            f"/api/v1/contracts/{self.contract_id}/impact-analysis/",
             {"model_name": "APIModel"},
         )
 
@@ -832,7 +832,7 @@ class LineageAPIE2ETest(E2ETestBase):
     def test_impact_analysis_field_level_api_endpoint(self):
         """Test field-level impact analysis API endpoint"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_id}/impact-analysis/",
+            f"/api/v1/contracts/{self.contract_id}/impact-analysis/",
             {"model_name": "APIModel", "field_name": "api_field"},
         )
 

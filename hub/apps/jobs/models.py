@@ -26,6 +26,7 @@ class JobType(models.TextChoices):
     ODPS_LINKING = "ODPS_LINKING", "ODPS Linking"
     TRANSFORMATION_PIPELINE_EXECUTION = "TRANSFORMATION_PIPELINE_EXECUTION", "Transformation Pipeline Execution"
     VIRTUAL_QUERY_EXECUTION = "VIRTUAL_QUERY_EXECUTION", "Virtual Query Execution"
+    MARKETPLACE_SYNC = "MARKETPLACE_SYNC", "Marketplace Sync"
 
 
 class JobStatus(models.TextChoices):
@@ -35,6 +36,14 @@ class JobStatus(models.TextChoices):
     COMPLETED = "COMPLETED", "Completed"
     FAILED = "FAILED", "Failed"
     CANCELLED = "CANCELLED", "Cancelled"
+
+
+class JobPriority(models.TextChoices):
+    """Job priority enumeration"""
+    LOW = "LOW", "Low"
+    NORMAL = "NORMAL", "Normal"
+    HIGH = "HIGH", "High"
+    CRITICAL = "CRITICAL", "Critical"
 
 
 class Job(models.Model):
@@ -62,6 +71,12 @@ class Job(models.Model):
         choices=JobStatus.choices,
         default=JobStatus.PENDING,
         help_text="Job status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED"
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=JobPriority.choices,
+        default=JobPriority.NORMAL,
+        help_text="Job priority: HIGH, NORMAL, LOW"
     )
     resource_type = models.CharField(
         max_length=50,
@@ -121,6 +136,8 @@ class Job(models.Model):
             models.Index(fields=["tenant", "type", "status"]),
             models.Index(fields=["resource_type", "resource_id"]),
             models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["priority", "status"]),
+            models.Index(fields=["tenant", "priority", "status"]),
         ]
 
     def __str__(self):
@@ -204,22 +221,40 @@ class Job(models.Model):
         try:
             from hub.apps.observability.otel_metrics import (
                 jobs_failed_total,
-                job_duration_seconds
+                job_duration_seconds,
+                job_retry_failures_total,
             )
             tenant_id = str(self.tenant.id) if self.tenant else 'system'
 
             # Extract error code from error message
             error_code = 'UNKNOWN_ERROR'
+            error_type = 'UNKNOWN_ERROR'
             if 'timeout' in error_message.lower():
                 error_code = 'TIMEOUT'
+                error_type = 'TIMEOUT'
             elif 'validation' in error_message.lower():
                 error_code = 'VALIDATION_ERROR'
+                error_type = 'VALIDATION_ERROR'
+            elif 'connection' in error_message.lower():
+                error_type = 'CONNECTION_ERROR'
+            elif 'permission' in error_message.lower():
+                error_type = 'PERMISSION_ERROR'
 
             jobs_failed_total.labels(
                 job_type=self.type,
                 error_code=error_code,
                 tenant_id=tenant_id
             ).inc()
+
+            # Track retry failures (if job was retried)
+            retry_count = 0
+            if self.details_json:
+                retry_count = self.details_json.get('retry_count', 0)
+            if retry_count > 0:
+                job_retry_failures_total.labels(
+                    job_type=self.type,
+                    error_type=error_type
+                ).inc()
 
             # Track duration
             if self.started_at:

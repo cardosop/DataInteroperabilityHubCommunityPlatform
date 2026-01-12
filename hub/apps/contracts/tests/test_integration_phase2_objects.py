@@ -144,7 +144,7 @@ class TestPhase2ObjectsIntegration(TestCase):
 
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(odcs_contract),
                 "original_format": "JSON",

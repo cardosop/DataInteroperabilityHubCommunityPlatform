@@ -10,16 +10,15 @@ Tests verify comprehensive business rules for:
 
 All tests use real implementations (no mocks/stubs) to ensure integration.
 """
-import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
 
+from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.mesh.business_rules import (
     PolicyBusinessRules,
     TopologyBusinessRules,
-    ValidationResult
 )
 from hub.apps.mesh.models import (
     DataMeshDomain,
@@ -35,7 +34,6 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus, Role, UserRole
 from hub.apps.core.services.base import ValidationError
 
-pytestmark = pytest.mark.django_db(transaction=True)
 UserModel = get_user_model()
 
 

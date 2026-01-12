@@ -68,7 +68,7 @@ class APIPerformanceE2ETest(E2ETestBase):
         latencies = []
         for _ in range(20):
             start_time = time.perf_counter()
-            response = self.client.get("/api/v1/assets/assets/")
+            response = self.client.get("/api/v1/assets/")
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:
@@ -96,7 +96,7 @@ class APIPerformanceE2ETest(E2ETestBase):
         latencies = []
         for _ in range(20):
             start_time = time.perf_counter()
-            response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+            response = self.client.get(f"/api/v1/assets/{asset_id}/")
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:
@@ -132,7 +132,7 @@ class APIPerformanceE2ETest(E2ETestBase):
         latencies = []
         for _ in range(20):
             start_time = time.perf_counter()
-            response = self.client.get("/api/v1/contracts/contracts/")
+            response = self.client.get("/api/v1/contracts/")
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:
@@ -158,7 +158,7 @@ class APIPerformanceE2ETest(E2ETestBase):
         latencies = []
         for _ in range(20):
             start_time = time.perf_counter()
-            response = self.client.get(f"/api/v1/contracts/contracts/{contract_id}/")
+            response = self.client.get(f"/api/v1/contracts/{contract_id}/")
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:
@@ -191,7 +191,7 @@ class APIPerformanceE2ETest(E2ETestBase):
         latencies = []
         for _ in range(20):
             start_time = time.perf_counter()
-            response = self.client.get("/api/v1/jobs/jobs/")
+            response = self.client.get("/api/v1/jobs/")
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:
@@ -222,7 +222,7 @@ class APIPerformanceE2ETest(E2ETestBase):
         def make_request():
             """Make a single API request"""
             start_time = time.perf_counter()
-            response = self.client.get("/api/v1/assets/assets/")
+            response = self.client.get("/api/v1/assets/")
             end_time = time.perf_counter()
             return {
                 "status": response.status_code,
@@ -274,7 +274,7 @@ class APIPerformanceE2ETest(E2ETestBase):
         def make_request():
             """Make a single API request"""
             start_time = time.perf_counter()
-            response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+            response = self.client.get(f"/api/v1/assets/{asset_id}/")
             end_time = time.perf_counter()
             return {
                 "status": response.status_code,
@@ -323,7 +323,7 @@ class APIPerformanceE2ETest(E2ETestBase):
         latencies = []
         for _ in range(10):
             start_time = time.perf_counter()
-            response = self.client.get("/api/v1/assets/assets/")
+            response = self.client.get("/api/v1/assets/")
             end_time = time.perf_counter()
 
             if response.status_code == status.HTTP_200_OK:

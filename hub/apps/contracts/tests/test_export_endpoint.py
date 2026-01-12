@@ -101,7 +101,7 @@ class ContractExportEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "json"},
         )
 
@@ -118,7 +118,7 @@ class ContractExportEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "yaml"},
         )
 
@@ -137,7 +137,7 @@ class ContractExportEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odcs", "output_format": "json"},
         )
 
@@ -154,7 +154,7 @@ class ContractExportEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odcs", "output_format": "yaml"},
         )
 
@@ -180,7 +180,7 @@ class ContractExportEndpointTest(TestCase):
         self.contract.save()
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odps", "output_format": "json"},
         )
 
@@ -204,7 +204,7 @@ class ContractExportEndpointTest(TestCase):
         self.contract.save()
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odps", "output_format": "yaml"},
         )
 
@@ -223,7 +223,7 @@ class ContractExportEndpointTest(TestCase):
         """Test export endpoint defaults to hubcontract format"""
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.get(f"/api/v1/contracts/contracts/{self.contract.id}/export/")
+        response = self.client.get(f"/api/v1/contracts/{self.contract.id}/export/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = json.loads(response.content)
@@ -234,7 +234,7 @@ class ContractExportEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract"},
         )
 
@@ -246,7 +246,7 @@ class ContractExportEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "invalid"},
         )
 
@@ -258,7 +258,7 @@ class ContractExportEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract", "output_format": "invalid"},
         )
 
@@ -273,7 +273,7 @@ class ContractExportEndpointTest(TestCase):
 
         nonexistent_id = uuid.uuid4()
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{nonexistent_id}/export/",
+            f"/api/v1/contracts/{nonexistent_id}/export/",
             {"format": "hubcontract"},
         )
 
@@ -298,7 +298,7 @@ class ContractExportEndpointTest(TestCase):
 
         # Try to export as hubcontract (should fail)
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{contract_no_hub.id}/export/",
+            f"/api/v1/contracts/{contract_no_hub.id}/export/",
             {"format": "hubcontract"},
         )
 
@@ -307,7 +307,7 @@ class ContractExportEndpointTest(TestCase):
 
         # Try to export as odcs (should work with original_raw)
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{contract_no_hub.id}/export/",
+            f"/api/v1/contracts/{contract_no_hub.id}/export/",
             {"format": "odcs", "output_format": "json"},
         )
 
@@ -320,7 +320,7 @@ class ContractExportEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "odps", "output_format": "json"},
         )
 
@@ -333,7 +333,7 @@ class ContractExportEndpointTest(TestCase):
     def test_export_unauthorized(self):
         """Test export endpoint requires authentication"""
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/export/",
+            f"/api/v1/contracts/{self.contract.id}/export/",
             {"format": "hubcontract"},
         )
 
@@ -364,7 +364,7 @@ class ContractExportEndpointTest(TestCase):
 
         # Try to export contract from other tenant (should fail)
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{other_contract.id}/export/",
+            f"/api/v1/contracts/{other_contract.id}/export/",
             {"format": "hubcontract"},
         )
 
@@ -459,7 +459,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -476,7 +476,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.1"},
         )
 
@@ -490,7 +490,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.0"},
         )
 
@@ -504,7 +504,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.0-preview"},
         )
 
@@ -518,7 +518,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "2.2.2"},
         )
 
@@ -532,7 +532,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json"},
         )
 
@@ -549,7 +549,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_with_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_with_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -565,7 +565,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_with_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_with_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.1"},
         )
 
@@ -581,7 +581,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_with_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_with_original.id}/export/",
             {"format": "odcs", "output_format": "yaml", "version": "3.0.2"},
         )
 
@@ -613,7 +613,7 @@ class ODCSExportVersionSupportTest(TestCase):
         )
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{contract_yaml.id}/export/",
+            f"/api/v1/contracts/{contract_yaml.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -629,7 +629,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "99.99.99"},
         )
 
@@ -642,7 +642,7 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "invalid-version"},
         )
 
@@ -667,7 +667,7 @@ class ODCSExportVersionSupportTest(TestCase):
         )
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{invalid_contract.id}/export/",
+            f"/api/v1/contracts/{invalid_contract.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -682,7 +682,7 @@ class ODCSExportVersionSupportTest(TestCase):
 
         start_time = time.time()
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         duration = time.time() - start_time
@@ -700,7 +700,7 @@ class ODCSExportVersionSupportTest(TestCase):
         for version in versions:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/export/",
                     {"format": "odcs", "output_format": "json", "version": version},
                 )
 
@@ -718,7 +718,7 @@ class ODCSExportVersionSupportTest(TestCase):
         for version in versions:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/export/",
                     {"format": "odcs", "output_format": "yaml", "version": version},
                 )
 
@@ -734,7 +734,7 @@ class ODCSExportVersionSupportTest(TestCase):
 
         # Test with contract that has original (should use original version)
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_with_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_with_original.id}/export/",
             {"format": "odcs", "output_format": "json"},
         )
 
@@ -745,7 +745,7 @@ class ODCSExportVersionSupportTest(TestCase):
 
         # Test with contract without original (should default to 3.0.2)
         response2 = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json"},
         )
 

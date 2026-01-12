@@ -32,40 +32,40 @@ User = get_user_model()
 @pytest.mark.integration
 class DQComplianceExecutionTest(TestCase):
     """Integration tests for DQ/compliance execution (T.10)"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-        
+
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant"
         )
-        
+
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant
         )
-        
+
         self.client.force_authenticate(user=self.user)
-        
+
         # Check if services are available
         # Use localhost for local testing, service names for Docker
         dq_url = os.getenv('DQ_SERVICE_URL', 'http://localhost:8083')
         compliance_url = os.getenv('COMPLIANCE_SERVICE_URL', 'http://localhost:8082')
-        
+
         # Replace Docker service names with localhost if running outside Docker
         if 'dq-service' in dq_url:
             dq_url = dq_url.replace('dq-service', 'localhost')
         if 'compliance-service' in compliance_url:
             compliance_url = compliance_url.replace('compliance-service', 'localhost')
-        
+
         if not check_service_health(dq_url, 'DQ Service'):
             pytest.skip(f"DQ service not available at {dq_url}")
         if not check_service_health(compliance_url, 'Compliance Service'):
             pytest.skip(f"Compliance service not available at {compliance_url}")
-        
+
         # Create asset
         self.asset = Asset.objects.create(
             tenant=self.tenant,
@@ -74,7 +74,7 @@ class DQComplianceExecutionTest(TestCase):
             status=AssetStatus.DRAFT,
             created_by=self.user
         )
-        
+
         # Create file
         self.file = File.objects.create(
             tenant=self.tenant,
@@ -85,7 +85,7 @@ class DQComplianceExecutionTest(TestCase):
             status=FileStatus.ACTIVE,
             created_by=self.user
         )
-    
+
     @patch('hub.apps.dq.service_client.DQServiceClient.run_dq')
     @patch('hub.apps.files.storage.S3StorageClient')
     def test_dq_execution_flow(self, mock_storage, mock_dq):
@@ -105,12 +105,12 @@ class DQComplianceExecutionTest(TestCase):
             'engine_version': '1.0.0',
             'profile_key': 'intake_basic_gx'
         }
-        
+
         # Mock storage client
         mock_storage_client = MagicMock()
         mock_storage_client.download_file.return_value = b"id,name\n1,Test\n2,Sample"
         mock_storage.return_value = mock_storage_client
-        
+
         # Create dataset
         dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -119,10 +119,10 @@ class DQComplianceExecutionTest(TestCase):
             version=1,
             format='csv',
         )
-        
+
         # Create DQ run via API
         response = self.client.post(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {
                 'file_id': str(self.file.id),
                 'dataset_id': str(dataset.id),
@@ -132,29 +132,29 @@ class DQComplianceExecutionTest(TestCase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        
+
         # Verify DQ run was created
         dq_run = DQRun.objects.filter(dataset=dataset).first()
         self.assertIsNotNone(dq_run)
         self.assertEqual(dq_run.status, DQRunStatus.PENDING)  # Initially PENDING
-        
+
         # Execute the DQ run synchronously (simulating job execution)
         from hub.apps.dq.views import execute_dq_run
         execute_dq_run(str(dq_run.id))
-        
+
         # Refresh and verify DQ run was updated
         dq_run.refresh_from_db()
         self.assertEqual(dq_run.status, DQRunStatus.SUCCEEDED)
         self.assertEqual(dq_run.overall_status, 'PASS')
         self.assertEqual(dq_run.quality_score, 0.95)
-        
+
         # Verify job was created
         job = Job.objects.filter(
             type=JobType.DQ_RUN,
             resource_id=str(dq_run.id)
         ).first()
         self.assertIsNotNone(job)
-    
+
     @patch('hub.apps.compliance.service_client.ComplianceServiceClient.scan_file')
     @patch('hub.apps.files.storage.S3StorageClient')
     def test_compliance_execution_flow(self, mock_storage, mock_compliance):
@@ -171,12 +171,12 @@ class DQComplianceExecutionTest(TestCase):
                 'CCPA': 'COMPLIANT'
             }
         }
-        
+
         # Mock storage client
         mock_storage_client = MagicMock()
         mock_storage_client.download_file.return_value = b"id,name\n1,Test\n2,Sample"
         mock_storage.return_value = mock_storage_client
-        
+
         # Create dataset
         dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -185,10 +185,10 @@ class DQComplianceExecutionTest(TestCase):
             version=1,
             format='csv',
         )
-        
+
         # Create compliance run via API
         response = self.client.post(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'file_id': str(self.file.id),
                 'dataset_id': str(dataset.id),
@@ -198,29 +198,29 @@ class DQComplianceExecutionTest(TestCase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        
+
         # Verify compliance run was created
         compliance_run = ComplianceRun.objects.filter(dataset=dataset).first()
         self.assertIsNotNone(compliance_run)
         self.assertEqual(compliance_run.status, ComplianceRunStatus.PENDING)  # Initially PENDING
-        
+
         # Execute the compliance run synchronously (simulating job execution)
         from hub.apps.compliance.views import execute_compliance_run
         execute_compliance_run(str(compliance_run.id))
-        
+
         # Refresh and verify compliance run was updated
         compliance_run.refresh_from_db()
         self.assertEqual(compliance_run.status, ComplianceRunStatus.SUCCEEDED)
         self.assertEqual(compliance_run.overall_status, 'PASS')
         self.assertTrue(compliance_run.allowed_to_store)
-        
+
         # Verify job was created
         job = Job.objects.filter(
             type=JobType.COMPLIANCE_RUN,
             resource_id=str(compliance_run.id)
         ).first()
         self.assertIsNotNone(job)
-    
+
     @patch('hub.apps.compliance.service_client.ComplianceServiceClient.scan_file')
     @patch('hub.apps.dq.service_client.DQServiceClient.run_dq')
     def test_dq_compliance_fail_closed_behavior(self, mock_dq, mock_compliance):
@@ -235,13 +235,13 @@ class DQComplianceExecutionTest(TestCase):
                 {'column': 'email', 'pii_types': ['EMAIL'], 'count': 100}
             ]
         }
-        
+
         # Mock DQ pass (but compliance fails)
         mock_dq.return_value = {
             'overall_status': 'PASS',
             'quality_score': 0.95
         }
-        
+
         # Create dataset
         dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -250,10 +250,10 @@ class DQComplianceExecutionTest(TestCase):
             version=1,
             format='csv',
         )
-        
+
         # Create compliance run (will fail)
         compliance_response = self.client.post(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'file_id': str(self.file.id),
                 'dataset_id': str(dataset.id),
@@ -263,13 +263,13 @@ class DQComplianceExecutionTest(TestCase):
             format='json'
         )
         self.assertEqual(compliance_response.status_code, status.HTTP_201_CREATED)
-        
+
         # Compliance run should be created (status will be PENDING until job completes)
         compliance_run = ComplianceRun.objects.filter(dataset=dataset).first()
         self.assertIsNotNone(compliance_run)
         # Note: The actual failure will be in result_json after job completes
         # For integration test, we verify the run was created
-    
+
     @patch('hub.apps.compliance.service_client.ComplianceServiceClient.scan_file')
     @patch('hub.apps.dq.service_client.DQServiceClient.run_dq')
     @patch('hub.apps.files.storage.S3StorageClient')
@@ -280,17 +280,17 @@ class DQComplianceExecutionTest(TestCase):
             'overall_status': 'PASS',
             'allowed_to_store': True
         }
-        
+
         mock_dq.return_value = {
             'overall_status': 'PASS',
             'quality_score': 0.95
         }
-        
+
         # Mock storage client
         mock_storage_client = MagicMock()
         mock_storage_client.download_file.return_value = b"id,name\n1,Test\n2,Sample"
         mock_storage.return_value = mock_storage_client
-        
+
         # Create dataset
         dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -299,10 +299,10 @@ class DQComplianceExecutionTest(TestCase):
             version=1,
             format='csv',
         )
-        
+
         # Create compliance and DQ runs
         compliance_response = self.client.post(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'file_id': str(self.file.id),
                 'dataset_id': str(dataset.id),
@@ -312,9 +312,9 @@ class DQComplianceExecutionTest(TestCase):
             format='json'
         )
         self.assertEqual(compliance_response.status_code, status.HTTP_201_CREATED)
-        
+
         dq_response = self.client.post(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {
                 'file_id': str(self.file.id),
                 'dataset_id': str(dataset.id),
@@ -323,25 +323,25 @@ class DQComplianceExecutionTest(TestCase):
             format='json'
         )
         self.assertEqual(dq_response.status_code, status.HTTP_201_CREATED)
-        
+
         # Get the runs
         dq_run = DQRun.objects.filter(dataset=dataset).first()
         compliance_run = ComplianceRun.objects.filter(dataset=dataset).first()
-        
+
         self.assertIsNotNone(dq_run)
         self.assertIsNotNone(compliance_run)
-        
+
         # Execute both runs synchronously (simulating job execution)
         from hub.apps.dq.views import execute_dq_run
         from hub.apps.compliance.views import execute_compliance_run
-        
+
         execute_dq_run(str(dq_run.id))
         execute_compliance_run(str(compliance_run.id))
-        
+
         # Refresh and verify runs were updated
         dq_run.refresh_from_db()
         compliance_run.refresh_from_db()
-        
+
         self.assertEqual(dq_run.overall_status, 'PASS')
         self.assertEqual(compliance_run.overall_status, 'PASS')
 

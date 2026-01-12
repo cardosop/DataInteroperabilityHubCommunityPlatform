@@ -23,24 +23,24 @@ import yaml
 class OpenAPISchemaView(SpectacularAPIView):
     """
     OpenAPI 3.0 schema generation endpoint.
-    
+
     GET /api-docs/openapi.json
     GET /api/v1/openapi.json
     GET /api/v1/openapi.yaml
     """
     renderer_classes = [drf_spectacular.renderers.OpenApiJsonRenderer]
     urlconf = 'hub.urls'
-    
+
     def get(self, request, *args, **kwargs):
         """Return JSON format schema with validation and enhancement"""
         from .openapi_validation import OpenAPISpecValidator
         from .openapi_enhancement import OpenAPISpecEnhancer
         from drf_spectacular.generators import SchemaGenerator
-        
+
         # Generate schema using the generator
         generator = SchemaGenerator(urlconf=self.urlconf)
         schema = generator.get_schema(request=request, public=True)
-        
+
         # Validate schema
         is_valid, errors = OpenAPISpecValidator.validate_spec(schema)
         if not is_valid:
@@ -50,17 +50,17 @@ class OpenAPISchemaView(SpectacularAPIView):
                 "openapi_spec_validation_errors",
                 errors=errors
             )
-        
+
         # Enhance schema with validation and additional documentation
         schema = OpenAPISpecValidator.enhance_spec(schema)
         schema = OpenAPISpecEnhancer.enhance_spec(schema)
-        
+
         # Check if YAML format requested
         format_type = request.query_params.get('format', 'json')
         if format_type.lower() == 'yaml':
             yaml_content = OpenAPISpecValidator.export_spec(schema, format='yaml')
             return Response(yaml_content, content_type='application/x-yaml')
-        
+
         # Return JSON schema
         return Response(schema, content_type='application/json')
 
@@ -68,22 +68,22 @@ class OpenAPISchemaView(SpectacularAPIView):
 class OpenAPIYAMLView(SpectacularAPIView):
     """
     OpenAPI 3.0 schema generation endpoint (YAML format).
-    
+
     GET /api/v1/openapi.yaml
     """
     renderer_classes = [drf_spectacular.renderers.OpenApiYamlRenderer]
     urlconf = 'hub.urls'
-    
+
     def get(self, request, *args, **kwargs):
         """Return YAML format schema with validation and enhancement"""
         from .openapi_validation import OpenAPISpecValidator
         from .openapi_enhancement import OpenAPISpecEnhancer
         from drf_spectacular.generators import SchemaGenerator
-        
+
         # Generate schema using the generator
         generator = SchemaGenerator(urlconf=self.urlconf)
         schema = generator.get_schema(request=request, public=True)
-        
+
         # Validate schema
         is_valid, errors = OpenAPISpecValidator.validate_spec(schema)
         if not is_valid:
@@ -93,11 +93,11 @@ class OpenAPIYAMLView(SpectacularAPIView):
                 "openapi_spec_validation_errors",
                 errors=errors
             )
-        
+
         # Enhance schema with validation and additional documentation
         schema = OpenAPISpecValidator.enhance_spec(schema)
         schema = OpenAPISpecEnhancer.enhance_spec(schema)
-        
+
         # Export as YAML
         yaml_content = OpenAPISpecValidator.export_spec(schema, format='yaml')
         return Response(yaml_content, content_type='application/x-yaml')
@@ -106,26 +106,44 @@ class OpenAPIYAMLView(SpectacularAPIView):
 class SwaggerUIView(SpectacularSwaggerView):
     """
     Enhanced Swagger UI documentation endpoint with comprehensive examples.
-    
+
     GET /api-docs/
+
+    Provides interactive API documentation using Swagger UI.
     """
-    # Customize Swagger UI configuration
     urlconf = 'hub.urls'
-    
+
     def get(self, request, *args, **kwargs):
-        """Return Swagger UI with enhanced configuration."""
+        """
+        Return Swagger UI with enhanced configuration.
+
+        The Swagger UI automatically loads the OpenAPI schema from the
+        openapi-schema endpoint and provides interactive API exploration.
+        """
         response = super().get(request, *args, **kwargs)
-        # Additional customization can be added here if needed
         return response
 
 
 class ReDocView(SpectacularRedocView):
     """
     ReDoc documentation endpoint.
-    
+
     GET /api-docs/redoc/
+
+    Provides alternative API documentation using ReDoc.
+    ReDoc offers a clean, three-panel documentation layout.
     """
-    pass
+    urlconf = 'hub.urls'
+
+    def get(self, request, *args, **kwargs):
+        """
+        Return ReDoc documentation.
+
+        ReDoc automatically loads the OpenAPI schema and provides
+        a clean, readable documentation interface.
+        """
+        response = super().get(request, *args, **kwargs)
+        return response
 
 
 class APIInfoSerializer(serializers.Serializer):
@@ -146,15 +164,15 @@ class APIInfoSerializer(serializers.Serializer):
 def api_info(request):
     """
     API information endpoint.
-    
+
     GET /api/v1/
     Returns basic API information and available endpoints.
     """
     from .versioning import APIVersionManager
-    
+
     # Get API version from request
     api_version = APIVersionManager.get_request_version(request)
-    
+
     return Response({
         'name': 'Interoperable Data Hub API',
         'version': str(api_version),
@@ -194,7 +212,7 @@ def api_info(request):
 def api_not_found(request):
     """
     Catch-all handler for non-existent API endpoints.
-    
+
     This ensures all 404s within /api/v1/ return standardized error format.
     """
     raise NotFound('Resource not found')

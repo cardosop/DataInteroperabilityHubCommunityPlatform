@@ -155,10 +155,10 @@ Compliance scanning, PII detection, risk assessment, and reporting.
 
 ### API Endpoints
 
-- `GET /api/v1/compliance/scans/` - List compliance scans
-- `POST /api/v1/compliance/scans/` - Create compliance scan
-- `GET /api/v1/compliance/scans/{id}/` - Get compliance scan
-- `GET /api/v1/compliance/scans/{id}/report/` - Get compliance report
+- `GET /api/v1/compliance/runs/` - List compliance runs
+- `POST /api/v1/compliance/runs/` - Create compliance run
+- `GET /api/v1/compliance/runs/{id}/` - Get compliance run
+- `GET /api/v1/compliance/runs/{id}/results/` - Get compliance run results
 
 ### Documentation
 

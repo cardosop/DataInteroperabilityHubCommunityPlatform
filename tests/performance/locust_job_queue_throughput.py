@@ -151,7 +151,7 @@ if LOCUST_AVAILABLE:
 
         def _create_dq_or_compliance_run(self, run_type: str):
             """Create a DQ or compliance run (which creates a job)"""
-            endpoint = '/dq-runs' if run_type == 'DQ_RUN' else '/compliance-runs'
+            endpoint = '/dq/runs' if run_type == 'DQ_RUN' else '/compliance/runs'
 
             # Create a minimal file first if needed
             file_id = self._ensure_test_file()
@@ -234,4 +234,3 @@ if LOCUST_AVAILABLE:
             # you'd create an actual file
             return "00000000-0000-0000-0000-000000000000"  # Placeholder
 
-    

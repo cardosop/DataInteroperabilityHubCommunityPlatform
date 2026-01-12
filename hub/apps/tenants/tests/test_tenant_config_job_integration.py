@@ -71,8 +71,8 @@ class TenantConfigJobIntegrationTest(TestCase):
         queue.empty()
         
         # Create job (should succeed)
-        # URL pattern: /api/v1/jobs/ includes router that registers "jobs", so full path is /api/v1/jobs/jobs/
-        response = self.client.post("/api/v1/jobs/jobs/", {
+        # URL pattern: /api/v1/jobs/ includes router that registers "jobs", so full path is /api/v1/jobs/
+        response = self.client.post("/api/v1/jobs/", {
             "type": JobType.DQ_RUN,
             "resource_type": "DATASET",
             "resource_id": "123e4567-e89b-12d3-a456-426614174000"
@@ -100,7 +100,7 @@ class TenantConfigJobIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # Try to create job (should fail - concurrency limit exceeded)
-        response = self.client.post("/api/v1/jobs/jobs/", {
+        response = self.client.post("/api/v1/jobs/", {
             "type": JobType.DQ_RUN,
             "resource_type": "DATASET",
             "resource_id": "123e4567-e89b-12d3-a456-426614174000"
@@ -128,7 +128,7 @@ class TenantConfigJobIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # Try to create job (should fail - queue depth limit exceeded)
-        response = self.client.post("/api/v1/jobs/jobs/", {
+        response = self.client.post("/api/v1/jobs/", {
             "type": JobType.DQ_RUN,
             "resource_type": "DATASET",
             "resource_id": "123e4567-e89b-12d3-a456-426614174000"
@@ -152,7 +152,7 @@ class TenantConfigJobIntegrationTest(TestCase):
         queue.empty()
         
         # Create job (should succeed with platform defaults)
-        response = self.client.post("/api/v1/jobs/jobs/", {
+        response = self.client.post("/api/v1/jobs/", {
             "type": JobType.DQ_RUN,
             "resource_type": "DATASET",
             "resource_id": "123e4567-e89b-12d3-a456-426614174000"

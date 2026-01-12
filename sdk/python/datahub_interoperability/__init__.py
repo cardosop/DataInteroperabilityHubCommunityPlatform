@@ -20,6 +20,20 @@ from .errors import (
     ServerError,
     NetworkError,
     parse_error,
+    MarketplaceError,
+    MarketplaceValidationError,
+    MarketplaceConnectionError,
+    BaaSError,
+    BaaSValidationError,
+    ODHMLError,
+    ODHMLValidationError,
+    ODHMLNotFoundError,
+    ODHMLConflictError,
+    ModelServingError,
+    ModelServingValidationError,
+    ModelServingNotFoundError,
+    ModelServingDeploymentError,
+    ABTestError,
 )
 from .contracts import ContractsAPI
 from .lineage import LineageAPI
@@ -32,6 +46,10 @@ from .observability import ObservabilityAPI
 from .transformation import TransformationAPI
 from .virtualization import VirtualizationAPI
 from .webhooks import WebhooksAPI
+from .marketplace import MarketplaceIntegrationAPI
+from .baas import BaaSAPI
+from .ml import ODHIntegrationAPI, TrainingAPI, InferenceAPI
+from .model_serving import ModelServingAPI
 
 __version__ = "2.0.0"
 __all__ = [
@@ -47,6 +65,20 @@ __all__ = [
     "ServerError",
     "NetworkError",
     "parse_error",
+    "MarketplaceError",
+    "MarketplaceValidationError",
+    "MarketplaceConnectionError",
+    "BaaSError",
+    "BaaSValidationError",
+    "ODHMLError",
+    "ODHMLValidationError",
+    "ODHMLNotFoundError",
+    "ODHMLConflictError",
+    "ModelServingError",
+    "ModelServingValidationError",
+    "ModelServingNotFoundError",
+    "ModelServingDeploymentError",
+    "ABTestError",
     "ContractsAPI",
     "LineageAPI",
     "ScheduledIngestionAPI",
@@ -58,5 +90,11 @@ __all__ = [
     "TransformationAPI",
     "VirtualizationAPI",
     "WebhooksAPI",
+    "MarketplaceIntegrationAPI",
+    "BaaSAPI",
+    "ODHIntegrationAPI",
+    "TrainingAPI",
+    "InferenceAPI",
+    "ModelServingAPI",
 ]
 

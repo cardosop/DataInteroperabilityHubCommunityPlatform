@@ -14,7 +14,6 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Error handling
 """
 import json
-import pytest
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
@@ -34,7 +33,6 @@ from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
 
-pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

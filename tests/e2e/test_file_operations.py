@@ -110,7 +110,7 @@ class FileOperationsE2ETest(E2ETestBase):
         
         # Initialize upload (returns pre-signed URL)
         response = self.client.post(
-            '/api/v1/files/files/init/',
+            '/api/v1/files/init/',
             {
                 'name': 'presigned_test.csv',
                 'content_type': 'text/csv',
@@ -147,7 +147,7 @@ class FileOperationsE2ETest(E2ETestBase):
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         
         # Download file
-        response = self.client.get(f'/api/v1/files/files/{file_id}/download/')
+        response = self.client.get(f'/api/v1/files/{file_id}/download/')
         
         # Should return pre-signed URL or redirect
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_302_FOUND])
@@ -164,7 +164,7 @@ class FileOperationsE2ETest(E2ETestBase):
         import uuid
         fake_file_id = uuid.uuid4()
         
-        response = self.client.get(f'/api/v1/files/files/{fake_file_id}/download/')
+        response = self.client.get(f'/api/v1/files/{fake_file_id}/download/')
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
     
@@ -182,11 +182,11 @@ class FileOperationsE2ETest(E2ETestBase):
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         
         # Delete file
-        response = self.client.delete(f'/api/v1/files/files/{file_id}/')
+        response = self.client.delete(f'/api/v1/files/{file_id}/')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
         # Try to download deleted file
-        response = self.client.get(f'/api/v1/files/files/{file_id}/download/')
+        response = self.client.get(f'/api/v1/files/{file_id}/download/')
         # May return 410 GONE or 400 BAD REQUEST depending on implementation
         self.assertIn(response.status_code, [status.HTTP_410_GONE, status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND])
     
@@ -204,7 +204,7 @@ class FileOperationsE2ETest(E2ETestBase):
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         
         # Delete file
-        response = self.client.delete(f'/api/v1/files/files/{file_id}/')
+        response = self.client.delete(f'/api/v1/files/{file_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -234,7 +234,7 @@ class FileOperationsE2ETest(E2ETestBase):
         
         # Try to complete with wrong hash
         response = self.client.post(
-            f'/api/v1/files/files/{file_id}/complete/',
+            f'/api/v1/files/{file_id}/complete/',
             {'content_sha256': wrong_hash},
             format='json'
         )
@@ -249,7 +249,7 @@ class FileOperationsE2ETest(E2ETestBase):
         
         # Initialize upload with wrong size
         response = self.client.post(
-            '/api/v1/files/files/init/',
+            '/api/v1/files/init/',
             {
                 'name': 'size_mismatch.csv',
                 'content_type': 'text/csv',
@@ -296,7 +296,7 @@ class FileOperationsE2ETest(E2ETestBase):
         """Test uploading unsupported file format"""
         # Try to upload unsupported format
         response = self.client.post(
-            '/api/v1/files/files/init/',
+            '/api/v1/files/init/',
             {
                 'name': 'test.xyz',
                 'content_type': 'application/xyz',
@@ -366,7 +366,7 @@ class FileOperationsE2ETest(E2ETestBase):
         self.assertEqual(file_obj.status, FileStatus.ACTIVE)
         
         # Delete (should be DELETED)
-        self.client.delete(f'/api/v1/files/files/{file_id}/')
+        self.client.delete(f'/api/v1/files/{file_id}/')
         file_obj.refresh_from_db()
         self.assertEqual(file_obj.status, FileStatus.DELETED)
     
@@ -384,7 +384,7 @@ class FileOperationsE2ETest(E2ETestBase):
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         
         # Get file metadata
-        response = self.client.get(f'/api/v1/files/files/{file_id}/')
+        response = self.client.get(f'/api/v1/files/{file_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(file_id))

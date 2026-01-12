@@ -73,7 +73,7 @@ class ContractValidationTest(TestCase):
             'cli_version': '1.0.0'
         }
         
-        response = self.client.post(f"/api/v1/contracts/contracts/{contract.id}/validate/", {}, format="json")
+        response = self.client.post(f"/api/v1/contracts/{contract.id}/validate/", {}, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['validation_status'], 'VALID')
@@ -114,7 +114,7 @@ class ContractValidationTest(TestCase):
             'cli_version': '1.0.0'
         }
         
-        response = self.client.post(f"/api/v1/contracts/contracts/{contract.id}/validate/", {}, format="json")
+        response = self.client.post(f"/api/v1/contracts/{contract.id}/validate/", {}, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['validation_status'], 'INVALID')
@@ -157,7 +157,7 @@ class ContractValidationTest(TestCase):
         mock_create_job.return_value = mock_job
         
         response = self.client.post(
-            f"/api/v1/contracts/contracts/{contract.id}/validate/",
+            f"/api/v1/contracts/{contract.id}/validate/",
             {'async': True},
             format="json"
         )
@@ -193,7 +193,7 @@ class ContractValidationTest(TestCase):
             'cli_version': '1.0.0'
         }
         
-        response = self.client.post(f"/api/v1/contracts/contracts/{contract.id}/lint/", {}, format="json")
+        response = self.client.post(f"/api/v1/contracts/{contract.id}/lint/", {}, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('issues', response.data)
@@ -221,7 +221,7 @@ class ContractValidationTest(TestCase):
         }
         
         response = self.client.post(
-            f"/api/v1/contracts/contracts/{contract.id}/convert/",
+            f"/api/v1/contracts/{contract.id}/convert/",
             {'target_format': 'YAML'},
             format="json"
         )

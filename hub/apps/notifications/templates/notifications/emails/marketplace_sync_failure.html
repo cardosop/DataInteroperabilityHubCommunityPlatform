@@ -1,0 +1,31 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Marketplace Sync Failed{% endblock %}
+
+{% block content %}
+<h2>Marketplace Sync Failed</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>Your marketplace sync job has failed.</p>
+<p><strong>Sync Job ID:</strong> {{ sync_job_id }}</p>
+<p><strong>Marketplace Type:</strong> {{ marketplace_type }}</p>
+<p><strong>Direction:</strong> {{ direction }}</p>
+<p><strong>Connection:</strong> {{ connection_name }}</p>
+{% if items_synced is not None %}
+<p><strong>Items Synced:</strong> {{ items_synced }}</p>
+{% endif %}
+{% if items_failed is not None %}
+<p><strong>Items Failed:</strong> {{ items_failed }}</p>
+{% endif %}
+{% if error_message %}
+<p><strong>Error:</strong></p>
+<div class="code">{{ error_message }}</div>
+{% endif %}
+{% if sync_job_url %}
+<p>View sync job details:</p>
+<p style="text-align: center;">
+    <a href="{{ sync_job_url }}" class="button">View Sync Job</a>
+</p>
+{% endif %}
+<p>Please review the error and try again. If the problem persists, contact support.</p>
+{% endblock %}
+

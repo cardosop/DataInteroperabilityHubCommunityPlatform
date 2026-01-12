@@ -106,7 +106,7 @@ class ChunkedUploadTest(TestCase):
             "chunk_size": 10 * 1024 * 1024
         }
         
-        response = self.client.post(f"/api/v1/files/files/{file_obj.id}/chunks/init/", data, format="json")
+        response = self.client.post(f"/api/v1/files/{file_obj.id}/chunks/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("upload_url", response.data)
@@ -140,7 +140,7 @@ class ChunkedUploadTest(TestCase):
             "chunk_size": 1024
         }
         
-        response = self.client.post(f"/api/v1/files/files/{file_obj.id}/chunks/init/", data, format="json")
+        response = self.client.post(f"/api/v1/files/{file_obj.id}/chunks/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
     
@@ -186,7 +186,7 @@ class ChunkedUploadTest(TestCase):
             "parts": parts
         }
         
-        response = self.client.post(f"/api/v1/files/files/{file_obj.id}/complete/", data, format="json")
+        response = self.client.post(f"/api/v1/files/{file_obj.id}/complete/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         

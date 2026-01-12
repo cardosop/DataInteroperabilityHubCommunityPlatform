@@ -40,7 +40,7 @@ from .serializers import (
     DatasetTopologySerializer
 )
 from .services import VirtualizationService
-from .business_rules import VirtualizationBusinessRules
+from .business_rules import VirtualizationBusinessRules, VirtualizationRuleExecutionContext
 from hub.apps.core.services.base import ValidationError, NotFoundError, PermissionError
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.auth.permissions import HasRole, HasAnyRole, HasScope
@@ -1000,59 +1000,30 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             user_id=str(request.user.id) if request.user and request.user.id else None
         )
 
-        # Perform comprehensive validation
+        # Create execution context for better integration with base class features
+        # (caching, metrics, tracing, logging)
+        context = VirtualizationRuleExecutionContext(
+            tenant_id=str(virtual_dataset.tenant_id),
+            user_id=str(request.user.id) if request.user and request.user.id else None,
+            virtual_dataset=virtual_dataset,
+            query=virtual_dataset.query
+        )
+
+        # Use execute() method for comprehensive validation with caching, metrics, and tracing
+        # This enables better observability and performance through caching
+        validation_result = business_rules.execute(
+            context=context,
+            validation_type='all',
+            use_cache=True  # Enable caching for validation results
+        )
+
+        # Convert ValidationResult to the expected format
         validation_results = {
-            'is_valid': True,
-            'errors': [],
-            'warnings': [],
-            'details': {}
+            'is_valid': validation_result.is_valid,
+            'errors': validation_result.errors,
+            'warnings': validation_result.warnings,
+            'details': validation_result.details
         }
-
-        # 1. Validate query syntax
-        query_result = business_rules.validate_query_syntax(
-            query=virtual_dataset.query,
-            query_type=virtual_dataset.query_type,
-            raise_on_error=False
-        )
-        if not query_result.is_valid:
-            validation_results['is_valid'] = False
-            validation_results['errors'].extend(query_result.errors)
-        validation_results['warnings'].extend(query_result.warnings)
-        validation_results['details']['query_syntax'] = query_result.details
-
-        # 2. Validate schema alignment
-        schema_result = business_rules.validate_schema_alignment(
-            virtual_dataset=virtual_dataset,
-            raise_on_error=False
-        )
-        if not schema_result.is_valid:
-            validation_results['is_valid'] = False
-            validation_results['errors'].extend(schema_result.errors)
-        validation_results['warnings'].extend(schema_result.warnings)
-        validation_results['details']['schema_alignment'] = schema_result.details
-
-        # 3. Validate source compatibility
-        source_result = business_rules.validate_source_compatibility(
-            virtual_dataset=virtual_dataset,
-            raise_on_error=False
-        )
-        if not source_result.is_valid:
-            validation_results['is_valid'] = False
-            validation_results['errors'].extend(source_result.errors)
-        validation_results['warnings'].extend(source_result.warnings)
-        validation_results['details']['source_compatibility'] = source_result.details
-
-        # 4. Validate cross-source compatibility (if multiple sources)
-        if virtual_dataset.sources and len(virtual_dataset.sources) >= 2:
-            cross_source_result = business_rules.validate_cross_source_compatibility(
-                virtual_dataset=virtual_dataset,
-                raise_on_error=False
-            )
-            if not cross_source_result.is_valid:
-                validation_results['is_valid'] = False
-                validation_results['errors'].extend(cross_source_result.errors)
-            validation_results['warnings'].extend(cross_source_result.warnings)
-            validation_results['details']['cross_source_compatibility'] = cross_source_result.details
 
         # Log audit event
         create_audit_event(

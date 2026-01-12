@@ -189,6 +189,11 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 
 # Email (console backend for development)
 EMAIL_BACKEND=console
+
+# Marketplace Connectors (see Marketplace Configuration section below)
+DADOS_GOV_BR_API_KEY=your-jwt-token-here
+CKAN_TEST_URL=https://demo.ckan.org
+CKAN_TEST_API_KEY=your-test-api-key-here
 ```
 
 **Staging** (`.env.staging`):
@@ -209,6 +214,17 @@ SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_USERNAME=<smtp-username>
 SMTP_PASSWORD=<smtp-password>
+
+# Marketplace Connectors (see Marketplace Configuration section below)
+DADOS_GOV_BR_API_KEY=<jwt-token-from-secrets-manager>
+CKAN_TEST_URL=https://dados.gov.br
+CKAN_TEST_API_KEY=<api-key-from-secrets-manager>
+SNOWFLAKE_ACCOUNT=<snowflake-account>
+SNOWFLAKE_USER=<snowflake-user>
+SNOWFLAKE_TOKEN=<snowflake-token>
+SNOWFLAKE_WAREHOUSE=<snowflake-warehouse>
+SNOWFLAKE_ROLE=<snowflake-role>
+SNOWFLAKE_DATABASE=<snowflake-database>
 ```
 
 **Production** (`.env.production`):
@@ -229,7 +245,140 @@ SMTP_HOST=smtp.production.com
 SMTP_PORT=587
 SMTP_USERNAME=<smtp-username>
 SMTP_PASSWORD=<smtp-password>
+
+# Marketplace Connectors (see Marketplace Configuration section below)
+# IMPORTANT: Use secrets manager for production (AWS Secrets Manager, HashiCorp Vault, etc.)
+DADOS_GOV_BR_API_KEY=<jwt-token-from-secrets-manager>
+CKAN_TEST_URL=https://dados.gov.br
+CKAN_TEST_API_KEY=<api-key-from-secrets-manager>
+SNOWFLAKE_ACCOUNT=<snowflake-account>
+SNOWFLAKE_USER=<snowflake-user>
+SNOWFLAKE_TOKEN=<snowflake-token>
+SNOWFLAKE_WAREHOUSE=<snowflake-warehouse>
+SNOWFLAKE_ROLE=<snowflake-role>
+SNOWFLAKE_DATABASE=<snowflake-database>
 ```
+
+#### 1.2.1 Marketplace Connector Configuration
+
+The Data Interoperability Hub supports integration with multiple marketplace instances for harvesting data. Configure the following environment variables based on your requirements:
+
+**Marketplace Environment Variables:**
+
+| Variable | Description | Required | Default | Example |
+|----------|-------------|----------|---------|---------|
+| `DADOS_GOV_BR_API_KEY` | JWT Bearer token for dados.gov.br Swagger API (NOT CKAN). Format: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` | Yes* | None | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
+| `CKAN_DADOS_GOV_BR_API_KEY` | **DEPRECATED** - Use `DADOS_GOV_BR_API_KEY` instead. Still supported for backward compatibility. | No | None | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
+| `CKAN_TEST_URL` | Marketplace connector instance URL for testing (supports both CKAN and Swagger). Used for test instances like demo.ckan.org. | No | `https://demo.ckan.org` | `https://demo.ckan.org` or `https://dados.gov.br` |
+| `CKAN_TEST_API_KEY` | API key for CKAN test instances (demo.ckan.org, data.gov). Not required for dados.gov.br (uses JWT token). | No | None | `test-key-abc123...` |
+| `SNOWFLAKE_ACCOUNT` | Snowflake account identifier (e.g., `xy12345.us-east-1`). Required for Snowflake Data Marketplace connector. | No** | None | `xy12345.us-east-1` |
+| `SNOWFLAKE_USER` | Snowflake user name for authentication. Required for Snowflake Data Marketplace connector. | No** | None | `MARKETPLACE_USER` |
+| `SNOWFLAKE_TOKEN` | Snowflake authentication token (JWT or OAuth token). Required for Snowflake Data Marketplace connector. | No** | None | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
+| `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse name for executing queries. Required for Snowflake Data Marketplace connector. | No** | None | `MARKETPLACE_WAREHOUSE` |
+| `SNOWFLAKE_ROLE` | Snowflake role for access control. Required for Snowflake Data Marketplace connector. | No** | None | `MARKETPLACE_ROLE` |
+| `SNOWFLAKE_DATABASE` | Snowflake database name for marketplace data. Required for Snowflake Data Marketplace connector. | No** | None | `MARKETPLACE_DB` |
+| `MOCK_SERVER_URL` | Mock server URL for testing marketplace connectors (internal service). Used for integration testing. | No | `http://mock-server:8080` | `http://mock-server:8080` |
+
+\* Required for dados.gov.br Swagger API connector. Other CKAN instances (demo.ckan.org, data.gov) use standard API keys and don't require JWT tokens.
+
+\** Required if using Snowflake Data Marketplace connector. All Snowflake variables must be set together.
+
+**Marketplace Configuration Requirements:**
+
+**1. dados.gov.br (Brazilian Government Open Data Portal)**
+- **Type**: Swagger API (NOT CKAN)
+- **Base URL**: `https://dados.gov.br`
+- **Authentication**: JWT Bearer token
+- **Required Variables**:
+  - `DADOS_GOV_BR_API_KEY` (JWT token format: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`)
+- **Connector**: `DadosGovBrConnector` (Swagger-based)
+- **Swagger Spec**: Automatically loaded from `https://dados.gov.br/v3/api-docs`
+- **Note**: Uses custom Swagger APIs (`/dados/api/publico/conjuntos-dados`), NOT standard CKAN APIs
+
+**2. CKAN Instances (demo.ckan.org, data.gov)**
+- **Type**: Standard CKAN API
+- **Base URLs**:
+  - `https://demo.ckan.org` (default test instance)
+  - `https://data.gov` (US Government Open Data Portal)
+- **Authentication**: Standard CKAN API key (not JWT token)
+- **Required Variables**:
+  - `CKAN_TEST_URL` (instance URL)
+  - `CKAN_TEST_API_KEY` (API key from CKAN instance)
+- **Connector**: `CKANConnector` (standard CKAN API)
+- **Note**: API keys can be obtained from CKAN instance user profile
+
+**3. Snowflake Data Marketplace**
+- **Type**: Snowflake Data Marketplace
+- **Authentication**: Snowflake account, user, token, warehouse, role, database
+- **Required Variables** (all must be set together):
+  - `SNOWFLAKE_ACCOUNT` (account identifier)
+  - `SNOWFLAKE_USER` (user name)
+  - `SNOWFLAKE_TOKEN` (authentication token)
+  - `SNOWFLAKE_WAREHOUSE` (warehouse name)
+  - `SNOWFLAKE_ROLE` (role name)
+  - `SNOWFLAKE_DATABASE` (database name)
+- **Connector**: Snowflake Data Marketplace connector
+- **Documentation**: See [Snowflake Data Marketplace Documentation](https://docs.snowflake.com/user-guide/gen-conn-config)
+
+**4. Mock Server (Testing)**
+- **Type**: Mock server for integration testing
+- **Base URL**: `http://mock-server:8080` (internal Docker network)
+- **Authentication**: None (testing only)
+- **Required Variables**:
+  - `MOCK_SERVER_URL` (default: `http://mock-server:8080`)
+- **Purpose**: Simulate marketplace APIs for testing
+- **Note**: Only used in development/testing environments
+
+**Configuration Examples:**
+
+**Development Environment:**
+```bash
+# Minimal configuration for development
+DADOS_GOV_BR_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+CKAN_TEST_URL=https://demo.ckan.org
+CKAN_TEST_API_KEY=test-key-abc123
+MOCK_SERVER_URL=http://mock-server:8080
+```
+
+**Staging Environment:**
+```bash
+# Full configuration for staging
+DADOS_GOV_BR_API_KEY=<jwt-token-from-secrets-manager>
+CKAN_TEST_URL=https://dados.gov.br
+CKAN_TEST_API_KEY=<api-key-from-secrets-manager>
+SNOWFLAKE_ACCOUNT=xy12345.us-east-1
+SNOWFLAKE_USER=MARKETPLACE_USER
+SNOWFLAKE_TOKEN=<token-from-secrets-manager>
+SNOWFLAKE_WAREHOUSE=MARKETPLACE_WAREHOUSE
+SNOWFLAKE_ROLE=MARKETPLACE_ROLE
+SNOWFLAKE_DATABASE=MARKETPLACE_DB
+MOCK_SERVER_URL=http://mock-server:8080
+```
+
+**Production Environment:**
+```bash
+# Production configuration (use secrets manager)
+# IMPORTANT: Never hardcode secrets in production
+# Use AWS Secrets Manager, HashiCorp Vault, or similar
+DADOS_GOV_BR_API_KEY=<from-secrets-manager>
+CKAN_TEST_URL=https://dados.gov.br
+CKAN_TEST_API_KEY=<from-secrets-manager>
+SNOWFLAKE_ACCOUNT=<from-secrets-manager>
+SNOWFLAKE_USER=<from-secrets-manager>
+SNOWFLAKE_TOKEN=<from-secrets-manager>
+SNOWFLAKE_WAREHOUSE=<from-secrets-manager>
+SNOWFLAKE_ROLE=<from-secrets-manager>
+SNOWFLAKE_DATABASE=<from-secrets-manager>
+```
+
+**Security Best Practices:**
+- **Never commit secrets to Git**: Use `.gitignore` to exclude `.env*` files
+- **Use secrets managers in production**: AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, GCP Secret Manager
+- **Rotate credentials regularly**: Rotate API keys and tokens every 90 days
+- **Use least privilege**: API keys should have minimal required permissions
+- **Monitor access**: Enable audit logging for API key usage
+
+For detailed marketplace connector deployment and troubleshooting, see [Marketplace Connector Deployment Runbook](./runbooks/marketplace-connector-deployment.md).
 
 #### 1.3 Select Docker Compose File
 
@@ -874,7 +1023,7 @@ docker system df -v
    ```bash
    # Checkout previous version
    git checkout <previous-tag-or-commit>
-   
+
    # Use previous compose file
    export COMPOSE_FILE=docker-compose.yml  # or previous version
    ```
@@ -883,7 +1032,7 @@ docker system df -v
    ```bash
    # Stop services
    docker compose -f ${COMPOSE_FILE} down
-   
+
    # Restore volume from backup
    docker run --rm \
      -v <volume-name>:/data \
@@ -895,7 +1044,7 @@ docker system df -v
    ```bash
    # Start services with previous version
    docker compose -f ${COMPOSE_FILE} up -d
-   
+
    # Verify services are healthy
    ./scripts/health-checks/health-check-all.sh
    ```
@@ -919,7 +1068,7 @@ docker system df -v
    ```bash
    # Restore database from backup
    docker compose -f ${COMPOSE_FILE} exec -T postgres psql -U hub hub < backup_$(date +%Y%m%d).sql
-   
+
    # Or restore from volume backup
    docker run --rm \
      -v hub-pgdata:/data \
@@ -931,7 +1080,7 @@ docker system df -v
    ```bash
    # Checkout previous code version
    git checkout <previous-commit>
-   
+
    # Rebuild services
    docker compose -f ${COMPOSE_FILE} build api-service
    ```
@@ -940,7 +1089,7 @@ docker system df -v
    ```bash
    # Start services
    docker compose -f ${COMPOSE_FILE} up -d api-service worker-service
-   
+
    # Verify services are healthy
    ./scripts/health-checks/health-check-service-layer.sh
    ```
@@ -958,7 +1107,7 @@ docker system df -v
    ```bash
    # Check current configuration
    docker compose -f ${COMPOSE_FILE} config
-   
+
    # Compare with previous configuration
    git diff <previous-commit> docker-compose.yml
    ```
@@ -974,7 +1123,7 @@ docker system df -v
    ```bash
    # Restart services with corrected configuration
    docker compose -f ${COMPOSE_FILE} up -d
-   
+
    # Verify configuration
    docker compose -f ${COMPOSE_FILE} config
    ```
@@ -993,7 +1142,7 @@ docker system df -v
    ```bash
    # Checkout previous service code
    git checkout <previous-commit> -- services/<service-name>/
-   
+
    # Rebuild service
    docker compose -f ${COMPOSE_FILE} build <service-name>
    ```
@@ -1002,7 +1151,7 @@ docker system df -v
    ```bash
    # Start service
    docker compose -f ${COMPOSE_FILE} up -d <service-name>
-   
+
    # Verify service health
    ./scripts/health-checks/health-check-all.sh
    ```

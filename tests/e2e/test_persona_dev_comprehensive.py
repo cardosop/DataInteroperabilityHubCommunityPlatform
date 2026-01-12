@@ -85,7 +85,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
         api_client.credentials(HTTP_AUTHORIZATION=f'ApiKey {plain_key}')
         
         # Test API call with API key authentication
-        response = api_client.get('/api/v1/assets/assets/')
+        response = api_client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     def test_create_asset_via_api(self):
@@ -93,7 +93,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
         Test creating an asset via REST API (custom integration)
         """
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'api-created-asset',
                 'name': 'API Created Asset',
@@ -136,7 +136,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
         }
         
         response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             contract_data,
             format='json'
         )
@@ -170,7 +170,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
         )
         
         # List assets via API
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Handle both paginated and non-paginated responses
@@ -198,7 +198,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
         
         # Update asset via API (only update description, as name/key may have constraints)
         response = self.client.patch(
-            f'/api/v1/assets/assets/{asset.id}/',
+            f'/api/v1/assets/{asset.id}/',
             {
                 'description': 'Updated description via API'
             },
@@ -226,7 +226,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
         api_client.credentials(HTTP_AUTHORIZATION='ApiKey invalid-key-12345')
         
         # API call should fail with 401
-        response = api_client.get('/api/v1/assets/assets/')
+        response = api_client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
     def test_error_invalid_request_data(self):
@@ -235,7 +235,7 @@ class JourneyDEV001BuildCustomIntegrationTests(E2ETestBase):
         """
         # Try to create asset without required fields
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'description': 'Missing required fields'
             },
@@ -278,7 +278,7 @@ class JourneyDEV002IntegrateViaSDKTests(E2ETestBase):
         # and confirms it doesn't exist yet
         
         # Verify API is accessible (which would be used by SDK)
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Note: When SDK is implemented, we would test:
@@ -324,7 +324,7 @@ class JourneyDEV003IntegrateViaCLITests(E2ETestBase):
         # and confirms it doesn't exist yet
         
         # Verify API is accessible (which would be used by CLI)
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Note: When CLI is implemented, we would test:
@@ -770,7 +770,7 @@ class ExternalDeveloperUseCasesTests(E2ETestBase):
         
         # Step 2: Create asset (should trigger webhook)
         asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'integration-asset',
                 'name': 'Integration Asset',
@@ -918,7 +918,7 @@ class ExternalDeveloperErrorScenariosTests(E2ETestBase):
         unauthenticated_client = APIClient()
         
         # API call without authentication should fail
-        response = unauthenticated_client.get('/api/v1/assets/assets/')
+        response = unauthenticated_client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
     def test_error_authentication_failure_invalid_token(self):
@@ -930,7 +930,7 @@ class ExternalDeveloperErrorScenariosTests(E2ETestBase):
         api_client.credentials(HTTP_AUTHORIZATION='Bearer invalid-token-12345')
         
         # API call with invalid token should fail
-        response = api_client.get('/api/v1/assets/assets/')
+        response = api_client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
     def test_error_webhook_delivery_failure(self):

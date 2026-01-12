@@ -1,7 +1,7 @@
 # User Personas
 
-**Last Updated**: 2025-12-13  
-**Version**: 2.0.0
+**Last Updated**: 2025-01-10
+**Version**: 2.1.0
 
 ---
 
@@ -38,9 +38,9 @@ The Data Interoperability Hub serves **12 personas** (8 original + 4 new), each 
 
 ## Persona 1: Data Product Owner
 
-**Aliases**: Data Steward, Domain Data Owner, Data Product Manager  
-**Typical Role Mapping**: `DATA_PROVIDER` (sometimes `TENANT_ADMIN`)  
-**Seniority**: Mid to senior  
+**Aliases**: Data Steward, Domain Data Owner, Data Product Manager
+**Typical Role Mapping**: `DATA_PROVIDER` (sometimes `TENANT_ADMIN`)
+**Seniority**: Mid to senior
 **Technical Level**: Medium – understands data and schemas; not deeply into infrastructure/CLI
 
 ### Summary
@@ -53,6 +53,8 @@ They work primarily through the **web UI**, relying on the platform to enforce d
 
 - Turn internal datasets into **well-described, trustworthy and compliant data products**
 - Publish assets to the **tenant catalog** and optionally to the **cross-tenant marketplace** ("on the shelf")
+- **Publish assets to external data marketplaces** (Snowflake, AWS Data Exchange, Azure, GCP, etc.) via marketplace integration
+- **Manage marketplace connections** to external platforms for asset distribution
 - Keep contracts, documentation, and metadata **up to date across versions** (while the platform guarantees they stay `VALID`)
 - Be confident that mandatory **data-quality** and **compliance** checks ran, and that everything is backed by audit logs
 
@@ -100,6 +102,20 @@ They work primarily through the **web UI**, relying on the platform to enforce d
 - **NEW**: **Social Features**: Respond to ratings and reviews, manage asset reputation
 - **NEW**: **Data Mesh**: Configure domain ownership, manage domain-scoped assets
 
+#### Marketplace Integration (External Marketplaces)
+
+- **Create Marketplace Connections**: Set up connections to external marketplaces (Snowflake, AWS, Azure, GCP, Databricks, CKAN, etc.)
+- **Test Connections**: Verify marketplace connection credentials and connectivity
+- **PUSH Sync Operations**: Sync assets to external marketplaces for broader distribution
+  - Select assets to publish
+  - Configure sync options (metadata only, full sync, etc.)
+  - Monitor sync job progress
+  - Review sync results and errors
+- **Manage Sync Jobs**: View, monitor, and cancel marketplace sync jobs
+- **View Mappings**: Track mappings between Hub assets and external marketplace listings
+- **Update Marketplace Listings**: Keep marketplace listings synchronized with Hub assets
+- **Marketplace-Specific Configuration**: Configure marketplace-specific settings per platform
+
 ### Technical Capabilities
 
 - **UI Access**: Full access to asset management UI
@@ -120,14 +136,17 @@ They work primarily through the **web UI**, relying on the platform to enforce d
 - Contract validation success rate
 - Quality score improvements
 - Marketplace sales (if applicable)
+- **External marketplace sync success rate**
+- **Number of external marketplace connections**
+- **Assets published to external marketplaces**
 
 ---
 
 ## Persona 2: Data Engineer / Contract Author
 
-**Aliases**: Data Engineer, Contract Developer, Technical Data Owner  
-**Typical Role Mapping**: `DATA_PROVIDER`  
-**Seniority**: Mid to senior  
+**Aliases**: Data Engineer, Contract Developer, Technical Data Owner
+**Typical Role Mapping**: `DATA_PROVIDER`
+**Seniority**: Mid to senior
 **Technical Level**: High – comfortable with APIs, SDKs, CLI, infrastructure
 
 ### Summary
@@ -195,9 +214,9 @@ Technical implementer who creates contracts, sets up data pipelines, integrates 
 
 ## Persona 3: Compliance & Privacy Officer
 
-**Aliases**: Compliance Officer, Privacy Officer, Governance Officer  
-**Typical Role Mapping**: `AUDITOR` (read-only) or `TENANT_ADMIN` (with compliance permissions)  
-**Seniority**: Mid to senior  
+**Aliases**: Compliance Officer, Privacy Officer, Governance Officer
+**Typical Role Mapping**: `AUDITOR` (read-only) or `TENANT_ADMIN` (with compliance permissions)
+**Seniority**: Mid to senior
 **Technical Level**: Low to medium – understands compliance requirements, not deeply technical
 
 ### Summary
@@ -277,9 +296,9 @@ Ensures data assets comply with regulations (GDPR, HIPAA, SOX, LGPD, CCPA) and o
 
 ## Persona 4: Data Consumer / Buyer
 
-**Aliases**: Data Consumer, Data Buyer, Data Analyst, Business User  
-**Typical Role Mapping**: `DATA_CONSUMER`  
-**Seniority**: Junior to senior  
+**Aliases**: Data Consumer, Data Buyer, Data Analyst, Business User
+**Typical Role Mapping**: `DATA_CONSUMER`
+**Seniority**: Junior to senior
 **Technical Level**: Low to medium – understands data needs, not deeply technical
 
 ### Summary
@@ -293,6 +312,8 @@ Discovers, evaluates, and accesses data assets for analysis, reporting, or integ
 - Access data assets easily (download, API, or direct connection)
 - Understand data lineage and dependencies
 - Purchase data assets from marketplace (if applicable)
+- **Discover and import assets from external data marketplaces** (Snowflake, AWS, Azure, GCP, etc.)
+- **Access federated assets** imported from external marketplaces
 - **NEW**: Use natural language search to find data
 - **NEW**: Create transformation pipelines for data
 - **NEW**: Rate and review assets
@@ -305,6 +326,7 @@ Discovers, evaluates, and accesses data assets for analysis, reporting, or integ
 
 - Browse tenant catalog for internal assets
 - Browse marketplace for external assets
+- **Browse external data marketplaces** via marketplace integration (Snowflake, AWS, Azure, GCP, etc.)
 - Search assets by name, description, tags, domain
 - **NEW**: Use natural language search ("show me customer data from last quarter")
 - Filter assets by type, quality, compliance, domain
@@ -328,6 +350,21 @@ Discovers, evaluates, and accesses data assets for analysis, reporting, or integ
 - Access data via API
 - **NEW**: Execute transformation pipelines
 - **NEW**: Query virtual datasets
+
+#### Marketplace Integration (External Marketplaces)
+
+- **PULL Sync Operations**: Discover and import assets from external marketplaces
+  - Browse available listings in external marketplaces
+  - Filter and search marketplace listings
+  - Select listings to import
+  - Configure import options (metadata only, full data, selective resources)
+  - Monitor sync job progress
+  - Review imported federated assets
+- **Access Federated Assets**: Use assets imported from external marketplaces
+  - Query federated assets with dual contracts (ODPS + ODCS)
+  - Access marketplace resources
+  - View marketplace metadata
+- **View Mappings**: Track relationships between Hub assets and external marketplace listings
 
 #### Collaboration
 
@@ -358,14 +395,17 @@ Discovers, evaluates, and accesses data assets for analysis, reporting, or integ
 - User satisfaction
 - **NEW**: Transformation pipeline usage
 - **NEW**: Social engagement (ratings, reviews)
+- **External marketplace discovery success rate**
+- **Federated assets imported from external marketplaces**
+- **Usage of federated assets**
 
 ---
 
 ## Persona 5: Tenant Admin
 
-**Aliases**: Organization Admin, Tenant Administrator  
-**Typical Role Mapping**: `TENANT_ADMIN`  
-**Seniority**: Mid to senior  
+**Aliases**: Organization Admin, Tenant Administrator
+**Typical Role Mapping**: `TENANT_ADMIN`
+**Seniority**: Mid to senior
 **Technical Level**: Medium – understands administration, not deeply technical
 
 ### Summary
@@ -438,9 +478,9 @@ Manages tenant-level configuration, users, and settings. Ensures tenant complian
 
 ## Persona 6: Platform Admin / Marketplace Operator
 
-**Aliases**: Platform Administrator, Marketplace Operator  
-**Typical Role Mapping**: `PLATFORM_ADMIN`  
-**Seniority**: Senior  
+**Aliases**: Platform Administrator, Marketplace Operator
+**Typical Role Mapping**: `PLATFORM_ADMIN`
+**Seniority**: Senior
 **Technical Level**: High – understands platform infrastructure and operations
 
 ### Summary
@@ -451,7 +491,9 @@ Manages platform-wide configuration, monitors platform health, and operates the 
 
 - Onboard new tenants
 - Monitor platform health
-- Manage marketplace operations
+- Manage marketplace operations (internal marketplace)
+- **Manage external marketplace integrations** across all tenants
+- **Monitor marketplace connection health** and sync job performance
 - Configure platform settings
 - **NEW**: Manage connector marketplace
 - **NEW**: Configure advanced marketplace features
@@ -469,13 +511,36 @@ Manages platform-wide configuration, monitors platform health, and operates the 
 
 #### Marketplace Operations
 
-- Manage marketplace listings
-- Process marketplace orders
-- Monitor marketplace health
+- Manage marketplace listings (internal marketplace)
+- Process marketplace orders (internal marketplace)
+- Monitor marketplace health (internal marketplace)
 - **NEW**: Manage connector marketplace
 - **NEW**: Configure usage-based pricing
 - **NEW**: Set up trust signals
 - **NEW**: Configure data previews
+
+#### External Marketplace Integration Management
+
+- **Monitor Marketplace Connections**: Oversee all tenant marketplace connections
+  - View connection status across all tenants
+  - Monitor connection health and test results
+  - Identify and resolve connection issues
+  - Review connection usage statistics
+- **Monitor Sync Jobs**: Track marketplace sync operations across platform
+  - View all sync jobs (PUSH and PULL) across tenants
+  - Monitor sync job success rates and performance
+  - Identify and resolve sync job failures
+  - Generate sync job reports and analytics
+- **Marketplace Platform Management**: Manage supported marketplace platforms
+  - Configure marketplace platform settings
+  - Manage marketplace connector availability
+  - Monitor marketplace API rate limits and quotas
+  - Coordinate with marketplace platform providers
+- **Troubleshooting and Support**: Provide support for marketplace integration issues
+  - Investigate connection failures
+  - Resolve sync job errors
+  - Provide guidance on marketplace-specific requirements
+  - Coordinate with marketplace platform support teams
 
 #### Platform Monitoring
 
@@ -510,18 +575,22 @@ Manages platform-wide configuration, monitors platform health, and operates the 
 ### Success Metrics
 
 - Platform uptime
-- Marketplace transaction volume
+- Marketplace transaction volume (internal marketplace)
 - Tenant satisfaction
 - **NEW**: Data mesh adoption
 - **NEW**: Connector marketplace usage
+- **External marketplace connection success rate**
+- **Marketplace sync job success rate**
+- **Number of active marketplace connections**
+- **Assets synced to/from external marketplaces**
 
 ---
 
 ## Persona 7: External Developer / Integrator
 
-**Aliases**: Developer, Integrator, API User  
-**Typical Role Mapping**: `DATA_CONSUMER` or `DATA_PROVIDER` (depending on use case)  
-**Seniority**: Junior to senior  
+**Aliases**: Developer, Integrator, API User
+**Typical Role Mapping**: `DATA_CONSUMER` or `DATA_PROVIDER` (depending on use case)
+**Seniority**: Junior to senior
 **Technical Level**: High – comfortable with APIs, SDKs, CLI, programming
 
 ### Summary
@@ -533,6 +602,9 @@ Builds integrations between the hub and external systems. Uses APIs, SDKs, and C
 - Integrate hub with external systems
 - Automate data operations
 - Build custom applications
+- **Integrate with external data marketplaces** via marketplace integration APIs
+- **Automate marketplace sync operations** (PUSH and PULL)
+- **Build custom marketplace connectors** for unsupported platforms
 - **NEW**: Use natural language search API
 - **NEW**: Integrate transformation pipeline API
 - **NEW**: Build custom connectors
@@ -550,6 +622,26 @@ Builds integrations between the hub and external systems. Uses APIs, SDKs, and C
 - **NEW**: Use natural language search API
 - **NEW**: Integrate transformation pipeline API
 - **NEW**: Build custom connectors
+
+#### Marketplace Integration Development
+
+- **Marketplace Connection Management**: Create, update, test, and delete marketplace connections via API
+  - Use `/api/v1/integrations/marketplace/connections/` endpoints
+  - Configure marketplace-specific connection parameters
+  - Test connection credentials programmatically
+- **Sync Job Automation**: Automate marketplace sync operations
+  - Create PUSH sync jobs to publish assets to external marketplaces
+  - Create PULL sync jobs to import assets from external marketplaces
+  - Monitor sync job progress via API
+  - Handle sync job errors and retries
+  - Cancel sync jobs programmatically
+- **Mapping Management**: Track and manage asset-to-marketplace mappings
+  - Query mappings between Hub assets and marketplace listings
+  - Monitor sync status via mappings
+- **Custom Connector Development**: Build connectors for unsupported marketplaces
+  - Implement `MarketplaceConnector` interface
+  - Register custom connectors via factory pattern
+  - Test and validate custom connectors
 
 #### Plugin Development
 
@@ -585,14 +677,17 @@ Builds integrations between the hub and external systems. Uses APIs, SDKs, and C
 - Integration time
 - Developer satisfaction
 - **NEW**: Plugin adoption
+- **Marketplace integration API usage**
+- **Custom connector development success**
+- **Marketplace sync automation coverage**
 
 ---
 
 ## Persona 8: Auditor
 
-**Aliases**: Internal Auditor, External Auditor, Compliance Auditor  
-**Typical Role Mapping**: `AUDITOR` (read-only)  
-**Seniority**: Mid to senior  
+**Aliases**: Internal Auditor, External Auditor, Compliance Auditor
+**Typical Role Mapping**: `AUDITOR` (read-only)
+**Seniority**: Mid to senior
 **Technical Level**: Low to medium – understands audit requirements, not deeply technical
 
 ### Summary
@@ -651,9 +746,9 @@ Reviews system audit logs, generates audit reports, and verifies compliance. Wor
 
 ## Persona 9: Data Scientist / ML Engineer **NEW**
 
-**Aliases**: ML Engineer, Data Scientist, AI Engineer  
-**Typical Role Mapping**: `DATA_PROVIDER` or `DATA_CONSUMER` (depending on use case)  
-**Seniority**: Mid to senior  
+**Aliases**: ML Engineer, Data Scientist, AI Engineer
+**Typical Role Mapping**: `DATA_PROVIDER` or `DATA_CONSUMER` (depending on use case)
+**Seniority**: Mid to senior
 **Technical Level**: High – expert in ML/AI, data science, programming
 
 ### Summary
@@ -731,9 +826,9 @@ Uses AI/ML features to build models, analyze data patterns, and leverage intelli
 
 ## Persona 10: Data Analyst **NEW**
 
-**Aliases**: Business Analyst, Data Analyst, Analytics User  
-**Typical Role Mapping**: `DATA_CONSUMER`  
-**Seniority**: Junior to senior  
+**Aliases**: Business Analyst, Data Analyst, Analytics User
+**Typical Role Mapping**: `DATA_CONSUMER`
+**Seniority**: Junior to senior
 **Technical Level**: Medium – understands data analysis, SQL, not deeply technical
 
 ### Summary
@@ -806,9 +901,9 @@ Uses transformation pipelines, data wrangling, and virtualization to analyze dat
 
 ## Persona 11: Community Manager / Data Steward **NEW**
 
-**Aliases**: Community Manager, Data Steward, Social Manager  
-**Typical Role Mapping**: `DATA_PROVIDER` or `TENANT_ADMIN`  
-**Seniority**: Mid to senior  
+**Aliases**: Community Manager, Data Steward, Social Manager
+**Typical Role Mapping**: `DATA_PROVIDER` or `TENANT_ADMIN`
+**Seniority**: Mid to senior
 **Technical Level**: Low to medium – understands community management, not deeply technical
 
 ### Summary
@@ -878,9 +973,9 @@ Manages social features, communities, data stewardship, and collaboration. Works
 
 ## Persona 12: Data Mesh Domain Owner **NEW**
 
-**Aliases**: Domain Owner, Mesh Domain Manager  
-**Typical Role Mapping**: `DATA_PROVIDER` or `TENANT_ADMIN`  
-**Seniority**: Senior  
+**Aliases**: Domain Owner, Mesh Domain Manager
+**Typical Role Mapping**: `DATA_PROVIDER` or `TENANT_ADMIN`
+**Seniority**: Senior
 **Technical Level**: Medium to high – understands data mesh architecture, governance
 
 ### Summary
@@ -996,6 +1091,6 @@ Manages data mesh domains, federated governance, and domain topology. Works thro
 
 ---
 
-**Last Updated**: 2025-12-13  
-**Version**: 2.0.0 (Added 4 new personas: Data Scientist/ML Engineer, Data Analyst, Community Manager, Data Mesh Domain Owner)
+**Last Updated**: 2025-01-10
+**Version**: 2.1.0 (Added marketplace integration capabilities to Data Product Owner, Data Consumer, External Developer, and Platform Administrator personas)
 

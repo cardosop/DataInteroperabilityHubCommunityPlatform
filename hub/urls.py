@@ -49,7 +49,8 @@ if _is_graphene_django_available():
 # Add remaining URL patterns
 urlpatterns.extend([
     path("health/", include("hub.apps.health.urls")),
-    # Observability
+    # Observability - metrics endpoint at root level to bypass DRF authentication
+    # Import metrics_view directly, not via include() to avoid double path
     path("metrics/", include("hub.apps.observability.urls")),
     # API Documentation
     path("api-docs/openapi.json", OpenAPISchemaView.as_view(), name="openapi-schema"),

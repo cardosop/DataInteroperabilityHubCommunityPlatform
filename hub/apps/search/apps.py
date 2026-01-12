@@ -10,3 +10,7 @@ class SearchConfig(AppConfig):
     name = 'hub.apps.search'
     verbose_name = 'Search'
 
+    def ready(self):
+        """Import business rules to register them."""
+        import hub.apps.search.business_rules  # noqa: F401 - Import to register business rules
+

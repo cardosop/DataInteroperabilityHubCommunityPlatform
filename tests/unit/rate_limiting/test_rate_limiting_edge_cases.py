@@ -118,7 +118,7 @@ class RateLimitingEdgeCaseTest(TestCase):
         request = Mock()
         request.tenant_id = str(self.tenant.id)
         request.user = self.user
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         
         # Check rate limit

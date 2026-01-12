@@ -134,7 +134,7 @@ class ContractStatusRulesTest(TestCase):
         )
         
         data = {"status": ContractStatus.ACTIVE}
-        response = self.client.patch(f"/api/v1/contracts/contracts/{contract.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/contracts/{contract.id}/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], ContractStatus.ACTIVE)
@@ -159,7 +159,7 @@ class ContractStatusRulesTest(TestCase):
         )
         
         data = {"status": ContractStatus.ACTIVE}
-        response = self.client.patch(f"/api/v1/contracts/contracts/{contract.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/contracts/{contract.id}/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", response.data)

@@ -99,7 +99,7 @@ class DataContractCLIIntegrationTest(TestCase):
         
         # Validate contract via API
         response = self.client.post(
-            f"/api/v1/contracts/contracts/{contract.id}/validate/",
+            f"/api/v1/contracts/{contract.id}/validate/",
             {},
             format="json"
         )

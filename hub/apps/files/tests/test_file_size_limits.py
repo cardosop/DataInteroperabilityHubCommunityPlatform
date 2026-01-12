@@ -124,7 +124,7 @@ class FileSizeLimitsTest(TestCase):
             "upload_method": "browser"
         }
         
-        response = self.client.post("/api/v1/files/files/init/", data, format="json")
+        response = self.client.post("/api/v1/files/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("size", response.data)
@@ -140,7 +140,7 @@ class FileSizeLimitsTest(TestCase):
             "upload_method": "sdk"
         }
         
-        response = self.client.post("/api/v1/files/files/init/", data, format="json")
+        response = self.client.post("/api/v1/files/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("size", response.data)
@@ -156,7 +156,7 @@ class FileSizeLimitsTest(TestCase):
             "upload_method": "sdk"
         }
         
-        response = self.client.post("/api/v1/files/files/init/", data, format="json")
+        response = self.client.post("/api/v1/files/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("size", response.data)
@@ -172,7 +172,7 @@ class FileSizeLimitsTest(TestCase):
             "upload_method": "browser"
         }
         
-        response = self.client.post("/api/v1/files/files/init/", data, format="json")
+        response = self.client.post("/api/v1/files/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("type", str(response.data).lower())

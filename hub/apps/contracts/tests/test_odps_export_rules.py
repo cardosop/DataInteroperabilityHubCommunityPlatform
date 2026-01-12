@@ -13,13 +13,13 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Error handling
 """
 import json
-import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.business_rules import (
     ODPSExportRules,
-    ValidationResult
+    ODPSRuleExecutionContext
 )
+from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -30,8 +30,6 @@ from hub.apps.contracts.models import (
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import User, UserStatus
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ODPSExportRulesTestBase(TestCase):
@@ -83,13 +81,19 @@ class ODPSExportRulesTestBase(TestCase):
             user_id=str(self.user.id)
         )
 
+        # Create business rules instance
+        self.rules = ODPSExportRules(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+
 
 class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
     """Tests for validate_export_format() method."""
 
     def test_validate_export_format_json(self):
         """Test JSON format validation passes."""
-        result = ODPSExportRules.validate_export_format("json")
+        result = self.rules.validate_export_format("json")
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -97,7 +101,7 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
 
     def test_validate_export_format_yaml(self):
         """Test YAML format validation passes."""
-        result = ODPSExportRules.validate_export_format("yaml")
+        result = self.rules.validate_export_format("yaml")
 
         # YAML validation depends on PyYAML availability
         # If PyYAML is installed, should pass; otherwise should fail
@@ -111,8 +115,8 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
 
     def test_validate_export_format_case_insensitive(self):
         """Test format validation is case-insensitive."""
-        result1 = ODPSExportRules.validate_export_format("JSON")
-        result2 = ODPSExportRules.validate_export_format("YAML")
+        result1 = self.rules.validate_export_format("JSON")
+        result2 = self.rules.validate_export_format("YAML")
 
         self.assertTrue(result1.is_valid)
         # YAML depends on PyYAML availability
@@ -124,7 +128,7 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
 
     def test_validate_export_format_invalid(self):
         """Test invalid format validation fails."""
-        result = ODPSExportRules.validate_export_format("xml")
+        result = self.rules.validate_export_format("xml")
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -132,7 +136,7 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
 
     def test_validate_export_format_empty(self):
         """Test empty format validation fails."""
-        result = ODPSExportRules.validate_export_format("")
+        result = self.rules.validate_export_format("")
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -141,7 +145,7 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
     def test_validate_export_format_none(self):
         """Test None format validation fails."""
         # Type ignore: intentionally testing None for validation
-        result = ODPSExportRules.validate_export_format(None)  # type: ignore
+        result = self.rules.validate_export_format(None)  # type: ignore
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -152,7 +156,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
 
     def test_validate_data_completeness_valid(self):
         """Test data completeness validation passes for valid contract."""
-        result = ODPSExportRules.validate_data_completeness(self.odps_contract)
+        result = self.rules.validate_data_completeness(self.odps_contract)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -169,7 +173,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             hub_contract_json=None
         )
 
-        result = ODPSExportRules.validate_data_completeness(contract)
+        result = self.rules.validate_data_completeness(contract)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -186,7 +190,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             hub_contract_json={"id": "test-id"}  # Missing info
         )
 
-        result = ODPSExportRules.validate_data_completeness(contract)
+        result = self.rules.validate_data_completeness(contract)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -206,7 +210,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             }
         )
 
-        result = ODPSExportRules.validate_data_completeness(contract)
+        result = self.rules.validate_data_completeness(contract)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -226,7 +230,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             }
         )
 
-        result = ODPSExportRules.validate_data_completeness(contract)
+        result = self.rules.validate_data_completeness(contract)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -245,7 +249,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             }
         )
 
-        result = ODPSExportRules.validate_data_completeness(contract)
+        result = self.rules.validate_data_completeness(contract)
 
         # Should still be valid (id is not strictly required)
         self.assertTrue(result.is_valid)
@@ -266,7 +270,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             }
         )
 
-        result = ODPSExportRules.validate_data_completeness(contract)
+        result = self.rules.validate_data_completeness(contract)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(len(result.errors) > 0)
@@ -284,7 +288,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             target_version="4.1"
         )
 
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=self.odps_contract,
             exported_odps=exported_odps
         )
@@ -305,7 +309,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             }
         }
 
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=self.odps_contract,
             exported_odps=exported_odps
         )
@@ -320,7 +324,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             "schema": "https://opendataproducts.org/schema/v4.1"
         }
 
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=self.odps_contract,
             exported_odps=exported_odps
         )
@@ -336,7 +340,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             "product": {}
         }
 
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=self.odps_contract,
             exported_odps=exported_odps
         )
@@ -354,7 +358,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             }
         }
 
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=self.odps_contract,
             exported_odps=exported_odps
         )
@@ -390,7 +394,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             }
         }
 
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=contract,
             exported_odps=exported_odps
         )
@@ -426,7 +430,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             }
         }
 
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=contract,
             exported_odps=exported_odps
         )
@@ -439,7 +443,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
     def test_validate_fidelity_invalid_exported_type(self):
         """Test fidelity validation fails when exported_odps is not a dict."""
         # Type ignore: intentionally testing invalid type for validation
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=self.odps_contract,
             exported_odps="not-a-dict"  # type: ignore
         )
@@ -462,7 +466,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             }
         }
 
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=self.odps_contract,
             exported_odps=exported_odps
         )
@@ -480,7 +484,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         )
 
         # Validate fidelity
-        result = ODPSExportRules.validate_fidelity(
+        result = self.rules.validate_fidelity(
             contract=self.odps_contract,
             exported_odps=exported_odps
         )

@@ -237,7 +237,8 @@ def _map_quality_rules(quality_data: Dict[str, Any]) -> Optional[list]:
             continue
         mapped = {}
         field_map = {
-            "id": ["id"],
+            "id": ["id", "rule_id"],  # Map both id and rule_id to id
+            "rule_id": ["rule_id"],  # Also preserve rule_id if present
             "name": ["name"],
             "dimension": ["dimension"],
             "type": ["type"],

@@ -99,28 +99,47 @@ def get_redis_client() -> redis.Redis:
     """
     Get Redis client for idempotency operations.
 
+    Uses REDIS_CACHE_URL (separate Redis instance for caching) with fallback to REDIS_URL
+    for backward compatibility.
+
     Returns:
         Redis client instance
 
     Raises:
         redis.ConnectionError: If Redis connection fails
     """
-    redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
     try:
-        client = redis.from_url(
-            redis_url,
-            decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5
-        )
+        from hub.apps.core.redis_pools import get_redis_cache_client
+        client = get_redis_cache_client()
         # Test connection
         client.ping()
         return client
+    except ImportError:
+        # Fallback to direct connection if redis_pools not available
+        redis_url = getattr(settings, 'REDIS_CACHE_URL', None)
+        if redis_url is None:
+            redis_url = getattr(settings, 'REDIS_URL', 'redis://localhost:6379/0')
+        try:
+            client = redis.from_url(
+                redis_url,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5
+            )
+            # Test connection
+            client.ping()
+            return client
+        except Exception as e:
+            logger.error(
+                "idempotency_redis_connection_error",
+                error=str(e),
+                redis_url=redis_url
+            )
+            raise redis.ConnectionError(f"Failed to connect to Redis: {e}") from e
     except Exception as e:
         logger.error(
             "idempotency_redis_connection_error",
-            error=str(e),
-            redis_url=redis_url
+            error=str(e)
         )
         raise redis.ConnectionError(f"Failed to connect to Redis: {e}") from e
 

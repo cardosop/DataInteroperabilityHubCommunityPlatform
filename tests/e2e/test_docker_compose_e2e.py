@@ -741,7 +741,7 @@ class TestDockerComposeWorkflowExecution:
         }
         
         try:
-            response = api_client.post('/api/v1/contracts/contracts/', contract_data, format='json')
+            response = api_client.post('/api/v1/contracts/', contract_data, format='json')
             # May succeed or fail depending on validation
             assert response.status_code in [200, 201, 400, 422, 405], \
                 f"Contract creation failed: {response.status_code} - {response.text}"

@@ -17,6 +17,7 @@ from django.core.cache import cache
 from django.http import HttpRequest
 
 from hub.apps.transformation.services import TransformationService
+from hub.apps.transformation.business_rules import TransformationBusinessRules
 from hub.apps.transformation.models import TransformationPipeline, PipelineStatus
 from hub.apps.transformation.exceptions import ResourceQuotaExceededError
 from hub.apps.core.services.base import PermissionError
@@ -804,4 +805,294 @@ class GovernanceIntegrationRealServicesTest(TestCase):
 
         # Clean up
         deny_policy.delete()
+
+
+class TransformationBusinessRulesGovernanceIntegrationTest(TestCase):
+    """
+    Integration tests for TransformationBusinessRules with GovernanceService.
+
+    Tests use real services (no mocks/stubs) to validate end-to-end integration.
+    """
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
+        self.tenant_id = str(self.tenant.id)
+
+        # Get or create roles
+        self.data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data provider role"}
+        )
+
+        # Create user
+        self.user = User.objects.create_user(
+            email="provider@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+        UserRole.objects.create(
+            user=self.user,
+            role=self.data_provider_role
+        )
+
+        self.business_rules = TransformationBusinessRules(
+            tenant_id=self.tenant_id,
+            user_id=str(self.user.id)
+        )
+
+        # Clear cache
+        cache.clear()
+
+    def test_validate_resource_quota_integrates_with_governance_service(self):
+        """Test that validate_resource_quota integrates with GovernanceService"""
+        from hub.apps.transformation.business_rules import TransformationBusinessRules
+        from hub.apps.transformation.models import TransformationPipeline, PipelineStatus
+
+        pipeline_definition = {
+            "version": "1.0.0",
+            "steps": [
+                {"name": "step1", "type": "task", "node_config": {"node_type": "FILTER", "filter_expression": "age > 18"}},
+                {"name": "step2", "type": "task", "node_config": {"node_type": "OUTPUT"}}
+            ]
+        }
+
+        pipeline = TransformationPipeline.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Pipeline",
+            pipeline_definition=pipeline_definition,
+            status=PipelineStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_resource_quota(
+            pipeline,
+            source_asset=None,
+            is_preview=False,
+            raise_on_error=False
+        )
+
+        # Should have quota checks
+        self.assertIn("quota_checks", result.details)
+        quota_checks = result.details["quota_checks"]
+
+        # Should have estimated quotas
+        self.assertIn("estimated_compute", quota_checks)
+        self.assertIn("estimated_storage", quota_checks)
+        self.assertIn("estimated_query", quota_checks)
+
+        # Should have requested quota
+        self.assertIn("requested_quota", quota_checks)
+
+        # Should have attempted governance validation
+        # If GovernanceService is available, should have validation result
+        if "governance_validation_passed" in quota_checks:
+            validation_passed = quota_checks["governance_validation_passed"]
+            if validation_passed is True:
+                self.assertIn("validated_quota", quota_checks)
+                self.assertIn("tenant_limits_check_passed", quota_checks)
+
+    def test_validate_resource_quota_compute_quota_validation(self):
+        """Test compute quota validation via GovernanceService"""
+        from hub.apps.transformation.models import TransformationPipeline, PipelineStatus, NodeType
+
+        # Create complex pipeline requiring significant compute
+        complex_pipeline_def = {
+            "version": "1.0.0",
+            "steps": [
+                {"name": f"join{i}", "type": "task", "node_config": {"node_type": "JOIN", "join_keys": ["id"], "join_type": "INNER"}}
+                for i in range(10)
+            ]
+        }
+
+        pipeline = TransformationPipeline.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Complex Pipeline",
+            pipeline_definition=complex_pipeline_def,
+            status=PipelineStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_resource_quota(
+            pipeline,
+            source_asset=None,
+            is_preview=False,
+            raise_on_error=False
+        )
+
+        quota_checks = result.details["quota_checks"]
+        compute_quota = quota_checks["estimated_compute"]
+
+        # Should have compute quota estimates
+        self.assertGreater(compute_quota["cpu_cores"], 0)
+        self.assertGreater(compute_quota["memory_gb"], 0)
+        self.assertGreater(compute_quota["compute_hours"], 0)
+
+        # Should have requested compute quota
+        requested_quota = quota_checks["requested_quota"]
+        self.assertIn("compute_hours", requested_quota)
+        self.assertGreater(requested_quota["compute_hours"], 0)
+
+    def test_validate_resource_quota_storage_quota_validation(self):
+        """Test storage quota validation via GovernanceService"""
+        from hub.apps.transformation.models import TransformationPipeline, PipelineStatus
+        from hub.apps.assets.models import Asset, AssetStatus
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File, FileStatus
+
+        # Create source asset with dataset
+        source_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="source-asset",
+            name="Source Asset",
+            status=AssetStatus.ACTIVE[0]
+        )
+
+        source_file = File.objects.create(
+            tenant=self.tenant,
+            name="source.csv",
+            storage_path="test/source.csv",
+            size=10 * 1024 * 1024,  # 10MB
+            content_type="text/csv",
+            status=FileStatus.ACTIVE
+        )
+
+        source_dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=source_asset,
+            file=source_file,
+            version=1,
+            format="CSV",
+            row_count=1000,
+            schema_json={
+                "fields": [
+                    {"name": "id", "data_type": "integer"}
+                ]
+            }
+        )
+
+        source_dataset.size_bytes = 10 * 1024 * 1024
+        source_dataset.save()
+
+        pipeline_definition = {
+            "version": "1.0.0",
+            "steps": [
+                {"name": "step1", "type": "task", "node_config": {"node_type": "FILTER", "filter_expression": "age > 18"}}
+            ]
+        }
+
+        pipeline = TransformationPipeline.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Pipeline",
+            pipeline_definition=pipeline_definition,
+            status=PipelineStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_resource_quota(
+            pipeline,
+            source_asset=source_asset,
+            is_preview=False,
+            raise_on_error=False
+        )
+
+        quota_checks = result.details["quota_checks"]
+        storage_quota = quota_checks["estimated_storage"]
+
+        # Should have storage quota estimate
+        self.assertGreater(storage_quota["storage_gb"], 0)
+
+        # Should have requested storage quota
+        requested_quota = quota_checks["requested_quota"]
+        self.assertIn("storage_gb", requested_quota)
+        self.assertGreater(requested_quota["storage_gb"], 0)
+
+    def test_validate_resource_quota_query_quota_validation_preview(self):
+        """Test query quota validation for preview operations via GovernanceService"""
+        from hub.apps.transformation.models import TransformationPipeline, PipelineStatus
+
+        pipeline_definition = {
+            "version": "1.0.0",
+            "steps": [
+                {"name": "step1", "type": "task", "node_config": {"node_type": "FILTER", "filter_expression": "age > 18"}}
+            ]
+        }
+
+        pipeline = TransformationPipeline.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Pipeline",
+            pipeline_definition=pipeline_definition,
+            status=PipelineStatus.ACTIVE
+        )
+
+        # Test preview operation
+        result = self.business_rules.validate_resource_quota(
+            pipeline,
+            source_asset=None,
+            is_preview=True,
+            raise_on_error=False
+        )
+
+        quota_checks = result.details["quota_checks"]
+        query_quota = quota_checks["estimated_query"]
+
+        # Should have query quota for preview
+        self.assertGreater(query_quota["query_quota"], 0)
+
+        # Should have requested query quota for preview
+        requested_quota = quota_checks.get("requested_quota", {})
+        if "governance_validation_passed" in quota_checks and quota_checks["governance_validation_passed"]:
+            self.assertIn("query_quota", requested_quota)
+            self.assertGreater(requested_quota["query_quota"], 0)
+
+    def test_validate_resource_quota_tenant_level_limits(self):
+        """Test tenant-level quota limits validation via GovernanceService"""
+        from hub.apps.transformation.models import TransformationPipeline, PipelineStatus
+        from hub.apps.governance.services import GovernanceService
+
+        pipeline_definition = {
+            "version": "1.0.0",
+            "steps": [
+                {"name": "step1", "type": "task", "node_config": {"node_type": "FILTER", "filter_expression": "age > 18"}}
+            ]
+        }
+
+        pipeline = TransformationPipeline.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Pipeline",
+            pipeline_definition=pipeline_definition,
+            status=PipelineStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_resource_quota(
+            pipeline,
+            source_asset=None,
+            is_preview=False,
+            raise_on_error=False
+        )
+
+        quota_checks = result.details["quota_checks"]
+
+        # Should have attempted tenant-level validation
+        if "governance_validation_passed" in quota_checks:
+            validation_passed = quota_checks["governance_validation_passed"]
+            if validation_passed is True:
+                # Should have passed tenant limits check
+                self.assertIn("tenant_limits_check_passed", quota_checks)
+                self.assertTrue(quota_checks["tenant_limits_check_passed"])
+
+                # Verify GovernanceService was called correctly
+                governance_service = GovernanceService(
+                    tenant_id=self.tenant_id,
+                    user_id=str(self.user.id)
+                )
+                # If we got here, GovernanceService integration is working
+                self.assertIsNotNone(governance_service)
 

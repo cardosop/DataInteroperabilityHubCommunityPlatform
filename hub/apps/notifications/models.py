@@ -31,6 +31,11 @@ class EmailType(models.TextChoices):
     ODPS_LINKING_STATUS = "ODPS_LINKING_STATUS", "ODPS Linking Status"
     PIPELINE_EXECUTION_COMPLETION = "PIPELINE_EXECUTION_COMPLETION", "Pipeline Execution Completion"
     PIPELINE_EXECUTION_FAILURE = "PIPELINE_EXECUTION_FAILURE", "Pipeline Execution Failure"
+    MARKETPLACE_SYNC_COMPLETION = "MARKETPLACE_SYNC_COMPLETION", "Marketplace Sync Completion"
+    MARKETPLACE_SYNC_FAILURE = "MARKETPLACE_SYNC_FAILURE", "Marketplace Sync Failure"
+    MARKETPLACE_CONNECTION_TEST_FAILURE = "MARKETPLACE_CONNECTION_TEST_FAILURE", "Marketplace Connection Test Failure"
+    API_KEY_CREATED = "API_KEY_CREATED", "API Key Created"
+    API_KEY_REVOKED = "API_KEY_REVOKED", "API Key Revoked"
 
 
 class EmailDelivery(models.Model):

@@ -69,7 +69,7 @@ if LOCUST_AVAILABLE:
             }
 
             response = self.client.get(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 params=params,
                 name="endurance_list_contracts",
@@ -93,7 +93,7 @@ if LOCUST_AVAILABLE:
             contract_id = random.choice(self.contract_ids)
 
             response = self.client.get(
-                f"/api/v1/contracts/contracts/{contract_id}/",
+                f"/api/v1/contracts/{contract_id}/",
                 headers=self.headers,
                 name="endurance_get_contract",
             )
@@ -114,7 +114,7 @@ if LOCUST_AVAILABLE:
             }
 
             response = self.client.post(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 json=contract_data,
                 name="endurance_create_contract",
@@ -138,7 +138,7 @@ if LOCUST_AVAILABLE:
             }
 
             response = self.client.get(
-                "/api/v1/assets/assets/",
+                "/api/v1/assets/",
                 headers=self.headers,
                 params=params,
                 name="endurance_list_assets",
@@ -155,7 +155,7 @@ if LOCUST_AVAILABLE:
             }
 
             response = self.client.post(
-                "/api/v1/assets/assets/",
+                "/api/v1/assets/",
                 headers=self.headers,
                 json=asset_data,
                 name="endurance_create_asset",
@@ -174,7 +174,7 @@ if LOCUST_AVAILABLE:
         def endurance_get_job_status(self):
             """Sustained job status checking."""
             response = self.client.get(
-                "/api/v1/jobs/jobs/",
+                "/api/v1/jobs/",
                 headers=self.headers,
                 params={"page_size": 10},
                 name="endurance_get_job_status",

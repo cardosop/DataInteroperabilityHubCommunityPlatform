@@ -203,7 +203,7 @@ class AuditLoggingE2ETest(E2ETestBase):
         """Test audit events for failed operations"""
         # Try to create asset with invalid data (should fail)
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': '',  # Invalid: empty key
                 'name': 'Invalid Asset'

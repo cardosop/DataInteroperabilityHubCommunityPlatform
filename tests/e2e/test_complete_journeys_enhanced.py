@@ -306,7 +306,7 @@ class CompleteContractOnlyJourneyE2ETest(E2ETestBase):
         asset = Asset.objects.get(id=asset_id)
         asset.refresh_from_db()
         response = self.client.post(
-            f'/api/v1/assets/assets/{asset_id}/activate/',
+            f'/api/v1/assets/{asset_id}/activate/',
             {'version': asset.version},
             format='json'
         )

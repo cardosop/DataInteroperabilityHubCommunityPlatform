@@ -68,7 +68,7 @@ if LOCUST_AVAILABLE:
             }
 
             with self.client.get(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 params=params,
                 catch_response=True,
@@ -93,7 +93,7 @@ if LOCUST_AVAILABLE:
             contract_id = random.choice(self.contract_ids)
 
             with self.client.get(
-                f"/api/v1/contracts/contracts/{contract_id}/",
+                f"/api/v1/contracts/{contract_id}/",
                 headers=self.headers,
                 catch_response=True,
                 name="spike_get_contract",
@@ -122,7 +122,7 @@ if LOCUST_AVAILABLE:
             }
 
             with self.client.post(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 json=contract_data,
                 catch_response=True,
@@ -149,7 +149,7 @@ if LOCUST_AVAILABLE:
             search_terms = ["test", "contract", "data", "asset", "quality"]
 
             with self.client.get(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 params={"search": random.choice(search_terms)},
                 catch_response=True,
@@ -195,7 +195,7 @@ if LOCUST_AVAILABLE:
         def rapid_spike_requests(self):
             """Generate rapid-fire requests for extreme spike."""
             with self.client.get(
-                "/api/v1/contracts/contracts/",
+                "/api/v1/contracts/",
                 headers=self.headers,
                 catch_response=True,
                 name="rapid_spike_requests",

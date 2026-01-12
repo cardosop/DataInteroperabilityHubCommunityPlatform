@@ -39,18 +39,18 @@ class AuthManager:
             'Accept': 'application/json'
         }
 
-        # Prioritize API key over access token (API keys are more reliable for automation)
-        # This ensures that when an API key is explicitly set, it's used even if tokens exist
+        # Prioritize access token over API key (access tokens are user-specific and more secure)
+        # This ensures that when a user is logged in, their token is used even if API key exists
+        access_token = self.config.get_access_token()
+        if access_token:
+            headers['Authorization'] = f'Bearer {access_token}'
+            return headers
+
+        # Fall back to API key if no access token (for automation/CI scenarios)
         api_key = self.config.get_api_key()
         if api_key and api_key.strip():
             # Backend expects "ApiKey <key>" format, not "Bearer <key>"
             headers['Authorization'] = f'ApiKey {api_key}'
-            return headers
-
-        # Fall back to access token (JWT) if no API key
-        access_token = self.config.get_access_token()
-        if access_token:
-            headers['Authorization'] = f'Bearer {access_token}'
             return headers
 
         return headers

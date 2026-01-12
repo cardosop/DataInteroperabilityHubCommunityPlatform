@@ -222,13 +222,13 @@ class TestAssetCachingIntegration(TestCase):
     def test_list_view_caching(self):
         """Test asset list view uses cache."""
         # First request - should hit database
-        response1 = self.client.get('/api/v1/assets/assets/')
+        response1 = self.client.get('/api/v1/assets/')
         self.assertEqual(response1.status_code, 200)
         data1 = response1.json()
         count1 = data1.get('count', 0)
 
         # Second request - should hit cache
-        response2 = self.client.get('/api/v1/assets/assets/')
+        response2 = self.client.get('/api/v1/assets/')
         self.assertEqual(response2.status_code, 200)
         data2 = response2.json()
         count2 = data2.get('count', 0)
@@ -240,13 +240,13 @@ class TestAssetCachingIntegration(TestCase):
     def test_list_view_cache_invalidation_on_create(self):
         """Test list cache is invalidated when asset is created."""
         # First request - cache miss
-        response1 = self.client.get('/api/v1/assets/assets/')
+        response1 = self.client.get('/api/v1/assets/')
         self.assertEqual(response1.status_code, 200)
         count1 = response1.json().get('count', 0)
 
         # Create new asset
         response_create = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'asset-3',
                 'name': 'Asset 3',
@@ -263,7 +263,7 @@ class TestAssetCachingIntegration(TestCase):
         # Second request - should see new asset (cache invalidated)
         # Note: Cache invalidation may not work perfectly with Django cache backend
         # In production with Redis, pattern-based invalidation would work better
-        response2 = self.client.get('/api/v1/assets/assets/')
+        response2 = self.client.get('/api/v1/assets/')
         self.assertEqual(response2.status_code, 200)
         count2 = response2.json().get('count', 0)
 
@@ -276,7 +276,7 @@ class TestAssetCachingIntegration(TestCase):
     def test_list_view_cache_invalidation_on_update(self):
         """Test list cache is invalidated when asset is updated."""
         # First request - cache miss
-        response1 = self.client.get('/api/v1/assets/assets/')
+        response1 = self.client.get('/api/v1/assets/')
         self.assertEqual(response1.status_code, 200)
 
         # Refresh asset to get current version
@@ -284,7 +284,7 @@ class TestAssetCachingIntegration(TestCase):
 
         # Update asset
         response_update = self.client.patch(
-            f'/api/v1/assets/assets/{self.asset1.id}/',
+            f'/api/v1/assets/{self.asset1.id}/',
             {
                 'name': 'Updated Asset 1',
                 'version': self.asset1.version
@@ -304,7 +304,7 @@ class TestAssetCachingIntegration(TestCase):
         # Second request - should see updated asset (cache invalidated)
         # Note: Cache invalidation works best with Redis - Django cache has limitations
         # The important thing is that the invalidation code runs without errors
-        response2 = self.client.get('/api/v1/assets/assets/')
+        response2 = self.client.get('/api/v1/assets/')
         self.assertEqual(response2.status_code, 200)
         results = response2.json().get('results', [])
 
@@ -319,16 +319,16 @@ class TestAssetCachingIntegration(TestCase):
     def test_list_view_cache_invalidation_on_delete(self):
         """Test list cache is invalidated when asset is deleted."""
         # First request - cache miss
-        response1 = self.client.get('/api/v1/assets/assets/')
+        response1 = self.client.get('/api/v1/assets/')
         self.assertEqual(response1.status_code, 200)
         count1 = response1.json().get('count', 0)
 
         # Delete asset (soft delete)
-        response_delete = self.client.delete(f'/api/v1/assets/assets/{self.asset1.id}/')
+        response_delete = self.client.delete(f'/api/v1/assets/{self.asset1.id}/')
         self.assertEqual(response_delete.status_code, 204)
 
         # Second request - should see one less asset (cache invalidated)
-        response2 = self.client.get('/api/v1/assets/assets/')
+        response2 = self.client.get('/api/v1/assets/')
         self.assertEqual(response2.status_code, 200)
         count2 = response2.json().get('count', 0)
 
@@ -340,12 +340,12 @@ class TestAssetCachingIntegration(TestCase):
     def test_detail_view_caching(self):
         """Test asset detail view uses cache."""
         # First request - should hit database
-        response1 = self.client.get(f'/api/v1/assets/assets/{self.asset1.id}/')
+        response1 = self.client.get(f'/api/v1/assets/{self.asset1.id}/')
         self.assertEqual(response1.status_code, 200)
         data1 = response1.json()
 
         # Second request - should hit cache
-        response2 = self.client.get(f'/api/v1/assets/assets/{self.asset1.id}/')
+        response2 = self.client.get(f'/api/v1/assets/{self.asset1.id}/')
         self.assertEqual(response2.status_code, 200)
         data2 = response2.json()
 
@@ -356,7 +356,7 @@ class TestAssetCachingIntegration(TestCase):
     def test_detail_view_cache_invalidation_on_update(self):
         """Test detail cache is invalidated when asset is updated."""
         # First request - cache miss
-        response1 = self.client.get(f'/api/v1/assets/assets/{self.asset1.id}/')
+        response1 = self.client.get(f'/api/v1/assets/{self.asset1.id}/')
         self.assertEqual(response1.status_code, 200)
         name1 = response1.json()['name']
 
@@ -365,7 +365,7 @@ class TestAssetCachingIntegration(TestCase):
 
         # Update asset
         response_update = self.client.patch(
-            f'/api/v1/assets/assets/{self.asset1.id}/',
+            f'/api/v1/assets/{self.asset1.id}/',
             {
                 'name': 'Updated Name',
                 'version': self.asset1.version
@@ -379,7 +379,7 @@ class TestAssetCachingIntegration(TestCase):
         self.assertEqual(response_update.status_code, 200)
 
         # Second request - should see updated asset (cache invalidated)
-        response2 = self.client.get(f'/api/v1/assets/assets/{self.asset1.id}/')
+        response2 = self.client.get(f'/api/v1/assets/{self.asset1.id}/')
         self.assertEqual(response2.status_code, 200)
         name2 = response2.json()['name']
 
@@ -390,15 +390,15 @@ class TestAssetCachingIntegration(TestCase):
     def test_detail_view_cache_invalidation_on_delete(self):
         """Test detail cache is invalidated when asset is deleted."""
         # First request - cache miss
-        response1 = self.client.get(f'/api/v1/assets/assets/{self.asset1.id}/')
+        response1 = self.client.get(f'/api/v1/assets/{self.asset1.id}/')
         self.assertEqual(response1.status_code, 200)
 
         # Delete asset (soft delete)
-        response_delete = self.client.delete(f'/api/v1/assets/assets/{self.asset1.id}/')
+        response_delete = self.client.delete(f'/api/v1/assets/{self.asset1.id}/')
         self.assertEqual(response_delete.status_code, 204)
 
         # Second request - should see updated status (cache invalidated)
-        response2 = self.client.get(f'/api/v1/assets/assets/{self.asset1.id}/')
+        response2 = self.client.get(f'/api/v1/assets/{self.asset1.id}/')
         self.assertEqual(response2.status_code, 200)
         status2 = response2.json()['status']
 
@@ -408,11 +408,11 @@ class TestAssetCachingIntegration(TestCase):
     def test_list_view_different_filters_different_cache(self):
         """Test different filters use different cache entries."""
         # Request with domain filter
-        response1 = self.client.get('/api/v1/assets/assets/?domain=marketing')
+        response1 = self.client.get('/api/v1/assets/?domain=marketing')
         self.assertEqual(response1.status_code, 200)
 
         # Request without filter
-        response2 = self.client.get('/api/v1/assets/assets/')
+        response2 = self.client.get('/api/v1/assets/')
         self.assertEqual(response2.status_code, 200)
 
         # Both should work independently (different cache keys)

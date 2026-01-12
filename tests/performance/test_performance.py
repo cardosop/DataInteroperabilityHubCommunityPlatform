@@ -64,7 +64,7 @@ class RateLimitPerformanceTest(TestCase):
         request = Mock()
         request.tenant_id = str(self.tenant.id)
         request.user = self.user
-        request.path = '/api/v1/contracts/contracts/'
+        request.path = '/api/v1/contracts/'
         request.method = 'GET'
         
         # Measure latency for 100 checks
@@ -486,7 +486,7 @@ class APIPerformanceTest(TestCase):
         latencies = []
         for i in range(20):
             start_time = time.perf_counter()
-            response = self.client.get(f'/api/v1/contracts/contracts/{contract.id}/')
+            response = self.client.get(f'/api/v1/contracts/{contract.id}/')
             end_time = time.perf_counter()
             
             if response.status_code == 200:
@@ -513,7 +513,7 @@ class APIPerformanceTest(TestCase):
         latencies = []
         for i in range(10):
             start_time = time.perf_counter()
-            response = self.client.get('/api/v1/contracts/contracts/')
+            response = self.client.get('/api/v1/contracts/')
             end_time = time.perf_counter()
             
             if response.status_code == 200:

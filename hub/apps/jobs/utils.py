@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
-from .models import Job, JobType, JobStatus
+from .models import Job, JobType, JobStatus, JobPriority
 import structlog
 import time
 
@@ -32,27 +32,31 @@ JOB_TIMEOUTS = {
     JobType.ODPS_SEMANTIC_MAPPING: 600,  # 10 minutes
     JobType.ODPS_LINKING: 300,  # 5 minutes
     JobType.VIRTUAL_QUERY_EXECUTION: 3600,  # 1 hour (virtual queries can be long-running)
+    JobType.MARKETPLACE_SYNC: 3600,  # 1 hour (sync operations can be long-running)
 }
 
-# Maximum retry attempts per job type
-JOB_MAX_RETRIES = {
-    JobType.DQ_RUN: 3,  # DQ runs can retry up to 3 times
-    JobType.COMPLIANCE_RUN: 3,  # Compliance runs can retry up to 3 times
-    JobType.CONTRACT_VALIDATION: 2,  # Contract validation can retry up to 2 times
-    JobType.SEMANTIC_MAPPING: 2,  # Semantic mapping can retry up to 2 times
-    JobType.CONTRACT_MIGRATION: 1,  # Contract migration typically doesn't need retries
-    JobType.SCHEDULED_INGESTION: 2,  # Scheduled ingestion can retry up to 2 times
-    JobType.RETENTION_POLICY_ENFORCEMENT: 1,  # Retention policy enforcement typically doesn't need retries
-    JobType.SEARCH_INDEX_UPDATE: 2,  # Search index update can retry up to 2 times
-    JobType.ODPS_NORMALIZATION: 2,  # ODPS normalization can retry up to 2 times
-    JobType.ODPS_REF_RESOLUTION: 2,  # ODPS $ref resolution can retry up to 2 times
-    JobType.ODPS_EXPORT: 2,  # ODPS export can retry up to 2 times
-    JobType.ODPS_SEMANTIC_MAPPING: 2,  # ODPS semantic mapping can retry up to 2 times
-    JobType.ODPS_LINKING: 2,  # ODPS linking can retry up to 2 times
-}
+# Maximum retry attempts per job type (from settings, fallback to defaults)
+JOB_MAX_RETRIES = getattr(settings, 'JOB_RETRY_MAX_ATTEMPTS', {
+    JobType.DQ_RUN: 3,
+    JobType.COMPLIANCE_RUN: 3,
+    JobType.CONTRACT_VALIDATION: 2,
+    JobType.SEMANTIC_MAPPING: 2,
+    JobType.CONTRACT_MIGRATION: 1,
+    JobType.SCHEDULED_INGESTION: 2,
+    JobType.RETENTION_POLICY_ENFORCEMENT: 1,
+    JobType.SEARCH_INDEX_UPDATE: 2,
+    JobType.ODPS_NORMALIZATION: 2,
+    JobType.ODPS_REF_RESOLUTION: 2,
+    JobType.ODPS_EXPORT: 2,
+    JobType.ODPS_SEMANTIC_MAPPING: 2,
+    JobType.ODPS_LINKING: 2,
+    JobType.TRANSFORMATION_PIPELINE_EXECUTION: 2,
+    JobType.VIRTUAL_QUERY_EXECUTION: 2,
+    JobType.MARKETPLACE_SYNC: 2,
+})
 
-# Base delay for exponential backoff (in seconds)
-JOB_RETRY_BASE_DELAY = 60  # Start with 1 minute delay
+# Base delay for exponential backoff (in seconds) - deprecated, use JOB_RETRY_INITIAL_DELAY per job type
+JOB_RETRY_BASE_DELAY = 60  # Start with 1 minute delay (fallback)
 
 # Worker concurrency limits (from settings)
 WORKER_MAX_CONCURRENCY = settings.WORKER_MAX_CONCURRENCY
@@ -88,6 +92,48 @@ def get_job_max_retries(job_type: str) -> int:
     return JOB_MAX_RETRIES.get(job_type, 2)  # Default 2 retries
 
 
+def get_job_retry_initial_delay(job_type: str) -> int:
+    """
+    Get initial retry delay for a job type.
+
+    Args:
+        job_type: Job type string
+
+    Returns:
+        Initial delay in seconds
+    """
+    retry_initial_delay = getattr(settings, 'JOB_RETRY_INITIAL_DELAY', {})
+    return retry_initial_delay.get(job_type, JOB_RETRY_BASE_DELAY)
+
+
+def get_job_retry_max_delay(job_type: str) -> int:
+    """
+    Get maximum retry delay cap for a job type.
+
+    Args:
+        job_type: Job type string
+
+    Returns:
+        Maximum delay in seconds
+    """
+    retry_max_delay = getattr(settings, 'JOB_RETRY_MAX_DELAY', {})
+    return retry_max_delay.get(job_type, 3600)  # Default 1 hour
+
+
+def get_job_retry_backoff_factor(job_type: str) -> float:
+    """
+    Get exponential backoff factor for a job type.
+
+    Args:
+        job_type: Job type string
+
+    Returns:
+        Backoff factor (default: 2.0)
+    """
+    retry_backoff_factor = getattr(settings, 'JOB_RETRY_BACKOFF_FACTOR', {})
+    return retry_backoff_factor.get(job_type, 2.0)
+
+
 def is_transient_failure(exception: Exception) -> bool:
     """
     Check if an exception represents a transient failure that should be retried.
@@ -119,23 +165,35 @@ def is_transient_failure(exception: Exception) -> bool:
     return any(keyword in error_str for keyword in transient_keywords)
 
 
-def calculate_retry_delay(retry_count: int, base_delay: int = JOB_RETRY_BASE_DELAY) -> int:
+def calculate_retry_delay(retry_count: int, job_type: str = None, base_delay: int = None) -> int:
     """
-    Calculate retry delay using exponential backoff.
+    Calculate retry delay using exponential backoff with configurable factors.
 
-    Formula: base_delay * (2 ^ retry_count)
-    - Retry 1: 60 seconds (1 minute)
-    - Retry 2: 120 seconds (2 minutes)
-    - Retry 3: 240 seconds (4 minutes)
+    Formula: initial_delay * (backoff_factor ^ retry_count), capped at max_delay
+    - Retry 1: initial_delay * backoff_factor^0
+    - Retry 2: initial_delay * backoff_factor^1
+    - Retry 3: initial_delay * backoff_factor^2
 
     Args:
         retry_count: Current retry attempt (0-indexed)
-        base_delay: Base delay in seconds (default: 60)
+        job_type: Job type string (optional, for job-specific configuration)
+        base_delay: Base delay in seconds (optional, deprecated - use job_type instead)
 
     Returns:
-        Delay in seconds
+        Delay in seconds (capped at max_delay for job type)
     """
-    return base_delay * (2 ** retry_count)
+    if job_type:
+        initial_delay = get_job_retry_initial_delay(job_type)
+        backoff_factor = get_job_retry_backoff_factor(job_type)
+        max_delay = get_job_retry_max_delay(job_type)
+    else:
+        # Fallback to old behavior for backward compatibility
+        initial_delay = base_delay if base_delay is not None else JOB_RETRY_BASE_DELAY
+        backoff_factor = 2.0
+        max_delay = 3600  # Default 1 hour
+
+    delay = int(initial_delay * (backoff_factor ** retry_count))
+    return min(delay, max_delay)  # Cap at max_delay
 
 
 def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
@@ -180,7 +238,24 @@ def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
     job_obj.details_json['last_retry_at'] = timezone.now().isoformat()
 
     # Calculate retry delay
-    retry_delay = calculate_retry_delay(retry_count)
+    retry_delay = calculate_retry_delay(retry_count, job_type=job_type)
+
+    # Track retry metrics
+    try:
+        from hub.apps.observability.otel_metrics import (
+            job_retry_count,
+            job_retry_delay_seconds,
+        )
+        queue_name = get_queue_for_job_type(job_type)
+        job_retry_count.labels(
+            job_type=job_type,
+            queue_name=queue_name
+        ).observe(new_retry_count)
+        job_retry_delay_seconds.labels(
+            job_type=job_type
+        ).observe(retry_delay)
+    except Exception:
+        pass  # Metrics may not be available
 
     # Reset job status to PENDING for retry
     job_obj.status = JobStatus.PENDING
@@ -193,12 +268,12 @@ def retry_job(job_obj: Job, job_type: str, exception: Exception) -> bool:
     queue_name = get_queue_for_job_type(job_type)
     queue = get_queue(queue_name)
 
-    # Use django-rq's enqueue_in to schedule job with delay
+    # Use queue.enqueue_in to schedule job with delay
     # Import here to avoid circular imports
-    from django_rq import enqueue_in
+    from datetime import timedelta
     from .tasks import process_job
-    enqueue_in(
-        retry_delay,
+    queue.enqueue_in(
+        timedelta(seconds=retry_delay),
         process_job,
         str(job_obj.id),
         job_type=job_type,
@@ -363,6 +438,57 @@ def decrement_tenant_job_counter(tenant_id: str, counter_type: str = "running") 
         )
 
 
+def get_job_priority(job_type: str, priority: Optional[str] = None) -> str:
+    """
+    Get priority for a job type.
+
+    Priority assignment rules:
+    1. If priority is explicitly provided, use it
+    2. If job_type has a priority rule in JOB_PRIORITY_RULES, use it
+    3. Otherwise, use JOB_PRIORITY_DEFAULT
+
+    Args:
+        job_type: Job type string
+        priority: Explicit priority (optional)
+
+    Returns:
+        Priority string (HIGH, NORMAL, LOW)
+    """
+    if priority:
+        return priority
+
+    # Check priority rules
+    priority_rule = settings.JOB_PRIORITY_RULES.get(job_type)
+    if priority_rule:
+        return priority_rule
+
+    # Use default priority
+    return settings.JOB_PRIORITY_DEFAULT
+
+
+def get_queue_for_priority(priority: str) -> str:
+    """
+    Get queue name for a priority level.
+
+    Priority to queue mapping:
+    - HIGH -> job_critical
+    - NORMAL -> job_default
+    - LOW -> job_low
+
+    Args:
+        priority: Priority string (HIGH, NORMAL, LOW)
+
+    Returns:
+        Queue name
+    """
+    priority_to_queue = {
+        JobPriority.HIGH: 'job_critical',
+        JobPriority.NORMAL: 'job_default',
+        JobPriority.LOW: 'job_low',
+    }
+    return priority_to_queue.get(priority, 'job_default')
+
+
 def create_job(
     tenant=None,
     user=None,
@@ -371,7 +497,8 @@ def create_job(
     resource_id: str = None,
     details_json: Optional[Dict[str, Any]] = None,
     timeout_seconds: Optional[int] = None,
-    queue_name: str = 'default'
+    queue_name: str = 'default',
+    priority: Optional[str] = None
 ) -> Job:
     """
     Create a job and enqueue it for processing.
@@ -387,7 +514,8 @@ def create_job(
         resource_id: UUID of the resource
         details_json: Additional job details (optional)
         timeout_seconds: Timeout in seconds (optional, defaults to job type default)
-        queue_name: Queue name ('default', 'high', 'low')
+        queue_name: Queue name ('default', 'high', 'low') - deprecated, use priority instead
+        priority: Job priority (HIGH, NORMAL, LOW) - if not provided, determined from job_type
 
     Returns:
         Created Job instance
@@ -405,11 +533,15 @@ def create_job(
     if timeout_seconds is None:
         timeout_seconds = get_job_timeout(job_type) if job_type else 600
 
+    # Determine priority
+    job_priority = get_job_priority(job_type, priority)
+
     # Create job record
     job = Job.objects.create(
         tenant=tenant,
         type=job_type,
         status=JobStatus.PENDING,
+        priority=job_priority,
         resource_type=resource_type,
         resource_id=resource_id,
         created_by=user,
@@ -436,15 +568,25 @@ def create_job(
         timeout=86400  # 24 hours
     )
 
-    # Determine queue name from job type if not explicitly provided
-    if queue_name == 'default' and job_type:
-        queue_name = get_queue_for_job_type(job_type)
+    # Determine queue name from priority if not explicitly provided
+    if queue_name == 'default':
+        queue_name = get_queue_for_priority(job_priority)
 
     # Enqueue job for processing
     try:
         queue = get_queue(queue_name)
         from .tasks import process_job  # Import here to avoid circular imports
         queue.enqueue(process_job, str(job.id), job_type=job_type, timeout=timeout_seconds)
+
+        # Track priority metrics
+        try:
+            from hub.apps.observability.otel_metrics import job_queue_length_by_priority
+            job_queue_length_by_priority.labels(
+                priority=job_priority,
+                job_type=job_type
+            ).inc()
+        except Exception:
+            pass  # Metrics may not be available
     except Exception as e:
         # Handle Redis connection failures gracefully (e.g., in test environments)
         # Log warning but don't fail job creation - job remains in PENDING status
@@ -453,6 +595,7 @@ def create_job(
             "job_enqueue_failed",
             job_id=str(job.id),
             job_type=job_type,
+            priority=job_priority,
             error=str(e),
             message="Failed to enqueue job (Redis may be unavailable). Job record created but not queued."
         )

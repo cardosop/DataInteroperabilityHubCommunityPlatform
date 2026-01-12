@@ -2,6 +2,12 @@
 Compliance Service Client
 
 Client for interacting with the compliance-service microservice.
+
+**Important Notes:**
+- This client calls an EXTERNAL microservice (compliance-service), not Django API endpoints
+- Endpoints are microservice-specific paths (e.g., '/health', '/scan-file')
+- For Django API endpoint construction, use `hub.apps.api.utils.api_url_builder.APIURLBuilder`
+- This client follows service-to-service communication patterns with circuit breaker protection
 """
 import httpx
 import logging
@@ -23,19 +29,36 @@ class ComplianceServiceClient:
     """
 
     def __init__(self):
-        # In test environment, use localhost instead of service name
-        default_url = 'http://compliance-service:8082'
-        if hasattr(settings, 'TESTING') and settings.TESTING:
+        import os
+        import sys
+
+        # Determine if we're running tests from host machine (not in Docker)
+        is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
+        is_test_env = 'pytest' in sys.modules or 'unittest' in sys.modules
+        is_test_from_host = is_test_env and not is_in_docker
+
+        # Priority: 1. Test environment from host (use localhost), 2. Settings, 3. Default
+        if is_test_from_host:
+            # Running tests from host machine - always use localhost
+            default_url = 'http://localhost:8082'
+        elif hasattr(settings, 'TESTING') and settings.TESTING:
             import os
             if os.getenv('TEST_ENVIRONMENT') == 'staging':
                 default_url = 'http://localhost:8082'
             elif os.getenv('TEST_ENVIRONMENT') == 'default':
                 default_url = 'http://localhost:8082'
-            import sys
-            if 'pytest' in sys.modules or 'unittest' in sys.modules:
+            elif 'pytest' in sys.modules or 'unittest' in sys.modules:
                 default_url = 'http://localhost:8082'
+            else:
+                default_url = 'http://compliance-service:8082'
+        else:
+            default_url = 'http://compliance-service:8082'
 
-        self.base_url = getattr(settings, 'COMPLIANCE_SERVICE_URL', default_url)
+        # Only use settings override if not running tests from host
+        if not is_test_from_host:
+            self.base_url = getattr(settings, 'COMPLIANCE_SERVICE_URL', default_url)
+        else:
+            self.base_url = default_url
         self.timeout = getattr(settings, 'COMPLIANCE_SERVICE_TIMEOUT', 1800)  # 30 minutes default
         if not self.base_url.endswith('/'):
             self.base_url = self.base_url.rstrip('/')

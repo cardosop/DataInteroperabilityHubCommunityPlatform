@@ -8,6 +8,9 @@ CRITICAL: To avoid transaction isolation issues with LiveServerTestCase,
 all test data is created via HTTP requests to the live server. This ensures
 the data is created through the server thread's database connection and is
 immediately visible to subsequent CLI commands.
+
+NOTE: These tests must be run from the Django project root (not CLI directory)
+to ensure Django is properly initialized via pytest-django.
 """
 import pytest
 import requests
@@ -19,6 +22,8 @@ from datahub_cli.main import cli
 from datahub_cli.config import config
 from datahub_cli.auth import auth_manager
 
+# Import Django models - these will work when pytest-django initializes Django
+# If running from CLI directory, ensure pytest is run from Django project root
 from hub.apps.tenants.models import Tenant
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import Contract, ContractStatus
@@ -99,8 +104,14 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
 
         Returns the created asset data as a dict.
         """
-        # URL structure: /api/v1/assets/assets/ (assets/ from api/urls.py + assets from router)
-        url = f'{self.api_base_url}/assets/assets/'
+        # Use reverse lookup for correct URL pattern
+        # LiveServerTestCase ensures Django is initialized, so reverse() should work
+        from django.urls import reverse
+        asset_url = reverse("asset-list")
+        # Remove /api/v1 prefix if present (api_base_url already includes it)
+        if asset_url.startswith('/api/v1'):
+            asset_url = asset_url[len('/api/v1'):]
+        url = f'{self.api_base_url}{asset_url}'
         data = {
             'key': key,
             'name': name,
@@ -121,8 +132,14 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
 
         Returns the created contract data as a dict.
         """
-        # URL structure: /api/v1/contracts/contracts/ (contracts/ from api/urls.py + contracts from router)
-        url = f'{self.api_base_url}/contracts/contracts/'
+        # Use reverse lookup for correct URL pattern
+        # LiveServerTestCase ensures Django is initialized, so reverse() should work
+        from django.urls import reverse
+        contract_url = reverse("contract-list")
+        # Remove /api/v1 prefix if present (api_base_url already includes it)
+        if contract_url.startswith('/api/v1'):
+            contract_url = contract_url[len('/api/v1'):]
+        url = f'{self.api_base_url}{contract_url}'
         data = {
             'asset_id': asset_id,
             'original_raw': original_raw,
@@ -140,7 +157,7 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
 
         Returns the file initialization data as a dict.
         """
-        # URL structure: /api/v1/files/files/init/ (files/ from api/urls.py + files from router + init action)
+        # URL structure: /api/v1/files/init/ (files/ from api/urls.py + init action)
         url = f'{self.api_base_url}/files/files/init/'
         data = {
             'name': name,
@@ -164,7 +181,7 @@ class TestCLIIntegrationRealAPI(LiveServerTestCase):
 
         Returns the created job data as a dict.
         """
-        # URL structure: /api/v1/jobs/jobs/ (jobs/ from api/urls.py + jobs from router)
+        # URL structure: /api/v1/jobs/ (jobs/ from api/urls.py)
         url = f'{self.api_base_url}/jobs/jobs/'
 
         if not resource_id:

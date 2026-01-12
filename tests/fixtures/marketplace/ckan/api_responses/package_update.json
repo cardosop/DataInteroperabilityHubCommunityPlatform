@@ -1,0 +1,36 @@
+{
+  "success": true,
+  "result": {
+    "id": "sample-dataset-1",
+    "name": "sample-dataset-1",
+    "title": "Updated Sample Dataset 1",
+    "notes": "This dataset has been updated",
+    "tags": [
+      {
+        "id": "tag-1",
+        "name": "environment",
+        "vocabulary_id": null,
+        "display_name": "Environment"
+      },
+      {
+        "id": "tag-2",
+        "name": "updated",
+        "vocabulary_id": null,
+        "display_name": "Updated"
+      }
+    ],
+    "organization": {
+      "id": "test-org",
+      "name": "test-org",
+      "title": "Test Organization"
+    },
+    "license_id": "cc-by",
+    "metadata_created": "2024-01-15T10:00:00Z",
+    "metadata_modified": "2024-01-21T14:00:00Z",
+    "creator_user_id": "user-123",
+    "type": "dataset",
+    "resources": [],
+    "state": "active"
+  }
+}
+

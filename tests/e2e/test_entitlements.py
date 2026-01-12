@@ -413,7 +413,7 @@ class EntitlementsE2ETest(E2ETestBase):
         self.client.force_authenticate(user=other_user)
         
         # Try to access asset (should fail without entitlement)
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/')
         
         # Should fail (no entitlement for this tenant)
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])

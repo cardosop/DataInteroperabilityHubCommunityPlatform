@@ -164,7 +164,7 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_success(self):
         """Test successful listing of datasets"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/datasets/')
+        response = self.client.get('/api/v1/datasets/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Response may be paginated or non-paginated
@@ -191,7 +191,7 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_pagination_page_1(self):
         """Test pagination - first page"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/datasets/', {'page': 1, 'page_size': 1})
+        response = self.client.get('/api/v1/datasets/', {'page': 1, 'page_size': 1})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle different pagination response formats
@@ -220,7 +220,7 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_filter_by_asset_id(self):
         """Test filtering by asset_id"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/datasets/', {'asset_id': str(self.asset_a.id)})
+        response = self.client.get('/api/v1/datasets/', {'asset_id': str(self.asset_a.id)})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Handle different response formats
@@ -269,7 +269,7 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_ordering_by_created_at(self):
         """Test ordering by created_at"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/datasets/', {'ordering': '-created_at'})
+        response = self.client.get('/api/v1/datasets/', {'ordering': '-created_at'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Results should be ordered by created_at descending
@@ -281,7 +281,7 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_tenant_isolation(self):
         """Test tenant isolation - user should only see their tenant's datasets"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/datasets/datasets/')
+        response = self.client.get('/api/v1/datasets/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should only see tenant A datasets
@@ -294,7 +294,7 @@ class TestDatasetListAPI(TestCase):
     def test_list_datasets_tenant_b_isolation(self):
         """Test tenant isolation - user B should only see tenant B datasets"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.get('/api/v1/datasets/datasets/')
+        response = self.client.get('/api/v1/datasets/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should only see tenant B datasets
@@ -326,7 +326,7 @@ class TestDatasetListAPI(TestCase):
         )
 
         self.client.force_authenticate(user=user_empty)
-        response = self.client.get('/api/v1/datasets/datasets/')
+        response = self.client.get('/api/v1/datasets/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 0)
@@ -354,7 +354,7 @@ class TestDatasetListAPI(TestCase):
 
     def test_list_datasets_unauthenticated(self):
         """Test list datasets without authentication"""
-        response = self.client.get('/api/v1/datasets/datasets/')
+        response = self.client.get('/api/v1/datasets/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -443,7 +443,7 @@ class TestDatasetCreateAPI(TestCase):
             "file_id": str(self.file.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn('id', response.data)
@@ -462,7 +462,7 @@ class TestDatasetCreateAPI(TestCase):
             "asset_id": str(self.asset.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # IDs may be UUID objects or strings
@@ -481,7 +481,7 @@ class TestDatasetCreateAPI(TestCase):
             "file_id": str(self.file.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Schema inference may succeed or fail depending on file content and service availability
@@ -497,7 +497,7 @@ class TestDatasetCreateAPI(TestCase):
             "file_id": str(self.file.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         dataset = Dataset.objects.get(id=response.data['id'])
@@ -513,7 +513,7 @@ class TestDatasetCreateAPI(TestCase):
             "file_id": str(self.file.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Verify file was validated
@@ -530,7 +530,7 @@ class TestDatasetCreateAPI(TestCase):
             "asset_id": str(self.asset.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Verify asset was validated
@@ -546,7 +546,7 @@ class TestDatasetCreateAPI(TestCase):
 
         data = {}
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -558,7 +558,7 @@ class TestDatasetCreateAPI(TestCase):
             "file_id": str(uuid.uuid4())
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -571,7 +571,7 @@ class TestDatasetCreateAPI(TestCase):
             "asset_id": str(uuid.uuid4())
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -593,7 +593,7 @@ class TestDatasetCreateAPI(TestCase):
             "file_id": str(inactive_file.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         # Should reject inactive file (may return 400, 404, or 500 if validation fails)
         self.assertIn(response.status_code, [
@@ -623,7 +623,7 @@ class TestDatasetCreateAPI(TestCase):
             "file_id": str(self.file.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         # Should return 400 because user has no tenant (or 404 if queryset filtering happens first)
         self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND])
@@ -634,7 +634,7 @@ class TestDatasetCreateAPI(TestCase):
             "file_id": str(self.file.id)
         }
 
-        response = self.client.post('/api/v1/datasets/datasets/', data, format="json")
+        response = self.client.post('/api/v1/datasets/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -741,7 +741,7 @@ class TestDatasetRetrieveAPI(TestCase):
     def test_retrieve_dataset_success(self):
         """Test successful dataset retrieval"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(self.dataset.id))
@@ -751,7 +751,7 @@ class TestDatasetRetrieveAPI(TestCase):
     def test_retrieve_dataset_with_relationships(self):
         """Test dataset retrieval includes relationships"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify dataset data is present
@@ -761,7 +761,7 @@ class TestDatasetRetrieveAPI(TestCase):
     def test_retrieve_dataset_version_history(self):
         """Test dataset retrieval includes version information"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('version', response.data)
@@ -772,7 +772,7 @@ class TestDatasetRetrieveAPI(TestCase):
     def test_retrieve_dataset_tenant_isolation(self):
         """Test tenant isolation - user can only retrieve their tenant's datasets"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify dataset belongs to tenant A
@@ -781,14 +781,14 @@ class TestDatasetRetrieveAPI(TestCase):
     def test_retrieve_dataset_cannot_access_other_tenant(self):
         """Test user cannot retrieve datasets from other tenant"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.get(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_dataset_unauthenticated(self):
         """Test unauthenticated user cannot retrieve dataset"""
-        response = self.client.get(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.get(f'/api/v1/datasets/{self.dataset.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -798,7 +798,7 @@ class TestDatasetRetrieveAPI(TestCase):
         """Test retrieving non-existent dataset"""
         self.client.force_authenticate(user=self.user_a)
         fake_id = uuid.uuid4()
-        response = self.client.get(f'/api/v1/datasets/datasets/{fake_id}/')
+        response = self.client.get(f'/api/v1/datasets/{fake_id}/')
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -856,7 +856,7 @@ class TestDatasetUpdateAPI(TestCase):
         # Most fields are read-only, so we can only update limited fields
         # Check what fields are actually updatable
         response = self.client.patch(
-            f'/api/v1/datasets/datasets/{self.dataset.id}/',
+            f'/api/v1/datasets/{self.dataset.id}/',
             {},
             format="json"
         )
@@ -871,7 +871,7 @@ class TestDatasetUpdateAPI(TestCase):
         # PUT requires all fields, but most are read-only
         # Check serializer to see what's actually updatable
         response = self.client.put(
-            f'/api/v1/datasets/datasets/{self.dataset.id}/',
+            f'/api/v1/datasets/{self.dataset.id}/',
             {
                 "file": str(self.file.id),
                 "format": "CSV"
@@ -886,7 +886,7 @@ class TestDatasetUpdateAPI(TestCase):
         """Test tenant isolation - user can only update their tenant's datasets"""
         self.client.force_authenticate(user=self.user)
         response = self.client.patch(
-            f'/api/v1/datasets/datasets/{self.dataset.id}/',
+            f'/api/v1/datasets/{self.dataset.id}/',
             {},
             format="json"
         )
@@ -909,7 +909,7 @@ class TestDatasetUpdateAPI(TestCase):
 
         self.client.force_authenticate(user=user_b)
         response = self.client.patch(
-            f'/api/v1/datasets/datasets/{self.dataset.id}/',
+            f'/api/v1/datasets/{self.dataset.id}/',
             {},
             format="json"
         )
@@ -920,7 +920,7 @@ class TestDatasetUpdateAPI(TestCase):
     def test_update_dataset_unauthenticated(self):
         """Test unauthenticated user cannot update dataset"""
         response = self.client.patch(
-            f'/api/v1/datasets/datasets/{self.dataset.id}/',
+            f'/api/v1/datasets/{self.dataset.id}/',
             {},
             format="json"
         )
@@ -989,7 +989,7 @@ class TestDatasetDeleteAPI(TestCase):
     def test_delete_dataset_success(self):
         """Test successful dataset deletion"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.delete(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.delete(f'/api/v1/datasets/{self.dataset.id}/')
 
         # Should return 204 No Content or 200 OK
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
@@ -1005,21 +1005,21 @@ class TestDatasetDeleteAPI(TestCase):
     def test_delete_dataset_tenant_isolation(self):
         """Test tenant isolation - user can only delete their tenant's datasets"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.delete(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.delete(f'/api/v1/datasets/{self.dataset.id}/')
 
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
 
     def test_delete_dataset_cannot_delete_other_tenant(self):
         """Test user cannot delete datasets from other tenant"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.delete(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.delete(f'/api/v1/datasets/{self.dataset.id}/')
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_dataset_unauthenticated(self):
         """Test unauthenticated user cannot delete dataset"""
-        response = self.client.delete(f'/api/v1/datasets/datasets/{self.dataset.id}/')
+        response = self.client.delete(f'/api/v1/datasets/{self.dataset.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 

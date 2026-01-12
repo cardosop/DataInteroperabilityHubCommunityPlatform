@@ -7,7 +7,10 @@ import asyncio
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.db import connections
-from django.test import TestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
+from channels.db import database_sync_to_async
+
+import pytest
 
 from hub.apps.auth.models import APIKey
 from hub.apps.auth.jwt_utils import JWTTokenGenerator
@@ -21,7 +24,8 @@ from hub.apps.websocket.middleware.auth import (
 User = get_user_model()
 
 
-class TestWebSocketAuthEnhancement(TestCase):
+@pytest.mark.django_db(transaction=True)
+class TestWebSocketAuthEnhancement(AsyncWebSocketTestCase):
     """Test enhanced WebSocket authentication middleware."""
 
     def setUp(self):
@@ -35,18 +39,13 @@ class TestWebSocketAuthEnhancement(TestCase):
             connection.close()
         connection.ensure_connection()
 
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-        )
+        # Create tenant with unique name/slug to avoid conflicts
+        self.tenant = self.create_unique_tenant(status="ACTIVE")
 
-        # Create user
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
+        # Create user with unique email to avoid conflicts
+        self.user = self.create_unique_user(
             tenant=self.tenant,
+            password="testpass123",
         )
 
         # Refresh user from database to ensure it's in sync
@@ -60,8 +59,9 @@ class TestWebSocketAuthEnhancement(TestCase):
         assert payload is not None, "Token should be decodable"
         assert payload.get("sub") == str(self.user.id), "Token should contain user ID"
 
-        # Create API key (store plaintext key for testing)
-        self.plaintext_api_key = "test-api-key-12345"
+        # Create API key with unique plaintext key to avoid hash conflicts
+        import uuid
+        self.plaintext_api_key = f"test-api-key-{uuid.uuid4().hex[:8]}"
         key_hash = APIKey.hash_key(self.plaintext_api_key)
         self.api_key_obj = APIKey.objects.create(
             tenant=self.tenant,
@@ -69,6 +69,17 @@ class TestWebSocketAuthEnhancement(TestCase):
             name="Test API Key",
             key_hash=key_hash,
         )
+
+    def _run_async_test(self, async_func):
+        """Helper to run async tests with proper database connection handling."""
+        from django.db import close_old_connections
+        close_old_connections()
+
+        async def wrapped():
+            close_old_connections()
+            return await async_func()
+
+        return asyncio.run(wrapped())
 
     async def _test_middleware_auth(self, scope, should_authenticate=True):
         """Helper to test middleware authentication."""
@@ -127,7 +138,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=True)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_extracts_token_from_headers(self):
@@ -143,7 +154,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=True)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_extracts_token_from_access_token_query_param(self):
@@ -157,7 +168,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=True)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_rejects_invalid_token(self):
@@ -171,7 +182,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=False)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_rejects_missing_token(self):
@@ -185,7 +196,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=False)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_extracts_api_key_from_query_params(self):
@@ -199,7 +210,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=True)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_extracts_api_key_from_headers(self):
@@ -215,7 +226,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=True)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_rejects_invalid_api_key(self):
@@ -229,7 +240,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=False)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_rejects_expired_api_key(self):
@@ -257,12 +268,20 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=False)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_prefers_jwt_over_api_key(self):
         """Test that middleware prefers JWT token over API key when both are provided."""
+        # Ensure database connection is available before async call
+        from django.db import close_old_connections
+        close_old_connections()
+
         async def run_test():
+            # Close old connections and ensure fresh connection in async context
+            from django.db import close_old_connections
+            close_old_connections()
+
             scope = {
                 "type": "websocket",
                 "path": "/ws/events/",
@@ -274,7 +293,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=True)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_extracts_tenant_from_user(self):
@@ -287,7 +306,10 @@ class TestWebSocketAuthEnhancement(TestCase):
                 "headers": [],
             }
 
-            middleware = WebSocketAuthMiddleware(lambda scope, receive, send: None)
+            async def next_middleware(scope, receive, send):
+                pass  # Next middleware doesn't need to do anything
+
+            middleware = WebSocketAuthMiddleware(next_middleware)
 
             messages = []
             async def send(message):
@@ -299,11 +321,15 @@ class TestWebSocketAuthEnhancement(TestCase):
             await middleware(scope, receive, send)
 
             tenant = scope.get("tenant")
-            self.assertIsNotNone(tenant)
-            self.assertEqual(tenant.id, self.tenant.id)
-            return True
+            if tenant is None:
+                return False, "Tenant should be extracted from user"
+            if tenant.id != self.tenant.id:
+                return False, f"Tenant ID mismatch: expected {self.tenant.id}, got {tenant.id}"
+            return True, None
 
-        result = asyncio.run(run_test())
+        result, error = self._run_async_test(run_test)
+        if error:
+            self.fail(error)
         self.assertTrue(result)
 
     def test_middleware_handles_malformed_authorization_header(self):
@@ -319,7 +345,7 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=False)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_middleware_handles_url_encoded_tokens(self):
@@ -336,39 +362,64 @@ class TestWebSocketAuthEnhancement(TestCase):
             }
             return await self._test_middleware_auth(scope, should_authenticate=True)
 
-        result = asyncio.run(run_test())
+        result = self._run_async_test(run_test)
         self.assertTrue(result)
 
     def test_get_user_from_token_valid(self):
         """Test get_user_from_token with valid token."""
         async def run_test():
-            user = await get_user_from_token(self.token)
-            self.assertIsNotNone(user)
-            self.assertEqual(user.id, self.user.id)
+            # Initialize database connection by querying the user with database_sync_to_async
+            # This ensures the connection is initialized in the async context
+            user_exists = await database_sync_to_async(
+                lambda: User.objects.filter(id=self.user.id).exists()
+            )()
+            if not user_exists:
+                return None, "User should exist in database"
 
-        asyncio.run(run_test())
+            # Now test async lookup
+            user = await get_user_from_token(self.token)
+            return user, None
+
+        # Run async test in sync context
+        user, error = self._run_async_test(run_test)
+        if error:
+            self.fail(error)
+        self.assertIsNotNone(user, "User should be found from valid token")
+        self.assertEqual(user.id, self.user.id)
 
     def test_get_user_from_token_invalid(self):
         """Test get_user_from_token with invalid token."""
         async def run_test():
-            user = await get_user_from_token("invalid-token")
-            self.assertIsNone(user)
+            return await get_user_from_token("invalid-token")
 
-        asyncio.run(run_test())
+        user = self._run_async_test(run_test)
+        self.assertIsNone(user, "Invalid token should return None")
 
     def test_get_user_from_api_key_valid(self):
         """Test get_user_from_api_key with valid API key."""
         async def run_test():
-            user = await get_user_from_api_key(self.plaintext_api_key)
-            self.assertIsNotNone(user)
-            self.assertEqual(user.id, self.user.id)
+            # Initialize database connection
+            api_key_exists = await database_sync_to_async(
+                lambda: APIKey.objects.filter(id=self.api_key_obj.id).exists()
+            )()
+            if not api_key_exists:
+                return None, "API key should exist in database"
 
-        asyncio.run(run_test())
+            # Now test async lookup
+            user = await get_user_from_api_key(self.plaintext_api_key)
+            return user, None
+
+        # Run async test in sync context
+        user, error = self._run_async_test(run_test)
+        if error:
+            self.fail(error)
+        self.assertIsNotNone(user, "User should be found from valid API key")
+        self.assertEqual(user.id, self.user.id)
 
     def test_get_user_from_api_key_invalid(self):
         """Test get_user_from_api_key with invalid API key."""
         async def run_test():
-            user = await get_user_from_api_key("invalid-key")
-            self.assertIsNone(user)
+            return await get_user_from_api_key("invalid-key")
 
-        asyncio.run(run_test())
+        user = self._run_async_test(run_test)
+        self.assertIsNone(user, "Invalid API key should return None")

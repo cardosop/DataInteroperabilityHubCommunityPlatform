@@ -404,7 +404,7 @@ class FileStoragePerformanceTest(PerformanceTest):
         def init_upload():
             # Test via API endpoint
             response = self.client.post(
-                '/api/v1/files/files/init/',
+                '/api/v1/files/init/',
                 {
                     'name': 'perf-upload.csv',
                     'content_type': 'text/csv',

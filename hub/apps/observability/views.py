@@ -16,6 +16,7 @@ from .models import DataObservabilityMetric, VolumeTrend, SchemaDrift, Freshness
 from .freshness import FreshnessMonitor
 from .volume import VolumeMonitor
 from .schema_drift import SchemaDriftDetector
+from .services import ObservabilityService
 from .serializers import (
     FreshnessDashboardSerializer,
     VolumeDashboardSerializer,
@@ -29,16 +30,16 @@ from hub.apps.assets.models import Asset
 class ObservabilityViewSet(viewsets.ViewSet):
     """
     Observability API endpoints.
-    
+
     Provides data freshness monitoring, volume monitoring, and schema drift detection.
     """
     permission_classes = [permissions.IsAuthenticated]
-    
+
     @extend_schema(
         summary="Get freshness dashboard",
         description="""
         Get data freshness dashboard with metrics and statistics.
-        
+
         **Query Parameters:**
         - `dataset_id`: Optional dataset UUID filter
         - `asset_id`: Optional asset UUID filter
@@ -76,7 +77,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def get_freshness_dashboard(self, request: Request) -> Response:
         """
         Get data freshness dashboard.
-        
+
         GET /api/v1/observability/freshness?dataset_id={id}&limit=100
         """
         # Get tenant from user
@@ -86,28 +87,32 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to view observability data'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         dataset_id = request.query_params.get('dataset_id')
         asset_id = request.query_params.get('asset_id')
         limit = int(request.query_params.get('limit', 100))
-        
-        # Get dashboard data
-        dashboard_data = FreshnessMonitor.get_freshness_dashboard(
+
+        # Use ObservabilityService to get dashboard data (includes event publishing)
+        service = ObservabilityService(
+            tenant_id=str(tenant.id),
+            user_id=str(request.user.id) if request.user.is_authenticated else None
+        )
+        dashboard_data = service.get_freshness_dashboard(
             tenant_id=str(tenant.id),
             dataset_id=dataset_id,
             asset_id=asset_id,
             limit=limit
         )
-        
+
         serializer = FreshnessDashboardSerializer(dashboard_data)
         return Response(serializer.data)
-    
+
     @extend_schema(
         summary="Get stale data",
         description="""
         Get all stale data (exceeds SLA).
-        
+
         **Query Parameters:**
         - `dataset_id`: Optional dataset UUID filter
         - `asset_id`: Optional asset UUID filter
@@ -137,7 +142,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def get_stale_data(self, request: Request) -> Response:
         """
         Get all stale data (exceeds SLA).
-        
+
         GET /api/v1/observability/freshness/stale?dataset_id={id}
         """
         # Get tenant from user
@@ -147,25 +152,25 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to view observability data'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         dataset_id = request.query_params.get('dataset_id')
         asset_id = request.query_params.get('asset_id')
-        
+
         # Detect stale data
         stale_data = FreshnessMonitor.detect_stale_data(
             tenant_id=str(tenant.id),
             dataset_id=dataset_id,
             asset_id=asset_id
         )
-        
+
         return Response(stale_data)
-    
+
     @extend_schema(
         summary="Record observability metric",
         description="""
         Record a data observability metric (freshness, volume, schema).
-        
+
         **Body Parameters:**
         - `dataset_id`: Dataset UUID (optional)
         - `asset_id`: Asset UUID (optional)
@@ -185,7 +190,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def record_metric(self, request: Request) -> Response:
         """
         Record a data observability metric.
-        
+
         POST /api/v1/observability/metrics
         """
         # Get tenant from user
@@ -195,21 +200,21 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to record metrics'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         dataset_id = request.data.get('dataset_id')
         asset_id = request.data.get('asset_id')
-        
+
         if not dataset_id and not asset_id:
             return Response(
                 {'error': 'Either dataset_id or asset_id must be provided'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get dataset/asset
         dataset = None
         asset = None
-        
+
         if dataset_id:
             try:
                 dataset = Dataset.objects.get(id=dataset_id, tenant=tenant)
@@ -218,7 +223,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
                     {'error': 'Dataset not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
         if asset_id:
             try:
                 asset = Asset.objects.get(id=asset_id, tenant=tenant)
@@ -227,45 +232,38 @@ class ObservabilityViewSet(viewsets.ViewSet):
                     {'error': 'Asset not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
         # Parse last_update_time
         last_update_time = None
         if request.data.get('last_update_time'):
             from django.utils.dateparse import parse_datetime
             last_update_time = parse_datetime(request.data['last_update_time'])
-        
-        # Record metric
-        metric = FreshnessMonitor.record_metric(
+            if last_update_time:
+                last_update_time = last_update_time.isoformat()
+
+        # Use ObservabilityService to record metric (includes event publishing)
+        service = ObservabilityService(
             tenant_id=str(tenant.id),
-            dataset=dataset,
-            asset=asset,
+            user_id=str(request.user.id) if request.user.is_authenticated else None
+        )
+        result = service.record_metric(
+            tenant_id=str(tenant.id),
+            dataset_id=str(dataset.id) if dataset else None,
+            asset_id=str(asset.id) if asset else None,
             last_update_time=last_update_time,
             freshness_sla=request.data.get('freshness_sla'),
             row_count=request.data.get('row_count'),
             size_bytes=request.data.get('size_bytes'),
             schema_json=request.data.get('schema_json')
         )
-        
-        # Detect schema drift if schema_json provided
-        if request.data.get('schema_json'):
-            SchemaDriftDetector.detect_drift(
-                tenant_id=str(tenant.id),
-                dataset=dataset,
-                asset=asset,
-                current_schema_json=request.data.get('schema_json')
-            )
-        
-        return Response({
-            'id': str(metric.id),
-            'recorded_at': metric.recorded_at.isoformat(),
-            'is_stale': metric.is_stale
-        }, status=status.HTTP_201_CREATED)
-    
+
+        return Response(result, status=status.HTTP_201_CREATED)
+
     @extend_schema(
         summary="Get volume dashboard",
         description="""
         Get data volume dashboard with trends and anomaly detection.
-        
+
         **Query Parameters:**
         - `dataset_id`: Optional dataset UUID filter
         - `asset_id`: Optional asset UUID filter
@@ -311,7 +309,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def get_volume_dashboard(self, request: Request) -> Response:
         """
         Get data volume dashboard.
-        
+
         GET /api/v1/observability/volume?period_type=DAILY&limit=30
         """
         # Get tenant from user
@@ -321,30 +319,34 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to view observability data'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         dataset_id = request.query_params.get('dataset_id')
         asset_id = request.query_params.get('asset_id')
         period_type = request.query_params.get('period_type', 'DAILY')
         limit = int(request.query_params.get('limit', 30))
-        
-        # Get dashboard data
-        dashboard_data = VolumeMonitor.get_volume_dashboard(
+
+        # Use ObservabilityService to get dashboard data (includes event publishing)
+        service = ObservabilityService(
+            tenant_id=str(tenant.id),
+            user_id=str(request.user.id) if request.user.is_authenticated else None
+        )
+        dashboard_data = service.get_volume_dashboard(
             tenant_id=str(tenant.id),
             dataset_id=dataset_id,
             asset_id=asset_id,
             period_type=period_type,
             limit=limit
         )
-        
+
         serializer = VolumeDashboardSerializer(dashboard_data)
         return Response(serializer.data)
-    
+
     @extend_schema(
         summary="Aggregate volume trends",
         description="""
         Aggregate volume trends for hourly or daily periods.
-        
+
         **Query Parameters:**
         - `period_type`: Period type (HOURLY or DAILY)
         - `dataset_id`: Optional dataset UUID filter
@@ -398,7 +400,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def aggregate_volume_trends(self, request: Request) -> Response:
         """
         Aggregate volume trends.
-        
+
         POST /api/v1/observability/volume/aggregate?period_type=DAILY&days=30
         """
         # Get tenant from user
@@ -408,12 +410,12 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to aggregate trends'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         period_type = request.query_params.get('period_type', 'DAILY')
         dataset_id = request.query_params.get('dataset_id')
         asset_id = request.query_params.get('asset_id')
-        
+
         if period_type == 'HOURLY':
             hours = int(request.query_params.get('hours', 24))
             trends = VolumeMonitor.aggregate_hourly_trends(
@@ -430,18 +432,18 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 asset_id=asset_id,
                 days=days
             )
-        
+
         return Response({
             'period_type': period_type,
             'trends_count': len(trends),
             'trends': [str(t.id) for t in trends]
         })
-    
+
     @extend_schema(
         summary="Get schema drift dashboard",
         description="""
         Get schema drift dashboard with detected drifts and statistics.
-        
+
         **Query Parameters:**
         - `dataset_id`: Optional dataset UUID filter
         - `asset_id`: Optional asset UUID filter
@@ -479,7 +481,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def get_schema_drift_dashboard(self, request: Request) -> Response:
         """
         Get schema drift dashboard.
-        
+
         GET /api/v1/observability/schema-drift?dataset_id={id}&limit=100
         """
         # Get tenant from user
@@ -489,28 +491,32 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to view observability data'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         dataset_id = request.query_params.get('dataset_id')
         asset_id = request.query_params.get('asset_id')
         limit = int(request.query_params.get('limit', 100))
-        
-        # Get dashboard data
-        dashboard_data = SchemaDriftDetector.get_drift_dashboard(
+
+        # Use ObservabilityService to get dashboard data (includes event publishing)
+        service = ObservabilityService(
+            tenant_id=str(tenant.id),
+            user_id=str(request.user.id) if request.user.is_authenticated else None
+        )
+        dashboard_data = service.get_schema_drift_dashboard(
             tenant_id=str(tenant.id),
             dataset_id=dataset_id,
             asset_id=asset_id,
             limit=limit
         )
-        
+
         serializer = SchemaDriftDashboardSerializer(dashboard_data)
         return Response(serializer.data)
-    
+
     @extend_schema(
         summary="Detect schema drift",
         description="""
         Manually trigger schema drift detection for a dataset or asset.
-        
+
         **Body Parameters:**
         - `dataset_id`: Dataset UUID (optional)
         - `asset_id`: Asset UUID (optional)
@@ -526,7 +532,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def detect_schema_drift(self, request: Request) -> Response:
         """
         Manually trigger schema drift detection.
-        
+
         POST /api/v1/observability/schema-drift/detect
         """
         # Get tenant from user
@@ -536,21 +542,21 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to detect drift'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         dataset_id = request.data.get('dataset_id')
         asset_id = request.data.get('asset_id')
-        
+
         if not dataset_id and not asset_id:
             return Response(
                 {'error': 'Either dataset_id or asset_id must be provided'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get dataset/asset
         dataset = None
         asset = None
-        
+
         if dataset_id:
             try:
                 dataset = Dataset.objects.get(id=dataset_id, tenant=tenant)
@@ -559,7 +565,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
                     {'error': 'Dataset not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
         if asset_id:
             try:
                 asset = Asset.objects.get(id=asset_id, tenant=tenant)
@@ -568,12 +574,12 @@ class ObservabilityViewSet(viewsets.ViewSet):
                     {'error': 'Asset not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
         # Get schema from dataset if available
         current_schema_json = None
         if dataset and dataset.schema_json:
             current_schema_json = dataset.schema_json
-        
+
         # Detect drift
         drift = SchemaDriftDetector.detect_drift(
             tenant_id=str(tenant.id),
@@ -582,7 +588,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
             current_schema_json=current_schema_json or request.data.get('schema_json'),
             tolerance_config=request.data.get('tolerance_config')
         )
-        
+
         if drift:
             return Response({
                 'drift_detected': True,
@@ -598,12 +604,12 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 'drift_detected': False,
                 'message': 'No schema drift detected'
             })
-    
+
     @extend_schema(
         summary="Get pipeline monitoring dashboard",
         description="""
         Get pipeline monitoring dashboard with execution metrics, success rates, error rates, latency, and throughput.
-        
+
         **Query Parameters:**
         - `pipeline_type`: Optional pipeline type filter (SCHEDULED_INGESTION, DQ_RUN, etc.)
         - `pipeline_id`: Optional pipeline UUID filter
@@ -641,7 +647,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def get_pipeline_dashboard(self, request: Request) -> Response:
         """
         Get pipeline monitoring dashboard.
-        
+
         GET /api/v1/observability/pipelines?pipeline_type=SCHEDULED_INGESTION&limit=100
         """
         # Get tenant from user
@@ -651,12 +657,12 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to view observability data'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         pipeline_type = request.query_params.get('pipeline_type')
         pipeline_id = request.query_params.get('pipeline_id')
         limit = int(request.query_params.get('limit', 100))
-        
+
         # Get dashboard data
         from .pipeline_monitoring import PipelineMonitor
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
@@ -665,14 +671,14 @@ class ObservabilityViewSet(viewsets.ViewSet):
             pipeline_id=pipeline_id,
             limit=limit
         )
-        
+
         return Response(dashboard_data)
-    
+
     @extend_schema(
         summary="Get data SLAs dashboard",
         description="""
         Get data SLAs dashboard with compliance monitoring.
-        
+
         **Query Parameters:**
         - `sla_type`: Optional SLA type filter (AVAILABILITY, FRESHNESS, QUALITY)
         - `dataset_id`: Optional dataset UUID filter
@@ -734,7 +740,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def get_slas_dashboard(self, request: Request) -> Response:
         """
         Get data SLAs dashboard.
-        
+
         GET /api/v1/observability/slas?sla_type=FRESHNESS&limit=100
         """
         # Get tenant from user
@@ -744,7 +750,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to view observability data'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         sla_type = request.query_params.get('sla_type')
         dataset_id = request.query_params.get('dataset_id')
@@ -752,16 +758,16 @@ class ObservabilityViewSet(viewsets.ViewSet):
         is_active = request.query_params.get('is_active')
         is_violated = request.query_params.get('is_violated')
         limit = int(request.query_params.get('limit', 100))
-        
+
         # Parse boolean parameters
         is_active_bool = None
         if is_active is not None:
             is_active_bool = is_active.lower() == 'true'
-        
+
         is_violated_bool = None
         if is_violated is not None:
             is_violated_bool = is_violated.lower() == 'true'
-        
+
         # Get dashboard data
         from .data_slas import DataSLAMonitor
         dashboard_data = DataSLAMonitor.get_slas_dashboard(
@@ -773,14 +779,14 @@ class ObservabilityViewSet(viewsets.ViewSet):
             is_violated=is_violated_bool,
             limit=limit
         )
-        
+
         return Response(dashboard_data)
-    
+
     @extend_schema(
         summary="Get data incidents dashboard",
         description="""
         Get data incidents dashboard with lifecycle tracking.
-        
+
         **Query Parameters:**
         - `status`: Optional status filter (DETECTED, TRIAGED, IN_PROGRESS, RESOLVED)
         - `incident_type`: Optional incident type filter
@@ -850,7 +856,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def get_incidents_dashboard(self, request: Request) -> Response:
         """
         Get data incidents dashboard.
-        
+
         GET /api/v1/observability/incidents?status=IN_PROGRESS&limit=100
         """
         # Get tenant from user
@@ -860,7 +866,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to view observability data'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get parameters
         status_filter = request.query_params.get('status')
         incident_type = request.query_params.get('incident_type')
@@ -869,7 +875,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
         resource_type = request.query_params.get('resource_type')
         resource_id = request.query_params.get('resource_id')
         limit = int(request.query_params.get('limit', 100))
-        
+
         # Get dashboard data
         from .incident_management import IncidentManager
         dashboard_data = IncidentManager.get_incidents_dashboard(
@@ -882,14 +888,14 @@ class ObservabilityViewSet(viewsets.ViewSet):
             resource_id=resource_id,
             limit=limit
         )
-        
+
         return Response(dashboard_data)
-    
+
     @extend_schema(
         summary="Create data incident",
         description="""
         Create a new data incident.
-        
+
         **Body Parameters:**
         - `title`: Incident title (required)
         - `description`: Incident description (required)
@@ -909,7 +915,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def create_incident(self, request: Request) -> Response:
         """
         Create a new data incident.
-        
+
         POST /api/v1/observability/incidents
         """
         # Get tenant from user
@@ -919,18 +925,18 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to create incidents'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Validate required fields
         title = request.data.get('title')
         description = request.data.get('description')
         incident_type = request.data.get('incident_type')
-        
+
         if not title or not description or not incident_type:
             return Response(
                 {'error': 'title, description, and incident_type are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Create incident
         from .incident_management import IncidentManager
         incident = IncidentManager.create_incident(
@@ -944,19 +950,19 @@ class ObservabilityViewSet(viewsets.ViewSet):
             detected_by_id=str(request.user.id) if request.user.is_authenticated else None,
             metadata_json=request.data.get('metadata_json')
         )
-        
+
         return Response({
             'id': str(incident.id),
             'title': incident.title,
             'status': incident.status,
             'detected_at': incident.detected_at.isoformat()
         }, status=status.HTTP_201_CREATED)
-    
+
     @extend_schema(
         summary="Update data incident",
         description="""
         Update a data incident (status, assignment, resolution).
-        
+
         **Body Parameters:**
         - `status`: New status (TRIAGED, IN_PROGRESS, RESOLVED)
         - `assigned_to_id`: User UUID to assign to (optional)
@@ -974,10 +980,10 @@ class ObservabilityViewSet(viewsets.ViewSet):
         summary="Update data incident",
         description="""
         Update a data incident (status, assignment, resolution).
-        
+
         **Query Parameters:**
         - `incident_id`: Incident UUID (required)
-        
+
         **Body Parameters:**
         - `status`: New status (TRIAGED, IN_PROGRESS, RESOLVED)
         - `assigned_to_id`: User UUID to assign to (optional)
@@ -1004,7 +1010,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
     def update_incident(self, request: Request) -> Response:
         """
         Update a data incident.
-        
+
         PATCH /api/v1/observability/incidents/update?incident_id={id}
         """
         # Get tenant from user
@@ -1014,7 +1020,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'User must belong to a tenant to update incidents'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get incident ID
         incident_id = request.query_params.get('incident_id') or request.data.get('incident_id')
         if not incident_id:
@@ -1022,7 +1028,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'incident_id is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get incident
         from .models import DataIncident
         try:
@@ -1032,7 +1038,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
                 {'error': 'Incident not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # Update incident
         from .incident_management import IncidentManager
         updated_incident = IncidentManager.update_incident_status(
@@ -1043,7 +1049,7 @@ class ObservabilityViewSet(viewsets.ViewSet):
             resolution_notes=request.data.get('resolution_notes'),
             resolved_by_id=str(request.user.id) if request.data.get('status') == 'RESOLVED' and request.user.is_authenticated else None
         )
-        
+
         return Response({
             'id': str(updated_incident.id),
             'status': updated_incident.status,

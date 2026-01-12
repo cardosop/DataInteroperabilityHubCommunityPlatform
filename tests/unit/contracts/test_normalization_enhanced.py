@@ -25,7 +25,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 class EnhancedNormalizationTest(TestCase):
     """Enhanced normalization tests with complete field property extraction"""
-    
+
     # Field Property Extraction Tests - ODCS
     def test_extract_semantic_type_from_odcs(self):
         """Test extracting semantic_type from ODCS structure"""
@@ -47,16 +47,16 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        
+
         fields = hub_contract["schema"]["fields"]
         self.assertEqual(fields[0]["semantic_type"], "EMAIL")
         self.assertEqual(fields[1]["semantic_type"], "PHONE")
-    
+
     def test_extract_format_from_odcs(self):
         """Test extracting format from ODCS"""
         odcs_contract = {
@@ -87,16 +87,16 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         fields = hub_contract["schema"]["fields"]
         self.assertEqual(fields[0]["format"], "email")
         self.assertEqual(fields[1]["format"], "uri")
         self.assertEqual(fields[2]["format"], "date")
         self.assertEqual(fields[3]["format"], "date-time")
-    
+
     def test_extract_pattern_from_odcs(self):
         """Test extracting pattern (regex) from ODCS"""
         odcs_contract = {
@@ -117,14 +117,14 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         fields = hub_contract["schema"]["fields"]
         self.assertEqual(fields[0]["pattern"], "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")
         self.assertEqual(fields[1]["pattern"], "^[A-Z0-9]{8}$")
-    
+
     def test_extract_enum_from_odcs(self):
         """Test extracting enum (array of allowed values) from ODCS"""
         odcs_contract = {
@@ -145,14 +145,14 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         fields = hub_contract["schema"]["fields"]
         self.assertEqual(fields[0]["enum"], ["active", "inactive", "pending"])
         self.assertEqual(fields[1]["enum"], ["low", "medium", "high"])
-    
+
     def test_extract_default_from_odcs(self):
         """Test extracting default value from ODCS"""
         odcs_contract = {
@@ -178,15 +178,15 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         fields = hub_contract["schema"]["fields"]
         self.assertEqual(fields[0]["default"], "pending")
         self.assertEqual(fields[1]["default"], 0)
         self.assertEqual(fields[2]["default"], True)
-    
+
     def test_extract_min_max_length_from_odcs(self):
         """Test extracting min_length and max_length from ODCS"""
         odcs_contract = {
@@ -209,16 +209,16 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         fields = hub_contract["schema"]["fields"]
         self.assertEqual(fields[0]["min_length"], 1)
         self.assertEqual(fields[0]["max_length"], 10)
         self.assertEqual(fields[1]["min_length"], 5)
         self.assertEqual(fields[1]["max_length"], 255)
-    
+
     def test_extract_min_max_numeric_from_odcs(self):
         """Test extracting minimum and maximum numeric values from ODCS"""
         odcs_contract = {
@@ -241,16 +241,16 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         fields = hub_contract["schema"]["fields"]
         self.assertEqual(fields[0]["minimum"], 0)
         self.assertEqual(fields[0]["maximum"], 150)
         self.assertEqual(fields[1]["minimum"], 0.0)
         self.assertEqual(fields[1]["maximum"], 10000.0)
-    
+
     def test_extract_metadata_from_odcs(self):
         """Test extracting metadata from ODCS"""
         odcs_contract = {
@@ -270,16 +270,16 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         field = hub_contract["schema"]["fields"][0]
         self.assertIn("metadata", field)
         self.assertEqual(field["metadata"]["source_system"], "CRM")
         self.assertEqual(field["metadata"]["pii"], True)
         self.assertEqual(field["metadata"]["sensitive"], False)
-    
+
     # Complete Section Normalization Tests
     def test_normalize_info_section_complete(self):
         """Test complete info section normalization"""
@@ -299,9 +299,9 @@ class EnhancedNormalizationTest(TestCase):
                 "fields": [{"name": "id", "type": "string"}]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
         self.assertEqual(hub_contract["info"]["name"], "Test Contract")
@@ -309,7 +309,7 @@ class EnhancedNormalizationTest(TestCase):
         self.assertEqual(hub_contract["info"]["version"], "1.0.0")
         self.assertEqual(len(hub_contract["info"]["owners"]), 2)
         self.assertEqual(len(hub_contract["info"]["tags"]), 3)
-    
+
     def test_normalize_schema_section_complete(self):
         """Test complete schema section normalization with constraints"""
         odcs_contract = {
@@ -329,15 +329,15 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         schema = hub_contract["schema"]
         self.assertEqual(schema["primary_key"], ["id"])
         self.assertEqual(len(schema["unique_constraints"]), 2)
         self.assertEqual(len(schema["indexes"]), 2)
-        
+
         # Verify field constraint flags
         fields = schema["fields"]
         self.assertTrue(fields[0]["is_primary_key"])  # id
@@ -345,7 +345,7 @@ class EnhancedNormalizationTest(TestCase):
         self.assertTrue(fields[2]["is_unique"])  # name
         self.assertTrue(fields[1]["is_indexed"])  # email
         self.assertTrue(fields[2]["is_indexed"])  # name
-    
+
     def test_normalize_quality_section_complete(self):
         """Test complete quality section normalization"""
         odcs_contract = {
@@ -374,16 +374,16 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         quality = hub_contract["quality"]
         self.assertEqual(quality["default_profile_key"], "intake_basic_soda")
         self.assertEqual(len(quality["rules"]), 2)
         self.assertEqual(quality["rules"][0]["rule_id"], "not_null_id")
         self.assertEqual(quality["rules"][1]["rule_id"], "valid_email")
-    
+
     def test_normalize_privacy_compliance_section_complete(self):
         """Test complete privacy_compliance section normalization"""
         odcs_contract = {
@@ -403,9 +403,9 @@ class EnhancedNormalizationTest(TestCase):
                 }
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         compliance = hub_contract["privacy_compliance"]
         self.assertEqual(compliance["contains_personal_data"], True)
@@ -414,7 +414,7 @@ class EnhancedNormalizationTest(TestCase):
         self.assertEqual(len(compliance["legal_bases"]), 2)
         self.assertIsNotNone(compliance["retention_policy"])
         self.assertEqual(compliance["retention_policy"]["period"], "P5Y")
-    
+
     def test_normalize_lifecycle_section_complete(self):
         """Test complete lifecycle section normalization"""
         odcs_contract = {
@@ -433,16 +433,16 @@ class EnhancedNormalizationTest(TestCase):
                 }
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         lifecycle = hub_contract["lifecycle"]
         self.assertEqual(lifecycle["data_source"], "source.system.com")
         self.assertEqual(lifecycle["refresh_cadence"], "DAILY")
         self.assertEqual(lifecycle["slas"]["availability"], "99.9")
         self.assertEqual(lifecycle["slas"]["latency_ms_p95"], 5000)
-    
+
     def test_normalize_marketplace_section_complete(self):
         """Test complete marketplace section normalization"""
         odcs_contract = {
@@ -457,15 +457,15 @@ class EnhancedNormalizationTest(TestCase):
                 "restricted_use": ["resale", "competitive_analysis"]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         marketplace = hub_contract["marketplace"]
         self.assertEqual(marketplace["license_summary"], "MIT License")
         self.assertEqual(len(marketplace["intended_use"]), 3)
         self.assertEqual(len(marketplace["restricted_use"]), 2)
-    
+
     # Normalization Status Tracking Tests
     def test_status_normalized_ok_all_sections(self):
         """Test NORMALIZED_OK status when all sections successfully mapped"""
@@ -476,14 +476,14 @@ class EnhancedNormalizationTest(TestCase):
                 "fields": [{"name": "id", "type": "string", "nullable": False}]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
         self.assertEqual(len(errors), 0)
         self.assertEqual(len(warnings), 0)
-    
+
     def test_status_normalized_with_warnings_extensions(self):
         """Test NORMALIZED_WITH_WARNINGS status when extensions present"""
         odcs_contract = {
@@ -494,14 +494,14 @@ class EnhancedNormalizationTest(TestCase):
             },
             "unmappable_field": "value"
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_WITH_WARNINGS)
         self.assertGreater(len(warnings), 0)
         self.assertIn("extensions", hub_contract)
-    
+
     def test_status_normalization_failed_missing_name(self):
         """Test NORMALIZATION_FAILED status when name is missing"""
         odcs_contract = {
@@ -511,43 +511,43 @@ class EnhancedNormalizationTest(TestCase):
                 "fields": [{"name": "id", "type": "string"}]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         # Empty name causes FAILED status and adds an error
         # But hub_contract should still exist (empty name is not a critical error that prevents normalization)
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
         self.assertGreater(len(errors), 0)
-    
+
     def test_status_normalization_failed_missing_fields(self):
         """Test NORMALIZATION_FAILED status when fields are missing"""
         odcs_contract = {
             "id": "test",
             "name": "Test",
             "schema": {
-                "fields": []  # Empty fields
+                # Fields key is missing (not just empty)
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
-        # When errors are present, hub_contract may be None
+
+        # When fields are truly missing (not present), hub_contract should be None
         # When status is FAILED but no errors, hub_contract should exist
         if errors:
             self.assertIsNone(hub_contract)
         else:
             self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
-    
+
     def test_status_normalization_failed_exception(self):
         """Test NORMALIZATION_FAILED status when exception occurs"""
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(None)
-        
+
         self.assertIsNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
         self.assertGreater(len(errors), 0)
-    
+
     # Information Preservation Tests
     def test_extensions_preserve_unmappable_fields(self):
         """Test that unmappable fields are preserved in extensions"""
@@ -561,9 +561,9 @@ class EnhancedNormalizationTest(TestCase):
             "custom_field_2": {"nested": "value"},
             "custom_array": [1, 2, 3]
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         self.assertIn("extensions", hub_contract)
         self.assertIn("odcs", hub_contract["extensions"])
@@ -571,7 +571,7 @@ class EnhancedNormalizationTest(TestCase):
         self.assertEqual(extensions["custom_field_1"], "value1")
         self.assertEqual(extensions["custom_field_2"]["nested"], "value")
         self.assertEqual(extensions["custom_array"], [1, 2, 3])
-    
+
     # Complete Contract Normalization Tests
     def test_normalize_complete_contract_all_sections(self):
         """Test normalizing complete contract with all sections"""
@@ -646,12 +646,12 @@ class EnhancedNormalizationTest(TestCase):
                 "restricted_use": []
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
-        
+
         # Verify all sections are present
         self.assertIn("info", hub_contract)
         self.assertIn("schema", hub_contract)
@@ -659,40 +659,40 @@ class EnhancedNormalizationTest(TestCase):
         self.assertIn("privacy_compliance", hub_contract)
         self.assertIn("lifecycle", hub_contract)
         self.assertIn("marketplace", hub_contract)
-        
+
         # Verify info section
         self.assertEqual(hub_contract["info"]["name"], "Complete Contract")
         self.assertEqual(len(hub_contract["info"]["owners"]), 1)
         self.assertEqual(len(hub_contract["info"]["tags"]), 2)
-        
+
         # Verify schema section
         self.assertEqual(len(hub_contract["schema"]["fields"]), 2)
         self.assertEqual(hub_contract["schema"]["primary_key"], ["id"])
-        
+
         # Verify quality section
         self.assertEqual(hub_contract["quality"]["default_profile_key"], "intake_basic_soda")
         self.assertEqual(len(hub_contract["quality"]["rules"]), 1)
-        
+
         # Verify compliance section
         self.assertEqual(hub_contract["privacy_compliance"]["contains_personal_data"], True)
-        
+
         # Verify lifecycle section
         self.assertEqual(hub_contract["lifecycle"]["data_source"], "source.example.com")
-        
+
         # Verify marketplace section
         self.assertEqual(hub_contract["marketplace"]["license_summary"], "Apache 2.0")
-    
+
     def test_normalize_coverage_calculation(self):
         """Test normalization coverage calculation"""
         # Contract with all sections
         full_contract = ContractFactoryEnhanced.create_hub_contract_json()
         coverage = calculate_coverage(full_contract)
         legacy_coverage = _calculate_normalization_coverage(full_contract)
-        
+
         self.assertGreater(coverage.overall, 0.5)
         self.assertLessEqual(coverage.overall, 1.0)
         self.assertAlmostEqual(coverage.overall, legacy_coverage)
-        
+
         # Minimal contract
         minimal_contract = {
             "hub_contract_version": 1,
@@ -701,10 +701,10 @@ class EnhancedNormalizationTest(TestCase):
             "schema": {"fields": [{"name": "id", "data_type": "string"}]}
         }
         minimal_coverage = calculate_coverage(minimal_contract)
-        
+
         self.assertLess(minimal_coverage.overall, coverage.overall)
         self.assertGreater(minimal_coverage.overall, 0.0)
-    
+
     # Edge Cases
     def test_normalize_with_nullable_fields(self):
         """Test normalization with nullable and non-nullable fields"""
@@ -719,15 +719,15 @@ class EnhancedNormalizationTest(TestCase):
                 ]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         fields = hub_contract["schema"]["fields"]
         self.assertEqual(fields[0]["nullable"], False)
         self.assertEqual(fields[1]["nullable"], True)
         self.assertEqual(fields[2]["nullable"], True)
-    
+
     def test_normalize_with_all_field_properties_combined(self):
         """Test normalization with all field properties combined"""
         odcs_contract = {
@@ -761,12 +761,12 @@ class EnhancedNormalizationTest(TestCase):
                 "primary_key": ["complete_field"]
             }
         }
-        
+
         hub_contract, status, errors, warnings = normalize_odcs_to_hubcontract(odcs_contract)
-        
+
         self.assertIsNotNone(hub_contract)
         field = hub_contract["schema"]["fields"][0]
-        
+
         # Verify all properties are present
         self.assertEqual(field["name"], "complete_field")
         self.assertEqual(field["data_type"], "string")

@@ -8,7 +8,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
@@ -16,28 +15,24 @@ from hub.apps.websocket.protocol import (
     WebSocketMessage,
     WebSocketMessageType,
 )
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 
 User = get_user_model()
 
 
-@pytest.mark.django_db
-class TestEventConsumerHandlers(TestCase):
+@pytest.mark.django_db(transaction=True)
+class TestEventConsumerHandlers(AsyncWebSocketTestCase):
     """Test EventConsumer message handlers directly."""
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-        )
+        # Create tenant with unique name/slug to avoid conflicts
+        self.tenant = self.create_unique_tenant(status="ACTIVE")
 
-        # Create user
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
+        # Create user with unique email to avoid conflicts
+        self.user = self.create_unique_user(
             tenant=self.tenant,
+            password="testpass123",
         )
 
     def _create_consumer(self):

@@ -14,6 +14,11 @@ Security Event Types:
 - INVALID_URL: Invalid URL format
 - INVALID_FILE_TYPE: Invalid file type/extension for local $ref
 - SUSPICIOUS_PATTERN: Suspicious activity pattern detected
+- EXTERNAL_REF_FETCH: External $ref fetch (successful)
+- CACHE_HIT: Cache hit
+- CACHE_MISS: Cache miss
+- CACHE_EVICTION: Cache eviction
+- SECURITY_VIOLATION: General security violation
 """
 import time
 from datetime import datetime, timezone
@@ -23,6 +28,16 @@ from dataclasses import dataclass, asdict
 import structlog
 
 logger = structlog.get_logger(__name__)
+
+# Lazy import to avoid circular dependencies
+try:
+    from django.contrib.auth import get_user_model
+    from hub.apps.contracts.models import SecurityAuditLog
+    DJANGO_AVAILABLE = True
+except ImportError:
+    DJANGO_AVAILABLE = False
+    SecurityAuditLog = None
+    get_user_model = None
 
 
 class SecurityEventType(str, Enum):
@@ -36,6 +51,11 @@ class SecurityEventType(str, Enum):
     INVALID_URL = "INVALID_URL"
     INVALID_FILE_TYPE = "INVALID_FILE_TYPE"
     SUSPICIOUS_PATTERN = "SUSPICIOUS_PATTERN"
+    EXTERNAL_REF_FETCH = "EXTERNAL_REF_FETCH"
+    CACHE_HIT = "CACHE_HIT"
+    CACHE_MISS = "CACHE_MISS"
+    CACHE_EVICTION = "CACHE_EVICTION"
+    SECURITY_VIOLATION = "SECURITY_VIOLATION"
 
 
 class SecuritySeverity(str, Enum):
@@ -156,11 +176,14 @@ class SecurityLogger:
 
     Provides methods for logging security violations and audit trails
     with structured, machine-readable format.
+
+    Also persists security events to the database for compliance and querying.
     """
 
     def __init__(self):
         """Initialize security logger"""
         self.logger = structlog.get_logger(__name__)
+        self._persist_to_db = DJANGO_AVAILABLE and SecurityAuditLog is not None
 
     def log_security_violation(
         self,
@@ -234,7 +257,80 @@ class SecurityLogger:
         else:
             self.logger.info("odps_security_violation", **log_dict)
 
+        # Persist to database
+        self._persist_security_violation(violation_log)
+
+        # Detect security incidents
+        try:
+            incident_detector = get_incident_detector()
+            incident = incident_detector.detect_incidents_from_violation(violation_log)
+            if incident:
+                self.logger.info(
+                    "odps_security_incident_created",
+                    incident_id=str(incident.id),
+                    event_type=violation_log.event_type,
+                    severity=incident.severity,
+                    message="Security incident created from violation"
+                )
+        except Exception as e:
+            # Don't fail on incident detection errors - logging is more important
+            self.logger.warning(
+                "odps_security_incident_detection_failed",
+                error=str(e),
+                event_type=violation_log.event_type,
+                message="Failed to detect security incident (non-critical)"
+            )
+
         return violation_log
+
+    def _persist_security_violation(self, violation_log: SecurityViolationLog) -> None:
+        """Persist security violation to database."""
+        if not self._persist_to_db:
+            return
+
+        try:
+            from hub.apps.tenants.models import Tenant
+
+            # Get tenant if tenant_id provided
+            tenant = None
+            if violation_log.tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=violation_log.tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            # Get user if user_id provided
+            user = None
+            if violation_log.user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=violation_log.user_id)
+                except (User.DoesNotExist, Exception):
+                    pass
+
+            SecurityAuditLog.objects.create(
+                event_type=violation_log.event_type,  # Use actual event type, not always SECURITY_VIOLATION
+                severity=violation_log.severity,
+                tenant=tenant,
+                user=user,
+                ref_path=violation_log.attempted_path or violation_log.attempted_url,
+                attempted_path=violation_log.attempted_path,
+                attempted_url=violation_log.attempted_url,
+                violation_type=violation_log.violation_type,
+                description=violation_log.description,
+                request_id=violation_log.request_id,
+                ip_address=violation_log.ip_address,
+                user_agent=violation_log.user_agent,
+                metadata_json=violation_log.metadata or {},
+            )
+        except Exception as e:
+            # Don't fail on database persistence errors - logging is more important
+            logger.warning(
+                "odps_security_audit_persistence_failed",
+                error=str(e),
+                event_type=violation_log.event_type,
+                message="Failed to persist security violation to database (non-critical)"
+            )
 
     def log_ref_resolution_audit(
         self,
@@ -307,7 +403,325 @@ class SecurityLogger:
         else:
             self.logger.warning("odps_ref_resolution_audit", **log_dict)
 
+        # Persist to database
+        self._persist_ref_resolution_audit(audit_log)
+
         return audit_log
+
+    def _persist_ref_resolution_audit(self, audit_log: RefResolutionAuditLog) -> None:
+        """Persist ref resolution audit to database."""
+        if not self._persist_to_db:
+            return
+
+        try:
+            from hub.apps.tenants.models import Tenant
+
+            # Get tenant if tenant_id provided
+            tenant = None
+            if audit_log.tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=audit_log.tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            # Get user if user_id provided
+            user = None
+            if audit_log.user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=audit_log.user_id)
+                except (User.DoesNotExist, Exception):
+                    pass
+
+            SecurityAuditLog.objects.create(
+                event_type="REF_RESOLUTION_AUDIT",
+                tenant=tenant,
+                user=user,
+                ref_type=audit_log.ref_type,
+                ref_path=audit_log.ref_path,
+                resolved_path=audit_log.resolved_path,
+                description=f"Ref resolution: {audit_log.ref_type} - {'success' if audit_log.success else 'failure'}",
+                metadata_json={
+                    "operation_id": audit_log.operation_id,
+                    "success": audit_log.success,
+                    "duration_ms": audit_log.duration_ms,
+                    "error_type": audit_log.error_type,
+                    "error_message": audit_log.error_message,
+                    "security_checks_passed": audit_log.security_checks_passed,
+                    "security_violations": audit_log.security_violations,
+                    "size_bytes": audit_log.size_bytes,
+                    "cache_hit": audit_log.cache_hit,
+                    **(audit_log.metadata or {}),
+                },
+            )
+        except Exception as e:
+            # Don't fail on database persistence errors - logging is more important
+            logger.warning(
+                "odps_ref_resolution_audit_persistence_failed",
+                error=str(e),
+                operation_id=audit_log.operation_id,
+                message="Failed to persist ref resolution audit to database (non-critical)"
+            )
+
+    def log_external_ref_fetch(
+        self,
+        ref_path: str,
+        success: bool,
+        tenant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        contract_id: Optional[str] = None,
+        duration_ms: Optional[float] = None,
+        size_bytes: Optional[int] = None,
+        cache_hit: Optional[bool] = None,
+        error_message: Optional[str] = None,
+        request_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Log external $ref fetch event.
+
+        Args:
+            ref_path: External $ref URL
+            success: Whether fetch succeeded
+            tenant_id: Tenant ID
+            user_id: User ID
+            contract_id: Contract ID
+            duration_ms: Fetch duration in milliseconds
+            size_bytes: Size of fetched content
+            cache_hit: Whether result came from cache
+            error_message: Error message if failed
+            request_id: Request ID for tracing
+            ip_address: IP address
+            user_agent: User agent string
+            metadata: Additional metadata
+        """
+        # Log to structured logs
+        self.logger.info(
+            "odps_external_ref_fetch",
+            ref_path=ref_path,
+            success=success,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            cache_hit=cache_hit,
+            duration_ms=duration_ms,
+            size_bytes=size_bytes,
+        )
+
+        # Persist to database
+        if not self._persist_to_db:
+            return
+
+        try:
+            from hub.apps.tenants.models import Tenant
+
+            tenant = None
+            if tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            user = None
+            if user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=user_id)
+                except (User.DoesNotExist, Exception):
+                    pass
+
+            SecurityAuditLog.objects.create(
+                event_type=SecurityEventType.EXTERNAL_REF_FETCH.value,
+                tenant=tenant,
+                user=user,
+                ref_type="external",
+                ref_path=ref_path,
+                resolved_path=ref_path if success else None,
+                description=f"External $ref fetch: {'success' if success else 'failed'} - {ref_path}",
+                metadata_json={
+                    "success": success,
+                    "duration_ms": duration_ms,
+                    "size_bytes": size_bytes,
+                    "cache_hit": cache_hit,
+                    "error_message": error_message,
+                    **(metadata or {}),
+                },
+                request_id=request_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_external_ref_fetch_persistence_failed",
+                error=str(e),
+                ref_path=ref_path,
+                message="Failed to persist external ref fetch to database (non-critical)"
+            )
+
+    def log_rate_limit_violation(
+        self,
+        level: str,
+        tenant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        ref_path: Optional[str] = None,
+        retry_after: Optional[float] = None,
+        request_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Log rate limit violation event.
+
+        Args:
+            level: Rate limit level (global, tenant, user)
+            tenant_id: Tenant ID
+            user_id: User ID
+            ref_path: $ref path that triggered violation
+            retry_after: Retry after timestamp
+            request_id: Request ID for tracing
+            ip_address: IP address
+            user_agent: User agent string
+            metadata: Additional metadata
+        """
+        # Log to structured logs (also logged via log_security_violation, but this is explicit)
+        self.logger.warning(
+            "odps_rate_limit_violation",
+            level=level,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            ref_path=ref_path,
+            retry_after=retry_after,
+        )
+
+        # Persist to database
+        if not self._persist_to_db:
+            return
+
+        try:
+            from hub.apps.tenants.models import Tenant
+
+            tenant = None
+            if tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            user = None
+            if user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=user_id)
+                except (User.DoesNotExist, Exception):
+                    pass
+
+            SecurityAuditLog.objects.create(
+                event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
+                severity=SecuritySeverity.MEDIUM.value,
+                tenant=tenant,
+                user=user,
+                ref_path=ref_path,
+                rate_limit_level=level,
+                description=f"Rate limit exceeded at {level} level",
+                metadata_json={
+                    "retry_after": retry_after,
+                    **(metadata or {}),
+                },
+                request_id=request_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_rate_limit_violation_persistence_failed",
+                error=str(e),
+                level=level,
+                message="Failed to persist rate limit violation to database (non-critical)"
+            )
+
+    def log_cache_operation(
+        self,
+        operation: str,  # "hit", "miss", "eviction"
+        ref_path: Optional[str] = None,
+        cache_key: Optional[str] = None,
+        eviction_reason: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Log cache operation event.
+
+        Args:
+            operation: Cache operation type (hit, miss, eviction)
+            ref_path: $ref path
+            cache_key: Cache key
+            eviction_reason: Eviction reason (for evictions)
+            tenant_id: Tenant ID
+            user_id: User ID
+            metadata: Additional metadata
+        """
+        # Map operation to event type
+        event_type_map = {
+            "hit": SecurityEventType.CACHE_HIT,
+            "miss": SecurityEventType.CACHE_MISS,
+            "eviction": SecurityEventType.CACHE_EVICTION,
+        }
+        event_type = event_type_map.get(operation.lower())
+        if not event_type:
+            return
+
+        # Log to structured logs
+        self.logger.debug(
+            "odps_cache_operation",
+            operation=operation,
+            ref_path=ref_path,
+            cache_key=cache_key,
+            eviction_reason=eviction_reason,
+        )
+
+        # Persist to database
+        if not self._persist_to_db:
+            return
+
+        try:
+            from hub.apps.tenants.models import Tenant
+
+            tenant = None
+            if tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            user = None
+            if user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=user_id)
+                except (User.DoesNotExist, Exception):
+                    pass
+
+            SecurityAuditLog.objects.create(
+                event_type=event_type.value,
+                tenant=tenant,
+                user=user,
+                ref_path=ref_path,
+                cache_operation=operation.lower(),
+                cache_key=cache_key,
+                eviction_reason=eviction_reason,
+                description=f"Cache {operation}: {ref_path or cache_key}",
+                metadata_json=metadata or {},
+            )
+        except Exception as e:
+            logger.warning(
+                "odps_cache_operation_persistence_failed",
+                error=str(e),
+                operation=operation,
+                message="Failed to persist cache operation to database (non-critical)"
+            )
 
 
 class SecurityAlertRule:
@@ -427,4 +841,508 @@ def get_security_logger() -> SecurityLogger:
     if _security_logger is None:
         _security_logger = SecurityLogger()
     return _security_logger
+
+
+class SecurityIncidentDetector:
+    """
+    Detects security incidents from security violations and suspicious patterns.
+
+    Analyzes security audit logs to identify patterns that indicate security incidents
+    requiring investigation and response.
+    """
+
+    def __init__(self):
+        """Initialize security incident detector"""
+        self.logger = structlog.get_logger(__name__)
+
+    def detect_incidents_from_violation(
+        self,
+        violation_log: SecurityViolationLog
+    ) -> Optional[Any]:
+        """
+        Detect security incidents from a security violation log.
+
+        Args:
+            violation_log: Security violation log to analyze
+
+        Returns:
+            SecurityIncident instance if incident detected, None otherwise
+        """
+        if not DJANGO_AVAILABLE:
+            return None
+
+        try:
+            from hub.apps.contracts.models import SecurityIncident, SecurityAuditLog
+            from django.utils import timezone
+            from datetime import timedelta
+
+            # Check for suspicious patterns
+            incident = None
+
+            # Pattern 1: Excessive rate limit violations
+            if violation_log.event_type == SecurityEventType.RATE_LIMIT_EXCEEDED.value:
+                incident = self._detect_rate_limit_abuse(violation_log)
+
+            # Pattern 2: Path traversal attempts
+            elif violation_log.event_type == SecurityEventType.PATH_TRAVERSAL.value:
+                incident = self._detect_path_traversal_pattern(violation_log)
+
+            # Pattern 3: URL validation failures
+            elif violation_log.event_type in [
+                SecurityEventType.URL_DENIED.value,
+                SecurityEventType.URL_NOT_ALLOWED.value,
+                SecurityEventType.INVALID_URL.value
+            ]:
+                incident = self._detect_url_violation_pattern(violation_log)
+
+            # Pattern 4: High severity violations
+            elif violation_log.severity in [SecuritySeverity.HIGH.value, SecuritySeverity.CRITICAL.value]:
+                incident = self._detect_high_severity_violation(violation_log)
+
+            if incident:
+                # Link related audit log if available
+                try:
+                    from hub.apps.tenants.models import Tenant
+                    query = SecurityAuditLog.objects.filter(
+                        event_type=violation_log.event_type,
+                        timestamp__gte=timezone.now() - timedelta(minutes=5)
+                    )
+                    if violation_log.tenant_id:
+                        try:
+                            tenant = Tenant.objects.get(id=violation_log.tenant_id)
+                            query = query.filter(tenant=tenant)
+                        except Tenant.DoesNotExist:
+                            pass
+                    if violation_log.user_id and get_user_model:
+                        try:
+                            User = get_user_model()
+                            user = User.objects.get(id=violation_log.user_id)
+                            query = query.filter(user=user)
+                        except Exception:
+                            pass
+                    audit_log = query.order_by('-timestamp').first()
+                    if audit_log:
+                        incident.related_audit_logs.add(audit_log)
+                except Exception as e:
+                    self.logger.warning(
+                        "odps_security_incident_link_failed",
+                        error=str(e),
+                        incident_id=str(incident.id),
+                        message="Failed to link audit log to incident"
+                    )
+
+            return incident
+
+        except Exception as e:
+            self.logger.error(
+                "odps_security_incident_detection_failed",
+                error=str(e),
+                event_type=violation_log.event_type,
+                message="Failed to detect security incident"
+            )
+            return None
+
+    def _detect_rate_limit_abuse(self, violation_log: SecurityViolationLog) -> Optional[Any]:
+        """Detect rate limit abuse pattern."""
+        if not DJANGO_AVAILABLE:
+            return None
+
+        try:
+            from hub.apps.contracts.models import SecurityIncident, SecurityAuditLog
+            from hub.apps.tenants.models import Tenant
+            from django.utils import timezone
+            from datetime import timedelta
+
+            # Get tenant and user objects
+            tenant = None
+            if violation_log.tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=violation_log.tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            user = None
+            if violation_log.user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=violation_log.user_id)
+                except Exception:
+                    pass
+
+            # Check for excessive rate limit violations in last hour
+            window_start = timezone.now() - timedelta(hours=1)
+            query = SecurityAuditLog.objects.filter(
+                event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
+                timestamp__gte=window_start
+            )
+            if tenant:
+                query = query.filter(tenant=tenant)
+            if user:
+                query = query.filter(user=user)
+            violation_count = query.count()
+
+            # Threshold: 10 violations per hour
+            if violation_count >= 10:
+                # Check if incident already exists
+                existing_query = SecurityIncident.objects.filter(
+                    event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
+                    status__in=["OPEN", "INVESTIGATING"],
+                    first_detected_at__gte=window_start
+                )
+                if tenant:
+                    existing_query = existing_query.filter(tenant=tenant)
+                if user:
+                    existing_query = existing_query.filter(user=user)
+                existing_incident = existing_query.first()
+
+                if existing_incident:
+                    # Update existing incident
+                    existing_incident.violation_count = violation_count
+                    existing_incident.last_updated_at = timezone.now()
+                    existing_incident.save()
+                    return existing_incident
+
+                # Create new incident
+                severity = SecuritySeverity.CRITICAL if violation_count >= 50 else SecuritySeverity.HIGH
+                incident = SecurityIncident.objects.create(
+                    title=f"Excessive Rate Limit Violations - {tenant.name if tenant else 'System'}",
+                    description=f"Detected {violation_count} rate limit violations in the last hour. "
+                              f"Level: {violation_log.metadata.get('level', 'unknown') if violation_log.metadata else 'unknown'}",
+                    severity=severity.value,
+                    status="OPEN",
+                    tenant=tenant,
+                    user=user,
+                    event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
+                    violation_count=violation_count,
+                    metadata_json={
+                        "level": violation_log.metadata.get('level', 'unknown') if violation_log.metadata else 'unknown',
+                        "window_hours": 1,
+                        "threshold": 10
+                    }
+                )
+
+                self.logger.warning(
+                    "odps_security_incident_detected",
+                    incident_id=str(incident.id),
+                    event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
+                    severity=severity.value,
+                    violation_count=violation_count,
+                    message="Security incident detected: excessive rate limit violations"
+                )
+
+                return incident
+
+        except Exception as e:
+            self.logger.error(
+                "odps_security_incident_detection_error",
+                error=str(e),
+                pattern="rate_limit_abuse",
+                message="Failed to detect rate limit abuse pattern"
+            )
+
+        return None
+
+    def _detect_path_traversal_pattern(self, violation_log: SecurityViolationLog) -> Optional[Any]:
+        """Detect path traversal attack pattern."""
+        if not DJANGO_AVAILABLE:
+            return None
+
+        try:
+            from hub.apps.contracts.models import SecurityIncident, SecurityAuditLog
+            from hub.apps.tenants.models import Tenant
+            from django.utils import timezone
+            from datetime import timedelta
+
+            # Get tenant and user objects
+            tenant = None
+            if violation_log.tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=violation_log.tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            user = None
+            if violation_log.user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=violation_log.user_id)
+                except Exception:
+                    pass
+
+            # Check for multiple path traversal attempts in last 5 minutes
+            window_start = timezone.now() - timedelta(minutes=5)
+            query = SecurityAuditLog.objects.filter(
+                event_type=SecurityEventType.PATH_TRAVERSAL.value,
+                timestamp__gte=window_start
+            )
+            if tenant:
+                query = query.filter(tenant=tenant)
+            if user:
+                query = query.filter(user=user)
+            violation_count = query.count()
+
+            # Threshold: 5 path traversal attempts in 5 minutes
+            if violation_count >= 5:
+                existing_query = SecurityIncident.objects.filter(
+                    event_type=SecurityEventType.PATH_TRAVERSAL.value,
+                    status__in=["OPEN", "INVESTIGATING"],
+                    first_detected_at__gte=window_start
+                )
+                if tenant:
+                    existing_query = existing_query.filter(tenant=tenant)
+                if user:
+                    existing_query = existing_query.filter(user=user)
+                existing_incident = existing_query.first()
+
+                if existing_incident:
+                    existing_incident.violation_count = violation_count
+                    existing_incident.last_updated_at = timezone.now()
+                    existing_incident.save()
+                    return existing_incident
+
+                incident = SecurityIncident.objects.create(
+                    title=f"Path Traversal Attack Attempt - {tenant.name if tenant else 'System'}",
+                    description=f"Detected {violation_count} path traversal attempts in the last 5 minutes. "
+                              f"Attempted path: {violation_log.attempted_path}",
+                    severity=SecuritySeverity.HIGH.value,
+                    status="OPEN",
+                    tenant=tenant,
+                    user=user,
+                    event_type=SecurityEventType.PATH_TRAVERSAL.value,
+                    violation_count=violation_count,
+                    metadata_json={
+                        "attempted_path": violation_log.attempted_path,
+                        "window_minutes": 5,
+                        "threshold": 5
+                    }
+                )
+
+                self.logger.warning(
+                    "odps_security_incident_detected",
+                    incident_id=str(incident.id),
+                    event_type=SecurityEventType.PATH_TRAVERSAL.value,
+                    severity=SecuritySeverity.HIGH.value,
+                    violation_count=violation_count,
+                    message="Security incident detected: path traversal attack pattern"
+                )
+
+                return incident
+
+        except Exception as e:
+            self.logger.error(
+                "odps_security_incident_detection_error",
+                error=str(e),
+                pattern="path_traversal",
+                message="Failed to detect path traversal pattern"
+            )
+
+        return None
+
+    def _detect_url_violation_pattern(self, violation_log: SecurityViolationLog) -> Optional[Any]:
+        """Detect URL violation pattern."""
+        if not DJANGO_AVAILABLE:
+            return None
+
+        try:
+            from hub.apps.contracts.models import SecurityIncident, SecurityAuditLog
+            from hub.apps.tenants.models import Tenant
+            from django.utils import timezone
+            from datetime import timedelta
+
+            # Get tenant and user objects
+            tenant = None
+            if violation_log.tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=violation_log.tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            user = None
+            if violation_log.user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=violation_log.user_id)
+                except Exception:
+                    pass
+
+            # Check for multiple URL violations in last 10 minutes
+            window_start = timezone.now() - timedelta(minutes=10)
+            query = SecurityAuditLog.objects.filter(
+                event_type=violation_log.event_type,
+                timestamp__gte=window_start
+            )
+            if tenant:
+                query = query.filter(tenant=tenant)
+            if user:
+                query = query.filter(user=user)
+            violation_count = query.count()
+
+            # Threshold: 3 URL violations in 10 minutes
+            if violation_count >= 3:
+                existing_query = SecurityIncident.objects.filter(
+                    event_type=violation_log.event_type,
+                    status__in=["OPEN", "INVESTIGATING"],
+                    first_detected_at__gte=window_start
+                )
+                if tenant:
+                    existing_query = existing_query.filter(tenant=tenant)
+                if user:
+                    existing_query = existing_query.filter(user=user)
+                existing_incident = existing_query.first()
+
+                if existing_incident:
+                    existing_incident.violation_count = violation_count
+                    existing_incident.last_updated_at = timezone.now()
+                    existing_incident.save()
+                    return existing_incident
+
+                incident = SecurityIncident.objects.create(
+                    title=f"URL Validation Violations - {tenant.name if tenant else 'System'}",
+                    description=f"Detected {violation_count} URL validation violations in the last 10 minutes. "
+                              f"Type: {violation_log.event_type}, Attempted URL: {violation_log.attempted_url}",
+                    severity=SecuritySeverity.HIGH.value,
+                    status="OPEN",
+                    tenant=tenant,
+                    user=user,
+                    event_type=violation_log.event_type,
+                    violation_count=violation_count,
+                    metadata_json={
+                        "attempted_url": violation_log.attempted_url,
+                        "window_minutes": 10,
+                        "threshold": 3
+                    }
+                )
+
+                self.logger.warning(
+                    "odps_security_incident_detected",
+                    incident_id=str(incident.id),
+                    event_type=violation_log.event_type,
+                    severity=SecuritySeverity.HIGH.value,
+                    violation_count=violation_count,
+                    message="Security incident detected: URL validation violation pattern"
+                )
+
+                return incident
+
+        except Exception as e:
+            self.logger.error(
+                "odps_security_incident_detection_error",
+                error=str(e),
+                pattern="url_violation",
+                message="Failed to detect URL violation pattern"
+            )
+
+        return None
+
+    def _detect_high_severity_violation(self, violation_log: SecurityViolationLog) -> Optional[Any]:
+        """Detect high severity violation pattern."""
+        if not DJANGO_AVAILABLE:
+            return None
+
+        try:
+            from hub.apps.contracts.models import SecurityIncident, SecurityAuditLog
+            from hub.apps.tenants.models import Tenant
+            from django.utils import timezone
+            from datetime import timedelta
+
+            # Get tenant and user objects
+            tenant = None
+            if violation_log.tenant_id:
+                try:
+                    tenant = Tenant.objects.get(id=violation_log.tenant_id)
+                except Tenant.DoesNotExist:
+                    pass
+
+            user = None
+            if violation_log.user_id and get_user_model:
+                try:
+                    User = get_user_model()
+                    user = User.objects.get(id=violation_log.user_id)
+                except Exception:
+                    pass
+
+            # Check for multiple high severity violations in last hour
+            window_start = timezone.now() - timedelta(hours=1)
+            query = SecurityAuditLog.objects.filter(
+                severity__in=[SecuritySeverity.HIGH.value, SecuritySeverity.CRITICAL.value],
+                timestamp__gte=window_start
+            )
+            if tenant:
+                query = query.filter(tenant=tenant)
+            if user:
+                query = query.filter(user=user)
+            violation_count = query.count()
+
+            # Threshold: 10 high severity violations per hour
+            if violation_count >= 10:
+                existing_query = SecurityIncident.objects.filter(
+                    severity__in=[SecuritySeverity.HIGH.value, SecuritySeverity.CRITICAL.value],
+                    status__in=["OPEN", "INVESTIGATING"],
+                    first_detected_at__gte=window_start
+                )
+                if tenant:
+                    existing_query = existing_query.filter(tenant=tenant)
+                if user:
+                    existing_query = existing_query.filter(user=user)
+                existing_incident = existing_query.first()
+
+                if existing_incident:
+                    existing_incident.violation_count = violation_count
+                    existing_incident.last_updated_at = timezone.now()
+                    existing_incident.save()
+                    return existing_incident
+
+                incident = SecurityIncident.objects.create(
+                    title=f"Multiple High Severity Violations - {tenant.name if tenant else 'System'}",
+                    description=f"Detected {violation_count} high severity security violations in the last hour. "
+                              f"Event type: {violation_log.event_type}",
+                    severity=SecuritySeverity.CRITICAL.value,
+                    status="OPEN",
+                    tenant=tenant,
+                    user=user,
+                    event_type=violation_log.event_type,
+                    violation_count=violation_count,
+                    metadata_json={
+                        "window_hours": 1,
+                        "threshold": 10
+                    }
+                )
+
+                self.logger.error(
+                    "odps_security_incident_detected",
+                    incident_id=str(incident.id),
+                    event_type=violation_log.event_type,
+                    severity=SecuritySeverity.CRITICAL.value,
+                    violation_count=violation_count,
+                    message="Security incident detected: multiple high severity violations"
+                )
+
+                return incident
+
+        except Exception as e:
+            self.logger.error(
+                "odps_security_incident_detection_error",
+                error=str(e),
+                pattern="high_severity",
+                message="Failed to detect high severity violation pattern"
+            )
+
+        return None
+
+
+# Global incident detector instance
+_incident_detector: Optional[SecurityIncidentDetector] = None
+
+
+def get_incident_detector() -> SecurityIncidentDetector:
+    """
+    Get the global security incident detector instance.
+
+    Returns:
+        SecurityIncidentDetector instance
+    """
+    global _incident_detector
+    if _incident_detector is None:
+        _incident_detector = SecurityIncidentDetector()
+    return _incident_detector
 

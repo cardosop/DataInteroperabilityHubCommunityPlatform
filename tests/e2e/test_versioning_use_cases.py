@@ -94,7 +94,7 @@ class VersionCreationUseCasesTest(E2ETestBase):
         }
         
         response = self.client.post(
-            f'/api/v1/datasets/datasets/{self.dataset_v1.id}/versions/',
+            f'/api/v1/datasets/{self.dataset_v1.id}/versions/',
             version_data,
             format='json'
         )
@@ -170,7 +170,7 @@ class VersionCreationUseCasesTest(E2ETestBase):
         }
         
         response = self.client.post(
-            f'/api/v1/datasets/datasets/{self.dataset_v1.id}/versions/',
+            f'/api/v1/datasets/{self.dataset_v1.id}/versions/',
             version_data,
             format='json'
         )
@@ -216,7 +216,7 @@ class VersionCreationUseCasesTest(E2ETestBase):
         
         # List versions via API
         response = self.client.get(
-            f'/api/v1/datasets/datasets/{self.dataset_v1.id}/versions/'
+            f'/api/v1/datasets/{self.dataset_v1.id}/versions/'
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -325,7 +325,7 @@ class VersionComparisonUseCasesTest(E2ETestBase):
     def test_compare_versions_via_api_success(self):
         """Test comparing two versions via API"""
         response = self.client.get(
-            f'/api/v1/datasets/datasets/{self.dataset_v2.id}/versions/compare/',
+            f'/api/v1/datasets/{self.dataset_v2.id}/versions/compare/',
             {
                 'version1': str(self.dataset_v1.id),
                 'version2': str(self.dataset_v2.id)
@@ -360,7 +360,7 @@ class VersionComparisonUseCasesTest(E2ETestBase):
         """Test comparing versions using parent version as default"""
         # Compare without specifying version1 (should use parent)
         response = self.client.get(
-            f'/api/v1/datasets/datasets/{self.dataset_v2.id}/versions/compare/',
+            f'/api/v1/datasets/{self.dataset_v2.id}/versions/compare/',
             {
                 'version2': str(self.dataset_v2.id)
             }

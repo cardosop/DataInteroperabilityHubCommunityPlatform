@@ -694,14 +694,14 @@ class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
         
         APIUsageMetric.objects.create(
             tenant=tenant1,
-            endpoint_path='/api/v1/assets/assets/',
+            endpoint_path='/api/v1/assets/',
             method='GET',
             status_code=200,
             latency_ms=45.2
         )
         APIUsageMetric.objects.create(
             tenant=tenant2,
-            endpoint_path='/api/v1/contracts/contracts/',
+            endpoint_path='/api/v1/contracts/',
             method='POST',
             status_code=201,
             latency_ms=120.5

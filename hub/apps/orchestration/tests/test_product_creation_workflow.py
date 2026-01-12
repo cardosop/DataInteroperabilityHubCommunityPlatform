@@ -764,10 +764,26 @@ class ProductCreationWorkflowCompensationTest(TestCase):
         from hub.apps.orchestration.models import WorkflowStep, StepStatus
         steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by('step_index')
 
+        # Get step definitions from workflow DSL
+        dsl = instance.workflow_definition.dsl_json
+        step_defs = dsl.get("steps", [])
+
         # Execute parse_odps, resolve_refs, extract_contract, validate_odcs, normalize_odcs
         for step in steps[:5]:  # First 5 steps
             try:
-                self.engine._execute_step(instance, step, step.step_def)
+                step_def = step_defs[step.step_index]
+                step_output = self.engine._execute_step(instance, step, step_def)
+
+                # Update workflow state with step output (as workflow engine does)
+                step_state = step_output.get("state", {})
+                if step_state:
+                    instance.state_data.update(step_state)
+                # Also merge top-level step output keys into state_data
+                for key, value in step_output.items():
+                    if key != "state" and key != "output":
+                        instance.state_data[key] = value
+                instance.save(update_fields=["state_data", "updated_at"])
+
                 step.status = StepStatus.COMPLETED
                 step.save()
             except Exception as e:
@@ -779,7 +795,18 @@ class ProductCreationWorkflowCompensationTest(TestCase):
         # Execute create_odcs_contract step
         create_odcs_step = steps[6]  # create_odcs_contract is step 6 (0-indexed)
         try:
-            result = self.engine._execute_step(instance, create_odcs_step, create_odcs_step.step_def)
+            create_odcs_step_def = step_defs[create_odcs_step.step_index]
+            result = self.engine._execute_step(instance, create_odcs_step, create_odcs_step_def)
+
+            # Update workflow state with step output
+            step_state = result.get("state", {})
+            if step_state:
+                instance.state_data.update(step_state)
+            for key, value in result.items():
+                if key != "state" and key != "output":
+                    instance.state_data[key] = value
+            instance.save(update_fields=["state_data", "updated_at"])
+
             create_odcs_step.status = StepStatus.COMPLETED
             create_odcs_step.save()
 
@@ -804,13 +831,13 @@ class ProductCreationWorkflowCompensationTest(TestCase):
 
             try:
                 # Try to execute create_odps_contract - should fail
+                create_odps_step_def = step_defs[create_odps_step.step_index]
                 with self.assertRaises(ValueError):
-                    self.engine._execute_step(instance, create_odps_step, create_odps_step.step_def)
+                    self.engine._execute_step(instance, create_odps_step, create_odps_step_def)
 
-                # Trigger compensation
-                from hub.apps.orchestration.compensation import WorkflowCompensation
-                compensation = WorkflowCompensation()
-                compensation._compensate_step(instance, create_odcs_step)
+                # Trigger compensation using engine's compensation instance
+                # (which has access to the task registry)
+                self.engine.compensation._compensate_step(instance, create_odcs_step)
 
                 # Verify ODCS contract was deleted (compensation executed)
                 with self.assertRaises(Contract.DoesNotExist):
@@ -858,10 +885,25 @@ class ProductCreationWorkflowCompensationTest(TestCase):
         from hub.apps.orchestration.models import WorkflowStep, StepStatus
         steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by('step_index')
 
-        # Execute all steps up to create_odps_contract
-        for step in steps[:7]:  # First 7 steps (including create_odcs_contract)
+        # Get step definitions from workflow DSL
+        dsl = instance.workflow_definition.dsl_json
+        step_defs = dsl.get("steps", [])
+
+        # Execute all steps up to create_odps_contract (step 7)
+        for step in steps[:8]:  # First 8 steps (including create_odps_contract)
             try:
-                self.engine._execute_step(instance, step, step.step_def)
+                step_def = step_defs[step.step_index]
+                step_output = self.engine._execute_step(instance, step, step_def)
+
+                # Update workflow state with step output
+                step_state = step_output.get("state", {})
+                if step_state:
+                    instance.state_data.update(step_state)
+                for key, value in step_output.items():
+                    if key != "state" and key != "output":
+                        instance.state_data[key] = value
+                instance.save(update_fields=["state_data", "updated_at"])
+
                 step.status = StepStatus.COMPLETED
                 step.save()
             except Exception as e:
@@ -892,14 +934,13 @@ class ProductCreationWorkflowCompensationTest(TestCase):
 
         try:
             # Try to execute link_contracts - should fail
+            link_contracts_step_def = step_defs[link_contracts_step.step_index]
             with self.assertRaises(ValueError):
-                self.engine._execute_step(instance, link_contracts_step, link_contracts_step.step_def)
+                self.engine._execute_step(instance, link_contracts_step, link_contracts_step_def)
 
-            # Trigger compensation for create_odps_contract
+            # Trigger compensation for create_odps_contract using engine's compensation instance
             create_odps_step = steps[7]
-            from hub.apps.orchestration.compensation import WorkflowCompensation
-            compensation = WorkflowCompensation()
-            compensation._compensate_step(instance, create_odps_step)
+            self.engine.compensation._compensate_step(instance, create_odps_step)
 
             # Verify ODPS contract was deleted (compensation executed)
             with self.assertRaises(Contract.DoesNotExist):
@@ -934,10 +975,25 @@ class ProductCreationWorkflowCompensationTest(TestCase):
         from hub.apps.orchestration.models import WorkflowStep, StepStatus
         steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by('step_index')
 
+        # Get step definitions from workflow DSL
+        dsl = instance.workflow_definition.dsl_json
+        step_defs = dsl.get("steps", [])
+
         # Execute all steps up to link_contracts
         for step in steps[:8]:  # First 8 steps (including create_odps_contract)
             try:
-                self.engine._execute_step(instance, step, step.step_def)
+                step_def = step_defs[step.step_index]
+                step_output = self.engine._execute_step(instance, step, step_def)
+
+                # Update workflow state with step output
+                step_state = step_output.get("state", {})
+                if step_state:
+                    instance.state_data.update(step_state)
+                for key, value in step_output.items():
+                    if key != "state" and key != "output":
+                        instance.state_data[key] = value
+                instance.save(update_fields=["state_data", "updated_at"])
+
                 step.status = StepStatus.COMPLETED
                 step.save()
             except Exception as e:
@@ -968,7 +1024,18 @@ class ProductCreationWorkflowCompensationTest(TestCase):
         if not odps_has_link or not odcs_has_link:
             link_contracts_step = steps[8]
             try:
-                self.engine._execute_step(instance, link_contracts_step, link_contracts_step.step_def)
+                link_contracts_step_def = step_defs[link_contracts_step.step_index]
+                step_output = self.engine._execute_step(instance, link_contracts_step, link_contracts_step_def)
+
+                # Update workflow state with step output
+                step_state = step_output.get("state", {})
+                if step_state:
+                    instance.state_data.update(step_state)
+                for key, value in step_output.items():
+                    if key != "state" and key != "output":
+                        instance.state_data[key] = value
+                instance.save(update_fields=["state_data", "updated_at"])
+
                 link_contracts_step.status = StepStatus.COMPLETED
                 link_contracts_step.save()
 
@@ -995,10 +1062,8 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             # Links exist - now test compensation
             link_contracts_step = steps[8]
 
-            # Trigger compensation for link_contracts
-            from hub.apps.orchestration.compensation import WorkflowCompensation
-            compensation = WorkflowCompensation()
-            compensation._compensate_step(instance, link_contracts_step)
+            # Trigger compensation for link_contracts using engine's compensation instance
+            self.engine.compensation._compensate_step(instance, link_contracts_step)
 
             # Verify links were removed
             odps_contract.refresh_from_db()

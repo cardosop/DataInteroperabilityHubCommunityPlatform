@@ -41,7 +41,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Update contract (should trigger ON_WRITE migration)
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{contract_id}/',
+            f'/api/v1/contracts/{contract_id}/',
             {
                 'original_raw': '{"id": "test", "name": "Updated Contract", "schema": {"fields": []}}'
             },
@@ -92,7 +92,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Trigger ON_READ migration via migrate endpoint
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {
                 'migration_strategy': MigrationStrategy.ON_READ
             },
@@ -159,7 +159,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Trigger BACKGROUND migration
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {
                 'migration_strategy': MigrationStrategy.BACKGROUND
             },
@@ -225,7 +225,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Try to migrate (should handle version conflict)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {
                 'migration_strategy': MigrationStrategy.ON_WRITE
             },
@@ -255,7 +255,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Perform migration
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {
                 'migration_strategy': MigrationStrategy.ON_WRITE
             },
@@ -281,7 +281,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Try to migrate invalid contract
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {
                 'migration_strategy': MigrationStrategy.ON_WRITE
             },
@@ -334,7 +334,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Migrate without specifying strategy (should default to ON_WRITE)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {},
             format='json'
         )
@@ -367,7 +367,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Try to migrate with invalid strategy
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {
                 'migration_strategy': 'INVALID_STRATEGY'
             },
@@ -415,7 +415,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Migrate contract
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {
                 'migration_strategy': MigrationStrategy.ON_WRITE
             },
@@ -480,7 +480,7 @@ class ContractMigrationE2ETest(E2ETestBase):
         
         # Migrate contract
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/migrate/',
+            f'/api/v1/contracts/{contract_id}/migrate/',
             {
                 'migration_strategy': MigrationStrategy.ON_WRITE
             },

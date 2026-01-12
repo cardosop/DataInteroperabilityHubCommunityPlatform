@@ -2,25 +2,25 @@
 Comprehensive Integration Tests for Contract Management APIs
 
 Tests all contract endpoints with 120+ test cases covering:
-- GET /api/v1/contracts/contracts/ - List Contracts
+- GET /api/v1/contracts/ - List Contracts
   - Success scenarios (pagination, filtering, ordering, search)
   - Query parameter validation
   - Performance tests (response time < 500ms p95)
   - Multi-tenant isolation tests
-- POST /api/v1/contracts/contracts/ - Create Contract
+- POST /api/v1/contracts/ - Create Contract
   - Success scenarios (contract creation, schema validation, normalization)
   - Validation errors (invalid schema, missing required fields)
   - Integration tests (DataContract service, schema validation, normalization)
   - Performance tests (response time < 1000ms p95)
-- GET /api/v1/contracts/contracts/{id}/ - Get Contract
+- GET /api/v1/contracts/{id}/ - Get Contract
   - Success scenarios (contract retrieval, with relationships, version history)
   - Authorization tests (tenant isolation, permissions)
   - Error scenarios (not found, deleted contract)
-- PUT/PATCH /api/v1/contracts/contracts/{id}/ - Update Contract
+- PUT/PATCH /api/v1/contracts/{id}/ - Update Contract
   - Success scenarios (contract update, schema changes, versioning)
   - Validation errors (invalid schema, breaking changes)
   - Integration tests (validation service, versioning, impact analysis)
-- POST /api/v1/contracts/contracts/{id}/validate/ - Validate Contract
+- POST /api/v1/contracts/{id}/validate/ - Validate Contract
   - Success scenarios (validation success, validation warnings, validation errors)
   - Integration tests (DataContract service, validation rules)
   - Performance tests (response time < 1000ms p95)
@@ -57,7 +57,7 @@ User = get_user_model()
 
 
 class TestContractListAPI(TestCase):
-    """Comprehensive tests for GET /api/v1/contracts/contracts/"""
+    """Comprehensive tests for GET /api/v1/contracts/"""
 
     def setUp(self):
         """Set up test fixtures"""
@@ -157,7 +157,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_success(self):
         """Test successful listing of contracts"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
@@ -168,7 +168,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_pagination_page_1(self):
         """Test pagination - first page"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page': 1, 'page_size': 1})
+        response = self.client.get('/api/v1/contracts/', {'page': 1, 'page_size': 1})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
@@ -179,7 +179,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_pagination_page_2(self):
         """Test pagination - second page"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page': 2, 'page_size': 1})
+        response = self.client.get('/api/v1/contracts/', {'page': 2, 'page_size': 1})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
@@ -190,7 +190,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_pagination_last_page(self):
         """Test pagination - last page"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page': 2, 'page_size': 1})
+        response = self.client.get('/api/v1/contracts/', {'page': 2, 'page_size': 1})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should have no next page
@@ -200,7 +200,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_owner_email(self):
         """Test filtering by owner email"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'owner_email': 'john@example.com'})
+        response = self.client.get('/api/v1/contracts/', {'owner_email': 'john@example.com'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
@@ -209,7 +209,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_owner_email_case_insensitive(self):
         """Test filtering by owner email (case-insensitive)"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'owner_email': 'JOHN@EXAMPLE.COM'})
+        response = self.client.get('/api/v1/contracts/', {'owner_email': 'JOHN@EXAMPLE.COM'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
@@ -217,7 +217,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_owner_name(self):
         """Test filtering by owner name"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'owner_name': 'John'})
+        response = self.client.get('/api/v1/contracts/', {'owner_name': 'John'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
@@ -225,7 +225,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_tag(self):
         """Test filtering by tag"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'tag': 'analytics'})
+        response = self.client.get('/api/v1/contracts/', {'tag': 'analytics'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
@@ -234,7 +234,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_multiple_tags(self):
         """Test filtering by multiple tags"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'tag': ['analytics', 'sales']})
+        response = self.client.get('/api/v1/contracts/', {'tag': ['analytics', 'sales']})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
@@ -244,7 +244,7 @@ class TestContractListAPI(TestCase):
         """Test filtering by quality profile"""
         self.client.force_authenticate(user=self.user_a)
         # Both contracts have intake_basic, so expect >= 1
-        response = self.client.get('/api/v1/contracts/contracts/', {'quality_profile': 'intake_basic'})
+        response = self.client.get('/api/v1/contracts/', {'quality_profile': 'intake_basic'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Both contracts have intake_basic quality profile
@@ -253,7 +253,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_compliance_regime(self):
         """Test filtering by compliance regime"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'compliance_regime': 'GDPR'})
+        response = self.client.get('/api/v1/contracts/', {'compliance_regime': 'GDPR'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 1)
@@ -272,7 +272,7 @@ class TestContractListAPI(TestCase):
             self.contract_a1.hub_contract_json = contract_json
             self.contract_a1.save()
 
-        response = self.client.get('/api/v1/contracts/contracts/', {'contact_email': 'contact1@example.com'})
+        response = self.client.get('/api/v1/contracts/', {'contact_email': 'contact1@example.com'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Filter may return 0 if contact filtering doesn't work or contract wasn't updated
@@ -291,7 +291,7 @@ class TestContractListAPI(TestCase):
             self.contract_a1.hub_contract_json = contract_json
             self.contract_a1.save()
 
-        response = self.client.get('/api/v1/contracts/contracts/', {'contact_name': 'Contact'})
+        response = self.client.get('/api/v1/contracts/', {'contact_name': 'Contact'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Filter may return 0 if contact filtering doesn't work or contract wasn't updated
@@ -302,7 +302,7 @@ class TestContractListAPI(TestCase):
         self.client.force_authenticate(user=self.user_a)
         # Filter may not work if contracts don't have servers section
         # Just verify the API handles the filter gracefully
-        response = self.client.get('/api/v1/contracts/contracts/', {'server_type': 's3'})
+        response = self.client.get('/api/v1/contracts/', {'server_type': 's3'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Filter may return 0 if no contracts match (servers section may not exist)
@@ -313,7 +313,7 @@ class TestContractListAPI(TestCase):
         self.client.force_authenticate(user=self.user_a)
         # Filter may not work if contracts don't have servers section
         # Just verify the API handles the filter gracefully
-        response = self.client.get('/api/v1/contracts/contracts/', {'server_url': 's3://bucket1'})
+        response = self.client.get('/api/v1/contracts/', {'server_url': 's3://bucket1'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Filter may return 0 if no contracts match (servers section may not exist)
@@ -322,7 +322,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_min_availability(self):
         """Test filtering by minimum availability"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'min_availability': '99.8'})
+        response = self.client.get('/api/v1/contracts/', {'min_availability': '99.8'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -330,7 +330,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_max_latency_ms(self):
         """Test filtering by maximum latency"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'max_latency_ms': '150'})
+        response = self.client.get('/api/v1/contracts/', {'max_latency_ms': '150'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -343,7 +343,7 @@ class TestContractListAPI(TestCase):
         self.contract_a1.hub_contract_json = contract_json
         self.contract_a1.save()
 
-        response = self.client.get('/api/v1/contracts/contracts/', {'model_name': 'model1'})
+        response = self.client.get('/api/v1/contracts/', {'model_name': 'model1'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -351,7 +351,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_combination(self):
         """Test filtering with multiple criteria"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {
+        response = self.client.get('/api/v1/contracts/', {
             'tag': 'analytics',
             'compliance_regime': 'GDPR',
             'owner_email': 'john@example.com'
@@ -363,7 +363,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_ordering_by_created_at_asc(self):
         """Test ordering by created_at ascending"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'ordering': 'created_at'})
+        response = self.client.get('/api/v1/contracts/', {'ordering': 'created_at'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data['results']
@@ -376,7 +376,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_ordering_by_created_at_desc(self):
         """Test ordering by created_at descending"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'ordering': '-created_at'})
+        response = self.client.get('/api/v1/contracts/', {'ordering': '-created_at'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data['results']
@@ -389,7 +389,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_ordering_by_updated_at_desc(self):
         """Test ordering by updated_at descending"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'ordering': '-updated_at'})
+        response = self.client.get('/api/v1/contracts/', {'ordering': '-updated_at'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data['results']), 0)
@@ -397,7 +397,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_ordering_multiple_fields(self):
         """Test ordering by multiple fields"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'ordering': '-created_at,id'})
+        response = self.client.get('/api/v1/contracts/', {'ordering': '-created_at,id'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data['results']), 0)
@@ -407,7 +407,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_invalid_page_number(self):
         """Test invalid page number"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page': 'invalid'})
+        response = self.client.get('/api/v1/contracts/', {'page': 'invalid'})
 
         # Should handle gracefully (either 400 or default to page 1)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -415,7 +415,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_invalid_page_size(self):
         """Test invalid page size"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page_size': 'invalid'})
+        response = self.client.get('/api/v1/contracts/', {'page_size': 'invalid'})
 
         # Should handle gracefully (either 400 or default page size)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -423,7 +423,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_invalid_min_availability(self):
         """Test invalid min_availability parameter"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'min_availability': 'invalid'})
+        response = self.client.get('/api/v1/contracts/', {'min_availability': 'invalid'})
 
         # Should handle gracefully (either 400 or ignore invalid filter)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -431,7 +431,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_invalid_max_latency_ms(self):
         """Test invalid max_latency_ms parameter"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'max_latency_ms': 'invalid'})
+        response = self.client.get('/api/v1/contracts/', {'max_latency_ms': 'invalid'})
 
         # Should handle gracefully (either 400 or ignore invalid filter)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -439,7 +439,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_empty_filter_values(self):
         """Test empty filter values"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {
+        response = self.client.get('/api/v1/contracts/', {
             'owner_email': '',
             'tag': ''
         })
@@ -463,7 +463,7 @@ class TestContractListAPI(TestCase):
         times = []
         for _ in range(20):
             start = time.time()
-            response = self.client.get('/api/v1/contracts/contracts/')
+            response = self.client.get('/api/v1/contracts/')
             elapsed = (time.time() - start) * 1000  # Convert to ms
             times.append(elapsed)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -481,7 +481,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_tenant_isolation(self):
         """Test tenant isolation - user should only see their tenant's contracts"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should only see tenant A contracts
@@ -494,7 +494,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_tenant_b_isolation(self):
         """Test tenant isolation - user B should only see tenant B contracts"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should only see tenant B contracts
@@ -505,7 +505,7 @@ class TestContractListAPI(TestCase):
         """Test that user cannot access contracts from other tenant"""
         self.client.force_authenticate(user=self.user_a)
         # Try to access tenant B's contract directly
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract_b1.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract_b1.id}/')
 
         # Should return 404 (not found) due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -513,7 +513,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_search_by_name(self):
         """Test searching contracts by name"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'search': 'Contract A1'})
+        response = self.client.get('/api/v1/contracts/', {'search': 'Contract A1'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -521,7 +521,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_status(self):
         """Test filtering contracts by status"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'status': ContractStatus.DRAFT})
+        response = self.client.get('/api/v1/contracts/', {'status': ContractStatus.DRAFT})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -529,7 +529,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_filter_by_normalization_status(self):
         """Test filtering contracts by normalization status"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'normalization_status': NormalizationStatus.NORMALIZED_OK})
+        response = self.client.get('/api/v1/contracts/', {'normalization_status': NormalizationStatus.NORMALIZED_OK})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -537,7 +537,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_large_page_size(self):
         """Test pagination with large page size"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page_size': 100})
+        response = self.client.get('/api/v1/contracts/', {'page_size': 100})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertLessEqual(len(response.data['results']), 100)
@@ -545,7 +545,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_page_zero(self):
         """Test pagination with page 0 (should default to page 1)"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page': 0})
+        response = self.client.get('/api/v1/contracts/', {'page': 0})
 
         # Should handle gracefully
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -553,7 +553,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_negative_page(self):
         """Test pagination with negative page number"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page': -1})
+        response = self.client.get('/api/v1/contracts/', {'page': -1})
 
         # Should handle gracefully
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -561,7 +561,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_very_large_page_size(self):
         """Test pagination with very large page size"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'page_size': 10000})
+        response = self.client.get('/api/v1/contracts/', {'page_size': 10000})
 
         # Should cap at maximum page size or return 400 if validation fails
         # API may reject very large page sizes
@@ -574,7 +574,7 @@ class TestContractListAPI(TestCase):
         self.client.force_authenticate(user=self.user_a)
         from datetime import datetime, timedelta
         yesterday = (timezone.now() - timedelta(days=1)).isoformat()
-        response = self.client.get('/api/v1/contracts/contracts/', {'created_after': yesterday})
+        response = self.client.get('/api/v1/contracts/', {'created_after': yesterday})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -583,7 +583,7 @@ class TestContractListAPI(TestCase):
         """Test filtering contracts by created_before date"""
         self.client.force_authenticate(user=self.user_a)
         tomorrow = (timezone.now() + timedelta(days=1)).isoformat()
-        response = self.client.get('/api/v1/contracts/contracts/', {'created_before': tomorrow})
+        response = self.client.get('/api/v1/contracts/', {'created_before': tomorrow})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -591,7 +591,7 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_multiple_filters_complex(self):
         """Test complex filtering with multiple criteria"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {
+        response = self.client.get('/api/v1/contracts/', {
             'tag': 'analytics',
             'compliance_regime': 'GDPR',
             'owner_email': 'john@example.com',
@@ -605,14 +605,14 @@ class TestContractListAPI(TestCase):
     def test_list_contracts_ordering_invalid_field(self):
         """Test ordering by invalid field"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/', {'ordering': 'invalid_field'})
+        response = self.client.get('/api/v1/contracts/', {'ordering': 'invalid_field'})
 
         # Should handle gracefully (either ignore or return 400)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
 
     def test_list_contracts_unauthenticated(self):
         """Test list contracts without authentication"""
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -633,7 +633,7 @@ class TestContractListAPI(TestCase):
         empty_user.refresh_from_db()
 
         self.client.force_authenticate(user=empty_user)
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 0)
@@ -641,7 +641,7 @@ class TestContractListAPI(TestCase):
 
 
 class TestContractCreateAPI(TestCase):
-    """Comprehensive tests for POST /api/v1/contracts/contracts/"""
+    """Comprehensive tests for POST /api/v1/contracts/"""
 
     def setUp(self):
         """Set up test fixtures"""
@@ -690,7 +690,7 @@ class TestContractCreateAPI(TestCase):
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn('id', response.data)
@@ -723,7 +723,7 @@ schema:
             "original_format": OriginalFormat.YAML
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['original_format'], OriginalFormat.YAML)
@@ -762,7 +762,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Verify normalization occurred (may succeed or fail depending on service availability)
@@ -794,7 +794,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -830,7 +830,7 @@ schema:
             "asset_id": str(asset.id)
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -846,7 +846,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -858,7 +858,7 @@ schema:
             "original_raw": json.dumps({"id": "test"})
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -871,7 +871,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         # Should handle invalid JSON gracefully
         self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
@@ -890,7 +890,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         # Should create contract but may have normalization warnings
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -904,7 +904,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -932,7 +932,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -966,7 +966,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -999,7 +999,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -1042,7 +1042,7 @@ schema:
             data["original_raw"] = json.dumps(contract_data)
 
             start = time.time()
-            response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+            response = self.client.post('/api/v1/contracts/', data, format="json")
             elapsed = (time.time() - start) * 1000  # Convert to ms
             times.append(elapsed)
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -1081,7 +1081,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -1134,7 +1134,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -1160,7 +1160,7 @@ schema:
             "original_spec_type": OriginalSpecType.ODCS
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -1179,7 +1179,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -1212,7 +1212,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         # Should fail because user has no tenant (or succeed if API allows it)
         # API may allow creation and assign a default tenant, so accept both 400 and 201
@@ -1235,7 +1235,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         # Should handle large payloads
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -1255,7 +1255,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -1275,20 +1275,20 @@ schema:
         }
 
         # Create first contract
-        response1 = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response1 = self.client.post('/api/v1/contracts/', data, format="json")
         self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
 
         # Try to create second contract with same ID
         contract_data["info"]["name"] = "Second Contract"
         data["original_raw"] = json.dumps(contract_data)
-        response2 = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response2 = self.client.post('/api/v1/contracts/', data, format="json")
 
         # May allow or reject depending on implementation
         self.assertIn(response2.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
 
 
 class TestContractRetrieveAPI(TestCase):
-    """Comprehensive tests for GET /api/v1/contracts/contracts/{id}/"""
+    """Comprehensive tests for GET /api/v1/contracts/{id}/"""
 
     def setUp(self):
         """Set up test fixtures"""
@@ -1336,7 +1336,7 @@ class TestContractRetrieveAPI(TestCase):
     def test_retrieve_contract_success(self):
         """Test successful contract retrieval"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(self.contract.id))
@@ -1345,7 +1345,7 @@ class TestContractRetrieveAPI(TestCase):
     def test_retrieve_contract_with_relationships(self):
         """Test contract retrieval includes relationships"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify contract data is present (relationships may or may not be included)
@@ -1364,7 +1364,7 @@ class TestContractRetrieveAPI(TestCase):
             version=2
         )
 
-        response = self.client.get(f'/api/v1/contracts/contracts/{contract_v2.id}/')
+        response = self.client.get(f'/api/v1/contracts/{contract_v2.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['version'], 2)
@@ -1374,7 +1374,7 @@ class TestContractRetrieveAPI(TestCase):
     def test_retrieve_contract_tenant_isolation(self):
         """Test tenant isolation - user can only retrieve their tenant's contracts"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify contract belongs to tenant A by checking it's one of tenant A's contracts
@@ -1383,14 +1383,14 @@ class TestContractRetrieveAPI(TestCase):
     def test_retrieve_contract_cannot_access_other_tenant(self):
         """Test user cannot retrieve contracts from other tenant"""
         self.client.force_authenticate(user=self.user_b)
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
 
         # Should return 404 due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_contract_unauthenticated(self):
         """Test unauthenticated user cannot retrieve contract"""
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -1400,14 +1400,14 @@ class TestContractRetrieveAPI(TestCase):
         """Test retrieving non-existent contract"""
         self.client.force_authenticate(user=self.user_a)
         fake_id = uuid.uuid4()
-        response = self.client.get(f'/api/v1/contracts/contracts/{fake_id}/')
+        response = self.client.get(f'/api/v1/contracts/{fake_id}/')
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_contract_invalid_uuid(self):
         """Test retrieving contract with invalid UUID"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get('/api/v1/contracts/contracts/invalid-uuid/')
+        response = self.client.get('/api/v1/contracts/invalid-uuid/')
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -1416,11 +1416,11 @@ class TestContractRetrieveAPI(TestCase):
         self.client.force_authenticate(user=self.user_a)
 
         # First request
-        response1 = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response1 = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
 
         # Second request (may be cached)
-        response2 = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response2 = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
         self.assertEqual(response1.data['id'], response2.data['id'])
 
@@ -1430,13 +1430,13 @@ class TestContractRetrieveAPI(TestCase):
 
         # Soft delete contract if supported
         # This depends on implementation - may not be supported
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_retrieve_contract_response_structure(self):
         """Test contract retrieval response structure"""
         self.client.force_authenticate(user=self.user_a)
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Verify response contains expected fields
@@ -1465,7 +1465,7 @@ class TestContractRetrieveAPI(TestCase):
             asset=asset
         )
 
-        response = self.client.get(f'/api/v1/contracts/contracts/{contract_with_asset.id}/')
+        response = self.client.get(f'/api/v1/contracts/{contract_with_asset.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Asset relationship may or may not be included depending on serializer
@@ -1491,8 +1491,8 @@ class TestContractRetrieveAPI(TestCase):
         )
 
         # Retrieve each version
-        response1 = self.client.get(f'/api/v1/contracts/contracts/{contract_v1.id}/')
-        response2 = self.client.get(f'/api/v1/contracts/contracts/{contract_v2.id}/')
+        response1 = self.client.get(f'/api/v1/contracts/{contract_v1.id}/')
+        response2 = self.client.get(f'/api/v1/contracts/{contract_v2.id}/')
 
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
@@ -1501,7 +1501,7 @@ class TestContractRetrieveAPI(TestCase):
 
 
 class TestContractUpdateAPI(TestCase):
-    """Comprehensive tests for PUT/PATCH /api/v1/contracts/contracts/{id}/"""
+    """Comprehensive tests for PUT/PATCH /api/v1/contracts/{id}/"""
 
     def setUp(self):
         """Set up test fixtures"""
@@ -1556,7 +1556,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1578,7 +1578,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1619,7 +1619,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1653,7 +1653,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1674,7 +1674,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             invalid_data,
             format="json"
         )
@@ -1701,7 +1701,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1743,7 +1743,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1777,7 +1777,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1807,7 +1807,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1837,7 +1837,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.put(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1858,7 +1858,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1874,7 +1874,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1903,7 +1903,7 @@ class TestContractUpdateAPI(TestCase):
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1918,7 +1918,7 @@ class TestContractUpdateAPI(TestCase):
         # DRAFT -> ACTIVE
         data = {"status": ContractStatus.ACTIVE}
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1930,7 +1930,7 @@ class TestContractUpdateAPI(TestCase):
         # ACTIVE -> RETIRED
         data = {"status": ContractStatus.RETIRED}
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1948,7 +1948,7 @@ class TestContractUpdateAPI(TestCase):
         # Only update status
         data = {"status": ContractStatus.ACTIVE}
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1964,7 +1964,7 @@ class TestContractUpdateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             {},
             format="json"
         )
@@ -1979,7 +1979,7 @@ class TestContractUpdateAPI(TestCase):
         data = {"status": "INVALID_STATUS"}
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -1989,7 +1989,7 @@ class TestContractUpdateAPI(TestCase):
 
 
 class TestContractValidateAPI(TestCase):
-    """Comprehensive tests for POST /api/v1/contracts/contracts/{id}/validate/"""
+    """Comprehensive tests for POST /api/v1/contracts/{id}/validate/"""
 
     def setUp(self):
         """Set up test fixtures"""
@@ -2027,7 +2027,7 @@ class TestContractValidateAPI(TestCase):
         """Test successful contract validation"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
             format="json"
         )
@@ -2053,7 +2053,7 @@ class TestContractValidateAPI(TestCase):
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_with_warnings.id}/validate/',
+            f'/api/v1/contracts/{contract_with_warnings.id}/validate/',
             {},
             format="json"
         )
@@ -2092,7 +2092,7 @@ class TestContractValidateAPI(TestCase):
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{invalid_contract.id}/validate/',
+            f'/api/v1/contracts/{invalid_contract.id}/validate/',
             {},
             format="json"
         )
@@ -2111,7 +2111,7 @@ class TestContractValidateAPI(TestCase):
         """Test contract validation integrates with DataContract service"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
             format="json"
         )
@@ -2141,7 +2141,7 @@ class TestContractValidateAPI(TestCase):
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_with_rules.id}/validate/',
+            f'/api/v1/contracts/{contract_with_rules.id}/validate/',
             {},
             format="json"
         )
@@ -2161,7 +2161,7 @@ class TestContractValidateAPI(TestCase):
         for _ in range(10):
             start = time.time()
             response = self.client.post(
-                f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+                f'/api/v1/contracts/{self.contract.id}/validate/',
                 {},
                 format="json"
             )
@@ -2196,7 +2196,7 @@ class TestContractValidateAPI(TestCase):
     def test_validate_contract_unauthenticated(self):
         """Test validating contract without authentication"""
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
             format="json"
         )
@@ -2221,7 +2221,7 @@ class TestContractValidateAPI(TestCase):
         self.client.force_authenticate(user=other_user)
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
             format="json"
         )
@@ -2234,7 +2234,7 @@ class TestContractValidateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {"async": True},
             format="json"
         )
@@ -2250,7 +2250,7 @@ class TestContractValidateAPI(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {"async": False},
             format="json"
         )
@@ -2267,7 +2267,7 @@ class TestContractValidateAPI(TestCase):
         fake_id = uuid.uuid4()
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{fake_id}/validate/',
+            f'/api/v1/contracts/{fake_id}/validate/',
             {},
             format="json"
         )
@@ -2278,7 +2278,7 @@ class TestContractValidateAPI(TestCase):
         """Test validation response structure"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
             format="json"
         )
@@ -2301,7 +2301,7 @@ class TestContractValidateAPI(TestCase):
         self.contract.save()
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
             format="json"
         )
@@ -2343,7 +2343,7 @@ class TestContractValidateAPI(TestCase):
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{large_contract.id}/validate/',
+            f'/api/v1/contracts/{large_contract.id}/validate/',
             {},
             format="json"
         )
@@ -2361,7 +2361,7 @@ class TestContractValidateAPI(TestCase):
         # Validate multiple times
         for _ in range(3):
             response = self.client.post(
-                f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+                f'/api/v1/contracts/{self.contract.id}/validate/',
                 {},
                 format="json"
             )
@@ -2389,7 +2389,7 @@ class TestContractValidateAPI(TestCase):
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{invalid_contract.id}/validate/',
+            f'/api/v1/contracts/{invalid_contract.id}/validate/',
             {},
             format="json"
         )
@@ -2411,7 +2411,7 @@ class TestContractValidateAPI(TestCase):
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_with_warnings.id}/validate/',
+            f'/api/v1/contracts/{contract_with_warnings.id}/validate/',
             {},
             format="json"
         )
@@ -2433,7 +2433,7 @@ class TestContractValidateAPI(TestCase):
             validation_status=ValidationStatus.VALID
         )
 
-        response = self.client.get('/api/v1/contracts/contracts/', {'validation_status': ValidationStatus.VALID})
+        response = self.client.get('/api/v1/contracts/', {'validation_status': ValidationStatus.VALID})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -2442,7 +2442,7 @@ class TestContractValidateAPI(TestCase):
         """Test filtering contracts by original format"""
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.get('/api/v1/contracts/contracts/', {'original_format': OriginalFormat.JSON})
+        response = self.client.get('/api/v1/contracts/', {'original_format': OriginalFormat.JSON})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -2451,7 +2451,7 @@ class TestContractValidateAPI(TestCase):
         """Test filtering contracts by original spec type"""
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.get('/api/v1/contracts/contracts/', {'original_spec_type': OriginalSpecType.ODCS})
+        response = self.client.get('/api/v1/contracts/', {'original_spec_type': OriginalSpecType.ODCS})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data['count'], 0)
@@ -2516,7 +2516,7 @@ marketplace:
             "original_format": OriginalFormat.YAML
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -2538,7 +2538,7 @@ marketplace:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         # Should accept minimal structure
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -2568,7 +2568,7 @@ marketplace:
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{yaml_contract.id}/',
+            f'/api/v1/contracts/{yaml_contract.id}/',
             data,
             format="json"
         )
@@ -2581,7 +2581,7 @@ marketplace:
         """Test retrieving contract includes lineage information"""
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.get(f'/api/v1/contracts/contracts/{self.contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{self.contract.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Lineage may or may not be included depending on serializer
@@ -2591,7 +2591,7 @@ marketplace:
         """Test list contracts efficiently prefetches relationships"""
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should return results efficiently
@@ -2618,7 +2618,7 @@ marketplace:
             "original_format": OriginalFormat.JSON
         }
 
-        response = self.client.post('/api/v1/contracts/contracts/', data, format="json")
+        response = self.client.post('/api/v1/contracts/', data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract = Contract.objects.get(id=response.data['id'])
@@ -2639,7 +2639,7 @@ marketplace:
         }
 
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{self.contract.id}/',
+            f'/api/v1/contracts/{self.contract.id}/',
             data,
             format="json"
         )
@@ -2653,7 +2653,7 @@ marketplace:
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {},
             format="json"
         )

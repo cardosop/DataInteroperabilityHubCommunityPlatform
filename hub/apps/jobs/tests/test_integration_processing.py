@@ -57,7 +57,7 @@ class JobProcessingTest(TestCase):
         
         # Create job via API
         job_response = self.client.post(
-            '/api/v1/jobs/jobs/',
+            '/api/v1/jobs/',
             {
                 'type': JobType.CONTRACT_VALIDATION,
                 'resource_type': 'CONTRACT',
@@ -133,7 +133,7 @@ class JobProcessingTest(TestCase):
         )
         
         # List jobs for current tenant
-        response = self.client.get('/api/v1/jobs/jobs/')
+        response = self.client.get('/api/v1/jobs/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         job_ids = [job['id'] for job in response.data['results']]
@@ -165,7 +165,7 @@ class JobProcessingTest(TestCase):
         )
         
         # Filter by status
-        response = self.client.get('/api/v1/jobs/jobs/', {'status': JobStatus.PENDING})
+        response = self.client.get('/api/v1/jobs/', {'status': JobStatus.PENDING})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         job_ids = [job['id'] for job in response.data['results']]
@@ -194,7 +194,7 @@ class JobProcessingTest(TestCase):
         )
         
         # Filter by type
-        response = self.client.get('/api/v1/jobs/jobs/', {'type': JobType.CONTRACT_VALIDATION})
+        response = self.client.get('/api/v1/jobs/', {'type': JobType.CONTRACT_VALIDATION})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         job_ids = [job['id'] for job in response.data['results']]
@@ -214,7 +214,7 @@ class JobProcessingTest(TestCase):
         
         # Cancel job
         response = self.client.post(
-            f'/api/v1/jobs/jobs/{job.id}/cancel/',
+            f'/api/v1/jobs/{job.id}/cancel/',
             format='json'
         )
         

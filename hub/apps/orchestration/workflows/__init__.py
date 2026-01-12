@@ -13,6 +13,10 @@ from .product_creation import ProductCreationWorkflow
 from .transformation_pipeline import TransformationPipelineWorkflow
 from .data_mesh import DataMeshWorkflow
 from .virtualization import VirtualizationWorkflow
+from .marketplace_sync import MarketplaceSyncWorkflow
+from .api_key_management import APIKeyManagementWorkflow
+from .model_training import ModelTrainingWorkflow
+from .model_inference import ModelInferenceWorkflow
 
 __all__ = [
     'ContractCreationWorkflow',
@@ -28,5 +32,9 @@ __all__ = [
     'TransformationPipelineWorkflow',
     'DataMeshWorkflow',
     'VirtualizationWorkflow',
+    'MarketplaceSyncWorkflow',
+    'APIKeyManagementWorkflow',
+    'ModelTrainingWorkflow',
+    'ModelInferenceWorkflow',
 ]
 

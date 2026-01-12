@@ -339,6 +339,99 @@ docker compose exec api-service nslookup semantic-service
 docker compose exec api-service nslookup postgres
 ```
 
+## API Endpoint Troubleshooting
+
+### Compliance Endpoints
+
+**Symptoms**: Compliance run endpoints returning errors or not responding
+
+**Solutions**:
+```bash
+# Check compliance service health
+docker compose exec api-service curl http://compliance-service:8082/health
+
+# Test compliance runs endpoint
+curl -X GET http://localhost:8000/api/v1/compliance/runs/ \
+  -H "Authorization: Bearer <token>"
+
+# Check compliance run status
+curl -X GET http://localhost:8000/api/v1/compliance/runs/{run-id}/ \
+  -H "Authorization: Bearer <token>"
+
+# Check compliance run results
+curl -X GET http://localhost:8000/api/v1/compliance/runs/{run-id}/results/ \
+  -H "Authorization: Bearer <token>"
+
+# Check compliance service logs
+docker compose logs compliance-service
+
+# Verify compliance service connectivity
+docker compose exec api-service curl -v http://compliance-service:8082/health
+```
+
+**Common Issues**:
+- **404 Not Found**: Verify endpoint uses `/api/v1/compliance/runs/` (not `/compliance-runs/`)
+- **500 Internal Server Error**: Check compliance service logs
+- **Timeout**: Verify compliance service is running and accessible
+- **401 Unauthorized**: Check authentication token
+
+### Data Quality Endpoints
+
+**Symptoms**: DQ run endpoints returning errors or not responding
+
+**Solutions**:
+```bash
+# Check DQ service health
+docker compose exec api-service curl http://dq-service:8083/health
+
+# Test DQ runs endpoint
+curl -X GET http://localhost:8000/api/v1/dq/runs/ \
+  -H "Authorization: Bearer <token>"
+
+# Check DQ run status
+curl -X GET http://localhost:8000/api/v1/dq/runs/{run-id}/ \
+  -H "Authorization: Bearer <token>"
+
+# Check DQ run results
+curl -X GET http://localhost:8000/api/v1/dq/runs/{run-id}/results/ \
+  -H "Authorization: Bearer <token>"
+
+# Check DQ service logs
+docker compose logs dq-service
+
+# Verify DQ service connectivity
+docker compose exec api-service curl -v http://dq-service:8083/health
+```
+
+**Common Issues**:
+- **404 Not Found**: Verify endpoint uses `/api/v1/dq/runs/` (not `/dq-runs/`)
+- **500 Internal Server Error**: Check DQ service logs
+- **Timeout**: Verify DQ service is running and accessible
+- **401 Unauthorized**: Check authentication token
+
+### Endpoint Pattern Verification
+
+**Verify Standardized Endpoints**:
+```bash
+# Compliance endpoints (correct pattern)
+curl http://localhost:8000/api/v1/compliance/runs/
+curl http://localhost:8000/api/v1/compliance/runs/{id}/
+curl http://localhost:8000/api/v1/compliance/runs/{id}/results/
+
+# DQ endpoints (correct pattern)
+curl http://localhost:8000/api/v1/dq/runs/
+curl http://localhost:8000/api/v1/dq/runs/{id}/
+curl http://localhost:8000/api/v1/dq/runs/{id}/results/
+
+# Old patterns should return 404
+curl http://localhost:8000/api/v1/compliance/compliance-runs/  # Should return 404
+curl http://localhost:8000/api/v1/dq/dq-runs/  # Should return 404
+```
+
+**Note**: Old endpoint patterns (`/compliance-runs/` and `/dq-runs/`) are deprecated and return `404 Not Found`. Always use the standardized patterns (`/runs/`).
+
+---
+
 ## Resource Issues
 
 ### Memory Issues

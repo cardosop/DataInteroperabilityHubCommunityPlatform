@@ -455,7 +455,7 @@ class AuthenticationE2ETest(E2ETestBase):
         self.client.credentials(HTTP_X_API_KEY=api_key)
         
         # Try to access protected endpoint
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Should succeed with API key authentication
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -508,7 +508,7 @@ class AuthenticationE2ETest(E2ETestBase):
         
         # Try to use old token (should fail)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Token should be invalid after version increment
         # Note: JWT implementation may not check token_version in payload

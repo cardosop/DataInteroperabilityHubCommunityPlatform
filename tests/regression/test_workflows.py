@@ -55,7 +55,7 @@ class ContractCreationWorkflowTest(WorkflowRegressionTest):
         """Test complete contract creation workflow"""
         # 1. Create asset
         asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'contract-workflow-asset',
                 'name': 'Contract Workflow Asset',
@@ -83,7 +83,7 @@ class ContractCreationWorkflowTest(WorkflowRegressionTest):
         }
         
         contract_response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 'asset_id': asset_id,
                 'original_raw': json.dumps(contract_data),
@@ -99,7 +99,7 @@ class ContractCreationWorkflowTest(WorkflowRegressionTest):
             contract_id = contract_response.data['id']
             
             # 3. Verify contract was created
-            retrieve_response = self.client.get(f'/api/v1/contracts/contracts/{contract_id}/')
+            retrieve_response = self.client.get(f'/api/v1/contracts/{contract_id}/')
             self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
             self.assertEqual(retrieve_response.data['id'], contract_id)
             
@@ -117,7 +117,7 @@ class ContractCreationWorkflowTest(WorkflowRegressionTest):
         """Test contract validation workflow"""
         # Create asset
         asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'validation-asset',
                 'name': 'Validation Asset'
@@ -135,7 +135,7 @@ class ContractCreationWorkflowTest(WorkflowRegressionTest):
         }
         
         contract_response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 'asset_id': asset_id,
                 'original_raw': json.dumps(contract_data),
@@ -152,7 +152,7 @@ class ContractCreationWorkflowTest(WorkflowRegressionTest):
             contract_id = contract_response.data['id']
             
             # Verify validation status
-            retrieve_response = self.client.get(f'/api/v1/contracts/contracts/{contract_id}/')
+            retrieve_response = self.client.get(f'/api/v1/contracts/{contract_id}/')
             self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
             # Validation status may be VALID, INVALID, WARNING_ONLY, or ERROR depending on CLI
             self.assertIn('validation_status', retrieve_response.data)
@@ -165,7 +165,7 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
         """Test data-first onboarding workflow"""
         # 1. Create asset
         asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'data-first-asset',
                 'name': 'Data First Asset',
@@ -178,7 +178,7 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
         
         # 2. Initialize file upload
         file_init_response = self.client.post(
-            '/api/v1/files/files/init/',
+            '/api/v1/files/init/',
             {
                 'name': 'test-data.csv',
                 'content_type': 'text/csv',
@@ -195,7 +195,7 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
             
             # 3. Complete file upload (triggers DQ and compliance checks)
             file_complete_response = self.client.post(
-                f'/api/v1/files/files/{file_id}/complete/',
+                f'/api/v1/files/{file_id}/complete/',
                 {
                     'ingestion_mode': 'DATA_FIRST',
                     'run_dq': True,
@@ -207,14 +207,14 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
             self.assertIn(file_complete_response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
             
             # 4. Verify file status
-            file_retrieve_response = self.client.get(f'/api/v1/files/files/{file_id}/')
+            file_retrieve_response = self.client.get(f'/api/v1/files/{file_id}/')
             self.assertEqual(file_retrieve_response.status_code, status.HTTP_200_OK)
     
     def test_contract_first_onboarding_workflow(self):
         """Test contract-first onboarding workflow"""
         # 1. Create asset
         asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'contract-first-asset',
                 'name': 'Contract First Asset'
@@ -232,7 +232,7 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
         }
         
         contract_response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 'asset_id': asset_id,
                 'original_raw': json.dumps(contract_data),
@@ -249,7 +249,7 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
             
             # 3. Attach data file
             file_init_response = self.client.post(
-                '/api/v1/files/files/init/',
+                '/api/v1/files/init/',
                 {
                     'name': 'contract-first-data.csv',
                     'content_type': 'text/csv',
@@ -263,7 +263,7 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
         """Test asset lifecycle workflow (Draft -> Active -> Public -> Retired)"""
         # 1. Create asset (Draft)
         asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'lifecycle-asset',
                 'name': 'Lifecycle Asset',
@@ -275,13 +275,13 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
         asset_id = asset_response.data['id']
         
         # Verify initial status
-        retrieve_response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+        retrieve_response = self.client.get(f'/api/v1/assets/{asset_id}/')
         self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
         self.assertEqual(retrieve_response.data['status'], 'DRAFT')
         
         # 2. Update to Active
         update_response = self.client.patch(
-            f'/api/v1/assets/assets/{asset_id}/',
+            f'/api/v1/assets/{asset_id}/',
             {'status': 'ACTIVE'},
             format='json'
         )
@@ -289,12 +289,12 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
         
         if update_response.status_code == status.HTTP_200_OK:
             # Verify status update
-            retrieve_response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+            retrieve_response = self.client.get(f'/api/v1/assets/{asset_id}/')
             self.assertEqual(retrieve_response.data['status'], 'ACTIVE')
             
             # 3. Update to Public
             update_response = self.client.patch(
-                f'/api/v1/assets/assets/{asset_id}/',
+                f'/api/v1/assets/{asset_id}/',
                 {'status': 'PUBLIC'},
                 format='json'
             )
@@ -302,7 +302,7 @@ class AssetOnboardingWorkflowTest(WorkflowRegressionTest):
             
             # 4. Update to Retired
             update_response = self.client.patch(
-                f'/api/v1/assets/assets/{asset_id}/',
+                f'/api/v1/assets/{asset_id}/',
                 {'status': 'RETIRED'},
                 format='json'
             )
@@ -316,7 +316,7 @@ class ContractAssetIntegrationWorkflowTest(WorkflowRegressionTest):
         """Test attaching a contract to an existing asset"""
         # 1. Create asset
         asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'attach-contract-asset',
                 'name': 'Attach Contract Asset'
@@ -334,7 +334,7 @@ class ContractAssetIntegrationWorkflowTest(WorkflowRegressionTest):
         }
         
         contract_response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 'asset_id': asset_id,
                 'original_raw': json.dumps(contract_data),
@@ -350,11 +350,11 @@ class ContractAssetIntegrationWorkflowTest(WorkflowRegressionTest):
             contract_id = contract_response.data['id']
             
             # 3. Verify contract is attached to asset
-            asset_retrieve = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+            asset_retrieve = self.client.get(f'/api/v1/assets/{asset_id}/')
             self.assertEqual(asset_retrieve.status_code, status.HTTP_200_OK)
             
             # 4. Verify asset has contract
-            contract_retrieve = self.client.get(f'/api/v1/contracts/contracts/{contract_id}/')
+            contract_retrieve = self.client.get(f'/api/v1/contracts/{contract_id}/')
             self.assertEqual(contract_retrieve.status_code, status.HTTP_200_OK)
             # Contract serializer uses 'asset' field (UUID), not 'asset_id'
             asset_field = contract_retrieve.data.get('asset') or contract_retrieve.data.get('asset_id')
@@ -369,7 +369,7 @@ class ContractAssetIntegrationWorkflowTest(WorkflowRegressionTest):
         """Test attaching a dataset to an existing asset"""
         # 1. Create asset
         asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'attach-dataset-asset',
                 'name': 'Attach Dataset Asset'
@@ -381,7 +381,7 @@ class ContractAssetIntegrationWorkflowTest(WorkflowRegressionTest):
         
         # 2. Initialize file upload
         file_init_response = self.client.post(
-            '/api/v1/files/files/init/',
+            '/api/v1/files/init/',
             {
                 'name': 'dataset.csv',
                 'content_type': 'text/csv',
@@ -398,7 +398,7 @@ class ContractAssetIntegrationWorkflowTest(WorkflowRegressionTest):
             
             # 3. Attach dataset to asset
             attach_response = self.client.post(
-                f'/api/v1/assets/assets/{asset_id}/attach_dataset/',
+                f'/api/v1/assets/{asset_id}/attach_dataset/',
                 {'file_id': file_id},
                 format='json'
             )

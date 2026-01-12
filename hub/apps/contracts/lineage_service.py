@@ -6,6 +6,7 @@ Extracts lineage logic from views and lineage.py module.
 """
 
 from typing import Any, Dict, List, Optional
+import structlog
 
 from hub.apps.contracts.caching import (
     cache_lineage,
@@ -23,9 +24,12 @@ from hub.apps.contracts.lineage import (
 )
 from hub.apps.contracts.models import Contract
 from hub.apps.core.services.base import BaseService, NotFoundError
+from hub.apps.core.events.service_publishers import LineageEventPublisher
+
+logger = structlog.get_logger(__name__)
 
 
-class LineageService(BaseService):
+class LineageService(BaseService, LineageEventPublisher):
     """
     Service for lineage operations.
 
@@ -81,6 +85,23 @@ class LineageService(BaseService):
         # Cache result
         if use_cache:
             cache_lineage(contract_id, result)
+
+        # Publish lineage.updated event
+        try:
+            relationship_count = len(result.get("contracts", [])) + len(result.get("entries", []))
+            self.publish_lineage_updated(
+                contract_id=contract_id,
+                lineage_type="contract",
+                relationship_count=relationship_count
+            )
+        except Exception as e:
+            # Log but don't fail lineage retrieval if event publishing fails
+            logger.warning(
+                "Failed to publish lineage.updated event",
+                contract_id=contract_id,
+                error=str(e),
+                exc_info=True
+            )
 
         return result
 
@@ -144,6 +165,26 @@ class LineageService(BaseService):
         # Cache result
         if use_cache:
             cache_lineage(contract_id, result, model_name=model_name)
+
+        # Publish lineage.updated event
+        try:
+            lineage_info = result.get("lineage", {})
+            relationship_count = len(lineage_info.get("models", [])) + len(lineage_info.get("entries", []))
+            self.publish_lineage_updated(
+                contract_id=contract_id,
+                model_name=model_name,
+                lineage_type="model",
+                relationship_count=relationship_count
+            )
+        except Exception as e:
+            # Log but don't fail lineage retrieval if event publishing fails
+            logger.warning(
+                "Failed to publish lineage.updated event",
+                contract_id=contract_id,
+                model_name=model_name,
+                error=str(e),
+                exc_info=True
+            )
 
         return result
 
@@ -225,6 +266,28 @@ class LineageService(BaseService):
         if use_cache:
             cache_lineage(contract_id, result, model_name=found_model_name, field_name=field_name)
 
+        # Publish lineage.updated event
+        try:
+            lineage_info = result.get("lineage", {})
+            relationship_count = len(lineage_info.get("input_fields", [])) + len(lineage_info.get("transformations", []))
+            self.publish_lineage_updated(
+                contract_id=contract_id,
+                model_name=found_model_name,
+                field_name=field_name,
+                lineage_type="field",
+                relationship_count=relationship_count
+            )
+        except Exception as e:
+            # Log but don't fail lineage retrieval if event publishing fails
+            logger.warning(
+                "Failed to publish lineage.updated event",
+                contract_id=contract_id,
+                model_name=found_model_name,
+                field_name=field_name,
+                error=str(e),
+                exc_info=True
+            )
+
         return result
 
     def get_full_lineage(
@@ -292,6 +355,32 @@ class LineageService(BaseService):
 
             cache_key = f"lineage:full:{contract_id}:{max_contract_depth}:{max_model_depth}:{max_field_depth}"
             cache.set(cache_key, result, timeout=CACHE_TTL_LINEAGE)
+
+        # Publish lineage.updated event for full lineage access
+        try:
+            upstream_count = len(upstream.get("referenced_by", [])) if isinstance(upstream, dict) else 0
+            downstream_count = len(downstream.get("contracts", [])) if isinstance(downstream, dict) else 0
+            relationship_count = upstream_count + downstream_count
+            self.publish_lineage_updated(
+                contract_id=contract_id,
+                lineage_type="full",
+                relationship_count=relationship_count,
+                changes={
+                    "upstream_count": upstream_count,
+                    "downstream_count": downstream_count,
+                    "max_contract_depth": max_contract_depth,
+                    "max_model_depth": max_model_depth,
+                    "max_field_depth": max_field_depth
+                }
+            )
+        except Exception as e:
+            # Log but don't fail lineage retrieval if event publishing fails
+            logger.warning(
+                "Failed to publish lineage.updated event",
+                contract_id=contract_id,
+                error=str(e),
+                exc_info=True
+            )
 
         return result
 
@@ -389,10 +478,41 @@ class LineageService(BaseService):
 
         # ImpactAnalyzer already calculates scores internally
         # Add visualization to the result
-        return {
+        result = {
             **impact_result,
-            "visualization": ImpactVisualizer.visualize_impact(impact_result),
+            "visualization": ImpactVisualizer.generate_impact_json(impact_result),
         }
+
+        # Publish lineage.updated event for impact analysis
+        try:
+            impact_nodes = impact_result.get("impact_nodes", [])
+            relationship_count = len(impact_nodes) if isinstance(impact_nodes, list) else 0
+            self.publish_lineage_updated(
+                contract_id=contract_id,
+                model_name=model_name,
+                field_name=field_name,
+                lineage_type="impact_analysis",
+                relationship_count=relationship_count,
+                changes={
+                    "impact_score": impact_result.get("impact_score"),
+                    "severity": impact_result.get("severity"),
+                    "max_contract_depth": max_contract_depth,
+                    "max_model_depth": max_model_depth,
+                    "max_field_depth": max_field_depth
+                }
+            )
+        except Exception as e:
+            # Log but don't fail impact analysis if event publishing fails
+            logger.warning(
+                "Failed to publish lineage.updated event",
+                contract_id=contract_id,
+                model_name=model_name,
+                field_name=field_name,
+                error=str(e),
+                exc_info=True
+            )
+
+        return result
 
     def notify_impact(
         self, contract_id: str, impact_analysis: Dict[str, Any], tenant_id: Optional[str] = None

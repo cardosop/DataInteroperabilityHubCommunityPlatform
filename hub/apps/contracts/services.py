@@ -12,6 +12,7 @@ from hub.apps.core.services.base import BaseService, ValidationError, NotFoundEr
 from hub.apps.core.events.service_publishers import ContractEventPublisher, ODPSEventPublisher
 from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalSpecType, OriginalFormat
 from hub.apps.contracts.normalization import normalize_contract, validate_hubcontract_schema
+from hub.apps.contracts.normalization_service import NormalizationService
 from hub.apps.contracts.ref_resolver import resolve_odps_refs
 from hub.apps.contracts.odps_parser import ODPSParser
 import json
@@ -249,11 +250,19 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     logger.warning(f"Failed to resolve $refs for ODPS contract: {e}")
                     # Continue with original_raw for normalization
 
-            # Normalize contract
-            hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
+            # Normalize contract using NormalizationService (event publishing integrated)
+            # Note: contract_id is not available yet, so events won't be published during creation
+            normalization_service = NormalizationService(
+                tenant_id=effective_tenant_id,
+                user_id=effective_user_id
+            )
+            hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalization_service.normalize_contract(
                 raw_contract=contract_content_for_normalization,
                 format=original_format,
-                spec_type=effective_spec_type
+                spec_type=effective_spec_type,
+                tenant_id=effective_tenant_id,
+                user_id=effective_user_id
+                # contract_id not available yet - events will be published after contract creation if needed
             )
 
             # Check for normalization failures
@@ -466,11 +475,18 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         # Continue with original_raw for normalization
                         contract.original_raw_resolved = None
 
-                # Re-normalize contract
-                hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
+                # Re-normalize contract using NormalizationService (event publishing integrated)
+                normalization_service = NormalizationService(
+                    tenant_id=effective_tenant_id,
+                    user_id=user_id or self.user_id
+                )
+                hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalization_service.normalize_contract(
                     raw_contract=contract_content_for_normalization,
                     format=contract.original_format,
-                    spec_type=contract.original_spec_type
+                    spec_type=contract.original_spec_type,
+                    tenant_id=effective_tenant_id,
+                    user_id=user_id or self.user_id,
+                    contract_id=str(contract.id)  # Contract exists, so events will be published
                 )
 
                 # Check for normalization failures
@@ -847,12 +863,19 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             from hub.apps.contracts.odps_version_detection import detect_odps_version
             detected_version = detect_odps_version(odps_doc)
 
-            # Normalize ODPS to HubContract (for consistency)
-            from hub.apps.contracts.normalization import normalize_contract
-            hub_contract_odps, _, _, norm_status, norm_errors, norm_warnings = normalize_contract(
+            # Normalize ODPS to HubContract using NormalizationService (for consistency)
+            # Note: contract_id not available yet (contract will be created below), so events won't be published
+            normalization_service = NormalizationService(
+                tenant_id=effective_tenant_id,
+                user_id=effective_user_id
+            )
+            hub_contract_odps, _, _, norm_status, norm_errors, norm_warnings = normalization_service.normalize_contract(
                 raw_contract=odps_raw,
                 format=OriginalFormat.JSON,
-                spec_type=OriginalSpecType.ODPS
+                spec_type=OriginalSpecType.ODPS,
+                tenant_id=effective_tenant_id,
+                user_id=effective_user_id
+                # contract_id not available yet - events won't be published
             )
 
             # Find next available version for this asset to avoid unique constraint violation

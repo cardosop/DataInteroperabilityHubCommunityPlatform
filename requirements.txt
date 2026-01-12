@@ -84,3 +84,14 @@ django-filter>=23.0
 
 # Payment Processing
 stripe>=7.0.0
+
+# Snowflake Connector
+snowflake-connector-python>=3.7.0
+
+# Google Cloud Platform
+google-cloud-bigquery>=3.20.0
+google-cloud-bigquery-analyticshub>=0.6.0
+google-auth>=2.25.0
+
+# Performance Testing
+psutil>=5.9.0

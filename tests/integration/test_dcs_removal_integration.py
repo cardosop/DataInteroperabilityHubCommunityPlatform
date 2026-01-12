@@ -68,7 +68,7 @@ info:
         
         # Step 1: Create contract via API
         response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 'original_raw': odcs_contract_yaml,
                 'original_format': 'YAML'
@@ -124,7 +124,7 @@ schema:
         
         # Step 1: Try to create contract via API
         response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 'original_raw': dcs_contract_yaml,
                 'original_format': 'YAML'
@@ -251,7 +251,7 @@ marketplace:
 """
         
         response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 'original_raw': odcs_contract_yaml,
                 'original_format': 'YAML'

@@ -8,9 +8,10 @@ Complete reference for all API endpoints in the Data Interoperability Hub API v1
 2. [Lineage](#lineage)
 3. [Assets](#assets)
 4. [Datasets](#datasets)
-5. [Search](#search)
-6. [Observability](#observability)
-7. [Authentication](#authentication)
+5. [Compliance](#compliance)
+6. [Search](#search)
+7. [Observability](#observability)
+8. [Authentication](#authentication)
 
 ---
 
@@ -813,6 +814,267 @@ Get search suggestions/autocomplete.
   ]
 }
 ```
+
+---
+
+## Compliance
+
+### List Compliance Runs
+
+**GET** `/api/v1/compliance/runs/`
+
+List all compliance runs with filtering, sorting, and pagination.
+
+**Query Parameters:**
+- `page` (integer): Page number (default: 1)
+- `page_size` (integer): Items per page (default: 50, max: 100)
+- `ordering` (string): Sort fields (comma-separated, prefix with `-` for descending)
+- `asset_id` (UUID): Filter by asset ID
+- `dataset_id` (UUID): Filter by dataset ID
+- `file_id` (UUID): Filter by file ID
+- `status` (string): Filter by status (`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`)
+- `scan_mode` (string): Filter by scan mode (`internal`, `external`)
+- `limit` (integer): Maximum number of results (alternative to pagination)
+- `offset` (integer): Number of results to skip (alternative to pagination)
+
+**Response (200 OK):**
+```json
+{
+  "count": 50,
+  "next": "http://localhost:8000/api/v1/compliance/runs/?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "asset_id": "660e8400-e29b-41d4-a716-446655440001",
+      "dataset_id": null,
+      "file_id": null,
+      "status": "SUCCEEDED",
+      "scan_mode": "internal",
+      "overall_status": "PASS",
+      "risk_level": "LOW",
+      "allowed_to_store": true,
+      "regulations": ["GDPR", "LGPD"],
+      "created_at": "2025-01-15T10:30:00Z",
+      "started_at": "2025-01-15T10:30:05Z",
+      "completed_at": "2025-01-15T10:35:00Z",
+      "job": {
+        "id": "770e8400-e29b-41d4-a716-446655440002",
+        "status": "COMPLETED"
+      }
+    }
+  ]
+}
+```
+
+**Example Request:**
+```bash
+curl -X GET "https://api.example.com/api/v1/compliance/runs/?asset_id=660e8400-e29b-41d4-a716-446655440001&status=SUCCEEDED" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Error Responses:**
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Insufficient permissions
+
+### Create Compliance Run
+
+**POST** `/api/v1/compliance/runs/`
+
+Create a new compliance run for an asset, dataset, or file.
+
+**Request Body:**
+```json
+{
+  "asset_id": "660e8400-e29b-41d4-a716-446655440001",
+  "dataset_id": "770e8400-e29b-41d4-a716-446655440003",
+  "file_id": "880e8400-e29b-41d4-a716-446655440004",
+  "scan_mode": "internal",
+  "applicable_regulations": ["GDPR", "HIPAA"]
+}
+```
+
+**Request Body Parameters:**
+- `asset_id` (UUID, optional): Asset ID to scan
+- `dataset_id` (UUID, optional): Dataset ID to scan
+- `file_id` (UUID, optional): File ID to scan (scan-only mode)
+- `scan_mode` (string, required): Scan mode - `internal` (full scan) or `external` (scan-only)
+- `applicable_regulations` (array of strings, optional): List of regulations to check (e.g., `["GDPR", "HIPAA", "LGPD", "CCPA", "SOX"]`)
+
+**Note:** At least one of `asset_id`, `dataset_id`, or `file_id` must be provided.
+
+**Response (201 Created):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "asset_id": "660e8400-e29b-41d4-a716-446655440001",
+  "dataset_id": null,
+  "file_id": null,
+  "status": "PENDING",
+  "scan_mode": "internal",
+  "regulations": ["GDPR", "LGPD"],
+  "created_at": "2025-01-15T10:30:00Z",
+  "job": {
+    "id": "770e8400-e29b-41d4-a716-446655440002",
+    "status": "PENDING"
+  }
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST "https://api.example.com/api/v1/compliance/runs/" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "asset_id": "660e8400-e29b-41d4-a716-446655440001",
+    "scan_mode": "internal",
+    "applicable_regulations": ["GDPR", "HIPAA"]
+  }'
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid request body or missing required fields
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Insufficient permissions
+- `404 Not Found`: Asset, dataset, or file not found
+
+### Get Compliance Run
+
+**GET** `/api/v1/compliance/runs/{id}/`
+
+Retrieve a specific compliance run by ID.
+
+**Path Parameters:**
+- `id` (UUID): Compliance run UUID
+
+**Response (200 OK):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "asset_id": "660e8400-e29b-41d4-a716-446655440001",
+  "dataset_id": null,
+  "file_id": null,
+  "status": "SUCCEEDED",
+  "scan_mode": "internal",
+  "overall_status": "PASS",
+  "risk_level": "LOW",
+  "allowed_to_store": true,
+  "regulations": ["GDPR", "LGPD"],
+  "detected_categories_json": {
+    "EMAIL": 10,
+    "PHONE": 5,
+    "SSN": 2
+  },
+  "column_findings_json": [
+    {
+      "column": "email",
+      "category": "EMAIL",
+      "risk_level": "LOW"
+    }
+  ],
+  "regulation_mapping_json": {
+    "GDPR": {
+      "status": "COMPLIANT",
+      "violations": []
+    }
+  },
+  "created_at": "2025-01-15T10:30:00Z",
+  "started_at": "2025-01-15T10:30:05Z",
+  "completed_at": "2025-01-15T10:35:00Z",
+  "job": {
+    "id": "770e8400-e29b-41d4-a716-446655440002",
+    "status": "COMPLETED",
+    "started_at": "2025-01-15T10:30:05Z",
+    "completed_at": "2025-01-15T10:35:00Z"
+  }
+}
+```
+
+**Example Request:**
+```bash
+curl -X GET "https://api.example.com/api/v1/compliance/runs/550e8400-e29b-41d4-a716-446655440000/" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Error Responses:**
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Insufficient permissions
+- `404 Not Found`: Compliance run not found
+
+### Get Compliance Run Results
+
+**GET** `/api/v1/compliance/runs/{id}/results/`
+
+Get detailed compliance scan results for a completed compliance run.
+
+**Path Parameters:**
+- `id` (UUID): Compliance run UUID
+
+**Response (200 OK):**
+```json
+{
+  "compliance_run_id": "550e8400-e29b-41d4-a716-446655440000",
+  "overall_status": "PASS",
+  "risk_level": "LOW",
+  "allowed_to_store": true,
+  "detected_categories": {
+    "EMAIL": 10,
+    "PHONE": 5,
+    "SSN": 2
+  },
+  "column_findings": [
+    {
+      "column": "email",
+      "category": "EMAIL",
+      "risk_level": "LOW",
+      "confidence": 0.95
+    },
+    {
+      "column": "phone_number",
+      "category": "PHONE",
+      "risk_level": "MEDIUM",
+      "confidence": 0.87
+    }
+  ],
+  "regulation_mapping": {
+    "GDPR": {
+      "status": "COMPLIANT",
+      "violations": [],
+      "requirements_met": 15,
+      "requirements_total": 15
+    },
+    "HIPAA": {
+      "status": "COMPLIANT",
+      "violations": [],
+      "requirements_met": 12,
+      "requirements_total": 12
+    }
+  },
+  "metadata": {
+    "scan_duration_seconds": 295.5,
+    "rows_scanned": 100000,
+    "columns_scanned": 25
+  }
+}
+```
+
+**Example Request:**
+```bash
+curl -X GET "https://api.example.com/api/v1/compliance/runs/550e8400-e29b-41d4-a716-446655440000/results/" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Error Responses:**
+- `400 Bad Request`: Compliance run not completed yet
+- `401 Unauthorized`: Authentication required
+- `403 Forbidden`: Insufficient permissions
+- `404 Not Found`: Compliance run not found
+
+**Notes:**
+- Results are only available for completed compliance runs (`status` = `SUCCEEDED` or `FAILED`)
+- For runs with `status` = `PENDING` or `RUNNING`, this endpoint returns `400 Bad Request`
+- Results include detailed PII detection, risk assessment, and regulatory compliance mapping
 
 ---
 

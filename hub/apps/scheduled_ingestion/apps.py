@@ -10,3 +10,7 @@ class ScheduledIngestionConfig(AppConfig):
     name = 'hub.apps.scheduled_ingestion'
     verbose_name = 'Scheduled Ingestion'
 
+    def ready(self):
+        """Import business rules to register them."""
+        import hub.apps.scheduled_ingestion.business_rules  # noqa: F401 - Import to register business rules
+

@@ -28,19 +28,19 @@ logger = structlog.get_logger(__name__)
 class DQRunViewSet(viewsets.ModelViewSet):
     """
     ViewSet for DQ run management.
-    
+
     Tenant-scoped: users can only see/manage DQ runs in their tenant.
     """
     queryset = DQRun.objects.all()
     serializer_class = DQRunSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
-    
+
     def check_auditor_permissions(self, request, view_action):
         """Check if AUDITOR role can perform the action (read-only)"""
         if not request.user or not request.user.is_authenticated:
             return True  # Let IsAuthenticated handle this
-        
+
         # Check if user has AUDITOR role
         if hasattr(request.user, 'user_roles'):
             role_names = [ur.role.name for ur in request.user.user_roles.all()]
@@ -49,13 +49,13 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 if view_action in ['create', 'update', 'partial_update', 'destroy']:
                     from rest_framework.exceptions import PermissionDenied
                     raise PermissionDenied("AUDITOR role has read-only access. Cannot perform write operations.")
-        
+
         return True
-    
+
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
         user = self.request.user
-        
+
         # Platform admins can see all DQ runs
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             queryset = DQRun.objects.all()
@@ -65,12 +65,12 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 queryset = DQRun.objects.filter(tenant=user.tenant)
             else:
                 return DQRun.objects.none()
-        
+
         # Filter by status
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        
+
         # Filter by dataset_id
         dataset_id = self.request.query_params.get('dataset_id')
         if dataset_id:
@@ -79,33 +79,33 @@ class DQRunViewSet(viewsets.ModelViewSet):
             except ValueError:
                 # Invalid UUID format
                 pass
-        
+
         # Filter by date range
         date_from = self.request.query_params.get('date_from')
         date_to = self.request.query_params.get('date_to')
-        
+
         if date_from:
             try:
                 date_from_dt = timezone.make_aware(datetime.fromisoformat(date_from.replace('Z', '+00:00')))
                 queryset = queryset.filter(created_at__gte=date_from_dt)
             except (ValueError, AttributeError):
                 pass
-        
+
         if date_to:
             try:
                 date_to_dt = timezone.make_aware(datetime.fromisoformat(date_to.replace('Z', '+00:00')))
                 queryset = queryset.filter(created_at__lte=date_to_dt)
             except (ValueError, AttributeError):
                 pass
-        
+
         return queryset.order_by('-created_at')
-    
+
     @transaction.atomic
     def create(self, request):
         """
         Create a new DQ run.
-        
-        POST /dq-runs
+
+        POST /api/v1/dq/runs/
         Body: {
             "asset_id": "uuid" (optional),
             "dataset_id": "uuid" (optional),
@@ -116,7 +116,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
         self.check_auditor_permissions(request, 'create')
         serializer = DQRunCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         # Get tenant from user
         tenant = request.user.tenant if hasattr(request.user, 'tenant') and request.user.tenant else None
         if not tenant:
@@ -124,17 +124,17 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 {'error': 'User must belong to a tenant to create DQ runs'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Get resource references
         asset_id = serializer.validated_data.get('asset_id')
         dataset_id = serializer.validated_data.get('dataset_id')
         file_id = serializer.validated_data.get('file_id')
-        
+
         # Resolve resources
         asset = None
         dataset = None
         file_obj = None
-        
+
         if asset_id:
             try:
                 asset = Asset.objects.get(id=asset_id, tenant=tenant)
@@ -143,7 +143,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                     {'error': 'Asset not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
         if dataset_id:
             try:
                 from hub.apps.datasets.models import Dataset
@@ -160,7 +160,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                     {'error': 'Dataset not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
         if file_id:
             try:
                 from hub.apps.files.models import File
@@ -170,11 +170,11 @@ class DQRunViewSet(viewsets.ModelViewSet):
                     {'error': 'File not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-        
+
         # Determine profile key (explicit request > tenant default > platform default)
         profile_key = serializer.validated_data.get('profile_key')
         profile_source = None
-        
+
         if not profile_key:
             # Get tenant default from TenantConfig (with platform default fallback)
             profile_key = get_tenant_dq_profile(str(tenant.id))
@@ -196,7 +196,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 source=profile_source,
                 message=f"Using explicit profile from request: {profile_key}"
             )
-        
+
         # Determine engine from profile key
         if profile_key.endswith('_gx') or 'gx' in profile_key.lower():
             engine = DQEngine.GREAT_EXPECTATIONS
@@ -205,11 +205,11 @@ class DQRunViewSet(viewsets.ModelViewSet):
         else:
             # Default to GX
             engine = DQEngine.GREAT_EXPECTATIONS
-        
+
         # Create a temporary UUID for resource_id (will be updated after dq_run is created)
         import uuid
         temp_resource_id = str(uuid.uuid4())
-        
+
         # Create job first (needed for DQRun creation)
         job = create_job(
             tenant=tenant,
@@ -220,7 +220,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
             details_json={},
             timeout_seconds=get_job_timeout(JobType.DQ_RUN)
         )
-        
+
         # Create DQ run record with job
         dq_run = DQRun.objects.create(
             tenant=tenant,
@@ -232,16 +232,16 @@ class DQRunViewSet(viewsets.ModelViewSet):
             engine=engine,
             status=DQRunStatus.PENDING
         )
-        
+
         # Update job with dq_run_id
         job.resource_id = str(dq_run.id)
         job.details_json['dq_run_id'] = str(dq_run.id)
         job.save(update_fields=['resource_id', 'details_json'])
-        
+
         # Enqueue job for processing
         from hub.apps.jobs.tasks import process_job
         from django_rq import get_queue
-        
+
         queue = get_queue('default')
         queue.enqueue(
             process_job,
@@ -249,7 +249,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
             job_type=JobType.DQ_RUN,
             timeout=get_job_timeout(JobType.DQ_RUN)
         )
-        
+
         # Log audit event
         create_audit_event(
             resource_type="DQ_RUN",
@@ -266,20 +266,35 @@ class DQRunViewSet(viewsets.ModelViewSet):
             },
             request=request
         )
-        
+
         return Response(
             DQRunSerializer(dq_run).data,
             status=status.HTTP_201_CREATED
         )
-    
+
     def list(self, request, *args, **kwargs):
         """List DQ runs (tenant-scoped)"""
         return super().list(request, *args, **kwargs)
-    
+
     def retrieve(self, request, *args, **kwargs):
         """Retrieve DQ run by ID"""
         return super().retrieve(request, *args, **kwargs)
-    
+
+    def update(self, request, *args, **kwargs):
+        """Update DQ run (full update)"""
+        self.check_auditor_permissions(request, 'update')
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Update DQ run (partial update)"""
+        self.check_auditor_permissions(request, 'partial_update')
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete DQ run"""
+        self.check_auditor_permissions(request, 'destroy')
+        return super().destroy(request, *args, **kwargs)
+
     @extend_schema(
         operation_id='get_dq_run_results',
         responses={
@@ -311,9 +326,9 @@ class DQRunViewSet(viewsets.ModelViewSet):
     def results(self, request, id=None):
         """
         Get enhanced DQ run results with detailed check information.
-        
-        GET /api/v1/dq/dq-runs/{id}/results/
-        
+
+        GET /api/v1/dq/runs/{id}/results/
+
         Returns detailed DQ results including:
         - Detailed check results with pass/fail status
         - Quality score breakdown by check category
@@ -322,24 +337,24 @@ class DQRunViewSet(viewsets.ModelViewSet):
         - Recommendations for improvement
         """
         dq_run = self.get_object()
-        
+
         # Extract data from DQ run
         checks = dq_run.checks_json or []
         details = dq_run.details_json or {}
         metadata = details.get('metadata', {})
-        
+
         # Build check details with enhanced information
         check_details = []
         passed_checks = 0
         failed_checks = 0
         warning_checks = 0
-        
+
         for check in checks:
             check_name = check.get('name', 'Unknown Check')
             check_type = check.get('type', 'unknown')
             check_status = check.get('status', 'UNKNOWN')
             check_result = check.get('result', {})
-            
+
             # Count checks by status
             if check_status == 'PASS':
                 passed_checks += 1
@@ -347,7 +362,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 failed_checks += 1
             elif check_status == 'WARN':
                 warning_checks += 1
-            
+
             # Build detailed check information
             check_detail = {
                 'name': check_name,
@@ -361,7 +376,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 'severity': 'HIGH' if check_status == 'FAIL' else 'MEDIUM' if check_status == 'WARN' else 'LOW'
             }
             check_details.append(check_detail)
-        
+
         # Calculate quality score breakdown
         total_checks = len(checks) if checks else 1
         score_breakdown = {
@@ -373,7 +388,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
             'overall_score': dq_run.quality_score or 0.0,
             'by_category': {}
         }
-        
+
         # Group checks by category/type
         for check in checks:
             check_type = check.get('type', 'unknown')
@@ -391,7 +406,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 score_breakdown['by_category'][check_type]['failed'] += 1
             elif check.get('status') == 'WARN':
                 score_breakdown['by_category'][check_type]['warnings'] += 1
-        
+
         # Get trend analysis (if available from DQAnomaly or DQTrend models)
         trend_analysis = None
         try:
@@ -403,7 +418,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                     asset=dq_run.asset,
                     metric_type='quality_score'
                 ).order_by('-created_at').first()
-                
+
                 if trend:
                     trend_analysis = {
                         'direction': trend.direction,
@@ -416,7 +431,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
         except Exception:
             # Trend analysis not available
             pass
-        
+
         # Get anomalies (if available)
         anomalies = []
         try:
@@ -425,7 +440,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 tenant=dq_run.tenant,
                 dq_run=dq_run
             ).order_by('-severity', '-created_at')
-            
+
             for anomaly in anomaly_queryset:
                 anomalies.append({
                     'metric_type': anomaly.metric_type,
@@ -438,7 +453,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
         except Exception:
             # Anomaly detection not available
             pass
-        
+
         # Generate recommendations based on failed checks
         recommendations = []
         for check in checks:
@@ -446,7 +461,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                 check_name = check.get('name', 'Unknown')
                 check_type = check.get('type', 'unknown')
                 message = check.get('result', {}).get('message', '')
-                
+
                 recommendations.append({
                     'check_name': check_name,
                     'check_type': check_type,
@@ -454,7 +469,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
                     'priority': 'HIGH',
                     'suggestion': f'Review and fix {check_type} check: {check_name}'
                 })
-        
+
         # Log audit event
         create_audit_event(
             resource_type="DQ_RUN",
@@ -465,7 +480,7 @@ class DQRunViewSet(viewsets.ModelViewSet):
             details={},
             request=request
         )
-        
+
         return Response({
             'dq_run_id': str(dq_run.id),
             'overall_status': dq_run.overall_status,
@@ -488,25 +503,25 @@ class DQRunViewSet(viewsets.ModelViewSet):
 def execute_dq_run(dq_run_id: str) -> None:
     """
     Execute a DQ run.
-    
+
     This function is called by the job worker to process a DQ run.
-    
+
     Args:
         dq_run_id: DQ run ID
     """
     from hub.apps.files.storage import S3StorageClient
     from hub.apps.files.models import File as FileModel
-    
+
     dq_run = DQRun.objects.get(id=dq_run_id)
     dq_run.status = DQRunStatus.RUNNING
     dq_run.started_at = timezone.now()
     dq_run.save(update_fields=['status', 'started_at'])
-    
+
     try:
         # Get file content
         file_obj = None
         file_format = None
-        
+
         if dq_run.file:
             file_obj = dq_run.file
             file_format = file_obj.name.split('.')[-1].lower() if '.' in file_obj.name else 'csv'
@@ -519,14 +534,14 @@ def execute_dq_run(dq_run_id: str) -> None:
             if dataset and dataset.file:
                 file_obj = dataset.file
                 file_format = dataset.format.lower() if dataset.format else 'csv'
-        
+
         if not file_obj:
             raise ValueError("No file found for DQ run")
-        
+
         # Download file from storage
         storage_client = S3StorageClient()
         file_content = storage_client.download_file(file_obj.storage_path)
-        
+
         # Call DQ service
         dq_client = DQServiceClient()
         result = dq_client.run_dq(
@@ -534,14 +549,14 @@ def execute_dq_run(dq_run_id: str) -> None:
             file_format=file_format,
             profile_key=dq_run.profile_key
         )
-        
+
         # Calculate execution time for metering
         execution_time = (timezone.now() - dq_run.started_at).total_seconds()
-        
+
         # Get row count from metadata or calculate from file
         row_count = result.get('metadata', {}).get('total_rows', 0)
         column_count = result.get('metadata', {}).get('total_columns', 0)
-        
+
         # Update DQ run with results
         dq_run.status = DQRunStatus.SUCCEEDED
         dq_run.overall_status = result.get('overall_status')
@@ -569,7 +584,7 @@ def execute_dq_run(dq_run_id: str) -> None:
             'status', 'overall_status', 'quality_score', 'checks_json',
             'details_json', 'completed_at'
         ])
-        
+
         # Update asset DQ status if applicable
         if dq_run.asset:
             # Map overall_status to Asset DQ status
@@ -581,15 +596,15 @@ def execute_dq_run(dq_run_id: str) -> None:
                 dq_status = AssetDQStatus.FAIL
             else:
                 dq_status = AssetDQStatus.UNKNOWN
-            
+
             dq_run.asset.dq_status = dq_status
             dq_run.asset.save(update_fields=['dq_status'])
-        
+
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"DQ run {dq_run_id} failed: {e}", exc_info=True)
-        
+
         dq_run.status = DQRunStatus.FAILED
         dq_run.details_json = {
             'error': str(e),

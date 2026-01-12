@@ -62,7 +62,7 @@ class ContractValidationViewTest(TestCase):
         
         # Use APIClient to make actual HTTP request
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {'async': False},
             format='json'
         )
@@ -90,7 +90,7 @@ class ContractValidationViewTest(TestCase):
         
         # Use APIClient to make actual HTTP request
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {'async': True},
             format='json'
         )
@@ -123,7 +123,7 @@ class ContractValidationViewTest(TestCase):
         
         # Use APIClient to make actual HTTP request
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {'async': False},
             format='json'
         )
@@ -159,7 +159,7 @@ class ContractValidationViewTest(TestCase):
         
         # Use APIClient to make actual HTTP request
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {'async': False},
             format='json'
         )
@@ -184,7 +184,7 @@ class ContractValidationViewTest(TestCase):
         
         # Use APIClient to make actual HTTP request
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {'async': False},
             format='json'
         )
@@ -235,7 +235,7 @@ class ContractValidationViewTest(TestCase):
         
         # Use APIClient to make actual HTTP request
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {'async': False},
             format='json'
         )
@@ -296,7 +296,7 @@ class ContractValidationViewTest(TestCase):
         
         # Use APIClient to make actual HTTP request
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{self.contract.id}/validate/',
+            f'/api/v1/contracts/{self.contract.id}/validate/',
             {'async': False},
             format='json'
         )

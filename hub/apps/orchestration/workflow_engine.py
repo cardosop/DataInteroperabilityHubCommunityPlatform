@@ -75,8 +75,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         super().__init__()
         self.dsl_parser = WorkflowDSLParser()
         self.version_manager = WorkflowVersionManager()
-        self.compensation = WorkflowCompensation()
         self.task_registry: Dict[str, Callable] = {}
+        self.compensation = WorkflowCompensation(task_registry=self.task_registry)
 
         # ODPS workflows that should publish ODPS-specific events (Task 7.1.4)
         self._odps_workflow_names = {"product_creation"}

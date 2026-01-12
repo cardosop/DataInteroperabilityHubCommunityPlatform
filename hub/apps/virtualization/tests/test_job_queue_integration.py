@@ -287,7 +287,7 @@ class QueryExecutionJobQueueIntegrationTest(TestCase):
         client.force_authenticate(user=self.user)
 
         response = client.post(
-            f"/api/v1/jobs/jobs/{execution.job.id}/cancel/",
+            f"/api/v1/jobs/{execution.job.id}/cancel/",
             format="json"
         )
 

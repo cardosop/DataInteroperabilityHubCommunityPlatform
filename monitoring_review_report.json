@@ -1,0 +1,975 @@
+{
+  "summary": {
+    "endpoints_found": 54,
+    "prometheus_metrics_with_endpoints": 2,
+    "grafana_queries_reviewed": 308,
+    "jaeger_operation_patterns": 8,
+    "log_patterns_found": 2,
+    "endpoints_mapped": 54
+  },
+  "prometheus": {
+    "scrape_configs": [
+      {
+        "job_name": "prometheus",
+        "metrics_path": null
+      },
+      {
+        "job_name": "api-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "worker-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "semantic-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "dq-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "compliance-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "datacontract-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "prefect-integration-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "search-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "observability-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "webhook-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "postgres",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "redis",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "event-bus-health-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "workflow-engine-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "workflow-registry-service",
+        "metrics_path": "/metrics"
+      },
+      {
+        "job_name": "event-schema-registry-service",
+        "metrics_path": "/metrics"
+      }
+    ],
+    "metrics_with_endpoint_labels": [
+      "http_requests_total",
+      "http_errors_total"
+    ],
+    "endpoint_labels_found": [
+      "route",
+      "method"
+    ],
+    "services_monitored": [
+      "prometheus",
+      "api-service",
+      "worker-service",
+      "semantic-service",
+      "dq-service",
+      "compliance-service",
+      "datacontract-service",
+      "prefect-integration-service",
+      "search-service",
+      "observability-service",
+      "webhook-service",
+      "postgres",
+      "redis",
+      "event-bus-health-service",
+      "workflow-engine-service",
+      "workflow-registry-service",
+      "event-schema-registry-service"
+    ]
+  },
+  "grafana": {
+    "total_queries": 308,
+    "queries_with_route_labels": 3,
+    "queries_with_method_labels": 1,
+    "queries_with_service_labels": 6,
+    "sample_queries": [
+      {
+        "dashboard": "Prefect Integration Service",
+        "panel": "HTTP Request Rate",
+        "query": "sum(rate(http_requests_total{service=\"prefect-integration-service\"}[5m])) by (method, route)",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": true,
+        "metrics_used": [
+          "http_requests_total"
+        ],
+        "legend_format": "{{method}} {{route}}"
+      },
+      {
+        "dashboard": "Prefect Integration Service",
+        "panel": "Prefect Deployments Synced",
+        "query": "sum(increase(prefect_deployments_synced_total[5m]))",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": false,
+        "metrics_used": [],
+        "legend_format": "Deployments Synced"
+      },
+      {
+        "dashboard": "Prefect Integration Service",
+        "panel": "Prefect Deployments Synced",
+        "query": "sum(increase(prefect_deployments_failed_total[5m]))",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": false,
+        "metrics_used": [],
+        "legend_format": "Deployments Failed"
+      },
+      {
+        "dashboard": "Prefect Integration Service",
+        "panel": "Request Duration (p95)",
+        "query": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"prefect-integration-service\"}[5m])) by (le))",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": true,
+        "metrics_used": [
+          "http_request_duration_seconds_bucket"
+        ],
+        "legend_format": "p95"
+      },
+      {
+        "dashboard": "Prefect Integration Service",
+        "panel": "Error Rate",
+        "query": "sum(rate(http_errors_total{service=\"prefect-integration-service\"}[5m]))",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": true,
+        "metrics_used": [
+          "http_errors_total"
+        ],
+        "legend_format": "Errors/sec"
+      },
+      {
+        "dashboard": "Scheduled Ingestion",
+        "panel": "Active Scheduled Ingestions",
+        "query": "sum(scheduled_ingestion_active_count)",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": false,
+        "metrics_used": [],
+        "legend_format": "Active Ingestions"
+      },
+      {
+        "dashboard": "Scheduled Ingestion",
+        "panel": "Ingestion Runs by Status",
+        "query": "sum by (status) (scheduled_ingestion_runs_total)",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": false,
+        "metrics_used": [],
+        "legend_format": "{{status}}"
+      },
+      {
+        "dashboard": "Scheduled Ingestion",
+        "panel": "Ingestion Run Rate",
+        "query": "rate(scheduled_ingestion_runs_total[5m])",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": false,
+        "metrics_used": [],
+        "legend_format": "{{status}} - {{scheduled_ingestion_id}}"
+      },
+      {
+        "dashboard": "Scheduled Ingestion",
+        "panel": "Files Processed",
+        "query": "rate(scheduled_ingestion_files_processed_total[5m])",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": false,
+        "metrics_used": [],
+        "legend_format": "{{scheduled_ingestion_id}}"
+      },
+      {
+        "dashboard": "Scheduled Ingestion",
+        "panel": "Files Failed",
+        "query": "rate(scheduled_ingestion_files_failed_total[5m])",
+        "has_route_label": false,
+        "has_method_label": false,
+        "has_service_label": false,
+        "metrics_used": [],
+        "legend_format": "{{scheduled_ingestion_id}}"
+      }
+    ]
+  },
+  "jaeger": {
+    "django_operations": [],
+    "fastapi_operations": [
+      "service_name,\n            .*"
+    ],
+    "operation_patterns": [
+      "route or request.path",
+      "HTTP {request.method} {span_name}",
+      "HTTP {request.method} {request.path} [ERROR]",
+      "custom_span_name",
+      "{service_name}.{endpoint}",
+      "db.{operation.lower()}",
+      "db.{operation.lower()}.{table}",
+      "DjangoInstrumentor (auto-instrumentation)"
+    ],
+    "span_attributes": [
+      "http.route",
+      "http.method",
+      "http.url",
+      "service.endpoint"
+    ]
+  },
+  "logging": {
+    "promtail_configs": [
+      "kubernetes-pods\n        kubernetes_sd_configs:\n          - role: pod\n        relabel_configs:\n          - source_labels:\n              - __meta_kubernetes_pod_node_name\n            target_label: __host__\n          - action: labelmap\n            regex: __meta_kubernetes_pod_label_(.+)\n          - action: replace\n            replacement: $1\n            separator: /\n            source_labels:\n              - __meta_kubernetes_namespace\n              - __meta_kubernetes_pod_name\n            target_label: job\n          - action: replace\n            source_labels:\n              - __meta_kubernetes_namespace\n            target_label: namespace\n          - action: replace\n            source_labels:\n              - __meta_kubernetes_pod_name\n            target_label: pod\n          - action: replace\n            source_labels:\n              - __meta_kubernetes_pod_container_name\n            target_label: container\n          - replacement: /var/log/pods/*$1/*.log\n            separator: /\n            source_labels:\n              - __meta_kubernetes_pod_uid\n              - __meta_kubernetes_pod_container_name\n            target_label: __path__\n      \n      # Kubernetes system logs\n      - job_name: kubernetes-system\n        kubernetes_sd_configs:\n          - role: pod\n            namespaces:\n              names:\n                - kube-system\n        relabel_configs:\n          - action: labelmap\n            regex: __meta_kubernetes_pod_label_(.+)\n          - replacement: /var/log/pods/*$1/*.log\n            separator: /\n            source_labels:\n              - __meta_kubernetes_pod_uid\n              - __meta_kubernetes_pod_container_name\n            target_label: __path__\n\n"
+    ],
+    "loki_patterns": [],
+    "log_url_patterns": [
+      "span_middleware.py logs request.path",
+      "tracing.py logs request.path"
+    ]
+  },
+  "endpoint_mapping": {
+    "/api/v1/api-docs/redoc/": {
+      "endpoint": "/api/v1/api-docs/redoc/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/jobs/": {
+      "endpoint": "/api/v1/jobs/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/assets/": {
+      "endpoint": "/api/v1/assets/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/id/<str:resource_type>/<str:resource_id>": {
+      "endpoint": "/api/v1/id/<str:resource_type>/<str:resource_id>",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/analytics/": {
+      "endpoint": "/api/v1/analytics/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/context.jsonld": {
+      "endpoint": "/api/v1/context.jsonld",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/compliance/": {
+      "endpoint": "/api/v1/compliance/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/developer/": {
+      "endpoint": "/api/v1/developer/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/social/": {
+      "endpoint": "/api/v1/social/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/search/": {
+      "endpoint": "/api/v1/search/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/openapi.yaml": {
+      "endpoint": "/api/v1/openapi.yaml",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/password-reset/confirm/": {
+      "endpoint": "/api/v1/password-reset/confirm/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/runs/": {
+      "endpoint": "/api/v1/runs/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/contracts/": {
+      "endpoint": "/api/v1/contracts/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [
+        {
+          "dashboard": "Lineage Visualization",
+          "panel": "Lineage Query Performance (P95)",
+          "query": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route=~\"/api/v1/contracts/.*/lineage.*\"}[5m])) by (le))"
+        },
+        {
+          "dashboard": "Lineage Visualization",
+          "panel": "Lineage Query Rate",
+          "query": "sum(rate(http_requests_total{route=~\"/api/v1/contracts/.*/lineage.*\"}[5m])) by (method, status_class)"
+        },
+        {
+          "dashboard": "Lineage Visualization",
+          "panel": "Lineage Depth Distribution",
+          "query": "sum(rate(http_requests_total{route=~\"/api/v1/contracts/.*/lineage.*\", method=\"GET\"}[5m])) by (status_class)"
+        }
+      ],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/api-docs/openapi.json": {
+      "endpoint": "/api/v1/api-docs/openapi.json",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/sessions/": {
+      "endpoint": "/api/v1/sessions/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/api-docs/": {
+      "endpoint": "/api/v1/api-docs/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/logout/": {
+      "endpoint": "/api/v1/logout/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/me/": {
+      "endpoint": "/api/v1/me/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/tenants/": {
+      "endpoint": "/api/v1/tenants/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/id/field/<str:asset_uuid>/<str:field_name>": {
+      "endpoint": "/api/v1/id/field/<str:asset_uuid>/<str:field_name>",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/register/": {
+      "endpoint": "/api/v1/register/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/api/v1/": {
+      "endpoint": "/api/v1/api/v1/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/dq/": {
+      "endpoint": "/api/v1/dq/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/auth/": {
+      "endpoint": "/api/v1/auth/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/circuit-breakers/": {
+      "endpoint": "/api/v1/circuit-breakers/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/mesh/": {
+      "endpoint": "/api/v1/mesh/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/openapi.json": {
+      "endpoint": "/api/v1/openapi.json",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/webhooks/": {
+      "endpoint": "/api/v1/webhooks/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/graphql-graphene/": {
+      "endpoint": "/api/v1/graphql-graphene/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/audit/": {
+      "endpoint": "/api/v1/audit/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/password-reset/": {
+      "endpoint": "/api/v1/password-reset/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/files/": {
+      "endpoint": "/api/v1/files/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/datasets/": {
+      "endpoint": "/api/v1/datasets/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/marketplace/": {
+      "endpoint": "/api/v1/marketplace/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/governance/": {
+      "endpoint": "/api/v1/governance/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/admin/": {
+      "endpoint": "/api/v1/admin/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/health/": {
+      "endpoint": "/api/v1/health/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/metrics/": {
+      "endpoint": "/api/v1/metrics/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/accept-invitation/": {
+      "endpoint": "/api/v1/accept-invitation/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/graphql/": {
+      "endpoint": "/api/v1/graphql/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/ontology": {
+      "endpoint": "/api/v1/ontology",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/refresh/": {
+      "endpoint": "/api/v1/refresh/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/users/": {
+      "endpoint": "/api/v1/users/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/transformation/": {
+      "endpoint": "/api/v1/transformation/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/login/": {
+      "endpoint": "/api/v1/login/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/sessions/<uuid:session_id>/revoke/": {
+      "endpoint": "/api/v1/sessions/<uuid:session_id>/revoke/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/virtualization/": {
+      "endpoint": "/api/v1/virtualization/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/semantic/": {
+      "endpoint": "/api/v1/semantic/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/access/": {
+      "endpoint": "/api/v1/access/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/sparql": {
+      "endpoint": "/api/v1/sparql",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/scheduled-ingestions/": {
+      "endpoint": "/api/v1/scheduled-ingestions/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/ai/": {
+      "endpoint": "/api/v1/ai/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    },
+    "/api/v1/runs/<uuid:id>/": {
+      "endpoint": "/api/v1/runs/<uuid:id>/",
+      "prometheus_metrics": [
+        "http_requests_total",
+        "http_errors_total"
+      ],
+      "grafana_queries": [],
+      "jaeger_operations": [],
+      "log_patterns": [
+        "span_middleware.py logs request.path",
+        "tracing.py logs request.path"
+      ]
+    }
+  }
+}

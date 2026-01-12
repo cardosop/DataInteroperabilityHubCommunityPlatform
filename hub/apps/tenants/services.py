@@ -8,7 +8,8 @@ from django.db import transaction
 from django.core.exceptions import ObjectDoesNotExist
 
 from hub.apps.core.services.base import BaseService, ValidationError, NotFoundError, PermissionError
-from hub.apps.tenants.models import Tenant, TenantConfig, KYCStatus
+from hub.apps.core.events.service_publishers import TenantEventPublisher
+from hub.apps.tenants.models import Tenant, TenantStatus, TenantConfig, KYCStatus
 from hub.apps.tenants.validators import get_platform_defaults
 
 
@@ -67,15 +68,41 @@ def get_tenant_config_value(tenant: Tenant, key: str, default: Any = None) -> An
     Args:
         tenant: Tenant instance
         key: Configuration key
-        default: Optional custom default value
+        default: Optional custom default value (if provided, overrides platform default)
 
     Returns:
-        Configuration value
+        Configuration value: tenant-specific value if set, otherwise custom default if provided,
+        otherwise platform default
     """
+    # Check if tenant has explicit config value
+    try:
+        config = tenant.config
+        # Map of config keys to their corresponding model attributes
+        key_to_attr = {
+            "default_dq_profile": ("default_dq_profile", lambda v: v),
+            "allowed_compliance_regimes": ("allowed_compliance_regimes", lambda v: v),
+            "default_compliance_regimes": ("default_compliance_regimes", lambda v: v),
+            "data_retention_days": ("data_retention_days", lambda v: v if v is not None else None),
+            "max_file_size_bytes": ("max_file_size_bytes", lambda v: v if v is not None else None),
+            "max_job_concurrency": ("max_job_concurrency", lambda v: v if v is not None else None),
+            "max_queued_jobs": ("max_queued_jobs", lambda v: v if v is not None else None),
+        }
+
+        if key in key_to_attr:
+            attr_name, validator = key_to_attr[key]
+            tenant_value = validator(getattr(config, attr_name, None))
+            if tenant_value is not None:
+                return tenant_value
+    except ObjectDoesNotExist:
+        pass  # No tenant config exists
+
+    # If custom default provided, use it (overrides platform default)
+    if default is not None:
+        return default
+
+    # Fall back to platform default
     config_dict = get_tenant_config(tenant)
-    if key in config_dict:
-        return config_dict[key]
-    return default
+    return config_dict.get(key)
 
 
 def get_tenant_dq_profile(tenant_id: str) -> str:
@@ -168,13 +195,27 @@ def get_tenant_job_limits(tenant_id: str) -> Dict[str, int]:
         }
 
 
-class TenantService(BaseService):
+class TenantService(BaseService, TenantEventPublisher):
     """
     Service for tenant operations.
 
-    Provides business logic for retrieving and validating tenants.
+    Provides business logic for retrieving, creating, updating, and deleting tenants.
     """
     service_name = "tenant_service"
+
+    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+        """
+        Initialize TenantService.
+
+        Args:
+            tenant_id: Optional tenant ID
+            user_id: Optional user ID
+        """
+        # Set attributes directly (BaseService doesn't have __init__)
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        # Initialize event publisher
+        TenantEventPublisher.__init__(self, tenant_id=tenant_id, user_id=user_id)
 
     def get_tenant(
         self,
@@ -220,8 +261,7 @@ class TenantService(BaseService):
 
             if tenant.kyc_status != KYCStatus.VERIFIED:
                 raise PermissionError(
-                    f"Tenant must have VERIFIED KYC status (current: {tenant.kyc_status})",
-                    details={"tenant_id": tenant_id, "kyc_status": tenant.kyc_status}
+                    f"Tenant must have VERIFIED KYC status (current: {tenant.kyc_status})"
                 )
 
             return tenant
@@ -230,4 +270,269 @@ class TenantService(BaseService):
             operation="validate_kyc_verified",
             tenant_id=tenant_id,
             func=_validate
+        )
+
+    @transaction.atomic
+    def create_tenant(
+        self,
+        name: str,
+        slug: str,
+        region: Optional[str] = None,
+        **kwargs
+    ) -> Tenant:
+        """
+        Create a new tenant.
+
+        Args:
+            name: Tenant name
+            slug: Tenant slug (URL-safe identifier)
+            region: Optional cloud region
+            **kwargs: Additional keyword arguments passed to event publisher
+
+        Returns:
+            Created Tenant instance
+
+        Raises:
+            ValidationError: If tenant creation fails
+        """
+        def _create():
+            tenant = Tenant.objects.create(
+                name=name,
+                slug=slug,
+                region=region,
+                status=TenantStatus.ACTIVE,
+                kyc_status=KYCStatus.UNVERIFIED
+            )
+
+            # Publish tenant.created event
+            self.publish_tenant_created(
+                tenant_id=str(tenant.id),
+                name=tenant.name,
+                slug=tenant.slug,
+                status=tenant.status,
+                kyc_status=tenant.kyc_status,
+                region=tenant.region,
+                **kwargs
+            )
+
+            return tenant
+
+        return self.execute_with_metrics(
+            operation="create_tenant",
+            tenant_id=None,  # No tenant_id yet for creation
+            func=_create
+        )
+
+    @transaction.atomic
+    def update_tenant(
+        self,
+        tenant_id: str,
+        name: Optional[str] = None,
+        slug: Optional[str] = None,
+        kyc_status: Optional[str] = None,
+        region: Optional[str] = None,
+        **kwargs
+    ) -> Tenant:
+        """
+        Update tenant.
+
+        Args:
+            tenant_id: Tenant ID
+            name: Optional new name
+            slug: Optional new slug
+            kyc_status: Optional new KYC status
+            region: Optional new region
+            **kwargs: Additional keyword arguments passed to event publisher
+
+        Returns:
+            Updated Tenant instance
+
+        Raises:
+            NotFoundError: If tenant not found
+            ValidationError: If update fails
+        """
+        def _update():
+            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+            previous_status = tenant.status
+
+            # Track changes
+            changes = {}
+            if name is not None and tenant.name != name:
+                changes["name"] = {"old": tenant.name, "new": name}
+                tenant.name = name
+            if slug is not None and tenant.slug != slug:
+                changes["slug"] = {"old": tenant.slug, "new": slug}
+                tenant.slug = slug
+            if kyc_status is not None and tenant.kyc_status != kyc_status:
+                changes["kyc_status"] = {"old": tenant.kyc_status, "new": kyc_status}
+                tenant.kyc_status = kyc_status
+            if region is not None and tenant.region != region:
+                changes["region"] = {"old": tenant.region, "new": region}
+                tenant.region = region
+
+            # Only save and publish if there are changes
+            if changes:
+                tenant.save()
+                new_status = tenant.status
+
+                # Publish tenant.updated event
+                self.publish_tenant_updated(
+                    tenant_id=str(tenant.id),
+                    changes=changes,
+                    previous_status=previous_status,
+                    new_status=new_status,
+                    **kwargs
+                )
+
+            return tenant
+
+        return self.execute_with_metrics(
+            operation="update_tenant",
+            tenant_id=tenant_id,
+            func=_update
+        )
+
+    @transaction.atomic
+    def delete_tenant(
+        self,
+        tenant_id: str,
+        reason: Optional[str] = None,
+        **kwargs
+    ) -> Tenant:
+        """
+        Delete a tenant (soft delete).
+
+        Args:
+            tenant_id: Tenant ID
+            reason: Optional reason for deletion
+            **kwargs: Additional keyword arguments passed to event publisher
+
+        Returns:
+            Deleted Tenant instance
+
+        Raises:
+            NotFoundError: If tenant not found
+            ValidationError: If tenant is already deleted
+        """
+        def _delete():
+            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+
+            if tenant.status == TenantStatus.DELETED:
+                raise ValidationError("Tenant is already deleted")
+
+            # Soft delete tenant
+            tenant.soft_delete()
+
+            # Publish tenant.deleted event
+            self.publish_tenant_deleted(
+                tenant_id=str(tenant.id),
+                reason=reason,
+                **kwargs
+            )
+
+            return tenant
+
+        return self.execute_with_metrics(
+            operation="delete_tenant",
+            tenant_id=tenant_id,
+            func=_delete
+        )
+
+    @transaction.atomic
+    def update_tenant_config(
+        self,
+        tenant_id: str,
+        default_dq_profile: Optional[str] = None,
+        allowed_compliance_regimes: Optional[list] = None,
+        default_compliance_regimes: Optional[list] = None,
+        data_retention_days: Optional[int] = None,
+        rate_limits: Optional[Dict[str, Any]] = None,
+        max_file_size_bytes: Optional[int] = None,
+        max_job_concurrency: Optional[int] = None,
+        max_queued_jobs: Optional[int] = None,
+        **kwargs
+    ) -> TenantConfig:
+        """
+        Update tenant configuration.
+
+        Publishes tenant.quota.changed events for any quota-related fields that change.
+
+        Args:
+            tenant_id: Tenant ID
+            default_dq_profile: Optional DQ profile
+            allowed_compliance_regimes: Optional list of allowed compliance regimes
+            default_compliance_regimes: Optional list of default compliance regimes
+            data_retention_days: Optional data retention days
+            rate_limits: Optional rate limits dictionary
+            max_file_size_bytes: Optional max file size in bytes
+            max_job_concurrency: Optional max job concurrency
+            max_queued_jobs: Optional max queued jobs
+            **kwargs: Additional keyword arguments passed to event publisher
+
+        Returns:
+            Updated TenantConfig instance
+
+        Raises:
+            NotFoundError: If tenant not found
+            ValidationError: If update fails
+        """
+        def _update_config():
+            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+
+            # Get or create tenant config
+            config, created = TenantConfig.objects.get_or_create(tenant=tenant)
+
+            # Track quota changes
+            quota_fields = {
+                "default_dq_profile": ("dq_profile", default_dq_profile),
+                "allowed_compliance_regimes": ("compliance", allowed_compliance_regimes),
+                "default_compliance_regimes": ("compliance", default_compliance_regimes),
+                "data_retention_days": ("data_retention", data_retention_days),
+                "max_file_size_bytes": ("file_size", max_file_size_bytes),
+                "max_job_concurrency": ("job_concurrency", max_job_concurrency),
+                "max_queued_jobs": ("job_concurrency", max_queued_jobs),
+            }
+
+            # Update fields and track changes
+            for field_name, (quota_type, new_value) in quota_fields.items():
+                if new_value is not None:
+                    old_value = getattr(config, field_name, None)
+                    if old_value != new_value:
+                        setattr(config, field_name, new_value)
+
+                        # Publish quota changed event
+                        self.publish_tenant_quota_changed(
+                            tenant_id=str(tenant.id),
+                            quota_type=quota_type,
+                            quota_field=field_name,
+                            previous_value=old_value,
+                            new_value=new_value,
+                            **kwargs
+                        )
+
+            # Handle rate_limits separately (it's a JSONField)
+            if rate_limits is not None:
+                old_rate_limits = config.rate_limits or {}
+                if old_rate_limits != rate_limits:
+                    config.rate_limits = rate_limits
+
+                    # Publish quota changed event for rate limits
+                    self.publish_tenant_quota_changed(
+                        tenant_id=str(tenant.id),
+                        quota_type="rate_limits",
+                        quota_field="rate_limits",
+                        previous_value=old_rate_limits,
+                        new_value=rate_limits,
+                        **kwargs
+                    )
+
+            # Save config
+            config.save()
+
+            return config
+
+        return self.execute_with_metrics(
+            operation="update_tenant_config",
+            tenant_id=tenant_id,
+            func=_update_config
         )

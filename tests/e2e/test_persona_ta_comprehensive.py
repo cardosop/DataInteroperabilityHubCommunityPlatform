@@ -720,7 +720,7 @@ class JourneyTA003MonitorTenantUsageTests(E2ETestBase):
         APIUsageMetric.objects.create(
             tenant=self.tenant,
             user=self.tenant_admin,
-            endpoint_path='/api/v1/assets/assets/',
+            endpoint_path='/api/v1/assets/',
             method='GET',
             status_code=200,
             latency_ms=45.2
@@ -728,7 +728,7 @@ class JourneyTA003MonitorTenantUsageTests(E2ETestBase):
         APIUsageMetric.objects.create(
             tenant=self.tenant,
             user=self.tenant_admin,
-            endpoint_path='/api/v1/assets/assets/',
+            endpoint_path='/api/v1/assets/',
             method='POST',
             status_code=201,
             latency_ms=120.5

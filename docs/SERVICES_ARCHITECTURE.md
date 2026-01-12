@@ -1,6 +1,6 @@
 # Services Architecture
 
-**Last Updated**: 2025-01-15  
+**Last Updated**: 2025-01-15
 **Version**: 1.0.0
 
 ---
@@ -24,9 +24,9 @@
 
 The Interoperable Data Hub is built as a microservices architecture with clear service boundaries, well-defined APIs, and independent deployment capabilities. This document provides a comprehensive overview of all services, their responsibilities, and how they interact.
 
-**Architecture Style**: Microservices  
-**Communication**: REST APIs, Message Queue (Redis), Event-Driven (Future)  
-**Deployment**: Docker containers, Kubernetes (production)  
+**Architecture Style**: Microservices
+**Communication**: REST APIs, Message Queue (Redis), Event-Driven (Future)
+**Deployment**: Docker containers, Kubernetes (production)
 **Database**: PostgreSQL (primary), Redis (queue/cache), MinIO (object storage), Apache Jena Fuseki (RDF store)
 
 ---
@@ -47,19 +47,37 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Core Services (MVP)
 
-1. **API Service** (`api-service`) - Main Django backend
-2. **Worker Service** (`worker-service`) - Background job processing
-3. **DataContract Service** (`datacontract-service`) - Contract validation and conversion
-4. **DQ Service** (`dq-service`) - Data quality checks
-5. **Compliance Service** (`compliance-service`) - Compliance scanning
-6. **Semantic Service** (`semantic-service`) - RDF mapping and SPARQL
+| Service | Implementation Status | Notes |
+|---------|----------------------|-------|
+| **API Service** (`api-service`) | ✅ Implemented | Main Django backend |
+| **Worker Service** (`worker-service`) | ✅ Implemented | Background job processing |
+| **DataContract Service** (`datacontract-service`) | ✅ Implemented | Contract validation and conversion |
+| **DQ Service** (`dq-service`) | ✅ Implemented | Data quality checks |
+| **Compliance Service** (`compliance-service`) | ✅ Implemented | Compliance scanning |
+| **Semantic Service** (`semantic-service`) | ✅ Implemented | RDF mapping and SPARQL |
 
 ### Supporting Services (Post-MVP)
 
-7. **Prefect Integration Service** (`prefect-integration-service`) - Prefect workflow sync
-8. **Search Service** (`search-service`) - Full-text search
-9. **Observability Service** (`observability-service`) - Data observability
-10. **Webhook Service** (`webhook-service`) - Webhook delivery
+| Service | Implementation Status | Notes |
+|---------|----------------------|-------|
+| **Prefect Integration Service** (`prefect-integration-service`) | ✅ Implemented | Prefect workflow sync |
+| **Search Service** (`search-service`) | ✅ Implemented | Full-text search |
+| **Observability Service** (`observability-service`) | ✅ Implemented | Data observability |
+| **Webhook Service** (`webhook-service`) | ✅ Implemented | Webhook delivery |
+
+### Service Layer Services
+
+| Service | Implementation Status | Phase | Notes |
+|---------|----------------------|-------|-------|
+| **TransformationService** | ✅ Implemented | Phase 9.5.1 | Pipeline execution coordination |
+| **DataMeshService** | ✅ Implemented | Phase 9.5.2 | Domain operations coordination |
+| **VirtualizationService** | ✅ Implemented | Phase 9.5.3 | Virtual dataset coordination |
+| **ContractService** | ✅ Implemented | MVP | Contract management |
+| **AssetService** | ✅ Implemented | MVP | Asset management |
+| **MarketplaceService** | ✅ Implemented | MVP | Marketplace operations |
+| **IngestionService** | ✅ Implemented | Post-MVP | Scheduled ingestion |
+| **GovernanceService** | ✅ Implemented | Post-MVP | Data governance |
+| **SearchService** | ✅ Implemented | Post-MVP | Search operations |
 
 ### Infrastructure Services
 
@@ -78,8 +96,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### API Service (`api-service`)
 
-**Technology**: Django 6.0+, Django REST Framework, PostgreSQL  
-**Port**: 8000 (default), 8001 (staging)  
+**Technology**: Django 6.0+, Django REST Framework, PostgreSQL
+**Port**: 8000 (default), 8001 (staging)
 **Status**: MVP
 
 **Responsibilities**:
@@ -120,8 +138,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Worker Service (`worker-service`)
 
-**Technology**: Django 6.0+, RQ (Redis Queue), PostgreSQL  
-**Port**: N/A (background worker)  
+**Technology**: Django 6.0+, RQ (Redis Queue), PostgreSQL
+**Port**: N/A (background worker)
 **Status**: MVP
 
 **Responsibilities**:
@@ -157,8 +175,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### DataContract Service (`datacontract-service`)
 
-**Technology**: FastAPI, DataContract CLI  
-**Port**: 8080 (default)  
+**Technology**: FastAPI, DataContract CLI
+**Port**: 8080 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -181,8 +199,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### DQ Service (`dq-service`)
 
-**Technology**: FastAPI, Great Expectations, Soda  
-**Port**: 8083 (default)  
+**Technology**: FastAPI, Great Expectations, Soda
+**Port**: 8083 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -206,8 +224,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Compliance Service (`compliance-service`)
 
-**Technology**: FastAPI, PII detection libraries  
-**Port**: 8082 (default)  
+**Technology**: FastAPI, PII detection libraries
+**Port**: 8082 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -232,8 +250,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Semantic Service (`semantic-service`)
 
-**Technology**: FastAPI, RDFLib, Apache Jena Fuseki  
-**Port**: 8081 (default)  
+**Technology**: FastAPI, RDFLib, Apache Jena Fuseki
+**Port**: 8081 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -274,8 +292,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Prefect Integration Service (`prefect-integration-service`)
 
-**Technology**: FastAPI, Prefect SDK  
-**Port**: 8084 (default)  
+**Technology**: FastAPI, Prefect SDK
+**Port**: 8084 (default)
 **Status**: Post-MVP
 
 **Responsibilities**:
@@ -299,8 +317,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Search Service (`search-service`)
 
-**Technology**: FastAPI, PostgreSQL full-text search or Elasticsearch  
-**Port**: 8085 (default)  
+**Technology**: FastAPI, PostgreSQL full-text search or Elasticsearch
+**Port**: 8085 (default)
 **Status**: Post-MVP
 
 **Responsibilities**:
@@ -326,8 +344,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Observability Service (`observability-service`)
 
-**Technology**: FastAPI, Time series database  
-**Port**: 8086 (default)  
+**Technology**: FastAPI, Time series database
+**Port**: 8086 (default)
 **Status**: Post-MVP
 
 **Responsibilities**:
@@ -355,8 +373,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Webhook Service (`webhook-service`)
 
-**Technology**: FastAPI, HTTP client libraries  
-**Port**: 8087 (default)  
+**Technology**: FastAPI, HTTP client libraries
+**Port**: 8087 (default)
 **Status**: Post-MVP
 
 **Responsibilities**:
@@ -384,8 +402,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### PostgreSQL
 
-**Technology**: PostgreSQL 16.x  
-**Port**: 5432 (default)  
+**Technology**: PostgreSQL 16.x
+**Port**: 5432 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -407,8 +425,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Redis
 
-**Technology**: Redis 7.x  
-**Port**: 6379 (default)  
+**Technology**: Redis 7.x
+**Port**: 6379 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -428,8 +446,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### MinIO
 
-**Technology**: MinIO (S3-compatible)  
-**Port**: 9000 (API), 9001 (Console)  
+**Technology**: MinIO (S3-compatible)
+**Port**: 9000 (API), 9001 (Console)
 **Status**: MVP
 
 **Responsibilities**:
@@ -450,8 +468,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Apache Jena Fuseki
 
-**Technology**: Apache Jena Fuseki  
-**Port**: 3030 (default)  
+**Technology**: Apache Jena Fuseki
+**Port**: 3030 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -471,8 +489,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Prometheus
 
-**Technology**: Prometheus  
-**Port**: 9090 (default)  
+**Technology**: Prometheus
+**Port**: 9090 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -493,8 +511,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Grafana
 
-**Technology**: Grafana  
-**Port**: 3000 (default)  
+**Technology**: Grafana
+**Port**: 3000 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -515,8 +533,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Jaeger
 
-**Technology**: Jaeger  
-**Port**: 16686 (UI), 14268 (HTTP), 6831 (UDP)  
+**Technology**: Jaeger
+**Port**: 16686 (UI), 14268 (HTTP), 6831 (UDP)
 **Status**: MVP
 
 **Responsibilities**:
@@ -537,8 +555,8 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Alertmanager
 
-**Technology**: Alertmanager  
-**Port**: 9093 (default)  
+**Technology**: Alertmanager
+**Port**: 9093 (default)
 **Status**: MVP
 
 **Responsibilities**:
@@ -561,7 +579,7 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Synchronous Communication
 
-**Pattern**: REST API calls  
+**Pattern**: REST API calls
 **Use Cases**:
 - API Service → DataContract Service (contract validation)
 - API Service → DQ Service (DQ checks)
@@ -575,7 +593,7 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ### Asynchronous Communication
 
-**Pattern**: Job Queue (Redis/RQ)  
+**Pattern**: Job Queue (Redis/RQ)
 **Use Cases**:
 - API Service → Worker Service (background jobs)
 - Worker Service → External services (long-running operations)
@@ -584,15 +602,21 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 ---
 
-### Event-Driven Communication (Future)
+### Event-Driven Communication ✅ (Implemented - Phase 9.7.1)
 
-**Pattern**: Event bus / Message queue  
+**Pattern**: Event Bus (Redis Pub/Sub + PostgreSQL)
+**Status**: ✅ Implemented
 **Use Cases**:
 - Contract created → Semantic mapping
 - Asset updated → Search index update
 - Compliance scan completed → Notifications
+- Transformation pipeline executed → Asset updates
+- Data mesh domain updated → Topology updates
+- Virtual dataset created → Query optimization
 
-**Technology**: Kafka, RabbitMQ, or Redis Streams (future)
+**Technology**: Redis Pub/Sub (real-time delivery) + PostgreSQL (persistence, replay, audit)
+
+**Architecture**: See [Event Bus Architecture](#event-bus-architecture) section below
 
 ---
 
@@ -660,19 +684,95 @@ Data Consumer (UI)
 
 ### Service Layer Pattern
 
-All business logic is coordinated through service layer classes that extend `BaseService`:
+All business logic is coordinated through service layer classes that extend `BaseService`. This pattern ensures consistent error handling, metrics collection, tenant scoping, and resource management across all services.
 
-#### TransformationService
+#### TransformationService ✅ (Implemented - Phase 9.5.1)
 - **Location**: `hub/apps/transformation/services.py`
+- **Status**: ✅ Implemented
 - **Responsibilities**:
   - Coordinate pipeline execution with asset lifecycle
   - Manage pipeline-to-asset relationships
   - Handle pipeline result synchronization
   - Validate pipeline compatibility with assets
-- **Integration**: Integrates with AssetCreationWorkflow, TransformationPipelineWorkflow
+  - Publish transformation events (pipeline.created, pipeline.executed, etc.)
+- **Integration**:
+  - Extends `BaseService` and `TransformationEventPublisher`
+  - Integrates with AssetCreationWorkflow, TransformationPipelineWorkflow
+  - Uses Event Bus for asynchronous coordination
+- **Key Methods**:
+  - `create_pipeline()` - Create and validate transformation pipeline
+  - `execute_pipeline()` - Execute pipeline with asset coordination
+  - `validate_pipeline_compatibility()` - Validate pipeline against assets
+
+#### DataMeshService ✅ (Implemented - Phase 9.5.2)
+- **Location**: `hub/apps/mesh/services.py`
+- **Status**: ✅ Implemented
+- **Responsibilities**:
+  - Coordinate domain operations
+  - Manage domain-to-asset relationships
+  - Handle federated governance
+  - Coordinate mesh topology updates
+  - Publish data mesh events (domain.created, domain.updated, etc.)
+- **Integration**:
+  - Extends `BaseService` and `DataMeshEventPublisher`
+  - Integrates with DataMeshWorkflow, AssetUpdateWorkflow
+  - Uses Event Bus for asynchronous coordination
+- **Key Methods**:
+  - `create_domain()` - Create data mesh domain
+  - `update_domain()` - Update domain configuration
+  - `transfer_ownership()` - Transfer asset ownership between domains
+
+#### VirtualizationService ✅ (Implemented - Phase 9.5.3)
+- **Location**: `hub/apps/virtualization/services.py`
+- **Status**: ✅ Implemented
+- **Responsibilities**:
+  - Coordinate virtual dataset operations
+  - Manage query execution across multiple sources
+  - Handle schema alignment and validation
+  - Coordinate virtualization events
+  - Publish virtualization events (dataset.created, query.executed, etc.)
+- **Integration**:
+  - Extends `BaseService` and `VirtualizationEventPublisher`
+  - Integrates with VirtualizationWorkflow, AssetUpdateWorkflow
+  - Uses Event Bus for asynchronous coordination
+- **Key Methods**:
+  - `create_virtual_dataset()` - Create virtual dataset
+  - `execute_query()` - Execute query across sources
+  - `validate_schema_alignment()` - Validate schema compatibility
+
+#### ContractService ✅ (Implemented - MVP)
+- **Location**: `hub/apps/contracts/services.py`
+- **Status**: ✅ Implemented
+- **Responsibilities**:
+  - Contract creation and validation
+  - Contract lifecycle management
+  - Contract-to-asset relationships
+  - Contract versioning
+- **Integration**: Extends `BaseService`, integrates with ContractCreationWorkflow
+
+#### AssetService ✅ (Implemented - MVP)
+- **Location**: `hub/apps/assets/services.py`
+- **Status**: ✅ Implemented
+- **Responsibilities**:
+  - Asset creation and management
+  - Asset lifecycle coordination
+  - Asset-to-contract relationships
+  - Asset activation workflows
+- **Integration**: Extends `BaseService`, integrates with AssetCreationWorkflow
+
+#### MarketplaceService ✅ (Implemented - MVP)
+- **Location**: `hub/apps/marketplace/services.py`
+- **Status**: ✅ Implemented
+- **Responsibilities**:
+  - Coordinate publishing with transformation/quality
+  - Manage purchase workflows
+  - Handle pricing model validation
+  - Coordinate marketplace events with asset updates
+- **Integration**: Extends `BaseService`, integrates with MarketplacePublishingWorkflow
 
 #### AIService
 - **Location**: `hub/apps/ai/services.py`
+- **Status**: ✅ Implemented
 - **Responsibilities**:
   - Coordinate ML operations with workflows
   - Manage ML model lifecycle
@@ -682,30 +782,13 @@ All business logic is coordinated through service layer classes that extend `Bas
 
 #### SocialService
 - **Location**: `hub/apps/social/services.py`
+- **Status**: ✅ Implemented
 - **Responsibilities**:
   - Coordinate ratings/reviews with asset updates
   - Manage review moderation workflows
   - Handle social feature events
   - Coordinate activity feeds with asset operations
 - **Integration**: Integrates with SocialFeatureWorkflow, AssetUpdateWorkflow
-
-#### MarketplaceService (Enhanced)
-- **Location**: `hub/apps/marketplace/services.py`
-- **Responsibilities**:
-  - Coordinate publishing with transformation/quality
-  - Manage purchase workflows
-  - Handle pricing model validation
-  - Coordinate marketplace events with asset updates
-- **Integration**: Integrates with MarketplacePublishingWorkflow, TransformationPipelineWorkflow
-
-#### DataMeshService
-- **Location**: `hub/apps/mesh/services.py`
-- **Responsibilities**:
-  - Coordinate domain operations
-  - Manage domain-to-asset relationships
-  - Handle federated governance
-  - Coordinate mesh topology updates
-- **Integration**: Integrates with DataMeshWorkflow, AssetUpdateWorkflow
 
 ### Service Communication Patterns
 
@@ -826,6 +909,283 @@ All services expose health check endpoints:
 
 ---
 
-**Last Updated**: 2025-01-15  
-**Version**: 1.0.0
+## Event Bus Architecture ✅ (Implemented - Phase 9.7.1)
+
+### Overview
+
+The Event Bus provides event-driven communication infrastructure for the Data Interoperability Hub. It enables decoupled, asynchronous communication between services using Redis Pub/Sub for real-time delivery and PostgreSQL for persistence, replay, and audit.
+
+### Architecture Components
+
+1. **Event Bus** (`hub/apps/core/events/bus.py`)
+   - Redis Pub/Sub for real-time event delivery
+   - PostgreSQL for event persistence
+   - Dead letter queue for failed events
+   - Event replay functionality
+
+2. **Event Schema** (`hub/apps/core/events/schema.py`)
+   - JSON Schema validation
+   - Event building utilities
+   - Type-specific schemas
+   - Schema versioning support
+
+3. **Event Publishers** (`hub/apps/core/events/publisher.py`)
+   - Convenience classes for publishing events
+   - Decorator support for automatic event publishing
+   - Service-specific publishers (TransformationEventPublisher, DataMeshEventPublisher, etc.)
+
+4. **Event Subscribers** (`hub/apps/core/events/subscriber.py`)
+   - Subscription management
+   - Handler wrapping with error handling
+   - Transaction management
+   - Pattern matching for event types
+
+5. **Event Models** (`hub/apps/core/events/models.py`)
+   - `Event`: Event persistence
+   - `DeadLetterQueue`: Failed event storage
+   - `EventSubscription`: Subscription tracking
+
+### Event Schema
+
+Events follow a standardized schema:
+
+```json
+{
+  "event_id": "uuid",
+  "event_type": "contract.created",
+  "event_version": "1.0.0",
+  "timestamp": "2025-01-15T10:00:00Z",
+  "source": {
+    "service": "hub",
+    "tenant_id": "uuid",
+    "user_id": "uuid",
+    "request_id": "request-id"
+  },
+  "data": {
+    "contract_id": "uuid"
+  },
+  "metadata": {
+    "correlation_id": "correlation-id",
+    "causation_id": "uuid",
+    "tags": ["tag1", "tag2"]
+  }
+}
+```
+
+**Event Type Format**: `domain.entity.action` (e.g., `contract.created`, `asset.activated`, `transformation.pipeline.executed`)
+
+### Performance Characteristics
+
+- **Throughput**: ~1,500-2,000 events/sec
+- **Latency**: <10ms (Pub/Sub only), <150ms (with persistence)
+- **Persistence**: 100% of events persisted to PostgreSQL
+- **Reliability**: Dead letter queue for failed events
+- **Replay**: Event replay functionality for recovery
+
+### Integration Points
+
+- **TransformationService**: Publishes `transformation.pipeline.*` events
+- **DataMeshService**: Publishes `mesh.domain.*` events
+- **VirtualizationService**: Publishes `virtualization.dataset.*` and `virtualization.query.*` events
+- **ContractService**: Publishes `contract.*` events
+- **AssetService**: Publishes `asset.*` events
+- **WebhookService**: Subscribes to events for webhook delivery
+
+### Documentation
+
+- **Full Documentation**: `docs/EVENT_BUS.md`
+- **Architecture Decision**: `docs/EVENT_BUS_ARCHITECTURE_DECISION.md`
+- **Performance Analysis**: `docs/EVENT_BUS_PERFORMANCE_ANALYSIS.md`
+
+---
+
+## Redis Instance Separation ✅ (Implemented - Phase 9.7.1.3)
+
+### Overview
+
+Redis has been separated into four dedicated instances to improve isolation, performance, scalability, and operational management. This separation addresses resource contention and enables independent scaling of different workloads.
+
+### Four Redis Instances
+
+#### 1. Redis Cache Instance
+- **Purpose**: Response caching, contract caching, lineage caching
+- **Port**: 6379 (default)
+- **Memory**: 2-4 GB (configurable)
+- **Persistence**: Optional (AOF recommended for cache warming)
+- **Characteristics**:
+  - High read-to-write ratio (90%+ reads)
+  - Short TTLs (5 minutes to 1 hour)
+  - Cache eviction policies: LRU, LFU
+- **Use Cases**:
+  - HTTP response caching
+  - Contract data caching
+  - Lineage resolution caching
+  - Dataset/asset query result caching
+
+#### 2. Redis Queue Instance
+- **Purpose**: Job queues (RQ)
+- **Port**: 6380
+- **Memory**: 1-2 GB (configurable)
+- **Persistence**: Required (AOF recommended)
+- **Characteristics**:
+  - High write-to-read ratio (job enqueueing)
+  - Long-lived data (job results, metadata)
+  - Persistence required for job reliability
+- **Use Cases**:
+  - Priority queues: `job_critical`, `job_default`, `job_low`
+  - Job result storage
+  - Job metadata and state
+  - Worker coordination
+
+#### 3. Redis Events Instance
+- **Purpose**: Event bus (Pub/Sub, Streams)
+- **Port**: 6381
+- **Memory**: 1-2 GB (configurable)
+- **Persistence**: Optional (AOF for Streams, not needed for Pub/Sub)
+- **Characteristics**:
+  - High throughput (1,500-2,000 events/sec)
+  - Low latency requirements (<10ms)
+  - Fire-and-forget (Pub/Sub) or persistent (Streams)
+- **Use Cases**:
+  - Event publishing (Pub/Sub channels)
+  - Event subscription management
+  - Event deduplication keys
+  - Message acknowledgment tracking
+
+#### 4. Redis Channels Instance
+- **Purpose**: WebSocket channels (Django Channels)
+- **Port**: 6382
+- **Memory**: 512 MB - 1 GB (configurable)
+- **Persistence**: Not required
+- **Characteristics**:
+  - Real-time messaging
+  - Low latency (<50ms)
+  - Ephemeral data (messages expire quickly)
+- **Use Cases**:
+  - WebSocket channel groups
+  - Real-time message delivery
+  - Channel layer coordination
+  - Presence tracking
+
+### Benefits
+
+1. **Isolation**: Prevents resource contention between workloads
+2. **Performance**: Optimized configurations per workload type
+3. **Scalability**: Independent scaling of each workload
+4. **Operational Management**: Granular monitoring, tuning, and troubleshooting
+
+### Configuration
+
+Environment variables for each instance:
+- `REDIS_CACHE_URL` - Cache instance
+- `REDIS_QUEUE_URL` - Queue instance
+- `REDIS_EVENTS_URL` - Events instance
+- `REDIS_CHANNELS_URL` - Channels instance
+
+### Documentation
+
+- **Full Design**: `docs/REDIS_INSTANCE_SEPARATION_DESIGN.md`
+- **Architecture Review**: `docs/REDIS_INSTANCE_SEPARATION_ARCHITECTURE_REVIEW.md`
+- **Design Review**: `docs/REDIS_INSTANCE_SEPARATION_DESIGN_REVIEW.md`
+
+---
+
+## Business Rules Framework ✅ (Implemented - Phase 9.7.2)
+
+### Overview
+
+The Business Rules Framework provides a standardized approach to validation and business logic enforcement across all services. All business rules classes follow consistent patterns for validation, error handling, and result reporting.
+
+### Framework Components
+
+1. **Base Class** (`hub/apps/core/business_rules/base.py`)
+   - `BusinessRules` abstract base class
+   - `ValidationResult` dataclass (standardized result structure)
+   - Common validation patterns
+   - Error handling utilities
+
+2. **Common Utilities** (`hub/apps/core/business_rules/utils.py`)
+   - Shared validation utilities
+   - Tenant ID validation
+   - User permission checking
+   - Cross-tenant access validation
+   - Schema structure validation
+
+3. **Registry** (`hub/apps/core/business_rules/registry.py`)
+   - Business rules registration
+   - Rule discovery and loading
+   - Rule execution coordination
+
+### Business Rules Implementations
+
+#### Contract Business Rules
+- **ODPSBusinessRules** (`hub/apps/contracts/business_rules.py`)
+  - ODPS document structure validation
+  - ODPS version validation
+  - ODPS-ODCS linking validation
+- **ODPSLinkingRules** - Link validation, circular reference detection
+- **ODPSExportRules** - Export format validation, fidelity validation
+
+#### Transformation Business Rules
+- **TransformationBusinessRules** (`hub/apps/transformation/business_rules.py`)
+  - Pipeline structure validation
+  - Node compatibility validation
+  - Schema alignment validation
+  - Asset compatibility validation
+  - Cross-tenant operation validation
+
+#### Data Mesh Business Rules
+- **DataMeshBusinessRules** (`hub/apps/mesh/business_rules.py`)
+  - Domain structure validation
+  - Ownership transfer validation
+  - Boundaries validation
+  - Policy conflict detection
+- **PolicyBusinessRules** - Policy application validation, compliance checking
+- **TopologyBusinessRules** - Relationship calculation, health metrics
+
+#### Virtualization Business Rules
+- **VirtualizationBusinessRules** (`hub/apps/virtualization/business_rules.py`)
+  - Query syntax validation
+  - Schema alignment validation
+  - Source compatibility validation
+  - Cross-source compatibility validation
+- **QueryExecutionBusinessRules** - Query optimization, execution mode selection
+- **ResultBusinessRules** - Result caching validation, pagination validation
+
+### ValidationResult Pattern
+
+All business rules return a standardized `ValidationResult`:
+
+```python
+@dataclass
+class ValidationResult:
+    is_valid: bool
+    errors: List[str]
+    warnings: List[str]
+    details: Dict[str, Any]
+```
+
+### Common Patterns
+
+1. **Initialization**: All rules accept `tenant_id` and `user_id`
+2. **Validation Methods**: Return `ValidationResult`, support `raise_on_error` parameter
+3. **Error Handling**: Consistent use of `ValidationError` from `hub.apps.core.services.base`
+4. **Error Messages**: Comprehensive context in error messages and `details` dictionary
+
+### Integration
+
+- Business rules are integrated into service layer classes
+- Rules are executed during service operations (create, update, delete)
+- Rules can be registered and discovered via the registry
+- Rules support dependency injection and testing
+
+### Documentation
+
+- **Framework Review**: `docs/BUSINESS_RULES_FRAMEWORK_REVIEW.md`
+- **Integration Guide**: `docs/BUSINESS_LOGIC_INTEGRATION.md`
+
+---
+
+**Last Updated**: 2025-01-15
+**Version**: 2.0.0
 

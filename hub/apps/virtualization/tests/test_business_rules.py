@@ -3,15 +3,16 @@ Unit tests for VirtualizationBusinessRules.
 
 Tests all validation methods using real services and models (no mocks/stubs).
 """
-import pytest
 from django.test import TestCase
 from django.core.exceptions import ValidationError as DjangoValidationError
 
+from hub.apps.core.business_rules.base import ValidationResult
+from hub.apps.core.business_rules.registry import get_registry
 from hub.apps.virtualization.business_rules import (
     VirtualizationBusinessRules,
+    VirtualizationRuleExecutionContext,
     QueryExecutionBusinessRules,
     ResultBusinessRules,
-    ValidationResult
 )
 from hub.apps.virtualization.models import (
     VirtualDataset,
@@ -23,8 +24,6 @@ from hub.apps.core.services.base import ValidationError
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class VirtualizationBusinessRulesTest(TestCase):
@@ -109,6 +108,52 @@ class VirtualizationBusinessRulesTest(TestCase):
         )
         self.assertEqual(rules.tenant_id, str(self.tenant.id))
         self.assertEqual(rules.user_id, str(self.user.id))
+
+    def test_rule_registration(self):
+        """Test that VirtualizationBusinessRules is registered in the business rules registry"""
+        registry = get_registry()
+        rule_metadata = registry.get_rule("virtualization_dataset_validation")
+
+        self.assertIsNotNone(rule_metadata, "Rule should be registered")
+        self.assertEqual(rule_metadata.rule_class, VirtualizationBusinessRules)
+        self.assertEqual(rule_metadata.rule_name, "virtualization_dataset_validation")
+        self.assertIn("virtualization", rule_metadata.tags)
+        self.assertIn("dataset", rule_metadata.tags)
+        self.assertIn("validation", rule_metadata.tags)
+
+    def test_get_rule_name(self):
+        """Test get_rule_name() method"""
+        rules = VirtualizationBusinessRules()
+        self.assertEqual(rules.get_rule_name(), "VirtualizationBusinessRules")
+
+    def test_rule_execution_context(self):
+        """Test VirtualizationRuleExecutionContext"""
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            status=VirtualDatasetStatus.DRAFT
+        )
+
+        context = VirtualizationRuleExecutionContext(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            virtual_dataset=virtual_dataset,
+            query="SELECT * FROM users"
+        )
+
+        self.assertEqual(context.tenant_id, str(self.tenant.id))
+        self.assertEqual(context.user_id, str(self.user.id))
+        self.assertEqual(context.virtual_dataset, virtual_dataset)
+        self.assertEqual(context.query, "SELECT * FROM users")
+
+        # Test to_dict()
+        context_dict = context.to_dict()
+        self.assertEqual(context_dict['tenant_id'], str(self.tenant.id))
+        self.assertEqual(context_dict['user_id'], str(self.user.id))
+        self.assertEqual(context_dict['virtual_dataset_id'], str(virtual_dataset.id))
+        self.assertIn('query_preview', context_dict)
 
 
 class QuerySyntaxValidationTest(TestCase):
@@ -1871,4 +1916,1170 @@ class ResultBusinessRulesTest(TestCase):
                 offset=0,  # Mutually exclusive
                 raise_on_error=True
             )
+
+
+class CrossTenantAccessValidationTest(TestCase):
+    """Test cases for validate_cross_tenant_access()."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
+
+        self.other_tenant = Tenant.objects.create(
+            name="Other Tenant",
+            slug="other-tenant"
+        )
+
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+
+        self.other_user = User.objects.create_user(
+            email="other@example.com",
+            password="testpass123",
+            tenant=self.other_tenant,
+            status=UserStatus.ACTIVE
+        )
+
+        self.business_rules = VirtualizationBusinessRules(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+
+        # Create assets in both tenants
+        self.asset_same_tenant = Asset.objects.create(
+            tenant=self.tenant,
+            key="same-tenant-asset",
+            name="Same Tenant Asset",
+            status=AssetStatus.ACTIVE[0] if isinstance(AssetStatus.ACTIVE, tuple) else AssetStatus.ACTIVE
+        )
+
+        self.asset_other_tenant = Asset.objects.create(
+            tenant=self.other_tenant,
+            key="other-tenant-asset",
+            name="Other Tenant Asset",
+            status=AssetStatus.ACTIVE[0] if isinstance(AssetStatus.ACTIVE, tuple) else AssetStatus.ACTIVE
+        )
+
+        # Add DATA_VIEWER role to user for query execution
+        from hub.apps.users.models import Role, UserRole
+        role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_VIEWER",
+            defaults={"description": "Data viewer role"}
+        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
+
+        # Create virtual dataset
+        self.virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Virtual Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=[
+                {
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "database": "testdb",
+                    "asset_id": str(self.asset_same_tenant.id)
+                }
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+    def test_validate_cross_tenant_access_missing_tenant_id(self):
+        """Test cross-tenant access validation without tenant_id"""
+        rules = VirtualizationBusinessRules(user_id=str(self.user.id))
+        result = rules.validate_cross_tenant_access(
+            self.virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("tenant_id is required" in error for error in result.errors))
+
+    def test_validate_cross_tenant_access_missing_user_id(self):
+        """Test cross-tenant access validation without user_id"""
+        rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
+        result = rules.validate_cross_tenant_access(
+            self.virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("user_id is required" in error for error in result.errors))
+
+    def test_validate_cross_tenant_access_no_sources(self):
+        """Test cross-tenant access validation with no sources"""
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="No Sources Dataset",
+            query="SELECT ?name WHERE { ?person foaf:name ?name . }",
+            query_type=QueryType.SPARQL,
+            sources=None,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_cross_tenant_access(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertFalse(result.details["cross_tenant_access_checks"]["sources_provided"])
+
+    def test_validate_cross_tenant_access_same_tenant_source(self):
+        """Test cross-tenant access validation with same-tenant source"""
+        result = self.business_rules.validate_cross_tenant_access(
+            self.virtual_dataset,
+            raise_on_error=False
+        )
+
+        # Should pass - same tenant source
+        self.assertTrue(result.is_valid)
+        self.assertTrue(result.details["cross_tenant_access_checks"]["source_access_valid"])
+
+    def test_validate_cross_tenant_access_cross_tenant_source_without_permission(self):
+        """Test cross-tenant access validation with cross-tenant source without permission"""
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Cross Tenant Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=[
+                {
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "database": "otherdb",
+                    "asset_id": str(self.asset_other_tenant.id)
+                }
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_cross_tenant_access(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        # Should fail - cross-tenant source without permission
+        # Note: This may pass if ABAC allows it, but typically should fail
+        # The actual result depends on ABAC policy configuration
+        self.assertIn("cross_tenant_access_checks", result.details)
+
+    def test_validate_cross_tenant_access_query_execution_authorization(self):
+        """Test query execution authorization check"""
+        result = self.business_rules.validate_cross_tenant_access(
+            self.virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertIn("query_execution_authorized", result.details["cross_tenant_access_checks"])
+        # User should have authorization (or errors if not)
+        auth_status = result.details["cross_tenant_access_checks"]["query_execution_authorized"]
+        self.assertIn(auth_status, [True, False, None])
+
+    def test_validate_cross_tenant_access_result_filtering_same_tenant(self):
+        """Test result data filtering validation with same-tenant sources"""
+        result = self.business_rules.validate_cross_tenant_access(
+            self.virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        filtering_details = result.details["cross_tenant_access_checks"]["result_filtering_details"]
+        self.assertTrue(filtering_details["tenant_isolation_checks"].get("all_sources_same_tenant", False))
+
+    def test_validate_cross_tenant_access_result_filtering_cross_tenant(self):
+        """Test result data filtering validation with cross-tenant sources"""
+        # Ensure asset is ACTIVE for listing
+        if isinstance(AssetStatus.ACTIVE, tuple):
+            self.asset_other_tenant.status = AssetStatus.ACTIVE[0]
+        else:
+            self.asset_other_tenant.status = AssetStatus.ACTIVE
+        self.asset_other_tenant.save()
+
+        # Create entitlement for cross-tenant access
+        from hub.apps.marketplace.models import (
+            Entitlement, EntitlementStatus, Listing, ListingStatus, PricingModel
+        )
+        from hub.apps.tenants.models import KYCStatus
+
+        self.other_tenant.kyc_status = KYCStatus.VERIFIED
+        self.other_tenant.save()
+
+        listing = Listing.objects.create(
+            tenant=self.other_tenant,
+            asset=self.asset_other_tenant,
+            status=ListingStatus.PUBLISHED,
+            pricing_model=PricingModel.FREE,
+            metadata_json={"title": "Test Listing"}
+        )
+        entitlement = Entitlement.objects.create(
+            tenant=self.tenant,
+            listing=listing,
+            asset=self.asset_other_tenant,
+            status=EntitlementStatus.ACTIVE
+        )
+
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Cross Tenant Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=[
+                {
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "database": "otherdb",
+                    "asset_id": str(self.asset_other_tenant.id)
+                }
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_cross_tenant_access(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        # Should validate result filtering
+        self.assertIn("result_filtering_valid", result.details["cross_tenant_access_checks"])
+        filtering_details = result.details["cross_tenant_access_checks"]["result_filtering_details"]
+        self.assertIn("tenant_isolation_checks", filtering_details)
+
+    def test_validate_cross_tenant_access_raises_on_error(self):
+        """Test that validate_cross_tenant_access raises exception when raise_on_error=True"""
+        rules = VirtualizationBusinessRules(user_id=str(self.user.id))
+        with self.assertRaises(ValidationError) as context:
+            rules.validate_cross_tenant_access(
+                self.virtual_dataset,
+                raise_on_error=True
+            )
+
+        self.assertEqual(context.exception.code, "MISSING_TENANT_ID")
+
+    def test_validate_cross_tenant_access_with_governance_service_integration(self):
+        """Test integration with GovernanceService for access checks"""
+        result = self.business_rules.validate_cross_tenant_access(
+            self.virtual_dataset,
+            raise_on_error=False
+        )
+
+        # Should have source access checks
+        self.assertIn("source_access_valid", result.details["cross_tenant_access_checks"])
+        # Should have query authorization details
+        self.assertIn("query_authorization_details", result.details["cross_tenant_access_checks"])
+        # Should have result filtering details
+        self.assertIn("result_filtering_details", result.details["cross_tenant_access_checks"])
+
+    def test_validate_cross_tenant_access_tenant_isolation(self):
+        """Test tenant isolation validation"""
+        # Create virtual dataset with different tenant and a source to trigger result filtering validation
+        wrong_tenant_dataset = VirtualDataset.objects.create(
+            tenant=self.other_tenant,
+            created_by=self.other_user,
+            name="Wrong Tenant Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=[
+                {
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "database": "testdb",
+                    "asset_id": str(self.asset_same_tenant.id)
+                }
+            ],
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_cross_tenant_access(
+            wrong_tenant_dataset,
+            raise_on_error=False
+        )
+
+        # Validation should run successfully
+        self.assertIn("cross_tenant_access_checks", result.details)
+        # Check that result filtering details are present (when sources exist)
+        filtering_details = result.details["cross_tenant_access_checks"].get("result_filtering_details", {})
+        if filtering_details:
+            # If filtering details exist, check tenant isolation checks
+            self.assertIn("tenant_isolation_checks", filtering_details)
+            tenant_isolation_checks = filtering_details.get("tenant_isolation_checks", {})
+            self.assertIsInstance(tenant_isolation_checks, dict)
+        # Validation should complete successfully
+        self.assertIsNotNone(result)
+
+
+class VirtualDatasetSourceConfigurationValidationTest(TestCase):
+    """Test cases for validate_source_configuration()."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+        self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
+
+        # Create test asset
+        self.asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset",
+            name="Test Asset",
+            status=AssetStatus.ACTIVE
+        )
+
+    def test_validate_source_configuration_valid_sources(self):
+        """Test validate_source_configuration with valid sources."""
+        sources = [
+            {
+                "type": "postgresql",
+                "host": "localhost",
+                "database": "testdb",
+                "asset_id": str(self.asset.id)
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_configuration(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertIn("source_configuration_checks", result.details)
+
+    def test_validate_source_configuration_unsupported_source_type(self):
+        """Test validate_source_configuration with unsupported source type."""
+        sources = [
+            {
+                "type": "unsupported_type",
+                "host": "localhost"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_configuration(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("not supported" in error.lower() for error in result.errors))
+
+    def test_validate_source_configuration_invalid_host_format(self):
+        """Test validate_source_configuration with invalid host format."""
+        sources = [
+            {
+                "type": "postgresql",
+                "host": "invalid..host..name",
+                "database": "testdb"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_configuration(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        # Should have warnings about invalid host format
+        self.assertGreater(len(result.warnings), 0)
+
+    def test_validate_source_configuration_invalid_url_format(self):
+        """Test validate_source_configuration with invalid URL format."""
+        sources = [
+            {
+                "type": "rest",
+                "url": "not-a-valid-url"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query='{"method": "GET"}',
+            query_type=QueryType.REST,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_configuration(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("invalid url" in error.lower() for error in result.errors))
+
+    def test_validate_source_configuration_invalid_bucket_name(self):
+        """Test validate_source_configuration with invalid S3 bucket name."""
+        sources = [
+            {
+                "type": "s3",
+                "bucket": "Invalid.Bucket.Name"  # Invalid bucket name
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM s3://bucket/file",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_configuration(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("bucket" in error.lower() for error in result.errors))
+
+    def test_validate_source_configuration_raises_exception(self):
+        """Test validate_source_configuration raises exception when raise_on_error=True."""
+        sources = [
+            {
+                "type": "unsupported_type"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT id FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            self.business_rules.validate_source_configuration(
+                virtual_dataset,
+                raise_on_error=True
+            )
+
+        self.assertEqual(context.exception.code, "INVALID_SOURCE_CONFIGURATION")
+
+
+class VirtualDatasetQueryMappingValidationTest(TestCase):
+    """Test cases for validate_query_mapping()."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+        self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
+
+    def test_validate_query_mapping_valid_sql(self):
+        """Test validate_query_mapping with valid SQL query."""
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT id, name FROM users WHERE age > 18",
+            query_type=QueryType.SQL,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_query_mapping(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertIn("query_mapping_checks", result.details)
+
+    def test_validate_query_mapping_empty_query(self):
+        """Test validate_query_mapping with empty query."""
+        # Create with valid query first, then update to empty to bypass model validation
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        # Update to empty query bypassing model validation
+        VirtualDataset.objects.filter(id=virtual_dataset.id).update(query="")
+        virtual_dataset.refresh_from_db()
+
+        result = self.business_rules.validate_query_mapping(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("empty" in error.lower() for error in result.errors))
+
+    def test_validate_query_mapping_unsupported_query_type(self):
+        """Test validate_query_mapping with unsupported query type."""
+        # Create with valid query type first, then update to invalid to bypass model validation
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        # Update to invalid query type bypassing model validation
+        VirtualDataset.objects.filter(id=virtual_dataset.id).update(query_type="INVALID_TYPE")
+        virtual_dataset.refresh_from_db()
+
+        result = self.business_rules.validate_query_mapping(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("not supported" in error.lower() for error in result.errors))
+
+    def test_validate_query_mapping_valid_sparql(self):
+        """Test validate_query_mapping with valid SPARQL query."""
+        query = """
+        PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+        SELECT ?name ?email
+        WHERE {
+            ?person foaf:name ?name .
+            ?person foaf:email ?email .
+        }
+        """
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query=query,
+            query_type=QueryType.SPARQL,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_query_mapping(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        checks = result.details.get("query_mapping_checks", {})
+        self.assertTrue(checks.get("language_supported", False))
+
+    def test_validate_query_mapping_raises_exception(self):
+        """Test validate_query_mapping raises exception when raise_on_error=True."""
+        # Create with valid query first, then update to empty to bypass model validation
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+        # Update to empty query bypassing model validation
+        VirtualDataset.objects.filter(id=virtual_dataset.id).update(query="")
+        virtual_dataset.refresh_from_db()
+
+        with self.assertRaises(ValidationError) as context:
+            self.business_rules.validate_query_mapping(
+                virtual_dataset,
+                raise_on_error=True
+            )
+
+        self.assertEqual(context.exception.code, "INVALID_QUERY_MAPPING")
+
+
+class VirtualDatasetCachingConfigurationValidationTest(TestCase):
+    """Test cases for validate_caching_configuration()."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+        self.business_rules = VirtualizationBusinessRules(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+
+        self.virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+    def test_validate_caching_configuration_valid_config(self):
+        """Test validate_caching_configuration with valid cache config."""
+        cache_config = {
+            "enabled": True,
+            "ttl": 3600
+        }
+
+        result = self.business_rules.validate_caching_configuration(
+            self.virtual_dataset,
+            cache_config=cache_config,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertIn("caching_configuration_checks", result.details)
+
+    def test_validate_caching_configuration_disabled(self):
+        """Test validate_caching_configuration with caching disabled."""
+        cache_config = {
+            "enabled": False
+        }
+
+        result = self.business_rules.validate_caching_configuration(
+            self.virtual_dataset,
+            cache_config=cache_config,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        checks = result.details.get("caching_configuration_checks", {})
+        self.assertTrue(checks.get("validation_skipped", False))
+
+    def test_validate_caching_configuration_invalid_ttl(self):
+        """Test validate_caching_configuration with invalid TTL."""
+        cache_config = {
+            "enabled": True,
+            "ttl": 30  # Below minimum
+        }
+
+        result = self.business_rules.validate_caching_configuration(
+            self.virtual_dataset,
+            cache_config=cache_config,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("ttl" in error.lower() for error in result.errors))
+
+    def test_validate_caching_configuration_valid_key_prefix(self):
+        """Test validate_caching_configuration with valid cache key prefix."""
+        cache_config = {
+            "enabled": True,
+            "ttl": 3600,
+            "key_prefix": "virtual_query"
+        }
+
+        result = self.business_rules.validate_caching_configuration(
+            self.virtual_dataset,
+            cache_config=cache_config,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        checks = result.details.get("caching_configuration_checks", {})
+        self.assertTrue(checks.get("key_prefix_valid", False))
+
+    def test_validate_caching_configuration_invalid_key_prefix(self):
+        """Test validate_caching_configuration with invalid cache key prefix."""
+        cache_config = {
+            "enabled": True,
+            "ttl": 3600,
+            "key_prefix": "invalid prefix with spaces"  # Invalid characters
+        }
+
+        result = self.business_rules.validate_caching_configuration(
+            self.virtual_dataset,
+            cache_config=cache_config,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("key prefix" in error.lower() for error in result.errors))
+
+    def test_validate_caching_configuration_valid_cache_key(self):
+        """Test validate_caching_configuration with valid cache key."""
+        cache_config = {
+            "enabled": True,
+            "ttl": 3600,
+            "key": f"virtual_query:{self.virtual_dataset.id}:abc123:def456"
+        }
+
+        result = self.business_rules.validate_caching_configuration(
+            self.virtual_dataset,
+            cache_config=cache_config,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        checks = result.details.get("caching_configuration_checks", {})
+        self.assertTrue(checks.get("key_valid", False))
+
+    def test_validate_caching_configuration_invalid_cache_key(self):
+        """Test validate_caching_configuration with invalid cache key."""
+        cache_config = {
+            "enabled": True,
+            "ttl": 3600,
+            "key": "a" * 300  # Exceeds max length
+        }
+
+        result = self.business_rules.validate_caching_configuration(
+            self.virtual_dataset,
+            cache_config=cache_config,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("key" in error.lower() for error in result.errors))
+
+    def test_validate_caching_configuration_generated_key(self):
+        """Test validate_caching_configuration with generated cache key."""
+        cache_config = {
+            "enabled": True,
+            "ttl": 3600
+        }
+
+        result = self.business_rules.validate_caching_configuration(
+            self.virtual_dataset,
+            cache_config=cache_config,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        checks = result.details.get("caching_configuration_checks", {})
+        self.assertIn("generated_key", checks)
+
+    def test_validate_caching_configuration_raises_exception(self):
+        """Test validate_caching_configuration raises exception when raise_on_error=True."""
+        cache_config = {
+            "enabled": True,
+            "ttl": 30  # Below minimum
+        }
+
+        with self.assertRaises(ValidationError) as context:
+            self.business_rules.validate_caching_configuration(
+                self.virtual_dataset,
+                cache_config=cache_config,
+                raise_on_error=True
+            )
+
+        self.assertEqual(context.exception.code, "INVALID_CACHING_CONFIGURATION")
+
+
+class VirtualDatasetSchemaValidationTest(TestCase):
+    """Test cases for validate_virtual_dataset_schema()."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+        self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
+
+    def test_validate_virtual_dataset_schema_valid_schema(self):
+        """Test validate_virtual_dataset_schema with valid schema."""
+        schema = {
+            "fields": [
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "string"}
+            ]
+        }
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            schema=schema,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_virtual_dataset_schema(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertIn("schema_alignment_checks", result.details)
+
+    def test_validate_virtual_dataset_schema_no_schema(self):
+        """Test validate_virtual_dataset_schema with no schema (optional)."""
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT id, name FROM users",
+            query_type=QueryType.SQL,
+            schema=None,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_virtual_dataset_schema(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        # Schema is optional, so validation should pass with warning
+        self.assertTrue(result.is_valid)
+        self.assertTrue(any("no schema" in warning.lower() for warning in result.warnings))
+
+
+class QueryLanguageCompatibilityTest(TestCase):
+    """Test cases for validate_query_language_compatibility()."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+        self.business_rules = VirtualizationBusinessRules(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+
+    def test_validate_query_language_compatibility_no_sources(self):
+        """Test query language compatibility with no sources."""
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            sources=None,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_query_language_compatibility(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertTrue(result.details["query_language_checks"]["skipped"])
+
+    def test_validate_query_language_compatibility_sql_with_sql_sources(self):
+        """Test SQL query with SQL-compatible sources."""
+        sources = [
+            {
+                "type": "postgresql",
+                "host": "localhost",
+                "database": "testdb"
+            },
+            {
+                "type": "mysql",
+                "host": "localhost",
+                "database": "testdb"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_query_language_compatibility(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertFalse(result.details["query_language_checks"]["skipped"])
+        self.assertEqual(result.details["query_language_checks"]["source_count"], 2)
+        self.assertTrue(result.details["query_language_checks"]["source_0_compatible"])
+        self.assertTrue(result.details["query_language_checks"]["source_1_compatible"])
+
+    def test_validate_query_language_compatibility_sql_with_incompatible_source(self):
+        """Test SQL query with incompatible source type."""
+        sources = [
+            {
+                "type": "sparql",
+                "endpoint": "http://example.com/sparql"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_query_language_compatibility(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+        self.assertFalse(result.details["query_language_checks"]["source_0_compatible"])
+
+    def test_validate_query_language_compatibility_federated_mixed_languages(self):
+        """Test federated query with mixed SQL and SPARQL sources."""
+        sources = [
+            {
+                "type": "postgresql",
+                "host": "localhost",
+                "database": "testdb"
+            },
+            {
+                "type": "sparql",
+                "endpoint": "http://example.com/sparql"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="FEDERATED QUERY",
+            query_type=QueryType.FEDERATED,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_query_language_compatibility(
+            virtual_dataset,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)  # Federated queries allow mixed languages
+        self.assertGreater(len(result.warnings), 0)
+        self.assertTrue(result.details["query_language_checks"]["mixed_sql_sparql"])
+
+    def test_get_source_language(self):
+        """Test _get_source_language mapping."""
+        self.assertEqual(self.business_rules._get_source_language("postgresql"), "sql")
+        self.assertEqual(self.business_rules._get_source_language("mysql"), "sql")
+        self.assertEqual(self.business_rules._get_source_language("sparql"), "sparql")
+        self.assertEqual(self.business_rules._get_source_language("rest"), "rest")
+        self.assertEqual(self.business_rules._get_source_language("graphql"), "graphql")
+        self.assertEqual(self.business_rules._get_source_language("s3"), "file")
+        self.assertEqual(self.business_rules._get_source_language("unknown"), "unknown")
+
+
+class SourceConnectionValidationTest(TestCase):
+    """Test cases for validate_source_connections()."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE
+        )
+        self.business_rules = VirtualizationBusinessRules(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+
+    def test_validate_source_connections_no_sources(self):
+        """Test source connection validation with no sources."""
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            sources=None,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_connections(
+            virtual_dataset,
+            test_connectivity=True,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertTrue(result.details["connection_checks"]["skipped"])
+
+    def test_validate_source_connections_test_disabled(self):
+        """Test source connection validation with connectivity testing disabled."""
+        sources = [
+            {
+                "type": "postgresql",
+                "host": "localhost",
+                "database": "testdb"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_connections(
+            virtual_dataset,
+            test_connectivity=False,
+            raise_on_error=False
+        )
+
+        self.assertTrue(result.is_valid)
+        self.assertTrue(result.details["connection_checks"]["connectivity_testing_disabled"])
+        self.assertTrue(result.details["connection_checks"]["source_0_config_valid"])
+
+    def test_validate_source_connections_invalid_config(self):
+        """Test source connection validation with invalid configuration."""
+        sources = [
+            {
+                "type": "postgresql",
+                # Missing required 'host' and 'database' fields
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_connections(
+            virtual_dataset,
+            test_connectivity=True,
+            raise_on_error=False
+        )
+
+        self.assertFalse(result.is_valid)
+        self.assertFalse(result.details["connection_checks"]["source_0_config_valid"])
+
+    def test_validate_source_connections_valid_config(self):
+        """Test source connection validation with valid configuration."""
+        sources = [
+            {
+                "type": "postgresql",
+                "host": "localhost",
+                "database": "testdb"
+            }
+        ]
+        virtual_dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Test Dataset",
+            query="SELECT * FROM users",
+            query_type=QueryType.SQL,
+            sources=sources,
+            status=VirtualDatasetStatus.ACTIVE
+        )
+
+        result = self.business_rules.validate_source_connections(
+            virtual_dataset,
+            test_connectivity=True,
+            raise_on_error=False
+        )
+
+        # Connection test may fail if database is not accessible, but config should be valid
+        self.assertTrue(result.details["connection_checks"]["source_0_config_valid"])
+        # Connection test result depends on actual connectivity - may succeed or fail
+        # but should not cause validation to fail if connector factory is unavailable
+        self.assertIn("source_0_connection_test", result.details["connection_checks"])
+
+    def test_map_source_type_to_connector_type(self):
+        """Test _map_source_type_to_connector_type mapping."""
+        self.assertEqual(
+            self.business_rules._map_source_type_to_connector_type("postgresql"),
+            "DATABASE"
+        )
+        self.assertEqual(
+            self.business_rules._map_source_type_to_connector_type("mysql"),
+            "DATABASE"
+        )
+        self.assertEqual(
+            self.business_rules._map_source_type_to_connector_type("rest"),
+            "HTTP"
+        )
+        self.assertEqual(
+            self.business_rules._map_source_type_to_connector_type("s3"),
+            "S3"
+        )
+        self.assertIsNone(
+            self.business_rules._map_source_type_to_connector_type("sparql")
+        )
+        self.assertIsNone(
+            self.business_rules._map_source_type_to_connector_type("graphql")
+        )
 

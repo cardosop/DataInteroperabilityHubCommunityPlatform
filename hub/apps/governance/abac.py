@@ -233,6 +233,29 @@ class ABACEngine:
                 attributes['virtual_dataset_name'] = 'new_virtual_dataset'
                 attributes['virtual_dataset_status'] = 'DRAFT'
                 pass
+        elif resource_type == "FILE":
+            from hub.apps.files.models import File
+            import uuid
+            try:
+                # Try to parse as UUID
+                uuid.UUID(resource_id)
+                # If successful, try to get the file
+                try:
+                    file_obj = File.objects.get(id=resource_id, tenant_id=tenant_id)
+                    attributes['file_name'] = file_obj.name
+                    attributes['file_status'] = file_obj.status
+                    attributes['file_size'] = file_obj.size
+                    attributes['file_content_type'] = file_obj.content_type
+                    if file_obj.created_by:
+                        attributes['file_owner_id'] = str(file_obj.created_by.id)
+                except File.DoesNotExist:
+                    pass
+            except (ValueError, TypeError):
+                # Not a valid UUID, likely a placeholder for new resource creation
+                # Set basic attributes for policy evaluation
+                attributes['file_name'] = 'new_file'
+                attributes['file_status'] = 'PENDING'
+                pass
 
         return attributes
 
@@ -309,6 +332,12 @@ class ABACEngine:
             elif resource_type == "VIRTUAL_DATASET":
                 # For virtual datasets, check tenant-wide policies
                 # (no specific virtual dataset field in AccessPolicy model yet)
+                queryset = queryset.filter(
+                    Q(asset__isnull=True) & Q(dataset__isnull=True)
+                )
+            elif resource_type == "FILE":
+                # For files, check tenant-wide policies
+                # (no specific file field in AccessPolicy model yet)
                 queryset = queryset.filter(
                     Q(asset__isnull=True) & Q(dataset__isnull=True)
                 )

@@ -69,7 +69,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_success_browser(self):
         """Test successful file upload initiation for browser upload"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "test.csv",
                 "content_type": "text/csv",
@@ -95,7 +95,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_success_sdk(self):
         """Test successful file upload initiation for SDK upload"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "data.json",
                 "content_type": "application/json",
@@ -113,7 +113,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_success_presigned_url_generation(self):
         """Test presigned URL is generated correctly"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "document.json",
                 "content_type": "application/json",
@@ -136,7 +136,7 @@ class TestFileInitUploadAPI(TestCase):
         """Test multipart upload initiation for large files (>100MB)"""
         large_size = 101 * 1024 * 1024  # 101 MB
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "large_file.parquet",
                 "content_type": "application/parquet",
@@ -178,7 +178,7 @@ class TestFileInitUploadAPI(TestCase):
         oversized = max(tenant_limit + 1, max_browser_size + 1)
 
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "huge.csv",
                 "content_type": "text/csv",
@@ -199,7 +199,7 @@ class TestFileInitUploadAPI(TestCase):
         oversized = tenant_limit + 1
 
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "huge.bin",
                 "content_type": "application/octet-stream",
@@ -215,7 +215,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_error_file_type_restriction(self):
         """Test file type validation"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "script.exe",
                 "content_type": "application/x-msdownload",
@@ -231,7 +231,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_error_missing_name(self):
         """Test validation error for missing file name"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {"content_type": "text/csv", "size": 1024, "upload_method": "browser"},
             format="json",
         )
@@ -242,7 +242,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_error_missing_content_type(self):
         """Test validation error for missing content type"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {"name": "test.csv", "size": 1024, "upload_method": "browser"},
             format="json",
         )
@@ -253,7 +253,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_error_negative_size(self):
         """Test validation error for negative file size"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "test.csv",
                 "content_type": "text/csv",
@@ -268,7 +268,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_error_invalid_upload_method(self):
         """Test validation error for invalid upload method"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "test.csv",
                 "content_type": "text/csv",
@@ -290,7 +290,7 @@ class TestFileInitUploadAPI(TestCase):
         self.client.force_authenticate(user=user_no_tenant)
 
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "test.csv",
                 "content_type": "text/csv",
@@ -308,7 +308,7 @@ class TestFileInitUploadAPI(TestCase):
     def test_init_upload_integration_minio_presigned_url(self):
         """Test integration with MinIO for presigned URL generation"""
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "integration_test.csv",
                 "content_type": "text/csv",
@@ -333,7 +333,7 @@ class TestFileInitUploadAPI(TestCase):
         ).count()
 
         response = self.client.post(
-            "/api/v1/files/files/init/",
+            "/api/v1/files/init/",
             {
                 "name": "audit_test.csv",
                 "content_type": "text/csv",
@@ -470,7 +470,7 @@ class TestFileCompleteUploadAPI(TestCase):
             self.skipTest("Storage not available for integration test")
 
         response = self.client.post(
-            f"/api/v1/files/files/{self.file_obj.id}/complete/",
+            f"/api/v1/files/{self.file_obj.id}/complete/",
             {"content_sha256": content_hash},
             format="json",
         )
@@ -521,7 +521,7 @@ class TestFileCompleteUploadAPI(TestCase):
         # This would require actual file verification, which may not be implemented
         # For now, test that endpoint accepts hash
         response = self.client.post(
-            f"/api/v1/files/files/{self.file_obj.id}/complete/",
+            f"/api/v1/files/{self.file_obj.id}/complete/",
             {"content_sha256": "invalid_hash" * 4},
             format="json",
         )
@@ -535,7 +535,7 @@ class TestFileCompleteUploadAPI(TestCase):
         self.file_obj.save()
 
         response = self.client.post(
-            f"/api/v1/files/files/{self.file_obj.id}/complete/",
+            f"/api/v1/files/{self.file_obj.id}/complete/",
             {"content_sha256": "abc123" * 8},
             format="json",
         )
@@ -546,7 +546,7 @@ class TestFileCompleteUploadAPI(TestCase):
     def test_complete_upload_error_missing_hash(self):
         """Test error when content_sha256 is missing"""
         response = self.client.post(
-            f"/api/v1/files/files/{self.file_obj.id}/complete/", {}, format="json"
+            f"/api/v1/files/{self.file_obj.id}/complete/", {}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -575,7 +575,7 @@ class TestFileCompleteUploadAPI(TestCase):
         )
 
         response = self.client.post(
-            f"/api/v1/files/files/{multipart_file.id}/complete/",
+            f"/api/v1/files/{multipart_file.id}/complete/",
             {
                 "content_sha256": "abc123"
                 * 8
@@ -605,7 +605,7 @@ class TestFileCompleteUploadAPI(TestCase):
             )
 
             response = self.client.post(
-                f"/api/v1/files/files/{self.file_obj.id}/complete/",
+                f"/api/v1/files/{self.file_obj.id}/complete/",
                 {"content_sha256": content_hash},
                 format="json",
             )
@@ -637,7 +637,7 @@ class TestFileCompleteUploadAPI(TestCase):
             )
 
             response = self.client.post(
-                f"/api/v1/files/files/{self.file_obj.id}/complete/",
+                f"/api/v1/files/{self.file_obj.id}/complete/",
                 {"content_sha256": content_hash},
                 format="json",
             )
@@ -691,7 +691,7 @@ class TestFileGetInfoAPI(TestCase):
 
     def test_get_file_info_success(self):
         """Test successful file info retrieval"""
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(self.file_obj.id))
@@ -705,7 +705,7 @@ class TestFileGetInfoAPI(TestCase):
         self.file_obj.metadata_json = {"custom": "metadata"}
         self.file_obj.save()
 
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("metadata_json", response.data)
@@ -729,7 +729,7 @@ class TestFileGetInfoAPI(TestCase):
             status=FileStatus.ACTIVE,
         )
 
-        response = self.client.get(f"/api/v1/files/files/{other_file.id}/")
+        response = self.client.get(f"/api/v1/files/{other_file.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -737,14 +737,14 @@ class TestFileGetInfoAPI(TestCase):
         """Test unauthorized access without authentication"""
         self.client.force_authenticate(user=None)
 
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_get_file_info_not_found(self):
         """Test file not found"""
         fake_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/files/files/{fake_id}/")
+        response = self.client.get(f"/api/v1/files/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -788,7 +788,7 @@ class TestFileDownloadAPI(TestCase):
 
     def test_download_file_success(self):
         """Test successful file download URL generation"""
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/download/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("download_url", response.data)
@@ -803,7 +803,7 @@ class TestFileDownloadAPI(TestCase):
 
     def test_download_file_success_presigned_url(self):
         """Test presigned download URL is generated correctly"""
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/download/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         download_url = response.data["download_url"]
@@ -837,7 +837,7 @@ class TestFileDownloadAPI(TestCase):
         """Test unauthorized download access"""
         self.client.force_authenticate(user=None)
 
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/download/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -846,7 +846,7 @@ class TestFileDownloadAPI(TestCase):
         self.file_obj.status = FileStatus.PENDING
         self.file_obj.save()
 
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/download/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", response.data)
@@ -855,7 +855,7 @@ class TestFileDownloadAPI(TestCase):
 
     def test_download_file_integration_minio(self):
         """Test integration with MinIO for download URL generation"""
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/download/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         download_url = response.data["download_url"]
@@ -870,7 +870,7 @@ class TestFileDownloadAPI(TestCase):
             resource_type="FILE", action="FILE_DOWNLOAD_REQUESTED"
         ).count()
 
-        response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/download/")
+        response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -886,7 +886,7 @@ class TestFileDownloadAPI(TestCase):
         times = []
         for i in range(10):
             start_time = time.time()
-            response = self.client.get(f"/api/v1/files/files/{self.file_obj.id}/download/")
+            response = self.client.get(f"/api/v1/files/{self.file_obj.id}/download/")
             elapsed = (time.time() - start_time) * 1000
             times.append(elapsed)
             if response.status_code != status.HTTP_200_OK:
@@ -941,7 +941,7 @@ class TestFileDeleteAPI(TestCase):
         """Test successful file deletion"""
         file_id = self.file_obj.id
 
-        response = self.client.delete(f"/api/v1/files/files/{file_id}/")
+        response = self.client.delete(f"/api/v1/files/{file_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -966,7 +966,7 @@ class TestFileDeleteAPI(TestCase):
             file_id = self.file_obj.id
             storage_path = self.file_obj.storage_path
 
-            response = self.client.delete(f"/api/v1/files/files/{file_id}/")
+            response = self.client.delete(f"/api/v1/files/{file_id}/")
 
             self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -994,7 +994,7 @@ class TestFileDeleteAPI(TestCase):
             status=FileStatus.ACTIVE,
         )
 
-        response = self.client.delete(f"/api/v1/files/files/{other_file.id}/")
+        response = self.client.delete(f"/api/v1/files/{other_file.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -1006,14 +1006,14 @@ class TestFileDeleteAPI(TestCase):
         """Test unauthorized deletion"""
         self.client.force_authenticate(user=None)
 
-        response = self.client.delete(f"/api/v1/files/files/{self.file_obj.id}/")
+        response = self.client.delete(f"/api/v1/files/{self.file_obj.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_delete_file_not_found(self):
         """Test deletion of non-existent file"""
         fake_id = uuid.uuid4()
-        response = self.client.delete(f"/api/v1/files/files/{fake_id}/")
+        response = self.client.delete(f"/api/v1/files/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -1033,7 +1033,7 @@ class TestFileDeleteAPI(TestCase):
             )
 
             file_id = self.file_obj.id
-            response = self.client.delete(f"/api/v1/files/files/{file_id}/")
+            response = self.client.delete(f"/api/v1/files/{file_id}/")
 
             self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -1049,7 +1049,7 @@ class TestFileDeleteAPI(TestCase):
             resource_type="FILE", action="FILE_DELETED"
         ).count()
 
-        response = self.client.delete(f"/api/v1/files/files/{self.file_obj.id}/")
+        response = self.client.delete(f"/api/v1/files/{self.file_obj.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 

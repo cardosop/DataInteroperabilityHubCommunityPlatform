@@ -547,7 +547,7 @@ class GraphQLAPIE2ETest(E2ETestBase):
         # Create asset in other tenant (switch to other user)
         self.client.force_authenticate(user=other_user)
         other_asset_response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'other-tenant-asset',
                 'name': 'Other Tenant Asset',

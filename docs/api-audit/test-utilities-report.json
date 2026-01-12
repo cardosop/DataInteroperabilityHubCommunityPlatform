@@ -1,0 +1,2886 @@
+{
+  "summary": {
+    "total_utility_modules": 12,
+    "total_helper_functions": 219,
+    "total_endpoint_urls": 92,
+    "utilities_by_type": {
+      "utility": 3,
+      "conftest": 5,
+      "helper": 4
+    },
+    "helpers_by_type": {
+      "function": 181,
+      "fixture": 38
+    },
+    "utilities_with_endpoint_urls": 3,
+    "unique_endpoint_paths": 28,
+    "dynamic_endpoint_urls": 10,
+    "static_endpoint_urls": 82
+  },
+  "utility_modules": [
+    {
+      "path": "tests/utils/test_data_management.py",
+      "type": "utility",
+      "functions": [
+        "cleanup_test_data",
+        "seed_test_data",
+        "create_multi_tenant_test_data",
+        "validate_migrations",
+        "reset_test_database",
+        "__init__",
+        "create_tenant_with_users",
+        "create_tenant_with_assets",
+        "create_complete_tenant_data",
+        "cleanup",
+        "get_created_objects",
+        "setUp",
+        "tearDown",
+        "create_test_tenant",
+        "create_test_data"
+      ],
+      "classes": [
+        "TestDataManager",
+        "TestDatabaseIsolationMixin"
+      ],
+      "line_count": 496,
+      "has_endpoint_urls": false
+    },
+    {
+      "path": "tests/utils/test_environment_validation.py",
+      "type": "utility",
+      "functions": [
+        "validate_test_environment",
+        "__init__",
+        "_detect_docker_environment",
+        "_get_docker_service_url",
+        "_get_effective_service_url",
+        "validate_all",
+        "_validate_required_variables",
+        "_validate_url_formats",
+        "_is_valid_url",
+        "_validate_service_connectivity",
+        "validate_database_connectivity",
+        "validate_redis_connectivity",
+        "get_service_url",
+        "validate_service_connectivity",
+        "_check_database_config",
+        "_check_redis_config"
+      ],
+      "classes": [
+        "EnvironmentValidationError",
+        "EnvironmentValidator"
+      ],
+      "line_count": 538,
+      "has_endpoint_urls": false
+    },
+    {
+      "path": "tests/utils/tests/test_test_environment_validation.py",
+      "type": "utility",
+      "functions": [
+        "test_validate_all_with_valid_environment",
+        "test_validate_all_with_missing_required_vars",
+        "test_validate_all_with_invalid_url_format",
+        "test_validate_all_with_invalid_port",
+        "test_validate_all_non_strict_mode",
+        "test_is_valid_url_http",
+        "test_is_valid_url_redis",
+        "test_is_valid_url_postgresql",
+        "test_validate_test_environment_success",
+        "test_validate_test_environment_failure_strict",
+        "test_validate_test_environment_failure_non_strict"
+      ],
+      "classes": [
+        "TestTestEnvironmentValidator",
+        "TestValidateTestEnvironment"
+      ],
+      "line_count": 188,
+      "has_endpoint_urls": false
+    },
+    {
+      "path": "tests/conftest.py",
+      "type": "conftest",
+      "functions": [
+        "_log_patch",
+        "_ensure_sync_apps_patched",
+        "_get_test_env_validator",
+        "_get_validate_test_env",
+        "_get_user_model",
+        "_get_client",
+        "_get_transaction_test_case",
+        "_get_settings",
+        "pytest_configure",
+        "pytest_sessionstart",
+        "django_db_setup_with_migrations",
+        "api_client",
+        "test_user",
+        "authenticated_client",
+        "_validate_test_environment_config",
+        "_validate_service_connectivity",
+        "wait_for_service_health",
+        "datacontract_service",
+        "dq_service",
+        "compliance_service",
+        "semantic_service",
+        "all_services",
+        "check_service_health",
+        "test_env_validator",
+        "validate_test_env",
+        "validate_database_connectivity",
+        "validate_redis_connectivity",
+        "validate_service_connectivity",
+        "_patched_sync_apps",
+        "_noop_validate",
+        "_patched_table_names",
+        "_patched_call_command",
+        "_patched_create_test_db",
+        "_patched_setup_databases",
+        "_patched_loader_init",
+        "_patched_sql_flush",
+        "_patched_sync_apps",
+        "_patched_handle",
+        "_local_patched_call_command",
+        "_patched_init",
+        "_patched_create_test_db",
+        "_patched_loader_init",
+        "_patched_load_disk",
+        "_patched_executor_init_early",
+        "_patched_load_disk",
+        "_patched_introspection_init",
+        "_patched_command_init",
+        "_noop_sync_apps",
+        "_patched_pg_creation_init",
+        "_local_patched_call_command",
+        "_patched_load_disk",
+        "_patched_executor_init",
+        "_patched_loader_load_disk",
+        "_patched_loader_load_disk"
+      ],
+      "classes": [],
+      "line_count": 1637,
+      "has_endpoint_urls": false
+    },
+    {
+      "path": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "functions": [
+        "detect_environment",
+        "get_service_url",
+        "get_api_base_url",
+        "get_datacontract_service_url",
+        "get_compliance_service_url",
+        "get_dq_service_url",
+        "get_semantic_service_url",
+        "get_worker_service_url",
+        "get_s3_endpoint_url",
+        "get_prometheus_service_url",
+        "get_grafana_service_url",
+        "get_jaeger_service_url",
+        "check_service_health",
+        "pytest_addoption",
+        "pytest_configure",
+        "setUp",
+        "check_service_available",
+        "require_service",
+        "wait_for_semantic_mapping",
+        "_verify_uri_in_fuseki",
+        "get_service_urls",
+        "create_asset",
+        "create_contract",
+        "init_file_upload",
+        "complete_file_upload",
+        "create_dataset",
+        "prepare_contract_for_activation",
+        "prepare_asset_for_activation",
+        "activate_asset",
+        "verify_audit_log",
+        "verify_asset_state",
+        "verify_contract_state",
+        "verify_file_in_s3",
+        "verify_cross_service_consistency",
+        "verify_job_completion",
+        "validate_contract",
+        "run_compliance_check",
+        "run_dq_check",
+        "wait_for_job_completion",
+        "attach_contract_to_asset",
+        "attach_dataset_to_asset",
+        "verify_entitlement_created",
+        "verify_rdf_triples",
+        "wait_for_semantic_mapping"
+      ],
+      "classes": [
+        "E2ETestBase"
+      ],
+      "line_count": 1192,
+      "has_endpoint_urls": true
+    },
+    {
+      "path": "tests/sdk_python/conftest.py",
+      "type": "conftest",
+      "functions": [
+        "pytest_configure",
+        "configure_sdk_test_database",
+        "get_api_base_url",
+        "api_base_url",
+        "setUpClass",
+        "_fixture_teardown",
+        "tearDown",
+        "setUp",
+        "_patched_django_db_setup"
+      ],
+      "classes": [
+        "SDKTestBase"
+      ],
+      "line_count": 508,
+      "has_endpoint_urls": true
+    },
+    {
+      "path": "cli/tests/conftest.py",
+      "type": "conftest",
+      "functions": [
+        "temp_config_dir",
+        "mock_config",
+        "mock_api_client",
+        "mock_auth_manager",
+        "sample_asset",
+        "sample_contract",
+        "sample_file",
+        "sample_job"
+      ],
+      "classes": [],
+      "line_count": 109,
+      "has_endpoint_urls": false
+    },
+    {
+      "path": "cli/build/lib/tests/conftest.py",
+      "type": "conftest",
+      "functions": [
+        "temp_config_dir",
+        "mock_config",
+        "mock_api_client",
+        "mock_auth_manager",
+        "sample_asset",
+        "sample_contract",
+        "sample_file",
+        "sample_job"
+      ],
+      "classes": [],
+      "line_count": 109,
+      "has_endpoint_urls": false
+    },
+    {
+      "path": "tests/performance/helpers.py",
+      "type": "helper",
+      "functions": [
+        "__init__",
+        "create_test_tenant_and_user",
+        "get_auth_headers",
+        "login",
+        "create_test_file_data",
+        "calculate_percentiles"
+      ],
+      "classes": [
+        "PerformanceTestHelper"
+      ],
+      "line_count": 116,
+      "has_endpoint_urls": false
+    },
+    {
+      "path": "tests/performance/test_performance_baseline.py",
+      "type": "helper",
+      "functions": [
+        "setUp",
+        "measure_time",
+        "measure_multiple",
+        "setUp",
+        "test_simple_query_baseline",
+        "test_jsonfield_query_baseline",
+        "test_jsonfield_nested_query_baseline",
+        "test_complex_query_baseline",
+        "test_join_query_baseline",
+        "setUp",
+        "test_health_endpoint_baseline",
+        "test_contract_list_endpoint_baseline",
+        "test_contract_filter_endpoint_baseline",
+        "test_middleware_chain_baseline",
+        "setUp",
+        "test_gin_index_array_contains_baseline",
+        "test_gin_index_nested_key_baseline",
+        "test_gin_index_complex_filter_baseline"
+      ],
+      "classes": [
+        "PerformanceBaselineTest",
+        "DatabaseQueryBaselineTest",
+        "APIEndpointBaselineTest",
+        "MiddlewareBaselineTest",
+        "JSONFieldGINIndexBaselineTest"
+      ],
+      "line_count": 340,
+      "has_endpoint_urls": true
+    },
+    {
+      "path": "tests/integration/test_database_operations_comprehensive.py",
+      "type": "helper",
+      "functions": [
+        "setUp",
+        "test_simple_select_query",
+        "test_filter_query",
+        "test_join_query",
+        "test_aggregate_query",
+        "test_complex_query",
+        "test_annotate_query",
+        "setUp",
+        "test_atomic_transaction",
+        "test_transaction_rollback",
+        "test_nested_transaction",
+        "test_migrations_applied",
+        "test_migration_rollback",
+        "setUp",
+        "test_jsonfield_create",
+        "test_jsonfield_query",
+        "test_jsonfield_update",
+        "test_jsonfield_nested_query",
+        "setUp",
+        "test_indexes_exist",
+        "test_unique_constraints",
+        "test_connection_pooling",
+        "test_multiple_connections"
+      ],
+      "classes": [
+        "DatabaseQueriesTest",
+        "DatabaseTransactionsTest",
+        "DatabaseMigrationsTest",
+        "JSONFieldOperationsTest",
+        "DatabaseIndexesTest",
+        "DatabaseConnectionPoolingTest"
+      ],
+      "line_count": 393,
+      "has_endpoint_urls": false
+    },
+    {
+      "path": "tests/regression/test_database_operations.py",
+      "type": "helper",
+      "functions": [
+        "setUp",
+        "test_tenant_crud",
+        "test_asset_crud",
+        "test_contract_crud",
+        "test_filtering",
+        "test_sorting",
+        "test_pagination",
+        "test_jsonfield_storage",
+        "test_jsonfield_query",
+        "test_transaction_rollback",
+        "test_transaction_commit",
+        "test_asset_tenant_relationship",
+        "test_contract_asset_relationship",
+        "test_cascade_delete",
+        "test_unique_constraints",
+        "test_indexed_queries"
+      ],
+      "classes": [
+        "DatabaseOperationsRegressionTest",
+        "ModelCRUDTest",
+        "DatabaseQueryTest",
+        "JSONFieldOperationsTest",
+        "DatabaseTransactionTest",
+        "ForeignKeyRelationshipsTest",
+        "DatabaseIndexesTest"
+      ],
+      "line_count": 410,
+      "has_endpoint_urls": false
+    }
+  ],
+  "helper_functions": [
+    {
+      "name": "create_user",
+      "file": "tests/factories.py",
+      "line_number": 32,
+      "type": "function",
+      "signature": "create_user(email, tenant)",
+      "docstring": "Create a User instance.\n\nArgs:\n    email: User email (default: auto-generated)\n    tenant: Tenant instance (required)\n    **kwargs: Additional fields (display_name, status, etc.)\n    \nReturns:\n    User instance"
+    },
+    {
+      "name": "create_tenant",
+      "file": "tests/factories.py",
+      "line_number": 72,
+      "type": "function",
+      "signature": "create_tenant(name, slug, status, kyc_status, region)",
+      "docstring": "Create a Tenant instance.\n\nArgs:\n    name: Tenant name (default: auto-generated)\n    slug: Tenant slug (default: auto-generated from name)\n    status: Tenant status (default: ACTIVE)\n    kyc_status: KYC status (default: UNVERIFIED)\n    region: Cloud region (default: None)\n    **kwargs: Additional fields\n    \nReturns:\n    Tenant instance"
+    },
+    {
+      "name": "create_tenant_config",
+      "file": "tests/factories.py",
+      "line_number": 121,
+      "type": "function",
+      "signature": "create_tenant_config(tenant, default_dq_profile, allowed_compliance_regimes, default_compliance_regimes, data_retention_days, rate_limits, max_file_size_bytes, max_job_concurrency, max_queued_jobs)",
+      "docstring": "Create a TenantConfig instance.\n\nArgs:\n    tenant: Tenant instance (required if not provided)\n    default_dq_profile: Default DQ profile key\n    allowed_compliance_regimes: List of allowed compliance regimes\n    default_compliance_regimes: List of default compliance regimes\n    data_retention_days: Data retention period in days (90-3650)\n    rate_limits: Rate limits JSON structure\n    max_file_size_bytes: Maximum file size in bytes\n    max_job_concurrency: Maximum concurrent jobs\n    max_queued_jobs: Maximum queued jobs\n    **kwargs: Additional fields\n    \nReturns:\n    TenantConfig instance"
+    },
+    {
+      "name": "create_tenant_config_with_all_fields",
+      "file": "tests/factories.py",
+      "line_number": 196,
+      "type": "function",
+      "signature": "create_tenant_config_with_all_fields(tenant)",
+      "docstring": "Create a TenantConfig with all fields populated.\n\nThis is a convenience method that creates a config with comprehensive test data."
+    },
+    {
+      "name": "create_email_delivery",
+      "file": "tests/factories.py",
+      "line_number": 209,
+      "type": "function",
+      "signature": "create_email_delivery(email_type, to_email, subject, status, message_id, error_message, retry_count, max_retries, sent_at, delivered_at, failed_at, metadata_json)",
+      "docstring": "Create an EmailDelivery instance.\n\nArgs:\n    email_type: Type of email\n    to_email: Recipient email address\n    subject: Email subject\n    status: Delivery status\n    message_id: Message ID from email service\n    error_message: Error message if failed\n    retry_count: Number of retry attempts\n    max_retries: Maximum retry attempts\n    sent_at: When email was sent\n    delivered_at: When email was delivered\n    failed_at: When email failed\n    metadata_json: Additional metadata\n    **kwargs: Additional fields\n    \nReturns:\n    EmailDelivery instance"
+    },
+    {
+      "name": "create_email_delivery_with_all_statuses",
+      "file": "tests/factories.py",
+      "line_number": 271,
+      "type": "function",
+      "signature": "create_email_delivery_with_all_statuses",
+      "docstring": "Create EmailDelivery instances with all possible statuses.\n\nReturns:\n    List of EmailDelivery instances"
+    },
+    {
+      "name": "create_email_delivery_with_all_types",
+      "file": "tests/factories.py",
+      "line_number": 289,
+      "type": "function",
+      "signature": "create_email_delivery_with_all_types",
+      "docstring": "Create EmailDelivery instances with all possible email types.\n\nReturns:\n    List of EmailDelivery instances"
+    },
+    {
+      "name": "create_job",
+      "file": "tests/factories.py",
+      "line_number": 311,
+      "type": "function",
+      "signature": "create_job(tenant, type, status, resource_type, resource_id, created_by, started_at, completed_at, error_message, result_json, details_json, timeout_seconds)",
+      "docstring": "Create a Job instance.\n\nArgs:\n    tenant: Tenant instance (nullable for system jobs)\n    type: Job type\n    status: Job status\n    resource_type: Resource type (e.g., \"CONTRACT\", \"DATASET\", \"FILE\", \"ASSET\")\n    resource_id: Resource ID\n    created_by: User who created the job\n    started_at: When job started\n    completed_at: When job completed\n    error_message: Error message if failed\n    result_json: Job result data\n    details_json: Job details\n    timeout_seconds: Job timeout in seconds\n    **kwargs: Additional fields\n    \nReturns:\n    Job instance"
+    },
+    {
+      "name": "create_job_with_all_types",
+      "file": "tests/factories.py",
+      "line_number": 383,
+      "type": "function",
+      "signature": "create_job_with_all_types(tenant, created_by)",
+      "docstring": "Create Job instances with all possible job types.\n\nArgs:\n    tenant: Tenant instance\n    created_by: User who created the jobs\n    \nReturns:\n    List of Job instances"
+    },
+    {
+      "name": "create_job_with_all_statuses",
+      "file": "tests/factories.py",
+      "line_number": 408,
+      "type": "function",
+      "signature": "create_job_with_all_statuses(tenant, created_by)",
+      "docstring": "Create Job instances with all possible job statuses.\n\nArgs:\n    tenant: Tenant instance\n    created_by: User who created the jobs\n    \nReturns:\n    List of Job instances"
+    },
+    {
+      "name": "create_test_tenant_and_user",
+      "file": "tests/validate_odps_integration_guide.py",
+      "line_number": 116,
+      "type": "function",
+      "signature": "create_test_tenant_and_user(self)",
+      "docstring": "Create test tenant and user for testing"
+    },
+    {
+      "name": "_log_patch",
+      "file": "tests/conftest.py",
+      "line_number": 19,
+      "type": "function",
+      "signature": "_log_patch(name, applied)",
+      "docstring": "Log patch application for debugging"
+    },
+    {
+      "name": "_ensure_sync_apps_patched",
+      "file": "tests/conftest.py",
+      "line_number": 30,
+      "type": "function",
+      "signature": "_ensure_sync_apps_patched",
+      "docstring": "Ensure sync_apps is patched - can be called multiple times safely"
+    },
+    {
+      "name": "_get_test_env_validator",
+      "file": "tests/conftest.py",
+      "line_number": 843,
+      "type": "function",
+      "signature": "_get_test_env_validator",
+      "docstring": "Lazy import of EnvironmentValidator"
+    },
+    {
+      "name": "_get_validate_test_env",
+      "file": "tests/conftest.py",
+      "line_number": 848,
+      "type": "function",
+      "signature": "_get_validate_test_env",
+      "docstring": "Lazy import of validate_test_environment"
+    },
+    {
+      "name": "_get_user_model",
+      "file": "tests/conftest.py",
+      "line_number": 855,
+      "type": "function",
+      "signature": "_get_user_model",
+      "docstring": "Lazy import of User model"
+    },
+    {
+      "name": "_get_client",
+      "file": "tests/conftest.py",
+      "line_number": 862,
+      "type": "function",
+      "signature": "_get_client",
+      "docstring": "Lazy import of Django Client"
+    },
+    {
+      "name": "_get_transaction_test_case",
+      "file": "tests/conftest.py",
+      "line_number": 869,
+      "type": "function",
+      "signature": "_get_transaction_test_case",
+      "docstring": "Lazy import of TransactionTestCase"
+    },
+    {
+      "name": "_get_settings",
+      "file": "tests/conftest.py",
+      "line_number": 876,
+      "type": "function",
+      "signature": "_get_settings",
+      "docstring": "Lazy import of Django settings"
+    },
+    {
+      "name": "pytest_configure",
+      "file": "tests/conftest.py",
+      "line_number": 889,
+      "type": "function",
+      "signature": "pytest_configure(config)",
+      "docstring": "Configure pytest - ensure patches are applied early.\nThis hook runs before Django is initialized, so we can apply patches here."
+    },
+    {
+      "name": "pytest_sessionstart",
+      "file": "tests/conftest.py",
+      "line_number": 1164,
+      "type": "function",
+      "signature": "pytest_sessionstart(session)",
+      "docstring": "Called after the Session object has been created and before performing collection.\nThis runs before Django setup, so we can apply patches here too."
+    },
+    {
+      "name": "django_db_setup_with_migrations",
+      "file": "tests/conftest.py",
+      "line_number": 1290,
+      "type": "fixture",
+      "signature": "django_db_setup_with_migrations(django_db_setup, django_db_blocker)",
+      "docstring": "Ensure migrations run properly after database creation.\nRe-apply sync_apps patch to ensure it's active during migrations."
+    },
+    {
+      "name": "api_client",
+      "file": "tests/conftest.py",
+      "line_number": 1307,
+      "type": "fixture",
+      "signature": "api_client",
+      "docstring": "Django REST Framework API client"
+    },
+    {
+      "name": "test_user",
+      "file": "tests/conftest.py",
+      "line_number": 1314,
+      "type": "fixture",
+      "signature": "test_user(db)",
+      "docstring": "Create a test user"
+    },
+    {
+      "name": "authenticated_client",
+      "file": "tests/conftest.py",
+      "line_number": 1323,
+      "type": "fixture",
+      "signature": "authenticated_client(api_client, test_user)",
+      "docstring": "Authenticated API client"
+    },
+    {
+      "name": "_validate_test_environment_config",
+      "file": "tests/conftest.py",
+      "line_number": 1329,
+      "type": "function",
+      "signature": "_validate_test_environment_config(config)",
+      "docstring": "Validate test environment configuration.\nRuns validation checks and reports errors/warnings."
+    },
+    {
+      "name": "_validate_service_connectivity",
+      "file": "tests/conftest.py",
+      "line_number": 1381,
+      "type": "function",
+      "signature": "_validate_service_connectivity(validator)",
+      "docstring": "Validate connectivity to services"
+    },
+    {
+      "name": "wait_for_service_health",
+      "file": "tests/conftest.py",
+      "line_number": 1416,
+      "type": "function",
+      "signature": "wait_for_service_health(url, timeout, interval)",
+      "docstring": "Wait for a service to become healthy.\n\nArgs:\n    url: Health check URL\n    timeout: Maximum time to wait in seconds\n    interval: Time between checks in seconds\n\nReturns:\n    True if service is healthy, False otherwise"
+    },
+    {
+      "name": "datacontract_service",
+      "file": "tests/conftest.py",
+      "line_number": 1465,
+      "type": "fixture",
+      "signature": "datacontract_service",
+      "docstring": "Ensure DataContract CLI service is running and healthy"
+    },
+    {
+      "name": "dq_service",
+      "file": "tests/conftest.py",
+      "line_number": 1481,
+      "type": "fixture",
+      "signature": "dq_service",
+      "docstring": "Ensure DQ service is running and healthy"
+    },
+    {
+      "name": "compliance_service",
+      "file": "tests/conftest.py",
+      "line_number": 1496,
+      "type": "fixture",
+      "signature": "compliance_service",
+      "docstring": "Ensure Compliance service is running and healthy"
+    },
+    {
+      "name": "semantic_service",
+      "file": "tests/conftest.py",
+      "line_number": 1512,
+      "type": "fixture",
+      "signature": "semantic_service",
+      "docstring": "Ensure Semantic service is running and healthy"
+    },
+    {
+      "name": "all_services",
+      "file": "tests/conftest.py",
+      "line_number": 1527,
+      "type": "fixture",
+      "signature": "all_services(datacontract_service, dq_service, compliance_service, semantic_service)",
+      "docstring": "Ensure all microservices are running and healthy"
+    },
+    {
+      "name": "check_service_health",
+      "file": "tests/conftest.py",
+      "line_number": 1537,
+      "type": "function",
+      "signature": "check_service_health(service_url, service_name, timeout)",
+      "docstring": "Helper function to check if a service is healthy.\nCan be used in Django TestCase setUp methods.\n\nArgs:\n    service_url: Base URL of the service\n    service_name: Name of the service (for error messages)\n    timeout: Timeout in seconds\n\nReturns:\n    True if service is healthy, False otherwise"
+    },
+    {
+      "name": "test_env_validator",
+      "file": "tests/conftest.py",
+      "line_number": 1556,
+      "type": "fixture",
+      "signature": "test_env_validator",
+      "docstring": "Pytest fixture providing EnvironmentValidator instance.\nUse this fixture to access environment validation in tests."
+    },
+    {
+      "name": "validate_test_env",
+      "file": "tests/conftest.py",
+      "line_number": 1566,
+      "type": "fixture",
+      "signature": "validate_test_env(test_env_validator)",
+      "docstring": "Pytest fixture that validates test environment before tests run.\nSkips tests if validation fails (unless SKIP_TEST_ENV_VALIDATION=1)."
+    },
+    {
+      "name": "validate_database_connectivity",
+      "file": "tests/conftest.py",
+      "line_number": 1587,
+      "type": "fixture",
+      "signature": "validate_database_connectivity(test_env_validator)",
+      "docstring": "Pytest fixture that validates database connectivity.\nSkips tests if database is not accessible."
+    },
+    {
+      "name": "validate_redis_connectivity",
+      "file": "tests/conftest.py",
+      "line_number": 1599,
+      "type": "fixture",
+      "signature": "validate_redis_connectivity(test_env_validator)",
+      "docstring": "Pytest fixture that validates Redis connectivity.\nSkips tests if Redis is not accessible."
+    },
+    {
+      "name": "validate_service_connectivity",
+      "file": "tests/conftest.py",
+      "line_number": 1611,
+      "type": "fixture",
+      "signature": "validate_service_connectivity(test_env_validator)",
+      "docstring": "Pytest fixture that validates all service URLs are accessible.\nSkips tests if services are not accessible.\nUses Docker auto-detection if running in Docker environment."
+    },
+    {
+      "name": "_patched_sync_apps",
+      "file": "tests/conftest.py",
+      "line_number": 42,
+      "type": "function",
+      "signature": "_patched_sync_apps(self, connection, apps)",
+      "docstring": "Patched sync_apps - ROOT CAUSE FIX (early patch)\n\nAlways returns immediately without executing any SQL.\nMigrations will create all tables, so sync_apps doesn't need to run."
+    },
+    {
+      "name": "_noop_validate",
+      "file": "tests/conftest.py",
+      "line_number": 149,
+      "type": "function",
+      "signature": "_noop_validate(self)",
+      "docstring": "Disable thread validation for tests - safe because pytest-django manages connections"
+    },
+    {
+      "name": "_patched_table_names",
+      "file": "tests/conftest.py",
+      "line_number": 231,
+      "type": "function",
+      "signature": "_patched_table_names(self, cursor, include_views)",
+      "docstring": "Patched table_names - ROOT CAUSE FIX\n\nsync_apps calls connection.introspection.table_names() to check which tables exist.\nDuring test database creation, tables don't exist yet, so this query fails.\nSOLUTION: Return empty list ONLY when called from sync_apps context.\nFor other contexts (like MigrationRecorder.ensure_schema), call original.\n\nFIX: cursor is optional (defaults to None) to match Django's signature."
+    },
+    {
+      "name": "_patched_call_command",
+      "file": "tests/conftest.py",
+      "line_number": 606,
+      "type": "function",
+      "signature": "_patched_call_command(command_name)",
+      "docstring": "Patched call_command that ensures run_syncdb=False for migrate command"
+    },
+    {
+      "name": "_patched_create_test_db",
+      "file": "tests/conftest.py",
+      "line_number": 659,
+      "type": "function",
+      "signature": "_patched_create_test_db(self, verbosity, autoclobber, keepdb, serialize)",
+      "docstring": "Patched create_test_db that ensures run_syncdb=False when calling migrate.\n\nROOT CAUSE: Django's create_test_db calls migrate with run_syncdb=True (line 59-61), which causes\nsync_apps to run and query tables that don't exist yet (because migrations haven't run).\n\nSOLUTION: Intercept the migrate call and force run_syncdb=False.\nThis ensures migrations run first (creating all tables), then sync_apps is skipped\nbecause all apps are already migrated (unmigrated_apps will be empty)."
+    },
+    {
+      "name": "_patched_setup_databases",
+      "file": "tests/conftest.py",
+      "line_number": 1043,
+      "type": "function",
+      "signature": "_patched_setup_databases(verbosity, interactive, keepdb, debug_sql, parallel, aliases)",
+      "docstring": "Patched setup_databases that ensures create_test_db patch is active"
+    },
+    {
+      "name": "_patched_loader_init",
+      "file": "tests/conftest.py",
+      "line_number": 182,
+      "type": "function",
+      "signature": "_patched_loader_init(self)",
+      "docstring": "Patched MigrationLoader.__init__ that ensures unmigrated_apps stays empty"
+    },
+    {
+      "name": "_patched_sql_flush",
+      "file": "tests/conftest.py",
+      "line_number": 326,
+      "type": "function",
+      "signature": "_patched_sql_flush(self, style, tables)",
+      "docstring": "Patched sql_flush that always uses CASCADE to handle foreign key constraints.\n\nROOT CAUSE: During test teardown, Django tries to truncate tables but fails\nwhen tables have foreign key constraints. PostgreSQL requires CASCADE to truncate\ntables with foreign key references.\n\nSOLUTION: Always use allow_cascade=True when truncating tables during teardown."
+    },
+    {
+      "name": "_patched_sync_apps",
+      "file": "tests/conftest.py",
+      "line_number": 360,
+      "type": "function",
+      "signature": "_patched_sync_apps(self, connection, apps)",
+      "docstring": "Patched sync_apps - ROOT CAUSE FIX\n\nDjango's sync_apps tries to query tables that don't exist yet during test database creation.\nThis patch makes sync_apps a no-op that always returns immediately, preventing any table queries.\nMigrations will create all tables, so sync_apps doesn't need to run."
+    },
+    {
+      "name": "_patched_handle",
+      "file": "tests/conftest.py",
+      "line_number": 405,
+      "type": "function",
+      "signature": "_patched_handle(self)",
+      "docstring": "Patched handle that intercepts sync_apps calls before they execute.\nThis ensures sync_apps never runs during test database creation.\n\nROOT CAUSE FIX: Django's create_test_db calls migrate with run_syncdb=True.\nThis patch ensures run_syncdb is ALWAYS False, preventing sync_apps from running."
+    },
+    {
+      "name": "_local_patched_call_command",
+      "file": "tests/conftest.py",
+      "line_number": 693,
+      "type": "function",
+      "signature": "_local_patched_call_command(command_name)",
+      "docstring": "Local patch for call_command that forces run_syncdb=False for migrate command.\nThis is the ROOT CAUSE FIX - ensures sync_apps never runs."
+    },
+    {
+      "name": "_patched_init",
+      "file": "tests/conftest.py",
+      "line_number": 822,
+      "type": "function",
+      "signature": "_patched_init(self)",
+      "docstring": "Patched __init__ that applies sync_apps patch to each new instance"
+    },
+    {
+      "name": "_patched_create_test_db",
+      "file": "tests/conftest.py",
+      "line_number": 915,
+      "type": "function",
+      "signature": "_patched_create_test_db(self, verbosity, autoclobber, keepdb, serialize)",
+      "docstring": "Patched create_test_db - ROOT CAUSE FIX"
+    },
+    {
+      "name": "_patched_loader_init",
+      "file": "tests/conftest.py",
+      "line_number": 981,
+      "type": "function",
+      "signature": "_patched_loader_init(self)",
+      "docstring": "Patched MigrationLoader.__init__ that ensures unmigrated_apps stays empty"
+    },
+    {
+      "name": "_patched_load_disk",
+      "file": "tests/conftest.py",
+      "line_number": 1001,
+      "type": "function",
+      "signature": "_patched_load_disk(self)",
+      "docstring": "Patched load_disk that prevents populating unmigrated_apps"
+    },
+    {
+      "name": "_patched_executor_init_early",
+      "file": "tests/conftest.py",
+      "line_number": 89,
+      "type": "function",
+      "signature": "_patched_executor_init_early(self, connection, progress_callback)",
+      "docstring": "Patched MigrationExecutor.__init__ - ROOT CAUSE FIX (early)"
+    },
+    {
+      "name": "_patched_load_disk",
+      "file": "tests/conftest.py",
+      "line_number": 207,
+      "type": "function",
+      "signature": "_patched_load_disk(self)",
+      "docstring": "Patched load_disk that prevents populating unmigrated_apps - ROOT CAUSE FIX"
+    },
+    {
+      "name": "_patched_introspection_init",
+      "file": "tests/conftest.py",
+      "line_number": 298,
+      "type": "function",
+      "signature": "_patched_introspection_init(self)",
+      "docstring": "Patched DatabaseIntrospection.__init__ that ensures table_names is patched"
+    },
+    {
+      "name": "_patched_command_init",
+      "file": "tests/conftest.py",
+      "line_number": 388,
+      "type": "function",
+      "signature": "_patched_command_init(self)",
+      "docstring": "Patched Command.__init__ that ensures sync_apps is patched on this instance"
+    },
+    {
+      "name": "_noop_sync_apps",
+      "file": "tests/conftest.py",
+      "line_number": 435,
+      "type": "function",
+      "signature": "_noop_sync_apps(self, connection, apps)",
+      "docstring": "No-op sync_apps that never executes - prevents table queries"
+    },
+    {
+      "name": "_patched_pg_creation_init",
+      "file": "tests/conftest.py",
+      "line_number": 795,
+      "type": "function",
+      "signature": "_patched_pg_creation_init(self)",
+      "docstring": "Patched DatabaseCreation.__init__ that ensures create_test_db is patched on this instance"
+    },
+    {
+      "name": "_local_patched_call_command",
+      "file": "tests/conftest.py",
+      "line_number": 926,
+      "type": "function",
+      "signature": "_local_patched_call_command(command_name)",
+      "docstring": "Local patch for call_command that forces run_syncdb=False"
+    },
+    {
+      "name": "_patched_load_disk",
+      "file": "tests/conftest.py",
+      "line_number": 465,
+      "type": "function",
+      "signature": "_patched_load_disk(self)",
+      "docstring": "Patched load_disk that prevents populating unmigrated_apps - ROOT CAUSE FIX"
+    },
+    {
+      "name": "_patched_executor_init",
+      "file": "tests/conftest.py",
+      "line_number": 497,
+      "type": "function",
+      "signature": "_patched_executor_init(self, connection, progress_callback)",
+      "docstring": null
+    },
+    {
+      "name": "_patched_loader_load_disk",
+      "file": "tests/conftest.py",
+      "line_number": 115,
+      "type": "function",
+      "signature": "_patched_loader_load_disk",
+      "docstring": "Patched load_disk that prevents repopulating unmigrated_apps"
+    },
+    {
+      "name": "_patched_loader_load_disk",
+      "file": "tests/conftest.py",
+      "line_number": 521,
+      "type": "function",
+      "signature": "_patched_loader_load_disk",
+      "docstring": "Patched load_disk that prevents repopulating unmigrated_apps"
+    },
+    {
+      "name": "prefect_server_url",
+      "file": "tests/conftest_prefect.py",
+      "line_number": 15,
+      "type": "fixture",
+      "signature": "prefect_server_url",
+      "docstring": "Get Prefect Server URL from environment or use default.\n\nReturns:\n    Prefect Server API URL"
+    },
+    {
+      "name": "prefect_server_health",
+      "file": "tests/conftest_prefect.py",
+      "line_number": 26,
+      "type": "fixture",
+      "signature": "prefect_server_health(prefect_server_url)",
+      "docstring": "Check if Prefect Server is healthy.\n\nArgs:\n    prefect_server_url: Prefect Server API URL\n    \nReturns:\n    True if server is healthy, False otherwise"
+    },
+    {
+      "name": "prefect_server_available",
+      "file": "tests/conftest_prefect.py",
+      "line_number": 44,
+      "type": "fixture",
+      "signature": "prefect_server_available(prefect_server_health)",
+      "docstring": "Skip tests if Prefect Server is not available.\n\nArgs:\n    prefect_server_health: Whether Prefect Server is healthy\n    \nReturns:\n    True if available, otherwise skips test"
+    },
+    {
+      "name": "prefect_api_key",
+      "file": "tests/conftest_prefect.py",
+      "line_number": 60,
+      "type": "fixture",
+      "signature": "prefect_api_key(prefect_server_available)",
+      "docstring": "Get or create Prefect API key for testing.\n\nNOTE: In a real implementation, this would create a test API key.\nFor now, returns None (Prefect Server may allow anonymous access in test mode).\n\nArgs:\n    prefect_server_available: Whether Prefect Server is available\n    \nReturns:\n    API key or None"
+    },
+    {
+      "name": "prefect_work_pool",
+      "file": "tests/conftest_prefect.py",
+      "line_number": 79,
+      "type": "fixture",
+      "signature": "prefect_work_pool(prefect_server_available, prefect_api_key)",
+      "docstring": "Get or create Prefect work pool for testing.\n\nArgs:\n    prefect_server_available: Whether Prefect Server is available\n    prefect_api_key: Prefect API key\n    \nReturns:\n    Work pool name"
+    },
+    {
+      "name": "wait_for_prefect_server",
+      "file": "tests/conftest_prefect.py",
+      "line_number": 95,
+      "type": "fixture",
+      "signature": "wait_for_prefect_server(prefect_server_url, max_wait)",
+      "docstring": "Wait for Prefect Server to be ready.\n\nArgs:\n    prefect_server_url: Prefect Server API URL\n    max_wait: Maximum wait time in seconds\n    \nReturns:\n    True if server is ready, False otherwise"
+    },
+    {
+      "name": "create_baseline",
+      "file": "tests/performance/performance_baseline_manager.py",
+      "line_number": 113,
+      "type": "function",
+      "signature": "create_baseline(self, test_name, test_type, metrics_data, version, environment, metadata)",
+      "docstring": "Create a performance baseline from test results.\n\nArgs:\n    test_name: Name of the test\n    test_type: Type of test (load, stress, endurance, spike)\n    metrics_data: Dictionary mapping metric names to lists of values\n    version: Version identifier (default: timestamp)\n    environment: Environment name (default: from env var or 'default')\n    metadata: Additional metadata\n\nReturns:\n    PerformanceBaseline object"
+    },
+    {
+      "name": "__init__",
+      "file": "tests/performance/helpers.py",
+      "line_number": 14,
+      "type": "function",
+      "signature": "__init__(self, base_url)",
+      "docstring": null
+    },
+    {
+      "name": "create_test_tenant_and_user",
+      "file": "tests/performance/helpers.py",
+      "line_number": 20,
+      "type": "function",
+      "signature": "create_test_tenant_and_user(self, tenant_name, user_email)",
+      "docstring": "Create a test tenant and user for performance testing via API.\n\nReturns dict with tenant, user, and access_token."
+    },
+    {
+      "name": "get_auth_headers",
+      "file": "tests/performance/helpers.py",
+      "line_number": 64,
+      "type": "function",
+      "signature": "get_auth_headers(self, access_token)",
+      "docstring": "Get authentication headers for API requests"
+    },
+    {
+      "name": "login",
+      "file": "tests/performance/helpers.py",
+      "line_number": 71,
+      "type": "function",
+      "signature": "login(self, email, password)",
+      "docstring": "Login and get access token"
+    },
+    {
+      "name": "create_test_file_data",
+      "file": "tests/performance/helpers.py",
+      "line_number": 93,
+      "type": "function",
+      "signature": "create_test_file_data(self, size_mb)",
+      "docstring": "Generate test file data of specified size"
+    },
+    {
+      "name": "calculate_percentiles",
+      "file": "tests/performance/helpers.py",
+      "line_number": 102,
+      "type": "function",
+      "signature": "calculate_percentiles(self, values, percentiles)",
+      "docstring": "Calculate percentile values from a list"
+    },
+    {
+      "name": "_init_s3_client",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 60,
+      "type": "function",
+      "signature": "_init_s3_client(self)",
+      "docstring": "Initialize S3 client for direct uploads"
+    },
+    {
+      "name": "get_metrics_by_name",
+      "file": "tests/performance/infrastructure.py",
+      "line_number": 101,
+      "type": "function",
+      "signature": "get_metrics_by_name(self, name)",
+      "docstring": "Get all metrics with a specific name.\n\nArgs:\n    name: Metric name\n    \nReturns:\n    List of metrics"
+    },
+    {
+      "name": "create_test_users",
+      "file": "tests/performance/setup_test_users.py",
+      "line_number": 28,
+      "type": "function",
+      "signature": "create_test_users",
+      "docstring": "Create test users for performance testing"
+    },
+    {
+      "name": "get_journey_tracker",
+      "file": "tests/e2e/journey_tracker.py",
+      "line_number": 420,
+      "type": "function",
+      "signature": "get_journey_tracker",
+      "docstring": "Get global journey tracker instance."
+    },
+    {
+      "name": "get_step",
+      "file": "tests/e2e/journey_tracker.py",
+      "line_number": 143,
+      "type": "function",
+      "signature": "get_step(self, step_name)",
+      "docstring": "Get a step by name."
+    },
+    {
+      "name": "get_journey",
+      "file": "tests/e2e/journey_tracker.py",
+      "line_number": 347,
+      "type": "function",
+      "signature": "get_journey(self, journey_id)",
+      "docstring": "Get journey by ID."
+    },
+    {
+      "name": "get_all_journeys",
+      "file": "tests/e2e/journey_tracker.py",
+      "line_number": 351,
+      "type": "function",
+      "signature": "get_all_journeys(self)",
+      "docstring": "Get all tracked journeys."
+    },
+    {
+      "name": "get_journey_summary",
+      "file": "tests/e2e/journey_tracker.py",
+      "line_number": 355,
+      "type": "function",
+      "signature": "get_journey_summary(self)",
+      "docstring": "Get summary statistics for all journeys.\n\nReturns:\n    Dictionary with summary statistics"
+    },
+    {
+      "name": "detect_environment",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 93,
+      "type": "function",
+      "signature": "detect_environment",
+      "docstring": "Detect if we're running against staging or default environment.\nChecks if staging ports are accessible.\n\nReturns:\n    'staging' if staging ports are detected, 'default' otherwise"
+    },
+    {
+      "name": "get_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 127,
+      "type": "function",
+      "signature": "get_service_url(service_name, default_port_key)",
+      "docstring": "Get service URL, automatically detecting staging vs default environment.\n\nArgs:\n    service_name: Environment variable name (e.g., 'API_SERVICE_URL')\n    default_port_key: Key in PORTS dict (e.g., 'API', 'DQ', 'COMPLIANCE')\n\nReturns:\n    Service URL with correct port"
+    },
+    {
+      "name": "get_api_base_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 151,
+      "type": "function",
+      "signature": "get_api_base_url",
+      "docstring": "Get API base URL"
+    },
+    {
+      "name": "get_datacontract_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 156,
+      "type": "function",
+      "signature": "get_datacontract_service_url",
+      "docstring": "Get DataContract service URL"
+    },
+    {
+      "name": "get_compliance_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 161,
+      "type": "function",
+      "signature": "get_compliance_service_url",
+      "docstring": "Get Compliance service URL"
+    },
+    {
+      "name": "get_dq_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 166,
+      "type": "function",
+      "signature": "get_dq_service_url",
+      "docstring": "Get DQ service URL"
+    },
+    {
+      "name": "get_semantic_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 171,
+      "type": "function",
+      "signature": "get_semantic_service_url",
+      "docstring": "Get Semantic service URL"
+    },
+    {
+      "name": "get_worker_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 176,
+      "type": "function",
+      "signature": "get_worker_service_url",
+      "docstring": "Get Worker service URL"
+    },
+    {
+      "name": "get_s3_endpoint_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 181,
+      "type": "function",
+      "signature": "get_s3_endpoint_url",
+      "docstring": "Get S3/MinIO endpoint URL"
+    },
+    {
+      "name": "get_prometheus_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 186,
+      "type": "function",
+      "signature": "get_prometheus_service_url",
+      "docstring": "Get Prometheus service URL"
+    },
+    {
+      "name": "get_grafana_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 191,
+      "type": "function",
+      "signature": "get_grafana_service_url",
+      "docstring": "Get Grafana service URL"
+    },
+    {
+      "name": "get_jaeger_service_url",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 196,
+      "type": "function",
+      "signature": "get_jaeger_service_url",
+      "docstring": "Get Jaeger service URL"
+    },
+    {
+      "name": "check_service_health",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 201,
+      "type": "function",
+      "signature": "check_service_health(service_url, timeout)",
+      "docstring": "Check if a service is healthy by hitting its health endpoint.\n\nArgs:\n    service_url: Base URL of the service\n    timeout: Timeout in seconds\n\nReturns:\n    True if service is healthy, False otherwise"
+    },
+    {
+      "name": "pytest_addoption",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 224,
+      "type": "function",
+      "signature": "pytest_addoption(parser)",
+      "docstring": "Add command-line options for pytest."
+    },
+    {
+      "name": "pytest_configure",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 234,
+      "type": "function",
+      "signature": "pytest_configure(config)",
+      "docstring": "Configure pytest markers"
+    },
+    {
+      "name": "setUp",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 247,
+      "type": "function",
+      "signature": "setUp(self)",
+      "docstring": "Set up test fixtures"
+    },
+    {
+      "name": "check_service_available",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 280,
+      "type": "function",
+      "signature": "check_service_available(self, service_name, service_url, health_path, timeout)",
+      "docstring": "Check if a service is available and healthy.\n\nArgs:\n    service_name: Name of the service (for error messages)\n    service_url: Base URL of the service\n    health_path: Health check endpoint path\n    timeout: Timeout in seconds\n\nReturns:\n    True if service is available and healthy, False otherwise"
+    },
+    {
+      "name": "require_service",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 297,
+      "type": "function",
+      "signature": "require_service(self, service_name, service_url, health_path, max_wait)",
+      "docstring": "Require a service to be available before proceeding.\n\nArgs:\n    service_name: Name of the service (for error messages)\n    service_url: Base URL of the service\n    health_path: Health check endpoint path\n    max_wait: Maximum wait time in seconds (reduced default for faster tests)"
+    },
+    {
+      "name": "wait_for_semantic_mapping",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 333,
+      "type": "function",
+      "signature": "wait_for_semantic_mapping(self, resource_type, resource_id, max_wait, verify_in_fuseki)",
+      "docstring": "Wait for semantic mapping to complete with Fuseki verification.\n\nArgs:\n    resource_type: Resource type (ASSET, CONTRACT, DATASET, FIELD)\n    resource_id: Resource UUID\n    max_wait: Maximum wait time in seconds\n    verify_in_fuseki: If True, verify triples exist in Fuseki\n\nReturns:\n    SemanticResource instance\n\nRaises:\n    AssertionError: If mapping not completed within max_wait"
+    },
+    {
+      "name": "_verify_uri_in_fuseki",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 382,
+      "type": "function",
+      "signature": "_verify_uri_in_fuseki(self, uri, max_retries)",
+      "docstring": "Verify URI exists in Fuseki with retries."
+    },
+    {
+      "name": "get_service_urls",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 416,
+      "type": "function",
+      "signature": "get_service_urls(self)",
+      "docstring": "Get all service URLs as a dictionary"
+    },
+    {
+      "name": "create_asset",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 428,
+      "type": "function",
+      "signature": "create_asset(self, key, name, description, domain)",
+      "docstring": "Create an asset via API and return its ID"
+    },
+    {
+      "name": "create_contract",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 448,
+      "type": "function",
+      "signature": "create_contract(self, asset_id, original_raw, original_format)",
+      "docstring": "Create a contract via API and return its ID"
+    },
+    {
+      "name": "init_file_upload",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 497,
+      "type": "function",
+      "signature": "init_file_upload(self, name, content_type, size)",
+      "docstring": "Initialize a file upload and return file ID"
+    },
+    {
+      "name": "complete_file_upload",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 528,
+      "type": "function",
+      "signature": "complete_file_upload(self, file_id, content_sha256, test_content, mock_s3)",
+      "docstring": "Complete a file upload"
+    },
+    {
+      "name": "create_dataset",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 662,
+      "type": "function",
+      "signature": "create_dataset(self, file_id, asset_id)",
+      "docstring": "Create a dataset via API and return its ID"
+    },
+    {
+      "name": "prepare_contract_for_activation",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 710,
+      "type": "function",
+      "signature": "prepare_contract_for_activation(self, contract_id)",
+      "docstring": "Prepare contract for activation (validate and normalize)"
+    },
+    {
+      "name": "prepare_asset_for_activation",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 796,
+      "type": "function",
+      "signature": "prepare_asset_for_activation(self, asset_id)",
+      "docstring": "Prepare asset for activation (DQ and compliance checks)"
+    },
+    {
+      "name": "activate_asset",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 839,
+      "type": "function",
+      "signature": "activate_asset(self, asset_id)",
+      "docstring": "Activate an asset via API (includes version for optimistic locking)"
+    },
+    {
+      "name": "verify_audit_log",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 854,
+      "type": "function",
+      "signature": "verify_audit_log(self, action, resource_type, resource_id, result)",
+      "docstring": "Verify an audit log entry exists"
+    },
+    {
+      "name": "verify_asset_state",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 876,
+      "type": "function",
+      "signature": "verify_asset_state(self, asset_id)",
+      "docstring": "Verify asset state matches expected values"
+    },
+    {
+      "name": "verify_contract_state",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 887,
+      "type": "function",
+      "signature": "verify_contract_state(self, contract_id)",
+      "docstring": "Verify contract state matches expected values"
+    },
+    {
+      "name": "verify_file_in_s3",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 900,
+      "type": "function",
+      "signature": "verify_file_in_s3(self, file_id, expected_content, expected_size)",
+      "docstring": "Verify file exists in S3 (optional check)"
+    },
+    {
+      "name": "verify_cross_service_consistency",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 905,
+      "type": "function",
+      "signature": "verify_cross_service_consistency(self, resource_id, resource_type)",
+      "docstring": "Verify cross-service consistency (optional)"
+    },
+    {
+      "name": "verify_job_completion",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 910,
+      "type": "function",
+      "signature": "verify_job_completion(self, job_id, expected_status, max_wait)",
+      "docstring": "Verify job completes with expected status"
+    },
+    {
+      "name": "validate_contract",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 939,
+      "type": "function",
+      "signature": "validate_contract(self, contract_id, async_mode)",
+      "docstring": "Validate a contract via API"
+    },
+    {
+      "name": "run_compliance_check",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 959,
+      "type": "function",
+      "signature": "run_compliance_check(self, file_id, dataset_id, asset_id)",
+      "docstring": "Create a compliance run via API"
+    },
+    {
+      "name": "run_dq_check",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 981,
+      "type": "function",
+      "signature": "run_dq_check(self, file_id, dataset_id, asset_id)",
+      "docstring": "Create a DQ run via API"
+    },
+    {
+      "name": "wait_for_job_completion",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1001,
+      "type": "function",
+      "signature": "wait_for_job_completion(self, job_id, timeout, poll_interval)",
+      "docstring": "Wait for a job to complete.\n\nArgs:\n    job_id: Job UUID\n    timeout: Maximum wait time in seconds\n    poll_interval: Polling interval in seconds\n\nReturns:\n    Job object with final status\n\nRaises:\n    AssertionError: If job doesn't complete within timeout"
+    },
+    {
+      "name": "attach_contract_to_asset",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1042,
+      "type": "function",
+      "signature": "attach_contract_to_asset(self, asset_id, contract_id)",
+      "docstring": "Attach a contract to an asset via API"
+    },
+    {
+      "name": "attach_dataset_to_asset",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1064,
+      "type": "function",
+      "signature": "attach_dataset_to_asset(self, asset_id, dataset_id)",
+      "docstring": "Attach a dataset to an asset (dataset already has asset_id, this is a no-op but kept for API compatibility)"
+    },
+    {
+      "name": "verify_entitlement_created",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1077,
+      "type": "function",
+      "signature": "verify_entitlement_created(self, order_id, asset_id)",
+      "docstring": "Verify that an entitlement was created for an order"
+    },
+    {
+      "name": "verify_rdf_triples",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1100,
+      "type": "function",
+      "signature": "verify_rdf_triples(self, resource_id, resource_type, expected_triples, expected_triples_count)",
+      "docstring": "Verify RDF triples exist for a resource (optional - semantic service may not be available)"
+    },
+    {
+      "name": "wait_for_semantic_mapping",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1123,
+      "type": "function",
+      "signature": "wait_for_semantic_mapping(self)",
+      "docstring": "Wait for semantic mapping to complete (optional)\n\nSupports multiple calling conventions:\n- wait_for_semantic_mapping(resource_type, resource_id, max_wait=30)\n- wait_for_semantic_mapping(resource_id, resource_type=..., timeout=30)"
+    },
+    {
+      "name": "prefect_api_client",
+      "file": "tests/fixtures/prefect_fixtures.py",
+      "line_number": 96,
+      "type": "fixture",
+      "signature": "prefect_api_client(prefect_server_healthy)",
+      "docstring": "Prefect API client fixture.\n\nProvides a configured Prefect API client for interacting with Prefect Server."
+    },
+    {
+      "name": "get_sendgrid_config",
+      "file": "tests/fixtures/email_service_fixtures.py",
+      "line_number": 21,
+      "type": "function",
+      "signature": "get_sendgrid_config",
+      "docstring": "Get SendGrid configuration for testing"
+    },
+    {
+      "name": "get_ses_config",
+      "file": "tests/fixtures/email_service_fixtures.py",
+      "line_number": 31,
+      "type": "function",
+      "signature": "get_ses_config",
+      "docstring": "Get AWS SES configuration for testing"
+    },
+    {
+      "name": "get_smtp_config",
+      "file": "tests/fixtures/email_service_fixtures.py",
+      "line_number": 43,
+      "type": "function",
+      "signature": "get_smtp_config",
+      "docstring": "Get SMTP configuration for testing"
+    },
+    {
+      "name": "get_worker_config",
+      "file": "tests/fixtures/email_service_fixtures.py",
+      "line_number": 81,
+      "type": "function",
+      "signature": "get_worker_config",
+      "docstring": "Get worker service configuration for testing"
+    },
+    {
+      "name": "get_rate_limit_config",
+      "file": "tests/fixtures/email_service_fixtures.py",
+      "line_number": 105,
+      "type": "function",
+      "signature": "get_rate_limit_config",
+      "docstring": "Get rate limiting configuration for testing"
+    },
+    {
+      "name": "pytest_configure",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 22,
+      "type": "function",
+      "signature": "pytest_configure(config)",
+      "docstring": "Configure pytest for SDK tests.\n\nSets environment variable to use production database so API service can see test data.\nAlso patches pytest-django to skip test database creation when using production DB."
+    },
+    {
+      "name": "configure_sdk_test_database",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 73,
+      "type": "function",
+      "signature": "configure_sdk_test_database",
+      "docstring": "Configure tests to use the same database as the API service.\n\nThis ensures the API service can see test data.\nCRITICAL: This must be called before Django sets up the test database."
+    },
+    {
+      "name": "get_api_base_url",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 87,
+      "type": "function",
+      "signature": "get_api_base_url",
+      "docstring": "Get API base URL for SDK tests.\n\nWhen running inside the api-service container, the API is at http://localhost:8000.\nWhen running from host, it uses the environment detection from e2e.conftest."
+    },
+    {
+      "name": "api_base_url",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 111,
+      "type": "fixture",
+      "signature": "api_base_url",
+      "docstring": "Fixture providing API base URL"
+    },
+    {
+      "name": "setUpClass",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 140,
+      "type": "function",
+      "signature": "setUpClass(cls)",
+      "docstring": "Set up test class"
+    },
+    {
+      "name": "_fixture_teardown",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 145,
+      "type": "function",
+      "signature": "_fixture_teardown(cls)",
+      "docstring": "Override to skip database flush for SDK tests"
+    },
+    {
+      "name": "tearDown",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 150,
+      "type": "function",
+      "signature": "tearDown(self)",
+      "docstring": "Clean up test data after each test"
+    },
+    {
+      "name": "setUp",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 180,
+      "type": "function",
+      "signature": "setUp(self)",
+      "docstring": "Set up test fixtures"
+    },
+    {
+      "name": "_patched_django_db_setup",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 43,
+      "type": "function",
+      "signature": "_patched_django_db_setup(request, django_db_blocker)",
+      "docstring": "Patched django_db_setup that skips database creation when using production DB."
+    },
+    {
+      "name": "temp_config_dir",
+      "file": "cli/tests/conftest.py",
+      "line_number": 14,
+      "type": "fixture",
+      "signature": "temp_config_dir(tmp_path, monkeypatch)",
+      "docstring": "Create a temporary config directory"
+    },
+    {
+      "name": "mock_config",
+      "file": "cli/tests/conftest.py",
+      "line_number": 28,
+      "type": "fixture",
+      "signature": "mock_config(temp_config_dir)",
+      "docstring": "Create a config instance (uses real Config, not a mock)"
+    },
+    {
+      "name": "mock_api_client",
+      "file": "cli/tests/conftest.py",
+      "line_number": 35,
+      "type": "fixture",
+      "signature": "mock_api_client",
+      "docstring": "Create a mock API client"
+    },
+    {
+      "name": "mock_auth_manager",
+      "file": "cli/tests/conftest.py",
+      "line_number": 42,
+      "type": "fixture",
+      "signature": "mock_auth_manager",
+      "docstring": "Create a mock auth manager"
+    },
+    {
+      "name": "sample_asset",
+      "file": "cli/tests/conftest.py",
+      "line_number": 54,
+      "type": "fixture",
+      "signature": "sample_asset",
+      "docstring": "Sample asset data"
+    },
+    {
+      "name": "sample_contract",
+      "file": "cli/tests/conftest.py",
+      "line_number": 69,
+      "type": "fixture",
+      "signature": "sample_contract",
+      "docstring": "Sample contract data"
+    },
+    {
+      "name": "sample_file",
+      "file": "cli/tests/conftest.py",
+      "line_number": 85,
+      "type": "fixture",
+      "signature": "sample_file",
+      "docstring": "Sample file data"
+    },
+    {
+      "name": "sample_job",
+      "file": "cli/tests/conftest.py",
+      "line_number": 98,
+      "type": "fixture",
+      "signature": "sample_job",
+      "docstring": "Sample job data"
+    },
+    {
+      "name": "temp_config_dir",
+      "file": "cli/build/lib/tests/conftest.py",
+      "line_number": 14,
+      "type": "fixture",
+      "signature": "temp_config_dir(tmp_path, monkeypatch)",
+      "docstring": "Create a temporary config directory"
+    },
+    {
+      "name": "mock_config",
+      "file": "cli/build/lib/tests/conftest.py",
+      "line_number": 28,
+      "type": "fixture",
+      "signature": "mock_config(temp_config_dir)",
+      "docstring": "Create a config instance (uses real Config, not a mock)"
+    },
+    {
+      "name": "mock_api_client",
+      "file": "cli/build/lib/tests/conftest.py",
+      "line_number": 35,
+      "type": "fixture",
+      "signature": "mock_api_client",
+      "docstring": "Create a mock API client"
+    },
+    {
+      "name": "mock_auth_manager",
+      "file": "cli/build/lib/tests/conftest.py",
+      "line_number": 42,
+      "type": "fixture",
+      "signature": "mock_auth_manager",
+      "docstring": "Create a mock auth manager"
+    },
+    {
+      "name": "sample_asset",
+      "file": "cli/build/lib/tests/conftest.py",
+      "line_number": 54,
+      "type": "fixture",
+      "signature": "sample_asset",
+      "docstring": "Sample asset data"
+    },
+    {
+      "name": "sample_contract",
+      "file": "cli/build/lib/tests/conftest.py",
+      "line_number": 69,
+      "type": "fixture",
+      "signature": "sample_contract",
+      "docstring": "Sample contract data"
+    },
+    {
+      "name": "sample_file",
+      "file": "cli/build/lib/tests/conftest.py",
+      "line_number": 85,
+      "type": "fixture",
+      "signature": "sample_file",
+      "docstring": "Sample file data"
+    },
+    {
+      "name": "sample_job",
+      "file": "cli/build/lib/tests/conftest.py",
+      "line_number": 98,
+      "type": "fixture",
+      "signature": "sample_job",
+      "docstring": "Sample job data"
+    },
+    {
+      "name": "create_dataset",
+      "file": "hub/apps/datasets/tests/factories.py",
+      "line_number": 22,
+      "type": "function",
+      "signature": "create_dataset(tenant, file, asset, schema_json, sample_data_json, row_count, format, version, created_by)",
+      "docstring": "Create a Dataset instance.\n\nArgs:\n    tenant: Tenant instance (required)\n    file: File instance (required)\n    asset: Asset instance (optional)\n    schema_json: Inferred schema as JSON\n    sample_data_json: Sample data (first 100 rows) as JSON array\n    row_count: Total number of rows\n    format: File format (CSV, JSON, PARQUET)\n    version: Dataset version (default: 1)\n    created_by: User who created the dataset\n    **kwargs: Additional fields\n    \nReturns:\n    Dataset instance"
+    },
+    {
+      "name": "create_dataset_with_complex_schema",
+      "file": "hub/apps/datasets/tests/factories.py",
+      "line_number": 96,
+      "type": "function",
+      "signature": "create_dataset_with_complex_schema(tenant, file, asset, created_by)",
+      "docstring": "Create a Dataset with a complex schema (multiple fields, types, constraints).\n\nArgs:\n    tenant: Tenant instance\n    file: File instance\n    asset: Asset instance (optional)\n    created_by: User who created the dataset\n    **kwargs: Additional fields\n    \nReturns:\n    Dataset instance with complex schema"
+    },
+    {
+      "name": "test_dq_run_category",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 21,
+      "type": "function",
+      "signature": "test_dq_run_category(self)",
+      "docstring": "Test DQ run endpoint category"
+    },
+    {
+      "name": "test_compliance_run_category",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 26,
+      "type": "function",
+      "signature": "test_compliance_run_category(self)",
+      "docstring": "Test compliance run endpoint category"
+    },
+    {
+      "name": "test_file_upload_category",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 31,
+      "type": "function",
+      "signature": "test_file_upload_category(self)",
+      "docstring": "Test file upload endpoint category"
+    },
+    {
+      "name": "test_file_download_category",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 39,
+      "type": "function",
+      "signature": "test_file_download_category(self)",
+      "docstring": "Test file download endpoint category"
+    },
+    {
+      "name": "test_contract_validation_category",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 44,
+      "type": "function",
+      "signature": "test_contract_validation_category(self)",
+      "docstring": "Test contract validation endpoint category"
+    },
+    {
+      "name": "test_catalog_read_category",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 49,
+      "type": "function",
+      "signature": "test_catalog_read_category(self)",
+      "docstring": "Test catalog read endpoint category"
+    },
+    {
+      "name": "test_sparql_query_category",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 57,
+      "type": "function",
+      "signature": "test_sparql_query_category(self)",
+      "docstring": "Test SPARQL query endpoint category"
+    },
+    {
+      "name": "test_general_category",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 65,
+      "type": "function",
+      "signature": "test_general_category(self)",
+      "docstring": "Test general category for uncategorized endpoints"
+    },
+    {
+      "name": "test_tenant_key_generation",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 74,
+      "type": "function",
+      "signature": "test_tenant_key_generation(self)",
+      "docstring": "Test tenant-level key generation"
+    },
+    {
+      "name": "test_user_key_generation",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 86,
+      "type": "function",
+      "signature": "test_user_key_generation(self)",
+      "docstring": "Test user-level key generation"
+    },
+    {
+      "name": "test_api_key_generation",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 99,
+      "type": "function",
+      "signature": "test_api_key_generation(self)",
+      "docstring": "Test API-key-level key generation"
+    },
+    {
+      "name": "test_key_generation_requires_tenant",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 112,
+      "type": "function",
+      "signature": "test_key_generation_requires_tenant(self)",
+      "docstring": "Test that tenant_id is required"
+    },
+    {
+      "name": "test_sliding_window_allowed",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 125,
+      "type": "function",
+      "signature": "test_sliding_window_allowed(self, mock_from_url)",
+      "docstring": "Test sliding window allows request within limit"
+    },
+    {
+      "name": "test_sliding_window_exceeded",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 150,
+      "type": "function",
+      "signature": "test_sliding_window_exceeded(self, mock_from_url)",
+      "docstring": "Test sliding window rejects request when limit exceeded"
+    },
+    {
+      "name": "test_sliding_window_removes_expired",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 174,
+      "type": "function",
+      "signature": "test_sliding_window_removes_expired(self, mock_from_url)",
+      "docstring": "Test sliding window removes expired entries"
+    },
+    {
+      "name": "test_sliding_window_redis_unavailable",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 195,
+      "type": "function",
+      "signature": "test_sliding_window_redis_unavailable(self, mock_from_url)",
+      "docstring": "Test sliding window fails open when Redis unavailable"
+    },
+    {
+      "name": "test_get_rate_limit_info",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 216,
+      "type": "function",
+      "signature": "test_get_rate_limit_info(self, mock_from_url)",
+      "docstring": "Test getting rate limit info"
+    },
+    {
+      "name": "test_multiple_time_windows_burst",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 241,
+      "type": "function",
+      "signature": "test_multiple_time_windows_burst(self, mock_from_url)",
+      "docstring": "Test burst window (10 seconds) - Phase 4.1.2"
+    },
+    {
+      "name": "test_multiple_time_windows_sustained",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 261,
+      "type": "function",
+      "signature": "test_multiple_time_windows_sustained(self, mock_from_url)",
+      "docstring": "Test sustained window (60 seconds) - Phase 4.1.2"
+    },
+    {
+      "name": "test_multiple_time_windows_daily",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 281,
+      "type": "function",
+      "signature": "test_multiple_time_windows_daily(self, mock_from_url)",
+      "docstring": "Test daily window (86400 seconds) - Phase 4.1.2"
+    },
+    {
+      "name": "test_sliding_window_uses_atomic_operations",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 301,
+      "type": "function",
+      "signature": "test_sliding_window_uses_atomic_operations(self, mock_from_url)",
+      "docstring": "Test sliding window uses Redis atomic operations (ZADD, ZREMRANGEBYSCORE, ZCARD) - Phase 4.1.2"
+    },
+    {
+      "name": "test_sliding_window_ttl_expiration",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 323,
+      "type": "function",
+      "signature": "test_sliding_window_ttl_expiration(self, mock_from_url)",
+      "docstring": "Test TTL expiration removes old entries - Phase 4.1.2"
+    },
+    {
+      "name": "create_scheduled_ingestion",
+      "file": "hub/apps/scheduled_ingestion/tests/factories.py",
+      "line_number": 47,
+      "type": "function",
+      "signature": "create_scheduled_ingestion(tenant, asset, name, source_type, source_config, schedule, file_pattern, status, created_by)",
+      "docstring": "Create a ScheduledIngestion instance.\n\nNOTE: This is a placeholder. Will be implemented when ScheduledIngestion model exists.\n\nArgs:\n    tenant: Tenant instance\n    asset: Asset instance (optional)\n    name: Scheduled ingestion name\n    source_type: Source type (S3, GCS, Azure, HTTP, FTP, SFTP, DATABASE)\n    source_config: Source configuration JSON\n    schedule: Cron expression\n    file_pattern: File pattern to match\n    status: Status (ACTIVE, PAUSED, ERROR)\n    created_by: User who created the scheduled ingestion\n    **kwargs: Additional fields\n    \nReturns:\n    ScheduledIngestion instance (when model exists)"
+    },
+    {
+      "name": "create_scheduled_ingestion_run",
+      "file": "hub/apps/scheduled_ingestion/tests/factories.py",
+      "line_number": 108,
+      "type": "function",
+      "signature": "create_scheduled_ingestion_run(scheduled_ingestion, status, started_at, finished_at, files_found, files_processed, files_failed, prefect_flow_run_id, details_json, error_message)",
+      "docstring": "Create a ScheduledIngestionRun instance.\n\nNOTE: This is a placeholder. Will be implemented when ScheduledIngestionRun model exists.\n\nArgs:\n    scheduled_ingestion: ScheduledIngestion instance\n    status: Run status\n    started_at: When run started\n    finished_at: When run finished\n    files_found: Number of files found\n    files_processed: Number of files processed\n    files_failed: Number of files failed\n    prefect_flow_run_id: Prefect flow run ID\n    details_json: Run details JSON\n    error_message: Error message if failed\n    **kwargs: Additional fields\n    \nReturns:\n    ScheduledIngestionRun instance (when model exists)"
+    },
+    {
+      "name": "create_hub_contract_json",
+      "file": "hub/apps/contracts/tests/factories.py",
+      "line_number": 39,
+      "type": "function",
+      "signature": "create_hub_contract_json(contract_id, name, description, version, owners, tags, quality_rules, compliance_policy, lifecycle_policy, marketplace_policy, schema_fields, primary_key, unique_constraints, indexes)",
+      "docstring": "Create a complete HubContract JSON with all sections.\n\nArgs:\n    contract_id: Contract identifier (default: auto-generated)\n    name: Contract name (default: \"Test Contract\")\n    description: Contract description\n    version: Contract version (default: \"1.0.0\")\n    owners: List of owner dicts with name and email\n    tags: List of tags\n    quality_rules: List of quality rule dicts\n    compliance_policy: Compliance policy dict\n    lifecycle_policy: Lifecycle policy dict\n    marketplace_policy: Marketplace policy dict\n    schema_fields: List of field dicts with all properties\n    primary_key: List of primary key field names\n    unique_constraints: List of unique constraint definitions\n    indexes: List of index definitions\n\nReturns:\n    Complete HubContract JSON dict"
+    },
+    {
+      "name": "create_contract",
+      "file": "hub/apps/contracts/tests/factories.py",
+      "line_number": 174,
+      "type": "function",
+      "signature": "create_contract(tenant, created_by, asset, version, status, original_spec_type, original_spec_version, original_format, normalization_status, validation_status, hub_contract_json)",
+      "docstring": "Create a Contract instance with complete HubContract JSON.\n\nArgs:\n    tenant: Tenant instance\n    created_by: User who created the contract\n    asset: Optional Asset instance\n    version: Contract version number\n    status: Contract status\n    original_spec_type: Original spec type\n    original_spec_version: Original spec version\n    original_format: Original format\n    normalization_status: Normalization status\n    validation_status: Validation status\n    hub_contract_json: Complete HubContract JSON (if None, uses create_hub_contract_json)\n    **kwargs: Additional arguments passed to create_hub_contract_json\n\nReturns:\n    Contract instance"
+    },
+    {
+      "name": "create_contract_with_all_sections",
+      "file": "hub/apps/contracts/tests/factories.py",
+      "line_number": 254,
+      "type": "function",
+      "signature": "create_contract_with_all_sections(tenant, created_by)",
+      "docstring": "Create a contract with all sections populated (owners, tags, quality, compliance, lifecycle, marketplace).\n\nThis is a convenience method that creates a contract with comprehensive test data."
+    },
+    {
+      "name": "setUp",
+      "file": "hub/apps/audit/tests/test_utils.py",
+      "line_number": 25,
+      "type": "function",
+      "signature": "setUp(self)",
+      "docstring": "Set up test fixtures"
+    },
+    {
+      "name": "test_redact_pii_email",
+      "file": "hub/apps/audit/tests/test_utils.py",
+      "line_number": 37,
+      "type": "function",
+      "signature": "test_redact_pii_email(self)",
+      "docstring": "Test PII redaction for email"
+    },
+    {
+      "name": "test_redact_pii_password",
+      "file": "hub/apps/audit/tests/test_utils.py",
+      "line_number": 49,
+      "type": "function",
+      "signature": "test_redact_pii_password(self)",
+      "docstring": "Test PII redaction for password"
+    },
+    {
+      "name": "test_redact_string",
+      "file": "hub/apps/audit/tests/test_utils.py",
+      "line_number": 60,
+      "type": "function",
+      "signature": "test_redact_string(self)",
+      "docstring": "Test string redaction"
+    },
+    {
+      "name": "test_create_audit_event",
+      "file": "hub/apps/audit/tests/test_utils.py",
+      "line_number": 72,
+      "type": "function",
+      "signature": "test_create_audit_event(self)",
+      "docstring": "Test create_audit_event"
+    },
+    {
+      "name": "test_log_tenant_operation",
+      "file": "hub/apps/audit/tests/test_utils.py",
+      "line_number": 88,
+      "type": "function",
+      "signature": "test_log_tenant_operation(self)",
+      "docstring": "Test log_tenant_operation"
+    },
+    {
+      "name": "test_log_user_operation",
+      "file": "hub/apps/audit/tests/test_utils.py",
+      "line_number": 100,
+      "type": "function",
+      "signature": "test_log_user_operation(self)",
+      "docstring": "Test log_user_operation"
+    },
+    {
+      "name": "test_log_auth_operation",
+      "file": "hub/apps/audit/tests/test_utils.py",
+      "line_number": 112,
+      "type": "function",
+      "signature": "test_log_auth_operation(self)",
+      "docstring": "Test log_auth_operation"
+    },
+    {
+      "name": "create_file",
+      "file": "hub/apps/files/tests/factories.py",
+      "line_number": 21,
+      "type": "function",
+      "signature": "create_file(tenant, name, content_type, size, content_sha256, storage_path, status, metadata_json, created_by)",
+      "docstring": "Create a File instance.\n\nArgs:\n    tenant: Tenant instance (required)\n    name: Original filename (default: auto-generated)\n    content_type: MIME type (default: text/csv)\n    size: File size in bytes (default: 1024)\n    content_sha256: SHA-256 hash (default: auto-generated)\n    storage_path: Path in S3-compatible storage (default: auto-generated)\n    status: File status (default: ACTIVE)\n    metadata_json: Additional metadata\n    created_by: User who uploaded the file\n    **kwargs: Additional fields\n    \nReturns:\n    File instance"
+    },
+    {
+      "name": "create_file_with_all_statuses",
+      "file": "hub/apps/files/tests/factories.py",
+      "line_number": 88,
+      "type": "function",
+      "signature": "create_file_with_all_statuses(tenant, created_by)",
+      "docstring": "Create File instances with all possible statuses.\n\nArgs:\n    tenant: Tenant instance\n    created_by: User who uploaded the files\n    \nReturns:\n    List of File instances"
+    },
+    {
+      "name": "create_large_file",
+      "file": "hub/apps/files/tests/factories.py",
+      "line_number": 111,
+      "type": "function",
+      "signature": "create_large_file(tenant, size_mb, created_by)",
+      "docstring": "Create a large file for testing.\n\nArgs:\n    tenant: Tenant instance\n    size_mb: File size in megabytes (default: 100)\n    created_by: User who uploaded the file\n    **kwargs: Additional fields\n    \nReturns:\n    File instance"
+    },
+    {
+      "name": "create_asset",
+      "file": "hub/apps/assets/tests/factories.py",
+      "line_number": 20,
+      "type": "function",
+      "signature": "create_asset(tenant, key, name, description, domain, status, visibility, dq_status, compliance_status, created_by)",
+      "docstring": "Create an Asset instance.\n\nArgs:\n    tenant: Tenant instance (required)\n    key: Asset key (default: auto-generated)\n    name: Asset name (default: auto-generated)\n    description: Asset description\n    domain: Domain (e.g., marketing, finance)\n    status: Asset status (default: DRAFT)\n    visibility: Asset visibility (default: INTERNAL)\n    dq_status: Data Quality status (default: UNKNOWN)\n    compliance_status: Compliance status (default: UNKNOWN)\n    created_by: User who created the asset\n    **kwargs: Additional fields\n    \nReturns:\n    Asset instance"
+    },
+    {
+      "name": "create_active_asset",
+      "file": "hub/apps/assets/tests/factories.py",
+      "line_number": 73,
+      "type": "function",
+      "signature": "create_active_asset(tenant, created_by)",
+      "docstring": "Create an ACTIVE asset with PASS statuses.\n\nThis factory creates an asset that can be activated (meets all requirements).\n\nArgs:\n    tenant: Tenant instance\n    created_by: User who created the asset\n    **kwargs: Additional fields\n    \nReturns:\n    Asset instance with ACTIVE status"
+    },
+    {
+      "name": "create_asset_with_all_statuses",
+      "file": "hub/apps/assets/tests/factories.py",
+      "line_number": 101,
+      "type": "function",
+      "signature": "create_asset_with_all_statuses(tenant, created_by)",
+      "docstring": "Create Asset instances with all possible statuses.\n\nArgs:\n    tenant: Tenant instance\n    created_by: User who created the assets\n    \nReturns:\n    List of Asset instances"
+    },
+    {
+      "name": "setUp",
+      "file": "hub/apps/jobs/tests/test_utils.py",
+      "line_number": 25,
+      "type": "function",
+      "signature": "setUp(self)",
+      "docstring": "Set up test fixtures"
+    },
+    {
+      "name": "test_get_job_timeout",
+      "file": "hub/apps/jobs/tests/test_utils.py",
+      "line_number": 37,
+      "type": "function",
+      "signature": "test_get_job_timeout(self)",
+      "docstring": "Test get_job_timeout"
+    },
+    {
+      "name": "test_create_job",
+      "file": "hub/apps/jobs/tests/test_utils.py",
+      "line_number": 49,
+      "type": "function",
+      "signature": "test_create_job(self)",
+      "docstring": "Test create_job"
+    },
+    {
+      "name": "test_get_queue_for_job_type",
+      "file": "hub/apps/jobs/tests/test_utils.py",
+      "line_number": 65,
+      "type": "function",
+      "signature": "test_get_queue_for_job_type(self)",
+      "docstring": "Test get_queue_for_job_type"
+    },
+    {
+      "name": "create_dataset_version",
+      "file": "hub/apps/versioning/tests/factories.py",
+      "line_number": 38,
+      "type": "function",
+      "signature": "create_dataset_version(dataset, parent_version, version_hash, snapshot_metadata, is_current, semantic_version, version_tags)",
+      "docstring": "Create a Dataset version.\n\nNOTE: This is a placeholder. Will be implemented when version history fields are added.\n\nArgs:\n    dataset: Base Dataset instance\n    parent_version: Parent version Dataset (for version tree)\n    version_hash: Version hash\n    snapshot_metadata: Snapshot metadata JSON\n    is_current: Whether this is the current version\n    semantic_version: Semantic version string (e.g., \"1.2.3\")\n    version_tags: List of version tags\n    **kwargs: Additional fields\n    \nReturns:\n    Dataset instance with version history (when fields exist)"
+    },
+    {
+      "name": "create_schema_version",
+      "file": "hub/apps/versioning/tests/factories.py",
+      "line_number": 91,
+      "type": "function",
+      "signature": "create_schema_version(dataset, version_number, schema_json, compatibility_level, change_log)",
+      "docstring": "Create a SchemaVersion instance.\n\nNOTE: This is a placeholder. Will be implemented when SchemaVersion model exists.\n\nArgs:\n    dataset: Dataset instance\n    version_number: Schema version number\n    schema_json: Schema JSON\n    compatibility_level: Compatibility level (BREAKING, NON_BREAKING, ADDITIVE)\n    change_log: Change log JSON\n    **kwargs: Additional fields\n    \nReturns:\n    SchemaVersion instance (when model exists)"
+    },
+    {
+      "name": "setUp",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 27,
+      "type": "function",
+      "signature": "setUp(self)",
+      "docstring": "Set up test fixtures"
+    },
+    {
+      "name": "tearDown",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 55,
+      "type": "function",
+      "signature": "tearDown(self)",
+      "docstring": "Reconnect signals after test"
+    },
+    {
+      "name": "test_generate_uri",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 60,
+      "type": "function",
+      "signature": "test_generate_uri(self)",
+      "docstring": "Test generate_uri"
+    },
+    {
+      "name": "test_generate_uri_contract",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 68,
+      "type": "function",
+      "signature": "test_generate_uri_contract(self)",
+      "docstring": "Test generate_uri for contract"
+    },
+    {
+      "name": "test_generate_uri_dataset",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 74,
+      "type": "function",
+      "signature": "test_generate_uri_dataset(self)",
+      "docstring": "Test generate_uri for dataset"
+    },
+    {
+      "name": "test_remap_contract_if_needed_with_asset_and_fields",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 81,
+      "type": "function",
+      "signature": "test_remap_contract_if_needed_with_asset_and_fields(self, mock_client_class)",
+      "docstring": "Test remapping contract when asset is linked and contract has fields"
+    },
+    {
+      "name": "test_remap_contract_if_needed_skips_when_no_asset",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 129,
+      "type": "function",
+      "signature": "test_remap_contract_if_needed_skips_when_no_asset(self, mock_client_class)",
+      "docstring": "Test that remapping is skipped when contract has no asset"
+    },
+    {
+      "name": "test_remap_contract_if_needed_skips_when_no_hub_contract_json",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 157,
+      "type": "function",
+      "signature": "test_remap_contract_if_needed_skips_when_no_hub_contract_json(self, mock_client_class)",
+      "docstring": "Test that remapping is skipped when contract has no hub_contract_json"
+    },
+    {
+      "name": "test_remap_contract_if_needed_skips_when_no_fields",
+      "file": "hub/apps/semantic/tests/test_utils.py",
+      "line_number": 182,
+      "type": "function",
+      "signature": "test_remap_contract_if_needed_skips_when_no_fields(self, mock_client_class)",
+      "docstring": "Test that remapping is skipped when contract has no schema fields"
+    }
+  ],
+  "endpoint_urls": [
+    {
+      "endpoint_path": "/api/v1/assets/assets/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 435,
+      "context": "\"/api/v1/assets/assets/\",",
+      "function_name": "create_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 435,
+      "context": "\"/api/v1/assets/assets/\",",
+      "function_name": "create_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 482,
+      "context": "\"/api/v1/contracts/contracts/\",",
+      "function_name": "create_contract",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 482,
+      "context": "\"/api/v1/contracts/contracts/\",",
+      "function_name": "create_contract",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/init/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 517,
+      "context": "\"/api/v1/files/files/init/\",",
+      "function_name": "init_file_upload",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/init/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 517,
+      "context": "\"/api/v1/files/files/init/\",",
+      "function_name": "init_file_upload",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/{file_id}/complete/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 652,
+      "context": "f\"/api/v1/files/files/{file_id}/complete/\",",
+      "function_name": "complete_file_upload",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/{file_id}/complete/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 652,
+      "context": "f\"/api/v1/files/files/{file_id}/complete/\",",
+      "function_name": "complete_file_upload",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/{file_id}/complete/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 652,
+      "context": "f\"/api/v1/files/files/{file_id}/complete/\",",
+      "function_name": "complete_file_upload",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/datasets/datasets/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 667,
+      "context": "\"/api/v1/datasets/datasets/\",",
+      "function_name": "create_dataset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/datasets/datasets/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 667,
+      "context": "\"/api/v1/datasets/datasets/\",",
+      "function_name": "create_dataset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/activate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 849,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/activate/\", {\"version\": asset.version}, format=\"json\"",
+      "function_name": "activate_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/activate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 849,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/activate/\", {\"version\": asset.version}, format=\"json\"",
+      "function_name": "activate_asset",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/activate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 849,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/activate/\", {\"version\": asset.version}, format=\"json\"",
+      "function_name": "activate_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/{contract_id}/validate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 944,
+      "context": "f\"/api/v1/contracts/contracts/{contract_id}/validate/\",",
+      "function_name": "validate_contract",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/{contract_id}/validate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 944,
+      "context": "f\"/api/v1/contracts/contracts/{contract_id}/validate/\",",
+      "function_name": "validate_contract",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/{contract_id}/validate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 944,
+      "context": "f\"/api/v1/contracts/contracts/{contract_id}/validate/\",",
+      "function_name": "validate_contract",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/compliance/compliance-runs/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 972,
+      "context": "response = self.client.post(\"/api/v1/compliance/compliance-runs/\", payload, format=\"json\")",
+      "function_name": "run_compliance_check",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/compliance/compliance-runs/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 972,
+      "context": "response = self.client.post(\"/api/v1/compliance/compliance-runs/\", payload, format=\"json\")",
+      "function_name": "run_compliance_check",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/dq/dq-runs/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 994,
+      "context": "response = self.client.post(\"/api/v1/dq/dq-runs/\", payload, format=\"json\")",
+      "function_name": "run_dq_check",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/dq/dq-runs/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 994,
+      "context": "response = self.client.post(\"/api/v1/dq/dq-runs/\", payload, format=\"json\")",
+      "function_name": "run_dq_check",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1052,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/\",",
+      "function_name": "attach_contract_to_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1052,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/\",",
+      "function_name": "attach_contract_to_asset",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1052,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/\",",
+      "function_name": "attach_contract_to_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/auth/login/",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 354,
+      "context": "login_url = f\"{self.api_base_url}/api/v1/auth/login/\"",
+      "function_name": null,
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/",
+      "file": "tests/performance/test_performance_baseline.py",
+      "line_number": 220,
+      "context": "lambda: self.client.get('/api/v1/contracts/'),",
+      "function_name": "test_contract_list_endpoint_baseline",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/",
+      "file": "tests/performance/test_performance_baseline.py",
+      "line_number": 220,
+      "context": "lambda: self.client.get('/api/v1/contracts/'),",
+      "function_name": "test_contract_list_endpoint_baseline",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/",
+      "file": "tests/performance/test_performance_baseline.py",
+      "line_number": 231,
+      "context": "lambda: self.client.get('/api/v1/contracts/', {'tag': 'tag1'}),",
+      "function_name": "test_contract_filter_endpoint_baseline",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/",
+      "file": "tests/performance/test_performance_baseline.py",
+      "line_number": 231,
+      "context": "lambda: self.client.get('/api/v1/contracts/', {'tag': 'tag1'}),",
+      "function_name": "test_contract_filter_endpoint_baseline",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/",
+      "file": "tests/performance/test_performance_baseline.py",
+      "line_number": 246,
+      "context": "lambda: self.client.get('/api/v1/assets/'),",
+      "function_name": "test_middleware_chain_baseline",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/",
+      "file": "tests/performance/test_performance_baseline.py",
+      "line_number": 246,
+      "context": "lambda: self.client.get('/api/v1/assets/'),",
+      "function_name": "test_middleware_chain_baseline",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/{file_id}/download",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 103,
+      "context": "f\"/api/v1/files/{file_id}/download\",",
+      "function_name": "test_file_download",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/{file_id}/download",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 103,
+      "context": "f\"/api/v1/files/{file_id}/download\",",
+      "function_name": "test_file_download",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/files/{file_id}/download",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 103,
+      "context": "f\"/api/v1/files/{file_id}/download\",",
+      "function_name": "test_file_download",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/{id}/download",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 105,
+      "context": "name=\"/api/v1/files/{id}/download\",",
+      "function_name": "test_file_download",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/{id}/download",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 105,
+      "context": "name=\"/api/v1/files/{id}/download\",",
+      "function_name": "test_file_download",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/init",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 155,
+      "context": "\"/api/v1/files/init\",",
+      "function_name": "_upload_file",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/init",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 155,
+      "context": "\"/api/v1/files/init\",",
+      "function_name": "_upload_file",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/init",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 158,
+      "context": "name=\"/api/v1/files/init\",",
+      "function_name": "_upload_file",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/init",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 158,
+      "context": "name=\"/api/v1/files/init\",",
+      "function_name": "_upload_file",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/{file_id}/complete",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 237,
+      "context": "f\"/api/v1/files/{file_id}/complete\",",
+      "function_name": "_upload_file",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/{file_id}/complete",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 237,
+      "context": "f\"/api/v1/files/{file_id}/complete\",",
+      "function_name": "_upload_file",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/files/{file_id}/complete",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 237,
+      "context": "f\"/api/v1/files/{file_id}/complete\",",
+      "function_name": "_upload_file",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/{id}/complete",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 240,
+      "context": "name=\"/api/v1/files/{id}/complete\",",
+      "function_name": "_upload_file",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/{id}/complete",
+      "file": "tests/performance/locust_file_upload_download.py",
+      "line_number": 240,
+      "context": "name=\"/api/v1/files/{id}/complete\",",
+      "function_name": "_upload_file",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 435,
+      "context": "\"/api/v1/assets/assets/\",",
+      "function_name": "create_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 435,
+      "context": "\"/api/v1/assets/assets/\",",
+      "function_name": "create_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 482,
+      "context": "\"/api/v1/contracts/contracts/\",",
+      "function_name": "create_contract",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 482,
+      "context": "\"/api/v1/contracts/contracts/\",",
+      "function_name": "create_contract",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/init/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 517,
+      "context": "\"/api/v1/files/files/init/\",",
+      "function_name": "init_file_upload",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/init/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 517,
+      "context": "\"/api/v1/files/files/init/\",",
+      "function_name": "init_file_upload",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/{file_id}/complete/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 652,
+      "context": "f\"/api/v1/files/files/{file_id}/complete/\",",
+      "function_name": "complete_file_upload",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/{file_id}/complete/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 652,
+      "context": "f\"/api/v1/files/files/{file_id}/complete/\",",
+      "function_name": "complete_file_upload",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/files/files/{file_id}/complete/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 652,
+      "context": "f\"/api/v1/files/files/{file_id}/complete/\",",
+      "function_name": "complete_file_upload",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/datasets/datasets/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 667,
+      "context": "\"/api/v1/datasets/datasets/\",",
+      "function_name": "create_dataset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/datasets/datasets/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 667,
+      "context": "\"/api/v1/datasets/datasets/\",",
+      "function_name": "create_dataset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/activate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 849,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/activate/\", {\"version\": asset.version}, format=\"json\"",
+      "function_name": "activate_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/activate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 849,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/activate/\", {\"version\": asset.version}, format=\"json\"",
+      "function_name": "activate_asset",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/activate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 849,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/activate/\", {\"version\": asset.version}, format=\"json\"",
+      "function_name": "activate_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/{contract_id}/validate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 944,
+      "context": "f\"/api/v1/contracts/contracts/{contract_id}/validate/\",",
+      "function_name": "validate_contract",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/{contract_id}/validate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 944,
+      "context": "f\"/api/v1/contracts/contracts/{contract_id}/validate/\",",
+      "function_name": "validate_contract",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/contracts/{contract_id}/validate/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 944,
+      "context": "f\"/api/v1/contracts/contracts/{contract_id}/validate/\",",
+      "function_name": "validate_contract",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/compliance/compliance-runs/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 972,
+      "context": "response = self.client.post(\"/api/v1/compliance/compliance-runs/\", payload, format=\"json\")",
+      "function_name": "run_compliance_check",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/compliance/compliance-runs/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 972,
+      "context": "response = self.client.post(\"/api/v1/compliance/compliance-runs/\", payload, format=\"json\")",
+      "function_name": "run_compliance_check",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/dq/dq-runs/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 994,
+      "context": "response = self.client.post(\"/api/v1/dq/dq-runs/\", payload, format=\"json\")",
+      "function_name": "run_dq_check",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/dq/dq-runs/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 994,
+      "context": "response = self.client.post(\"/api/v1/dq/dq-runs/\", payload, format=\"json\")",
+      "function_name": "run_dq_check",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1052,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/\",",
+      "function_name": "attach_contract_to_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1052,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/\",",
+      "function_name": "attach_contract_to_asset",
+      "is_dynamic": true
+    },
+    {
+      "endpoint_path": "/api/v1/assets/assets/{asset_id}/",
+      "file": "tests/e2e/conftest.py",
+      "line_number": 1052,
+      "context": "f\"/api/v1/assets/assets/{asset_id}/\",",
+      "function_name": "attach_contract_to_asset",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/auth/login/",
+      "file": "tests/sdk_python/conftest.py",
+      "line_number": 354,
+      "context": "login_url = f\"{self.api_base_url}/api/v1/auth/login/\"",
+      "function_name": null,
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/dq/runs/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 23,
+      "context": "category = get_endpoint_category('/api/v1/dq/runs/', 'POST')",
+      "function_name": "test_dq_run_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/dq/runs/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 23,
+      "context": "category = get_endpoint_category('/api/v1/dq/runs/', 'POST')",
+      "function_name": "test_dq_run_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/compliance/runs/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 28,
+      "context": "category = get_endpoint_category('/api/v1/compliance/runs/', 'POST')",
+      "function_name": "test_compliance_run_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/compliance/runs/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 28,
+      "context": "category = get_endpoint_category('/api/v1/compliance/runs/', 'POST')",
+      "function_name": "test_compliance_run_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 33,
+      "context": "category = get_endpoint_category('/api/v1/files/', 'POST')",
+      "function_name": "test_file_upload_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 33,
+      "context": "category = get_endpoint_category('/api/v1/files/', 'POST')",
+      "function_name": "test_file_upload_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/123/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 36,
+      "context": "category = get_endpoint_category('/api/v1/files/123/', 'PUT')",
+      "function_name": "test_file_upload_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/123/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 36,
+      "context": "category = get_endpoint_category('/api/v1/files/123/', 'PUT')",
+      "function_name": "test_file_upload_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/123/download/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 41,
+      "context": "category = get_endpoint_category('/api/v1/files/123/download/', 'GET')",
+      "function_name": "test_file_download_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/files/123/download/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 41,
+      "context": "category = get_endpoint_category('/api/v1/files/123/download/', 'GET')",
+      "function_name": "test_file_download_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/123/validate/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 46,
+      "context": "category = get_endpoint_category('/api/v1/contracts/123/validate/', 'POST')",
+      "function_name": "test_contract_validation_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/contracts/123/validate/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 46,
+      "context": "category = get_endpoint_category('/api/v1/contracts/123/validate/', 'POST')",
+      "function_name": "test_contract_validation_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 51,
+      "context": "category = get_endpoint_category('/api/v1/assets/', 'GET')",
+      "function_name": "test_catalog_read_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/assets/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 51,
+      "context": "category = get_endpoint_category('/api/v1/assets/', 'GET')",
+      "function_name": "test_catalog_read_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/catalog/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 54,
+      "context": "category = get_endpoint_category('/api/v1/catalog/', 'GET')",
+      "function_name": "test_catalog_read_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/catalog/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 54,
+      "context": "category = get_endpoint_category('/api/v1/catalog/', 'GET')",
+      "function_name": "test_catalog_read_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/semantic/sparql/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 59,
+      "context": "category = get_endpoint_category('/api/v1/semantic/sparql/', 'POST')",
+      "function_name": "test_sparql_query_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/semantic/sparql/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 59,
+      "context": "category = get_endpoint_category('/api/v1/semantic/sparql/', 'POST')",
+      "function_name": "test_sparql_query_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/sparql/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 62,
+      "context": "category = get_endpoint_category('/api/v1/sparql/', 'GET')",
+      "function_name": "test_sparql_query_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/sparql/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 62,
+      "context": "category = get_endpoint_category('/api/v1/sparql/', 'GET')",
+      "function_name": "test_sparql_query_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/users/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 67,
+      "context": "category = get_endpoint_category('/api/v1/users/', 'GET')",
+      "function_name": "test_general_category",
+      "is_dynamic": false
+    },
+    {
+      "endpoint_path": "/api/v1/users/",
+      "file": "hub/apps/rate_limiting/tests/test_utils.py",
+      "line_number": 67,
+      "context": "category = get_endpoint_category('/api/v1/users/', 'GET')",
+      "function_name": "test_general_category",
+      "is_dynamic": false
+    }
+  ]
+}

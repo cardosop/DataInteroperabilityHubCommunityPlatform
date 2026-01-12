@@ -1,0 +1,1981 @@
+{
+  "summary": {
+    "total_references": 176,
+    "old_patterns_found": 0,
+    "new_patterns_found": 176,
+    "consumers_verified": 6,
+    "consumers_needs_update": 0,
+    "consumers_not_found": 111,
+    "verification_status": "PASS"
+  },
+  "old_patterns": [],
+  "consumers": {
+    "cli": [
+      {
+        "name": "CLI Compliance Commands",
+        "file": "cli/datahub_cli/commands/compliance.py",
+        "status": "verified",
+        "old_patterns": [],
+        "new_patterns": [
+          "compliance/runs"
+        ]
+      }
+    ],
+    "sdk": [
+      {
+        "name": "JavaScript SDK - compliance.ts",
+        "file": "sdk/js/src/compliance.ts",
+        "status": "verified",
+        "old_patterns": [],
+        "new_patterns": [
+          "compliance/runs"
+        ]
+      },
+      {
+        "name": "JavaScript SDK - index.ts",
+        "file": "sdk/js/src/index.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "JavaScript SDK - client.ts",
+        "file": "sdk/js/src/client.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      }
+    ],
+    "service_client": [
+      {
+        "name": "Service Clients",
+        "file": "hub/apps/api/utils/service_clients.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      }
+    ],
+    "workflow": [
+      {
+        "name": "Workflow - dataset_creation.py",
+        "file": "hub/apps/orchestration/workflows/dataset_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - marketplace_publication.py",
+        "file": "hub/apps/orchestration/workflows/marketplace_publication.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - contract_creation.py",
+        "file": "hub/apps/orchestration/workflows/contract_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - transformation_pipeline.py",
+        "file": "hub/apps/orchestration/workflows/transformation_pipeline.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - asset_creation.py",
+        "file": "hub/apps/orchestration/workflows/asset_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - product_creation.py",
+        "file": "hub/apps/orchestration/workflows/product_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - version_creation.py",
+        "file": "hub/apps/orchestration/workflows/version_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - asset_activation_saga.py",
+        "file": "hub/apps/orchestration/workflows/asset_activation_saga.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - __init__.py",
+        "file": "hub/apps/orchestration/workflows/__init__.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - data_quality.py",
+        "file": "hub/apps/orchestration/workflows/data_quality.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - scheduled_ingestion.py",
+        "file": "hub/apps/orchestration/workflows/scheduled_ingestion.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - data_mesh.py",
+        "file": "hub/apps/orchestration/workflows/data_mesh.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - marketplace_purchase_saga.py",
+        "file": "hub/apps/orchestration/workflows/marketplace_purchase_saga.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - virtualization.py",
+        "file": "hub/apps/orchestration/workflows/virtualization.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - compliance_reporting.py",
+        "file": "hub/apps/orchestration/workflows/compliance_reporting.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - access_request.py",
+        "file": "hub/apps/orchestration/workflows/access_request.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_asset_activation_saga.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_asset_activation_saga.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_virtualization_e2e.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_virtualization_e2e.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_scheduled_ingestion.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_scheduled_ingestion.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_data_mesh_e2e.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_data_mesh_e2e.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_asset_creation.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_asset_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_data_mesh.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_data_mesh.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_transformation_pipeline_e2e.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_transformation_pipeline_e2e.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_version_creation.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_version_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_contract_creation.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_contract_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - __init__.py",
+        "file": "hub/apps/orchestration/workflows/tests/__init__.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_transformation_pipeline_integration.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_transformation_pipeline_integration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_virtualization.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_virtualization.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_virtualization_integration.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_virtualization_integration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_dataset_creation.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_dataset_creation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_transformation_pipeline.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_transformation_pipeline.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_marketplace_publication.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_marketplace_publication.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_data_mesh_integration.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_data_mesh_integration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_marketplace_purchase_saga.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_marketplace_purchase_saga.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_compliance_reporting.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_compliance_reporting.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_data_quality.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_data_quality.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Workflow - test_access_request.py",
+        "file": "hub/apps/orchestration/workflows/tests/test_access_request.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      }
+    ],
+    "test": [
+      {
+        "name": "Test - test_compliance_execution.py",
+        "file": "hub/apps/compliance/tests/test_compliance_execution.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_urls.py",
+        "file": "hub/apps/compliance/tests/test_urls.py",
+        "status": "verified",
+        "old_patterns": [],
+        "new_patterns": [
+          "compliance/runs"
+        ]
+      },
+      {
+        "name": "Test - test_risk_score_calculation.py",
+        "file": "hub/apps/compliance/tests/test_risk_score_calculation.py",
+        "status": "verified",
+        "old_patterns": [],
+        "new_patterns": [
+          "compliance/runs"
+        ]
+      },
+      {
+        "name": "Test - __init__.py",
+        "file": "hub/apps/compliance/tests/__init__.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_models.py",
+        "file": "hub/apps/compliance/tests/test_models.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_fail_closed_behavior.py",
+        "file": "hub/apps/compliance/tests/test_fail_closed_behavior.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_service_client.py",
+        "file": "hub/apps/compliance/tests/test_service_client.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_service_client_circuit_breaker.py",
+        "file": "hub/apps/compliance/tests/test_service_client_circuit_breaker.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_contract_integration.py",
+        "file": "hub/apps/compliance/tests/test_contract_integration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_env_config.py",
+        "file": "cli/tests/test_env_config.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - __init__.py",
+        "file": "cli/tests/__init__.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - conftest.py",
+        "file": "cli/tests/conftest.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_odps_info_commands_real_api.py",
+        "file": "cli/tests/integration/test_odps_info_commands_real_api.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands.py",
+        "file": "cli/tests/integration/test_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_virtualization_commands_registration.py",
+        "file": "cli/tests/integration/test_virtualization_commands_registration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_product_details_real_api.py",
+        "file": "cli/tests/integration/test_product_details_real_api.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_odps_cli_workflows.py",
+        "file": "cli/tests/integration/test_odps_cli_workflows.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_output_formatting_integration.py",
+        "file": "cli/tests/integration/test_output_formatting_integration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_product_strategy_real_api.py",
+        "file": "cli/tests/integration/test_product_strategy_real_api.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_real_api.py",
+        "file": "cli/tests/integration/test_commands_real_api.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_odps_error_scenarios.py",
+        "file": "cli/tests/integration/test_odps_error_scenarios.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_payment_gateways_real_api.py",
+        "file": "cli/tests/integration/test_payment_gateways_real_api.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_virtualization_queries_commands.py",
+        "file": "cli/tests/integration/test_virtualization_queries_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_integration.py",
+        "file": "cli/tests/integration/test_commands_integration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_mesh_topology_commands.py",
+        "file": "cli/tests/integration/test_mesh_topology_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_mesh_policies_commands.py",
+        "file": "cli/tests/integration/test_mesh_policies_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_odps_commands.py",
+        "file": "cli/tests/integration/test_odps_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_error_handling_integration.py",
+        "file": "cli/tests/integration/test_error_handling_integration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_compliance_commands_real_api.py",
+        "file": "cli/tests/integration/test_compliance_commands_real_api.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_transformation_commands.py",
+        "file": "cli/tests/integration/test_transformation_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_installation_config_auth.py",
+        "file": "cli/tests/integration/test_installation_config_auth.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_mesh_domains_commands.py",
+        "file": "cli/tests/integration/test_mesh_domains_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_mesh_commands_registration.py",
+        "file": "cli/tests/integration/test_mesh_commands_registration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_virtualization_datasets_commands.py",
+        "file": "cli/tests/integration/test_virtualization_datasets_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_odcs_export.py",
+        "file": "cli/tests/integration/test_odcs_export.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_virtualization_topology_commands.py",
+        "file": "cli/tests/integration/test_virtualization_topology_commands.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_cli_e2e.py",
+        "file": "cli/tests/e2e/test_cli_e2e.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_data_quality_use_cases.py",
+        "file": "cli/tests/e2e/test_data_quality_use_cases.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_asset_management_use_cases.py",
+        "file": "cli/tests/e2e/test_asset_management_use_cases.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_compliance_use_cases.py",
+        "file": "cli/tests/e2e/test_compliance_use_cases.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_contract_management_use_cases.py",
+        "file": "cli/tests/e2e/test_contract_management_use_cases.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_odps_errors.py",
+        "file": "cli/tests/unit/test_odps_errors.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_output_formatting.py",
+        "file": "cli/tests/unit/test_output_formatting.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_error_handling.py",
+        "file": "cli/tests/unit/test_error_handling.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_api_client.py",
+        "file": "cli/tests/unit/test_api_client.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_lineage.py",
+        "file": "cli/tests/unit/test_commands_lineage.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_jobs.py",
+        "file": "cli/tests/unit/test_commands_jobs.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_virtualization.py",
+        "file": "cli/tests/unit/test_commands_virtualization.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_mesh_topology.py",
+        "file": "cli/tests/unit/test_commands_mesh_topology.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_installation.py",
+        "file": "cli/tests/unit/test_installation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_config.py",
+        "file": "cli/tests/unit/test_config.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_assets.py",
+        "file": "cli/tests/unit/test_commands_assets.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_compliance.py",
+        "file": "cli/tests/unit/test_commands_compliance.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_contracts.py",
+        "file": "cli/tests/unit/test_commands_contracts.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_mesh.py",
+        "file": "cli/tests/unit/test_commands_mesh.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_files.py",
+        "file": "cli/tests/unit/test_commands_files.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_configuration.py",
+        "file": "cli/tests/unit/test_configuration.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_authentication_comprehensive.py",
+        "file": "cli/tests/unit/test_authentication_comprehensive.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_transformation.py",
+        "file": "cli/tests/unit/test_commands_transformation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_mesh_policies.py",
+        "file": "cli/tests/unit/test_commands_mesh_policies.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_commands_mesh_domains.py",
+        "file": "cli/tests/unit/test_commands_mesh_domains.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_documentation.py",
+        "file": "cli/tests/unit/test_documentation.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test_auth.py",
+        "file": "cli/tests/unit/test_auth.py",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - contracts-api.test.ts",
+        "file": "sdk/js/src/__tests__/contracts-api.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - test-env-config.ts",
+        "file": "sdk/js/src/__tests__/test-env-config.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - integration.test.ts",
+        "file": "sdk/js/src/__tests__/integration.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - compliance-api-e2e.test.ts",
+        "file": "sdk/js/src/__tests__/compliance-api-e2e.test.ts",
+        "status": "verified",
+        "old_patterns": [],
+        "new_patterns": [
+          "compliance/runs"
+        ]
+      },
+      {
+        "name": "Test - authentication.test.ts",
+        "file": "sdk/js/src/__tests__/authentication.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - error-handling.test.ts",
+        "file": "sdk/js/src/__tests__/error-handling.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - e2e.test.ts",
+        "file": "sdk/js/src/__tests__/e2e.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - compliance-api.test.ts",
+        "file": "sdk/js/src/__tests__/compliance-api.test.ts",
+        "status": "verified",
+        "old_patterns": [],
+        "new_patterns": [
+          "compliance/runs"
+        ]
+      },
+      {
+        "name": "Test - errors.test.ts",
+        "file": "sdk/js/src/__tests__/errors.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - lineage-api.test.ts",
+        "file": "sdk/js/src/__tests__/lineage-api.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - installation.test.ts",
+        "file": "sdk/js/src/__tests__/installation.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      },
+      {
+        "name": "Test - client.test.ts",
+        "file": "sdk/js/src/__tests__/client.test.ts",
+        "status": "not_found",
+        "old_patterns": [],
+        "new_patterns": []
+      }
+    ]
+  },
+  "references_by_file": {
+    "scripts/review_rate_limiting_configs.py": [
+      {
+        "line": 192,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "if '/compliance/runs' in path_lower and method == 'POST':"
+      },
+      {
+        "line": 281,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "(\"/api/v1/compliance/runs/\", \"POST\"),"
+      }
+    ],
+    "tests/performance/locust_job_queue_throughput.py": [
+      {
+        "line": 154,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "endpoint = '/dq/runs' if run_type == 'DQ_RUN' else '/compliance/runs'"
+      }
+    ],
+    "tests/integration/test_data_engineer_api_endpoints.py": [
+      {
+        "line": 455,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/integration/test_cross_service_integration_comprehensive.py": [
+      {
+        "line": 143,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/integration/test_compliance_apis_comprehensive.py": [
+      {
+        "line": 51,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Comprehensive tests for POST /api/v1/compliance/runs/\"\"\""
+      },
+      {
+        "line": 110,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 133,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 153,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 174,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 196,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 211,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 226,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 240,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 258,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 285,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 299,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 314,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 329,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 343,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 364,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 389,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 411,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 439,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 454,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 481,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 496,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 516,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 532,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 543,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 559,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Comprehensive tests for GET /api/v1/compliance/runs/{id}/\"\"\""
+      },
+      {
+        "line": 617,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{self.compliance_run.id}/\")"
+      },
+      {
+        "line": 634,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{self.compliance_run.id}/\")"
+      },
+      {
+        "line": 648,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{self.compliance_run.id}/\")"
+      },
+      {
+        "line": 655,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{self.compliance_run.id}/\")"
+      },
+      {
+        "line": 703,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{other_compliance_run.id}/\")"
+      },
+      {
+        "line": 711,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{self.compliance_run.id}/\")"
+      },
+      {
+        "line": 721,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{self.compliance_run.id}/\")"
+      },
+      {
+        "line": 731,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{non_existent_id}/\")"
+      },
+      {
+        "line": 751,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{compliance_run.id}/\")"
+      },
+      {
+        "line": 848,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 857,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/?page=1&page_size=2\")"
+      },
+      {
+        "line": 866,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/?status=SUCCEEDED\")"
+      },
+      {
+        "line": 874,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/?asset={self.asset1.id}\")"
+      },
+      {
+        "line": 885,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 893,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/?ordering=created_at\")"
+      },
+      {
+        "line": 926,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 936,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 946,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 969,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 977,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/?page=0\")"
+      },
+      {
+        "line": 984,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/?page_size=0\")"
+      },
+      {
+        "line": 992,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/?asset={self.asset1.id}&status=SUCCEEDED&ordering=-created_at\""
+      },
+      {
+        "line": 1005,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Comprehensive tests for GET /api/v1/compliance/runs/{id}/results/\"\"\""
+      },
+      {
+        "line": 1092,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{self.compliance_run.id}/results/\""
+      },
+      {
+        "line": 1104,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{self.compliance_run.id}/results/\""
+      },
+      {
+        "line": 1115,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{self.compliance_run.id}/results/\""
+      },
+      {
+        "line": 1125,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{self.compliance_run.id}/results/\""
+      },
+      {
+        "line": 1137,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{self.compliance_run.id}/results/\""
+      },
+      {
+        "line": 1148,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{self.compliance_run.id}/results/\""
+      },
+      {
+        "line": 1189,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{other_compliance_run.id}/results/\""
+      },
+      {
+        "line": 1199,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{self.compliance_run.id}/results/\""
+      },
+      {
+        "line": 1209,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{non_existent_id}/results/\")"
+      },
+      {
+        "line": 1238,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{compliance_run.id}/results/\""
+      },
+      {
+        "line": 1286,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 1318,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 1342,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{compliance_run.id}/\")"
+      },
+      {
+        "line": 1381,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f\"/api/v1/compliance/runs/{compliance_run.id}/results/\""
+      },
+      {
+        "line": 1429,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 1450,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 1471,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 1499,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 1537,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 1549,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "list_response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 1568,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      }
+    ],
+    "tests/e2e/test_persona_data_engineer_comprehensive.py": [
+      {
+        "line": 397,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 409,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 431,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f'/api/v1/compliance/runs/{compliance_run_id}/',"
+      },
+      {
+        "line": 456,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/e2e/test_audit_compliance_journeys.py": [
+      {
+        "line": 151,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f'/api/v1/compliance/runs/{self.compliance_run_id}/'"
+      },
+      {
+        "line": 166,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 198,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 220,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f'/api/v1/compliance/runs/{self.compliance_run_id}/'"
+      },
+      {
+        "line": 234,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "f'/api/v1/compliance/runs/{self.compliance_run_id}/'"
+      },
+      {
+        "line": 261,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/e2e/test_compliance_service.py": [
+      {
+        "line": 184,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 236,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get('/api/v1/compliance/runs/')"
+      },
+      {
+        "line": 241,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f'/api/v1/compliance/runs/?asset_id={asset_id1}')"
+      },
+      {
+        "line": 256,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')"
+      }
+    ],
+    "tests/e2e/test_persona_cpo_comprehensive.py": [
+      {
+        "line": 102,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')"
+      },
+      {
+        "line": 111,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 160,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 177,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f'/api/v1/compliance/runs/{fake_id}/')"
+      }
+    ],
+    "tests/e2e/test_complete_user_journeys.py": [
+      {
+        "line": 164,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/e2e/test_rate_limiting_e2e.py": [
+      {
+        "line": 149,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "endpoint = '/api/v1/compliance/runs/'"
+      }
+    ],
+    "tests/e2e/test_contract_first_flow.py": [
+      {
+        "line": 210,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/e2e/conftest.py": [
+      {
+        "line": 972,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.post(\"/api/v1/compliance/runs/\", payload, format=\"json\")"
+      }
+    ],
+    "tests/e2e/test_persona_data_provider.py": [
+      {
+        "line": 256,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\""
+      }
+    ],
+    "tests/e2e/test_data_first_comprehensive.py": [
+      {
+        "line": 500,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 617,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/e2e/test_persona_data_consumer.py": [
+      {
+        "line": 151,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\""
+      }
+    ],
+    "tests/e2e/test_persona_auditor.py": [
+      {
+        "line": 173,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(\"/api/v1/compliance/runs/\")"
+      },
+      {
+        "line": 189,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      },
+      {
+        "line": 237,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"/api/v1/compliance/runs/\","
+      }
+    ],
+    "tests/e2e/test_data_first_flow.py": [
+      {
+        "line": 198,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/regression/test_job_queue.py": [
+      {
+        "line": 352,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/regression/test_api_endpoints.py": [
+      {
+        "line": 597,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test GET /api/v1/compliance/runs/\"\"\""
+      },
+      {
+        "line": 598,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get('/api/v1/compliance/runs/')"
+      },
+      {
+        "line": 603,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test POST /api/v1/compliance/runs/\"\"\""
+      },
+      {
+        "line": 605,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 615,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test GET /api/v1/compliance/runs/{id}/\"\"\""
+      },
+      {
+        "line": 616,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f'/api/v1/compliance/runs/{self.compliance_run.id}/')"
+      }
+    ],
+    "tests/regression/test_integrations.py": [
+      {
+        "line": 165,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 178,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "retrieve_response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')"
+      },
+      {
+        "line": 201,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f'/api/v1/compliance/runs/{compliance_run.id}/')"
+      },
+      {
+        "line": 238,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get('/api/v1/compliance/runs/')"
+      },
+      {
+        "line": 246,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 257,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 650,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "tests/uat/test_user_acceptance_django6.py": [
+      {
+        "line": 218,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "cli/datahub_cli/commands/compliance.py": [
+      {
+        "line": 54,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "# API endpoint: /api/v1/compliance/runs/"
+      },
+      {
+        "line": 55,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "result = api_client.post('compliance/runs/', json_data=data)"
+      },
+      {
+        "line": 87,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "# API endpoint: /api/v1/compliance/runs/{id}/"
+      },
+      {
+        "line": 88,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "data = api_client.get(f'compliance/runs/{compliance_run_id}/')"
+      },
+      {
+        "line": 160,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "# API endpoint: /api/v1/compliance/runs/"
+      },
+      {
+        "line": 161,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "data = api_client.get('compliance/runs/', params=params)"
+      },
+      {
+        "line": 206,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "compliance_runs = api_client.get('compliance/runs/', params={'asset_id': asset_id, 'limit': 1})"
+      }
+    ],
+    "hub/apps/rate_limiting/utils.py": [
+      {
+        "line": 67,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "if '/compliance/runs' in path_lower and method == 'POST':"
+      }
+    ],
+    "hub/apps/compliance/views.py": [
+      {
+        "line": 318,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "GET /api/v1/compliance/runs/{id}/results/"
+      }
+    ],
+    "hub/apps/dq/tests/test_integration_execution.py": [
+      {
+        "line": 191,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 256,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 305,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "hub/apps/tenants/tests/test_tenant_config_compliance_integration.py": [
+      {
+        "line": 67,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.post(\"/api/v1/compliance/runs/\", {"
+      },
+      {
+        "line": 97,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.post(\"/api/v1/compliance/runs/\", {"
+      },
+      {
+        "line": 131,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.post(\"/api/v1/compliance/runs/\", {"
+      },
+      {
+        "line": 156,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.post(\"/api/v1/compliance/runs/\", {"
+      },
+      {
+        "line": 203,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.post(\"/api/v1/compliance/runs/\", {"
+      }
+    ],
+    "hub/apps/compliance/tests/test_urls.py": [
+      {
+        "line": 29,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test that /api/v1/compliance/runs/ resolves to ComplianceRunViewSet.list\"\"\""
+      },
+      {
+        "line": 31,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "self.assertEqual(url, '/api/v1/compliance/runs/')"
+      },
+      {
+        "line": 33,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "resolved = resolve('/api/v1/compliance/runs/')"
+      },
+      {
+        "line": 39,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test that /api/v1/compliance/runs/{id}/ resolves to ComplianceRunViewSet.retrieve\"\"\""
+      },
+      {
+        "line": 59,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "self.assertEqual(url, f'/api/v1/compliance/runs/{compliance_run.id}/')"
+      },
+      {
+        "line": 61,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "resolved = resolve(f'/api/v1/compliance/runs/{compliance_run.id}/')"
+      },
+      {
+        "line": 69,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test that /api/v1/compliance/runs/{id}/results/ resolves to results action\"\"\""
+      },
+      {
+        "line": 89,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "self.assertEqual(url, f'/api/v1/compliance/runs/{compliance_run.id}/results/')"
+      },
+      {
+        "line": 91,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "resolved = resolve(f'/api/v1/compliance/runs/{compliance_run.id}/results/')"
+      },
+      {
+        "line": 136,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "self.assertEqual(list_url, '/api/v1/compliance/runs/')"
+      },
+      {
+        "line": 155,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "self.assertEqual(detail_url, f'/api/v1/compliance/runs/{compliance_run.id}/')"
+      },
+      {
+        "line": 206,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test that list endpoint is accessible via /api/v1/compliance/runs/\"\"\""
+      },
+      {
+        "line": 207,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get('/api/v1/compliance/runs/')"
+      },
+      {
+        "line": 211,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test that create endpoint is accessible via POST /api/v1/compliance/runs/\"\"\""
+      },
+      {
+        "line": 213,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 223,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test that detail endpoint is accessible via /api/v1/compliance/runs/{id}/\"\"\""
+      },
+      {
+        "line": 237,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f'/api/v1/compliance/runs/{compliance_run.id}/')"
+      },
+      {
+        "line": 242,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "\"\"\"Test that results endpoint is accessible via /api/v1/compliance/runs/{id}/results/\"\"\""
+      },
+      {
+        "line": 258,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f'/api/v1/compliance/runs/{compliance_run.id}/results/')"
+      },
+      {
+        "line": 271,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "list_response = self.client.get('/api/v1/compliance/runs/')"
+      },
+      {
+        "line": 276,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 288,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "detail_response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/')"
+      },
+      {
+        "line": 292,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "results_response = self.client.get(f'/api/v1/compliance/runs/{compliance_run_id}/results/')"
+      }
+    ],
+    "hub/apps/compliance/tests/test_risk_score_calculation.py": [
+      {
+        "line": 206,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "response = self.client.get(f\"/api/v1/compliance/runs/{compliance_run.id}/\")"
+      }
+    ],
+    "hub/apps/contracts/tests/test_integration_onboarding.py": [
+      {
+        "line": 189,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      },
+      {
+        "line": 598,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "'/api/v1/compliance/runs/',"
+      }
+    ],
+    "hub/apps/rate_limiting/tests/test_utils.py": [
+      {
+        "line": 28,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "category = get_endpoint_category('/api/v1/compliance/runs/', 'POST')"
+      }
+    ],
+    "sdk/js/src/compliance.ts": [
+      {
+        "line": 140,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "return this.client.post('compliance/runs/', data);"
+      },
+      {
+        "line": 162,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "return this.client.get('compliance/runs/', { params: queryParams });"
+      },
+      {
+        "line": 172,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "return this.client.get(`compliance/runs/${complianceRunId}/`);"
+      },
+      {
+        "line": 185,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "return this.client.get(`compliance/runs/${complianceRunId}/results/`);"
+      }
+    ],
+    "sdk/js/src/__tests__/compliance-api-e2e.test.ts": [
+      {
+        "line": 386,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "// Create a run - this should use /compliance/runs/ endpoint"
+      },
+      {
+        "line": 395,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "// List runs - this should use /compliance/runs/ endpoint"
+      },
+      {
+        "line": 399,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "// Get run - this should use /compliance/runs/{id}/ endpoint"
+      }
+    ],
+    "sdk/js/src/__tests__/compliance-api.test.ts": [
+      {
+        "line": 217,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "// This is verified by checking the method implementations use 'compliance/runs/'"
+      },
+      {
+        "line": 219,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "expect(createMethod).toContain('compliance/runs/');"
+      },
+      {
+        "line": 223,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "expect(listMethod).toContain('compliance/runs/');"
+      },
+      {
+        "line": 227,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "expect(getMethod).toContain('compliance/runs/');"
+      },
+      {
+        "line": 231,
+        "type": "new",
+        "pattern": "compliance/runs",
+        "content": "expect(getResultsMethod).toContain('compliance/runs/');"
+      }
+    ]
+  }
+}

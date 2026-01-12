@@ -10,7 +10,7 @@ These tests verify:
 import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
-from django.test import TestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 from django.conf import settings
 
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
@@ -19,19 +19,15 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
 
 
-class WebSocketReconnectionTest(TestCase):
+class WebSocketReconnectionTest(AsyncWebSocketTestCase):
     """Test WebSocket reconnection logic and health checks."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
+        self.tenant = self.create_unique_tenant()
+        self.user = self.create_unique_user(
+            tenant=self.tenant,
             password="testpass123",
-            tenant=self.tenant
         )
 
     async def test_handle_pong_updates_timestamp(self):

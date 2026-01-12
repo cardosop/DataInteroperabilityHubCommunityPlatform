@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "result": {
+    "id": "deleted-dataset-1",
+    "name": "deleted-dataset-1",
+    "state": "deleted"
+  }
+}
+

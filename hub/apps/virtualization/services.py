@@ -20,6 +20,7 @@ from hub.apps.virtualization.models import (
     QueryExecutionStatus,
     QueryExecutionMode,
 )
+from hub.apps.virtualization.business_rules import QueryExecutionBusinessRules
 from hub.apps.virtualization.metrics import (
     virtualization_dataset_created_total,
     virtualization_dataset_creation_duration_seconds,
@@ -366,9 +367,16 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         sources: Optional[List[Dict[str, Any]]],
         tenant_id: str
     ) -> None:
-        from hub.apps.assets.models import Asset
+        from hub.apps.assets.models import Asset, AssetSourceType, ExternalResourceReference
+        from hub.apps.integrations.models import MarketplaceConnection
+        from hub.apps.tenants.models import Tenant
         """
         Validate connectivity to data sources.
+
+        Supports:
+        - Traditional sources: postgresql, mysql, sqlserver, sparql, rest, graphql, s3, minio
+        - Federated asset sources: {"type": "federated_asset", "asset_id": "uuid", "query": "SELECT * FROM ..."}
+        - External resource sources: {"type": "external_resource", "resource_id": "uuid", "asset_id": "uuid"}
 
         Args:
             sources: List of source configurations
@@ -382,6 +390,13 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
 
         if len(sources) == 0:
             return  # Empty sources list is valid
+
+        # Get tenant object for cross-tenant access validation
+        from hub.apps.tenants.models import Tenant
+        try:
+            tenant = Tenant.objects.get(id=tenant_id)
+        except Tenant.DoesNotExist:
+            raise NotFoundError(f"Tenant with id {tenant_id} not found")
 
         # Test connectivity to each source
         for i, source_config in enumerate(sources):
@@ -398,7 +413,21 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     code="INVALID_SOURCE_CONFIG"
                 )
 
-            # Test connection using connector factory
+            # Handle federated asset sources
+            if source_type == "federated_asset":
+                self._validate_federated_asset_source(
+                    source_config, tenant, source_index=i
+                )
+                continue  # Skip traditional connectivity check
+
+            # Handle external resource sources
+            if source_type == "external_resource":
+                self._validate_external_resource_source(
+                    source_config, tenant, source_index=i
+                )
+                continue  # Skip traditional connectivity check
+
+            # Test connection using connector factory for traditional sources
             try:
                 # Import connector factory
                 import sys
@@ -455,6 +484,205 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     code="SOURCE_CONNECTIVITY_ERROR",
                     details={"source_index": i, "source_type": source_type, "error": str(e)}
                 ) from e
+
+    def _validate_federated_asset_source(
+        self,
+        source_config: Dict[str, Any],
+        tenant,
+        source_index: int = 0
+    ) -> None:
+        """
+        Validate federated asset source configuration.
+
+        Args:
+            source_config: Source configuration dict with type="federated_asset"
+            tenant: Tenant object for access validation
+            source_index: Source index for error messages
+
+        Raises:
+            ValidationError: If validation fails
+        """
+        from hub.apps.assets.models import Asset, AssetSourceType
+        from hub.apps.tenants.models import Tenant
+        import uuid
+
+        asset_id = source_config.get("asset_id")
+        if not asset_id:
+            raise ValidationError(
+                f"Federated asset source at index {source_index} must have 'asset_id' field",
+                code="MISSING_ASSET_ID",
+                details={"source_index": source_index}
+            )
+
+        # Validate asset_id is a valid UUID
+        try:
+            asset_uuid = uuid.UUID(str(asset_id))
+        except (ValueError, TypeError):
+            raise ValidationError(
+                f"Invalid asset_id format at source index {source_index}: {asset_id}",
+                code="INVALID_ASSET_ID",
+                details={"source_index": source_index, "asset_id": asset_id}
+            )
+
+        # Get asset
+        try:
+            asset = Asset.objects.select_related('tenant').get(id=asset_uuid)
+        except Asset.DoesNotExist:
+            raise ValidationError(
+                f"Federated asset source at index {source_index} references non-existent asset: {asset_id}",
+                code="ASSET_NOT_FOUND",
+                details={"source_index": source_index, "asset_id": str(asset_id)}
+            )
+
+        # Validate asset is FEDERATED type
+        if asset.source_type != AssetSourceType.FEDERATED:
+            raise ValidationError(
+                f"Asset {asset_id} at source index {source_index} is not a federated asset (source_type: {asset.source_type})",
+                code="INVALID_ASSET_TYPE",
+                details={
+                    "source_index": source_index,
+                    "asset_id": str(asset.id),
+                    "asset_name": asset.name,
+                    "source_type": asset.source_type
+                }
+            )
+
+        # Validate cross-tenant access permissions
+        self._validate_cross_tenant_source_access(asset, str(tenant.id), source_index=source_index)
+
+        # Validate query is provided (optional but recommended)
+        query = source_config.get("query")
+        if query and not isinstance(query, str):
+            raise ValidationError(
+                f"Query field at source index {source_index} must be a string",
+                code="INVALID_QUERY_TYPE",
+                details={"source_index": source_index}
+            )
+
+        logger.info(
+            f"Federated asset source validated at index {source_index}",
+            extra={
+                "source_index": source_index,
+                "asset_id": str(asset.id),
+                "asset_name": asset.name,
+                "tenant_id": str(tenant.id)
+            }
+        )
+
+    def _validate_external_resource_source(
+        self,
+        source_config: Dict[str, Any],
+        tenant,
+        source_index: int = 0
+    ) -> None:
+        """
+        Validate external resource source configuration.
+
+        Args:
+            source_config: Source configuration dict with type="external_resource"
+            tenant: Tenant object for access validation
+            source_index: Source index for error messages
+
+        Raises:
+            ValidationError: If validation fails
+        """
+        from hub.apps.assets.models import Asset, AssetSourceType, ExternalResourceReference
+        from hub.apps.tenants.models import Tenant
+        import uuid
+
+        resource_id = source_config.get("resource_id")
+        asset_id = source_config.get("asset_id")
+
+        if not resource_id:
+            raise ValidationError(
+                f"External resource source at index {source_index} must have 'resource_id' field",
+                code="MISSING_RESOURCE_ID",
+                details={"source_index": source_index}
+            )
+
+        if not asset_id:
+            raise ValidationError(
+                f"External resource source at index {source_index} must have 'asset_id' field",
+                code="MISSING_ASSET_ID",
+                details={"source_index": source_index}
+            )
+
+        # Validate UUIDs
+        try:
+            asset_uuid = uuid.UUID(str(asset_id))
+        except (ValueError, TypeError):
+            raise ValidationError(
+                f"Invalid asset_id format at source index {source_index}: {asset_id}",
+                code="INVALID_ASSET_ID",
+                details={"source_index": source_index, "asset_id": asset_id}
+            )
+
+        # Get asset
+        try:
+            asset = Asset.objects.select_related('tenant').get(id=asset_uuid)
+        except Asset.DoesNotExist:
+            raise ValidationError(
+                f"External resource source at index {source_index} references non-existent asset: {asset_id}",
+                code="ASSET_NOT_FOUND",
+                details={"source_index": source_index, "asset_id": str(asset_id)}
+            )
+
+        # Validate asset is FEDERATED type
+        if asset.source_type != AssetSourceType.FEDERATED:
+            raise ValidationError(
+                f"Asset {asset_id} at source index {source_index} is not a federated asset (source_type: {asset.source_type})",
+                code="INVALID_ASSET_TYPE",
+                details={
+                    "source_index": source_index,
+                    "asset_id": str(asset.id),
+                    "asset_name": asset.name,
+                    "source_type": asset.source_type
+                }
+            )
+
+        # Validate cross-tenant access permissions
+        self._validate_cross_tenant_source_access(asset, str(tenant.id), source_index=source_index)
+
+        # Validate external resource exists and belongs to asset
+        try:
+            external_resource = ExternalResourceReference.objects.get(
+                asset=asset,
+                resource_id=str(resource_id)
+            )
+        except ExternalResourceReference.DoesNotExist:
+            raise ValidationError(
+                f"External resource '{resource_id}' not found for asset {asset_id} at source index {source_index}",
+                code="EXTERNAL_RESOURCE_NOT_FOUND",
+                details={
+                    "source_index": source_index,
+                    "asset_id": str(asset.id),
+                    "resource_id": str(resource_id)
+                }
+            )
+
+        # Validate resource can be accessed (check data_strategy)
+        if not asset.can_download_resource(str(resource_id)):
+            raise ValidationError(
+                f"External resource '{resource_id}' cannot be downloaded for asset {asset_id} "
+                f"(data_strategy: {asset.data_strategy}) at source index {source_index}",
+                code="RESOURCE_NOT_ACCESSIBLE",
+                details={
+                    "source_index": source_index,
+                    "asset_id": str(asset.id),
+                    "resource_id": str(resource_id),
+                    "data_strategy": asset.data_strategy
+                }
+            )
+
+        logger.info(
+            f"External resource source validated at index {source_index}",
+            extra={
+                "source_index": source_index,
+                "asset_id": str(asset.id),
+                "resource_id": str(resource_id),
+                "tenant_id": str(tenant.id)
+            }
+        )
 
     def _validate_compliance_for_sources(
         self,
@@ -1915,12 +2143,17 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                     query_type=query_type_str
                 ).inc()
 
-        # Determine execution mode if not provided
+        # Determine execution mode if not provided using QueryExecutionBusinessRules
         if execution_mode is None:
-            execution_mode = self._determine_execution_mode(
-                virtual_dataset,
-                parameters,
-                force_async
+            execution_rules = QueryExecutionBusinessRules(
+                tenant_id=effective_tenant_id,
+                user_id=effective_user_id
+            )
+            execution_mode = execution_rules.select_execution_mode(
+                virtual_dataset=virtual_dataset,
+                parameters=parameters,
+                force_async=force_async,
+                raise_on_error=False
             )
 
         # Initialize workflow engine and registry
@@ -2158,46 +2391,6 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             result = result.replace(f"%({key})s", str(value))
 
         return result
-
-    def _determine_execution_mode(
-        self,
-        virtual_dataset: VirtualDataset,
-        parameters: Dict[str, Any],
-        force_async: bool
-    ) -> QueryExecutionMode:
-        """
-        Determine execution mode based on query characteristics.
-
-        Args:
-            virtual_dataset: VirtualDataset instance
-            parameters: Query parameters
-            force_async: Whether to force async execution
-
-        Returns:
-            QueryExecutionMode
-        """
-        if force_async:
-            return QueryExecutionMode.ASYNC  # type: ignore
-
-        # Simple heuristics for sync vs async
-        # - Single source, simple query -> SYNC
-        # - Multiple sources, complex query -> ASYNC
-        # - Large result set expected -> ASYNC
-
-        source_count = len(virtual_dataset.sources) if virtual_dataset.sources else 0
-
-        # If no sources or single source with simple query, use SYNC
-        if source_count <= 1:
-            # Check query complexity (simple heuristic)
-            query_upper = virtual_dataset.query.upper()
-            complex_keywords = ['JOIN', 'UNION', 'GROUP BY', 'ORDER BY', 'HAVING', 'SUBQUERY']
-            is_complex = any(keyword in query_upper for keyword in complex_keywords)
-
-            if not is_complex:
-                return QueryExecutionMode.SYNC  # type: ignore
-
-        # Default to ASYNC for complex queries or multiple sources
-        return QueryExecutionMode.ASYNC  # type: ignore
 
     def _execute_query_sync(
         self,
@@ -2935,6 +3128,11 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         """
         Execute query against a single source.
 
+        Supports:
+        - Traditional sources: postgresql, mysql, sqlserver, sparql, rest, graphql, s3, minio
+        - Federated asset sources: {"type": "federated_asset", "asset_id": "uuid", "query": "SELECT * FROM ..."}
+        - External resource sources: {"type": "external_resource", "resource_id": "uuid", "asset_id": "uuid"}
+
         Args:
             query: Query string
             query_type: Query type
@@ -2948,6 +3146,19 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         """
         source_type = source.get("type", "").lower()
 
+        # Handle federated asset sources
+        if source_type == "federated_asset":
+            return self._execute_query_against_federated_asset(
+                query, query_type, source, parameters, timeout_seconds, source_index
+            )
+
+        # Handle external resource sources
+        if source_type == "external_resource":
+            return self._execute_query_against_external_resource(
+                query, query_type, source, parameters, timeout_seconds, source_index
+            )
+
+        # Traditional source handling
         if query_type == QueryType.SQL:
             # Execute SQL query against database
             if source_type in ["postgresql", "mysql", "sqlserver", "mssql"]:
@@ -2983,6 +3194,427 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 f"Unsupported query type: {query_type}",
                 code="UNSUPPORTED_QUERY_TYPE"
             )
+
+    def _execute_query_against_federated_asset(
+        self,
+        query: str,
+        query_type: QueryType,
+        source: Dict[str, Any],
+        parameters: Dict[str, Any],
+        timeout_seconds: int,
+        source_index: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Execute query against a federated asset source.
+
+        For federated assets, we can:
+        1. Query metadata-only (if data_strategy is METADATA_ONLY)
+        2. Query downloaded resources (if datasets exist)
+        3. Download and query external resources on-demand (if data_strategy allows)
+
+        Args:
+            query: Query string (can be overridden by source.query)
+            query_type: Query type
+            source: Source configuration with type="federated_asset"
+            parameters: Query parameters
+            timeout_seconds: Timeout in seconds
+            source_index: Source index (for logging)
+
+        Returns:
+            Result dictionary with data and metadata
+        """
+        from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy
+        import uuid
+
+        asset_id = source.get("asset_id")
+        if not asset_id:
+            raise ValidationError(
+                f"Federated asset source at index {source_index} must have 'asset_id' field",
+                code="MISSING_ASSET_ID",
+                details={"source_index": source_index}
+            )
+
+        # Get asset
+        try:
+            asset = Asset.objects.select_related('tenant').get(id=uuid.UUID(str(asset_id)))
+        except Asset.DoesNotExist:
+            raise ValidationError(
+                f"Federated asset not found: {asset_id}",
+                code="ASSET_NOT_FOUND",
+                details={"source_index": source_index, "asset_id": str(asset_id)}
+            )
+
+        # Use source-specific query if provided, otherwise use dataset query
+        source_query = source.get("query") or query
+
+        # Check if asset has downloaded datasets
+        datasets = asset.datasets.all()
+        if datasets.exists():
+            # Asset has downloaded resources - query them directly
+            # Get the latest dataset
+            latest_dataset = datasets.order_by('-version').first()
+            if latest_dataset and latest_dataset.file:
+                # Read file content and execute query
+                from hub.apps.files.storage import S3StorageClient
+                storage_client = S3StorageClient()
+                try:
+                    file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
+                    file_format = latest_dataset.format or "CSV"
+
+                    # Execute query against file content
+                    return self._execute_query_against_file_content(
+                        source_query, query_type, file_content, file_format, parameters, timeout_seconds
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to query downloaded dataset for federated asset {asset_id}: {e}",
+                        extra={"asset_id": str(asset.id), "source_index": source_index, "error": str(e)},
+                        exc_info=True
+                    )
+                    raise ValidationError(
+                        f"Failed to query federated asset {asset_id}: {str(e)}",
+                        code="FEDERATED_ASSET_QUERY_FAILED",
+                        details={"source_index": source_index, "asset_id": str(asset.id), "error": str(e)}
+                    ) from e
+
+        # No downloaded datasets - check if we can query metadata or download on-demand
+        if asset.data_strategy == DataStrategy.METADATA_ONLY:
+            # Metadata-only queries - return schema/metadata information
+            return self._execute_metadata_only_query(asset, source_query, query_type, source_index)
+
+        # Try to download and query external resources on-demand
+        if asset.has_external_resources():
+            # Get first external resource (or use resource_id from source if specified)
+            resource_id = source.get("resource_id")
+            if resource_id:
+                external_resources = asset.external_resource_references.filter(resource_id=str(resource_id))
+            else:
+                external_resources = asset.external_resource_references.all()
+
+            if external_resources.exists():
+                external_resource = external_resources.first()
+                # Download resource on-demand
+                try:
+                    file_path, file_content = asset.download_external_resource(external_resource.resource_id)
+                    file_format = external_resource.format or "CSV"
+
+                    # Execute query against downloaded content
+                    result = self._execute_query_against_file_content(
+                        source_query, query_type, file_content, file_format, parameters, timeout_seconds
+                    )
+
+                    # Cleanup temp file
+                    try:
+                        import os
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                    except Exception:
+                        pass
+
+                    return result
+                except Exception as e:
+                    logger.error(
+                        f"Failed to download and query external resource for federated asset {asset_id}: {e}",
+                        extra={
+                            "asset_id": str(asset.id),
+                            "resource_id": external_resource.resource_id,
+                            "source_index": source_index,
+                            "error": str(e)
+                        },
+                        exc_info=True
+                    )
+                    raise ValidationError(
+                        f"Failed to download external resource for federated asset {asset_id}: {str(e)}",
+                        code="EXTERNAL_RESOURCE_DOWNLOAD_FAILED",
+                        details={
+                            "source_index": source_index,
+                            "asset_id": str(asset.id),
+                            "resource_id": external_resource.resource_id,
+                            "error": str(e)
+                        }
+                    ) from e
+
+        # No resources available
+        raise ValidationError(
+            f"Federated asset {asset_id} has no downloadable resources and data_strategy is {asset.data_strategy}",
+            code="NO_RESOURCES_AVAILABLE",
+            details={
+                "source_index": source_index,
+                "asset_id": str(asset.id),
+                "data_strategy": asset.data_strategy
+            }
+        )
+
+    def _execute_query_against_external_resource(
+        self,
+        query: str,
+        query_type: QueryType,
+        source: Dict[str, Any],
+        parameters: Dict[str, Any],
+        timeout_seconds: int,
+        source_index: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Execute query against an external resource source.
+
+        Downloads the external resource on-demand and executes the query against it.
+
+        Args:
+            query: Query string
+            query_type: Query type
+            source: Source configuration with type="external_resource"
+            parameters: Query parameters
+            timeout_seconds: Timeout in seconds
+            source_index: Source index (for logging)
+
+        Returns:
+            Result dictionary with data and metadata
+        """
+        from hub.apps.assets.models import Asset, ExternalResourceReference
+        import uuid
+
+        asset_id = source.get("asset_id")
+        resource_id = source.get("resource_id")
+
+        if not asset_id or not resource_id:
+            raise ValidationError(
+                f"External resource source at index {source_index} must have both 'asset_id' and 'resource_id' fields",
+                code="MISSING_RESOURCE_CONFIG",
+                details={"source_index": source_index}
+            )
+
+        # Get asset
+        try:
+            asset = Asset.objects.select_related('tenant').get(id=uuid.UUID(str(asset_id)))
+        except Asset.DoesNotExist:
+            raise ValidationError(
+                f"Asset not found: {asset_id}",
+                code="ASSET_NOT_FOUND",
+                details={"source_index": source_index, "asset_id": str(asset_id)}
+            )
+
+        # Download external resource on-demand
+        try:
+            file_path, file_content = asset.download_external_resource(str(resource_id))
+        except Exception as e:
+            logger.error(
+                f"Failed to download external resource {resource_id} for asset {asset_id}: {e}",
+                extra={
+                    "asset_id": str(asset.id),
+                    "resource_id": str(resource_id),
+                    "source_index": source_index,
+                    "error": str(e)
+                },
+                exc_info=True
+            )
+            raise ValidationError(
+                f"Failed to download external resource {resource_id}: {str(e)}",
+                code="EXTERNAL_RESOURCE_DOWNLOAD_FAILED",
+                details={
+                    "source_index": source_index,
+                    "asset_id": str(asset.id),
+                    "resource_id": str(resource_id),
+                    "error": str(e)
+                }
+            ) from e
+
+        # Get resource format
+        try:
+            external_resource = ExternalResourceReference.objects.get(
+                asset=asset, resource_id=str(resource_id)
+            )
+            file_format = external_resource.format or "CSV"
+        except ExternalResourceReference.DoesNotExist:
+            file_format = "CSV"  # Default format
+
+        try:
+            # Execute query against downloaded content
+            result = self._execute_query_against_file_content(
+                query, query_type, file_content, file_format, parameters, timeout_seconds
+            )
+
+            # Cleanup temp file
+            try:
+                import os
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception:
+                pass
+
+            return result
+        except Exception as e:
+            # Cleanup temp file on error
+            try:
+                import os
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception:
+                pass
+            raise
+
+    def _execute_query_against_file_content(
+        self,
+        query: str,
+        query_type: QueryType,
+        file_content: bytes,
+        file_format: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: int
+    ) -> Dict[str, Any]:
+        """
+        Execute query against file content in memory.
+
+        Supports CSV, JSON, and PARQUET formats.
+
+        Args:
+            query: Query string
+            query_type: Query type
+            file_content: File content as bytes
+            file_format: File format (CSV, JSON, PARQUET)
+            parameters: Query parameters
+            timeout_seconds: Timeout in seconds
+
+        Returns:
+            Result dictionary with data and metadata
+        """
+        import io
+        import pandas as pd
+
+        # Parse file content based on format
+        if file_format.upper() == "CSV":
+            try:
+                df = pd.read_csv(io.BytesIO(file_content))
+            except Exception as e:
+                raise ValidationError(
+                    f"Failed to parse CSV file: {str(e)}",
+                    code="CSV_PARSE_ERROR",
+                    details={"error": str(e)}
+                ) from e
+        elif file_format.upper() == "JSON":
+            try:
+                import json
+                data = json.loads(file_content.decode('utf-8'))
+                # Handle both list and dict JSON
+                if isinstance(data, list):
+                    df = pd.DataFrame(data)
+                elif isinstance(data, dict):
+                    # If dict, try to find list values
+                    if any(isinstance(v, list) for v in data.values()):
+                        # Use first list value
+                        for key, value in data.items():
+                            if isinstance(value, list):
+                                df = pd.DataFrame(value)
+                                break
+                    else:
+                        # Single record dict
+                        df = pd.DataFrame([data])
+                else:
+                    raise ValidationError("Unsupported JSON structure", code="INVALID_JSON_STRUCTURE")
+            except Exception as e:
+                raise ValidationError(
+                    f"Failed to parse JSON file: {str(e)}",
+                    code="JSON_PARSE_ERROR",
+                    details={"error": str(e)}
+                ) from e
+        elif file_format.upper() == "PARQUET":
+            try:
+                df = pd.read_parquet(io.BytesIO(file_content))
+            except Exception as e:
+                raise ValidationError(
+                    f"Failed to parse PARQUET file: {str(e)}",
+                    code="PARQUET_PARSE_ERROR",
+                    details={"error": str(e)}
+                ) from e
+        else:
+            raise ValidationError(
+                f"Unsupported file format for query execution: {file_format}",
+                code="UNSUPPORTED_FILE_FORMAT",
+                details={"file_format": file_format}
+            )
+
+        # For SQL queries, use pandas query method
+        if query_type == QueryType.SQL:
+            try:
+                # Apply parameters to query
+                parameterized_query = self._apply_parameters(query, parameters)
+                # Execute pandas query
+                result_df = df.query(parameterized_query.replace("SELECT *", "").strip()) if "SELECT *" in parameterized_query.upper() else df
+                # Convert to list of dictionaries
+                data = result_df.to_dict('records')
+                columns = list(result_df.columns)
+            except Exception as e:
+                raise ValidationError(
+                    f"Failed to execute query against file content: {str(e)}",
+                    code="QUERY_EXECUTION_ERROR",
+                    details={"error": str(e), "query": query[:100]}
+                ) from e
+        else:
+            # For non-SQL queries, return all data
+            data = df.to_dict('records')
+            columns = list(df.columns)
+
+        return {
+            "data": data,
+            "columns": columns,
+            "row_count": len(data),
+            "source_type": f"file_{file_format.lower()}"
+        }
+
+    def _execute_metadata_only_query(
+        self,
+        asset: "Asset",
+        query: str,
+        query_type: QueryType,
+        source_index: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Execute metadata-only query against federated asset.
+
+        Returns schema and metadata information without downloading data.
+
+        Args:
+            asset: Federated asset
+            query: Query string (may contain metadata queries)
+            query_type: Query type
+            source_index: Source index (for logging)
+
+        Returns:
+            Result dictionary with metadata/schema information
+        """
+        # Extract schema from ODCS contract if available
+        schema_info = {}
+        odcs_contracts = asset.contracts.filter(original_spec_type="ODCS")
+        if odcs_contracts.exists():
+            odcs_contract = odcs_contracts.first()
+            if odcs_contract and odcs_contract.hub_contract_json:
+                schema_info = odcs_contract.hub_contract_json.get("schema", {})
+
+        # Get external resource metadata
+        external_resources = []
+        if asset.has_external_resources():
+            for ext_res in asset.external_resource_references.all():
+                external_resources.append({
+                    "resource_id": ext_res.resource_id,
+                    "name": ext_res.name,
+                    "url": ext_res.url,
+                    "format": ext_res.format,
+                    "size_bytes": ext_res.size_bytes,
+                })
+
+        # Return metadata result
+        return {
+            "data": [{
+                "asset_id": str(asset.id),
+                "asset_name": asset.name,
+                "data_strategy": asset.data_strategy,
+                "schema": schema_info,
+                "external_resources": external_resources,
+                "resource_count": len(external_resources)
+            }],
+            "columns": ["asset_id", "asset_name", "data_strategy", "schema", "external_resources", "resource_count"],
+            "row_count": 1,
+            "source_type": "federated_asset_metadata"
+        }
 
     def _execute_sql_query(
         self,

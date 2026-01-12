@@ -84,10 +84,10 @@ All REST endpoints follow consistent standards:
 - `GET /api/v1/dq/runs/{id}/results/` - Get DQ results
 
 #### Compliance
-- `GET /api/v1/compliance/scans/` - List compliance scans
-- `POST /api/v1/compliance/scans/` - Create compliance scan
-- `GET /api/v1/compliance/scans/{id}/` - Get compliance scan
-- `GET /api/v1/compliance/scans/{id}/report/` - Get compliance report
+- `GET /api/v1/compliance/runs/` - List compliance runs
+- `POST /api/v1/compliance/runs/` - Create compliance run
+- `GET /api/v1/compliance/runs/{id}/` - Get compliance run
+- `GET /api/v1/compliance/runs/{id}/results/` - Get compliance run results
 
 #### Marketplace
 - `GET /api/v1/marketplace/listings/` - List marketplace listings

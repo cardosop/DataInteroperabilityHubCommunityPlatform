@@ -827,3 +827,493 @@ def parse_odps_error(response_data: Any) -> ODPSError:
         recovery_strategy=recovery_strategy,
         context=context if isinstance(context, dict) else {},
     )
+
+
+# Marketplace-specific error classes
+class MarketplaceError(DataHubError):
+    """
+    Base exception class for all marketplace-related errors in the SDK.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MARKETPLACE_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize marketplace error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+
+
+class MarketplaceValidationError(MarketplaceError):
+    """
+    Exception raised when marketplace operation validation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MARKETPLACE_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        field_path: Optional[str] = None,
+        expected: Optional[Any] = None,
+        actual: Optional[Any] = None,
+    ):
+        """
+        Initialize marketplace validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        if details is None:
+            details = {}
+        if "context" not in details:
+            details["context"] = context
+        else:
+            details["context"].update(context)
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+        )
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class MarketplaceConnectionError(MarketplaceError):
+    """
+    Exception raised when marketplace connection operations fail.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MARKETPLACE_CONNECTION_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize marketplace connection error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+        )
+
+
+# BaaS-specific error classes
+class BaaSError(DataHubError):
+    """
+    Base exception class for all BaaS-related errors in the SDK.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "BAAS_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize BaaS error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+
+
+class BaaSValidationError(BaaSError):
+    """
+    Exception raised when BaaS operation validation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "BAAS_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        field_path: Optional[str] = None,
+        expected: Optional[Any] = None,
+        actual: Optional[Any] = None,
+    ):
+        """
+        Initialize BaaS validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        if details is None:
+            details = {}
+        if "context" not in details:
+            details["context"] = context
+        else:
+            details["context"].update(context)
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+        )
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+# ODH ML-specific error classes
+class ODHMLError(DataHubError):
+    """
+    Base exception class for all ODH ML-related errors in the SDK.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODH_ML_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize ODH ML error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+
+
+class ODHMLValidationError(ODHMLError):
+    """
+    Exception raised when ODH ML operation validation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODH_ML_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        field_path: Optional[str] = None,
+        expected: Optional[Any] = None,
+        actual: Optional[Any] = None,
+    ):
+        """
+        Initialize ODH ML validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        if details is None:
+            details = {}
+        if "context" not in details:
+            details["context"] = context
+        else:
+            details["context"].update(context)
+
+        super().__init__(message, error_code, http_status, request_id, details)
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class ODHMLNotFoundError(ODHMLError):
+    """
+    Exception raised when ODH ML resource is not found.
+    """
+
+    def __init__(
+        self,
+        message: str = "ODH ML resource not found",
+        error_code: str = "ODH_ML_NOT_FOUND",
+        http_status: int = 404,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize ODH ML not found error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+class ODHMLConflictError(ODHMLError):
+    """
+    Exception raised when ODH ML operation conflicts with existing state.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODH_ML_CONFLICT",
+        http_status: int = 409,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize ODH ML conflict error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+# Model Serving-specific error classes
+class ModelServingError(DataHubError):
+    """
+    Base exception class for all model serving-related errors in the SDK.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MODEL_SERVING_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize model serving error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+
+
+class ModelServingValidationError(ModelServingError):
+    """
+    Exception raised when model serving operation validation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MODEL_SERVING_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        field_path: Optional[str] = None,
+        expected: Optional[Any] = None,
+        actual: Optional[Any] = None,
+    ):
+        """
+        Initialize model serving validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        if details is None:
+            details = {}
+        if "context" not in details:
+            details["context"] = context
+        else:
+            details["context"].update(context)
+
+        super().__init__(message, error_code, http_status, request_id, details)
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class ModelServingNotFoundError(ModelServingError):
+    """
+    Exception raised when model serving resource is not found.
+    """
+
+    def __init__(
+        self,
+        message: str = "Model serving resource not found",
+        error_code: str = "MODEL_SERVING_NOT_FOUND",
+        http_status: int = 404,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize model serving not found error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+class ModelServingDeploymentError(ModelServingError):
+    """
+    Exception raised when model deployment operation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MODEL_SERVING_DEPLOYMENT_ERROR",
+        http_status: int = 500,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize model serving deployment error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+class ABTestError(ModelServingError):
+    """
+    Exception raised when A/B testing operation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "AB_TEST_ERROR",
+        http_status: int = 400,
+        request_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Initialize A/B test error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)

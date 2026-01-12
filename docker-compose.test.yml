@@ -43,22 +43,24 @@ services:
       -c log_duration=on
       -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
 
-  # Redis for Testing (Job Queue and Event Bus)
-  redis-test:
+  # Redis Cache Instance for Testing - Response caching, contract caching, lineage caching
+  redis-cache-test:
     image: redis:7-alpine
-    container_name: hub-test-redis
+    container_name: hub-test-redis-cache
     command: >
       redis-server
-      --appendonly yes
-      --maxmemory ${REDIS_MAX_MEMORY:-1gb}
-      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --maxmemory ${REDIS_CACHE_MAX_MEMORY:-512mb}
+      --maxmemory-policy allkeys-lru
       --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_TEST_PORT:-6380}:6379"
+      - "${REDIS_CACHE_TEST_PORT:-6379}:6379"
     volumes:
-      - redis-test-data:/data
+      - redis-cache-test-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -68,8 +70,102 @@ services:
     networks:
       - hub-test-net
     environment:
-      - REDIS_MAX_MEMORY=${REDIS_MAX_MEMORY:-1gb}
-      - REDIS_MAXMEMORY_POLICY=${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+      - REDIS_MAX_MEMORY=${REDIS_CACHE_MAX_MEMORY:-512mb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+      - ENVIRONMENT=test
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+
+  # Redis Queue Instance for Testing - Job queues (RQ)
+  redis-queue-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-queue
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_QUEUE_MAX_MEMORY:-512mb}
+      --maxmemory-policy noeviction
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_QUEUE_TEST_PORT:-6380}:6379"
+    volumes:
+      - redis-queue-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - hub-test-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_QUEUE_MAX_MEMORY:-512mb}
+      - REDIS_MAXMEMORY_POLICY=noeviction
+      - ENVIRONMENT=test
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+
+  # Redis Events Instance for Testing - Event bus (Pub/Sub, Streams)
+  redis-events-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-events
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_EVENTS_MAX_MEMORY:-512mb}
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_EVENTS_TEST_PORT:-6381}:6379"
+    volumes:
+      - redis-events-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - hub-test-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_EVENTS_MAX_MEMORY:-512mb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+      - ENVIRONMENT=test
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+
+  # Redis Channels Instance for Testing - WebSocket channels (Django Channels)
+  redis-channels-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-channels
+    command: >
+      redis-server
+      --maxmemory ${REDIS_CHANNELS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_CHANNELS_TEST_PORT:-6382}:6379"
+    volumes:
+      - redis-channels-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - hub-test-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_CHANNELS_MAX_MEMORY:-256mb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
       - ENVIRONMENT=test
       - DEBUG=True
       - LOG_LEVEL=DEBUG
@@ -290,7 +386,13 @@ services:
     depends_on:
       postgres-test:
         condition: service_healthy
-      redis-test:
+      redis-cache-test:
+        condition: service_healthy
+      redis-queue-test:
+        condition: service_healthy
+      redis-events-test:
+        condition: service_healthy
+      redis-channels-test:
         condition: service_healthy
       minio-test:
         condition: service_healthy
@@ -353,7 +455,13 @@ services:
     depends_on:
       postgres-test:
         condition: service_healthy
-      redis-test:
+      redis-cache-test:
+        condition: service_healthy
+      redis-queue-test:
+        condition: service_healthy
+      redis-events-test:
+        condition: service_healthy
+      redis-channels-test:
         condition: service_healthy
       api-service-test:
         condition: service_healthy
@@ -443,7 +551,13 @@ services:
 volumes:
   postgres-test-data:
     driver: local
-  redis-test-data:
+  redis-cache-test-data:
+    driver: local
+  redis-queue-test-data:
+    driver: local
+  redis-events-test-data:
+    driver: local
+  redis-channels-test-data:
     driver: local
   minio-test-data:
     driver: local

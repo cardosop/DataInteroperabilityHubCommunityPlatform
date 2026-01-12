@@ -225,7 +225,7 @@ class EnhancedContractNormalizationE2ETest(E2ETestBase):
         
         # Update contract
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{contract_id}/',
+            f'/api/v1/contracts/{contract_id}/',
             {'original_raw': json.dumps(updated_contract)},
             format='json'
         )

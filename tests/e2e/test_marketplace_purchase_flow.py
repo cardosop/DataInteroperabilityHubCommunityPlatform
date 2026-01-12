@@ -161,7 +161,7 @@ class MarketplacePurchaseE2ETest(TestCase):
         # Step 10: Consumer can access asset data
         # (In real flow, this would be via asset download/access endpoints)
         asset_access_response = self.consumer_client.get(
-            f'/api/v1/assets/assets/{self.asset.id}/'
+            f'/api/v1/assets/{self.asset.id}/'
         )
         # May return 404 if asset access requires entitlement check in view
         # For E2E test, we verify the entitlement exists

@@ -65,10 +65,10 @@ class RESTAPIE2ETest(E2ETestBase):
         # Verify key endpoints are documented
         expected_paths = [
             '/api/v1/auth/login/',
-            '/api/v1/assets/assets/',
-            '/api/v1/contracts/contracts/',
-            '/api/v1/datasets/datasets/',
-            '/api/v1/files/files/',
+            '/api/v1/assets/',
+            '/api/v1/contracts/',
+            '/api/v1/datasets/',
+            '/api/v1/files/',
         ]
         
         for path in expected_paths:
@@ -135,10 +135,10 @@ class RESTAPIE2ETest(E2ETestBase):
         """Test API versioning is consistent"""
         # All endpoints should be under /api/v1/
         endpoints = [
-            '/api/v1/assets/assets/',
-            '/api/v1/contracts/contracts/',
-            '/api/v1/datasets/datasets/',
-            '/api/v1/files/files/',
+            '/api/v1/assets/',
+            '/api/v1/contracts/',
+            '/api/v1/datasets/',
+            '/api/v1/files/',
         ]
         
         for endpoint in endpoints:

@@ -56,7 +56,7 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.other_user)
         
         # Try to access asset from other tenant (should fail)
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id1}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id1}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         
         # Create asset in other tenant (user is already authenticated as other_user)
@@ -66,7 +66,7 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.user)
         
         # Try to access other tenant's asset (should fail)
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id2}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id2}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
     
     def test_contract_tenant_isolation(self):
@@ -82,7 +82,7 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.other_user)
         
         # Try to access contract from other tenant (should fail)
-        response = self.client.get(f'/api/v1/contracts/contracts/{contract_id1}/')
+        response = self.client.get(f'/api/v1/contracts/{contract_id1}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
     
     def test_dataset_tenant_isolation(self):
@@ -101,7 +101,7 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.other_user)
         
         # Try to access dataset from other tenant (should fail)
-        response = self.client.get(f'/api/v1/datasets/datasets/{dataset_id1}/')
+        response = self.client.get(f'/api/v1/datasets/{dataset_id1}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
     
     def test_file_tenant_isolation(self):
@@ -118,11 +118,11 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.other_user)
         
         # Try to access file from other tenant (should fail)
-        response = self.client.get(f'/api/v1/files/files/{file_id1}/')
+        response = self.client.get(f'/api/v1/files/{file_id1}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         
         # Try to download file (should fail)
-        response = self.client.get(f'/api/v1/files/files/{file_id1}/download/')
+        response = self.client.get(f'/api/v1/files/{file_id1}/download/')
         self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
     
     def test_list_resources_tenant_isolation(self):
@@ -136,7 +136,7 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         asset_id3 = self.create_asset(key='list-iso-3', name='List Iso 3')
         
         # List assets (should only see other tenant's assets)
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_ids = {a['id'] for a in response.data['results']}
         self.assertIn(str(asset_id3), asset_ids)
@@ -186,7 +186,7 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.other_user)
         
         # Should be able to access asset with entitlement
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/')
         # May succeed with entitlement or still require explicit entitlement check
         # This depends on implementation
     
@@ -218,7 +218,7 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
         asset_id2 = self.create_asset(key='search-iso-2', name='Search Iso 2')
         
         # Search (should only see current tenant's assets)
-        response = self.client.get('/api/v1/assets/assets/?search=Iso')
+        response = self.client.get('/api/v1/assets/?search=Iso')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         asset_ids = {a['id'] for a in response.data['results']}
         self.assertIn(str(asset_id2), asset_ids)

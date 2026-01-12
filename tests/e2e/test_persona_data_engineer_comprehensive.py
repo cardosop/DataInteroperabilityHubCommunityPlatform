@@ -44,19 +44,19 @@ pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
     """
     JOURNEY-DE-001: Programmatic Contract-First Onboarding
-    
-    Happy path: Contract creation via API/SDK/CLI → Validation → Normalization 
+
+    Happy path: Contract creation via API/SDK/CLI → Validation → Normalization
     → Dataset attachment → Asset creation
-    
-    Error scenarios: Invalid contract format, validation failure, 
+
+    Error scenarios: Invalid contract format, validation failure,
     ingestion failure, schema inference failure
     """
-    
+
     def test_happy_path_programmatic_contract_first(self):
         """Test complete programmatic contract-first onboarding - happy path"""
         # Step 1: Initialize API client (simulating SDK initialization)
         client = self.client
-        
+
         # Step 2: Create contract via API (simulating SDK method call)
         contract_data = {
             'original_raw': json.dumps({
@@ -73,25 +73,25 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             'original_format': 'JSON',
             'original_spec_type': 'ODCS'
         }
-        
+
         contract_response = client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             contract_data,
             format='json'
         )
         self.assertEqual(contract_response.status_code, status.HTTP_201_CREATED)
         contract_id = contract_response.data['id']
-        
+
         # Step 3: Poll job status (validation is synchronous, but check status)
         contract = Contract.objects.get(id=contract_id)
         # Contract validation happens synchronously, but we can check status
         self.assertIn(contract.status, [ContractStatus.DRAFT, ContractStatus.ACTIVE])
-        
+
         # Step 4: Check validation results
         if contract.status == ContractStatus.DRAFT:
             # Trigger validation explicitly (may fail if DataContract service unavailable)
             validate_response = client.post(
-                f'/api/v1/contracts/contracts/{contract_id}/validate/',
+                f'/api/v1/contracts/{contract_id}/validate/',
                 {'async': False},
                 format='json'
             )
@@ -101,7 +101,7 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
                 status.HTTP_202_ACCEPTED,
                 status.HTTP_500_INTERNAL_SERVER_ERROR  # Service unavailable
             ])
-        
+
         # Step 5: Create asset
         asset_data = {
             'key': 'product-catalog',
@@ -109,21 +109,21 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             'visibility': 'INTERNAL'
         }
         asset_response = client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             asset_data,
             format='json'
         )
         self.assertEqual(asset_response.status_code, status.HTTP_201_CREATED)
         asset_id = asset_response.data['id']
-        
+
         # Step 6: Attach contract to asset
         attach_response = client.post(
-            f'/api/v1/assets/assets/{asset_id}/contracts/',
+            f'/api/v1/assets/{asset_id}/contracts/',
             {'contract_id': contract_id},
             format='json'
         )
         self.assertIn(attach_response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
-        
+
         # Step 7: Upload data file
         file_id = self.init_file_upload(
             name='products.csv',
@@ -131,10 +131,10 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             size=2048
         )
         self.complete_file_upload(file_id)
-        
+
         # Step 8: Create dataset (triggers schema inference)
         dataset_response = client.post(
-            '/api/v1/datasets/datasets/',
+            '/api/v1/datasets/',
             {
                 'file_id': file_id,
                 'asset_id': asset_id,
@@ -144,7 +144,7 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
         )
         self.assertEqual(dataset_response.status_code, status.HTTP_201_CREATED)
         dataset_id = dataset_response.data['id']
-        
+
         # Step 9: Poll compliance job (may fail if service unavailable)
         try:
             compliance_run_id = self.run_compliance_check(file_id, dataset_id, asset_id)
@@ -154,7 +154,7 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             # Service may be unavailable - log but continue
             import logging
             logging.warning(f"Compliance check failed (service may be unavailable): {e}")
-        
+
         # Step 10: Poll DQ job (may fail if service unavailable)
         try:
             dq_run_id = self.run_dq_check(file_id, dataset_id, asset_id)
@@ -164,14 +164,14 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             # Service may be unavailable - log but continue
             import logging
             logging.warning(f"DQ check failed (service may be unavailable): {e}")
-        
+
         # Step 11: Verify asset activation
         asset = Asset.objects.get(id=asset_id)
         asset.refresh_from_db()
         # Asset should be ready for activation
         if asset.status != AssetStatus.ACTIVE:
             activate_response = client.post(
-                f'/api/v1/assets/assets/{asset_id}/activate/',
+                f'/api/v1/assets/{asset_id}/activate/',
                 {'version': asset.version},  # Required for optimistic locking
                 format='json'
             )
@@ -192,20 +192,20 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             self.assertEqual(asset.status, AssetStatus.ACTIVE)
         self.assertTrue(asset.contracts.exists())
         self.assertTrue(asset.datasets.exists())
-    
+
     def test_error_invalid_contract_format(self):
         """Test error scenario: Invalid contract format"""
         client = self.client
-        
+
         # Attempt to create contract with invalid JSON
         contract_data = {
             'original_raw': '{"invalid": json}',  # Invalid JSON
             'original_format': 'JSON',
             'original_spec_type': 'ODCS'
         }
-        
+
         response = client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             contract_data,
             format='json'
         )
@@ -214,17 +214,17 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             status.HTTP_400_BAD_REQUEST,
             status.HTTP_201_CREATED  # Created but marked as invalid
         ])
-        
+
         if response.status_code == status.HTTP_201_CREATED:
             contract_id = response.data['id']
             contract = Contract.objects.get(id=contract_id)
             # Contract may be DRAFT if validation failed or hasn't run yet
             self.assertIn(contract.status, [ContractStatus.DRAFT, ContractStatus.ACTIVE])
-    
+
     def test_error_validation_failure(self):
         """Test error scenario: Contract validation failure"""
         client = self.client
-        
+
         # Create contract with invalid schema
         contract_data = {
             'original_raw': json.dumps({
@@ -239,18 +239,18 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             'original_format': 'JSON',
             'original_spec_type': 'ODCS'
         }
-        
+
         response = client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             contract_data,
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         contract_id = response.data['id']
-        
+
         # Trigger validation
         validate_response = client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/validate/',
+            f'/api/v1/contracts/{contract_id}/validate/',
             {'async': False},
             format='json'
         )
@@ -261,7 +261,7 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             status.HTTP_400_BAD_REQUEST,
             status.HTTP_500_INTERNAL_SERVER_ERROR  # Service unavailable
         ])
-        
+
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
         # Contract may be marked as INVALID or have validation errors
@@ -270,11 +270,11 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
                 contract.validation_status,
                 [ValidationStatus.INVALID, ValidationStatus.ERROR, ValidationStatus.WARNING_ONLY, ValidationStatus.VALID, None]
             )
-    
+
     def test_error_schema_inference_failure(self):
         """Test error scenario: Schema inference failure"""
         client = self.client
-        
+
         # Create asset and contract first
         asset_id = self.create_asset(key='test-asset', name='Test Asset')
         contract_id = self.create_contract(
@@ -287,7 +287,7 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             original_format='JSON',
             original_spec_type='ODCS'
         )
-        
+
         # Upload file with invalid/corrupted data
         file_id = self.init_file_upload(
             name='corrupted.csv',
@@ -295,10 +295,10 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             size=1024
         )
         self.complete_file_upload(file_id)
-        
+
         # Attempt to create dataset (may fail schema inference)
         dataset_response = client.post(
-            '/api/v1/datasets/datasets/',
+            '/api/v1/datasets/',
             {
                 'file_id': file_id,
                 'asset_id': asset_id,
@@ -311,11 +311,11 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             status.HTTP_201_CREATED,
             status.HTTP_400_BAD_REQUEST
         ])
-    
+
     def test_use_case_create_contract(self):
         """Test use case: Create contract via API"""
         client = self.client
-        
+
         contract_data = {
             'original_raw': json.dumps({
                 'id': 'sales-data',
@@ -330,20 +330,20 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             'original_format': 'JSON',
             'original_spec_type': 'ODCS'
         }
-        
+
         response = client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             contract_data,
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn('id', response.data)
         self.assertEqual(response.data.get('status'), ContractStatus.DRAFT)
-    
+
     def test_use_case_validate_contract(self):
         """Test use case: Validate contract"""
         client = self.client
-        
+
         # Create contract
         contract_id = self.create_contract(
             None,
@@ -355,10 +355,10 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
             original_format='JSON',
             original_spec_type='ODCS'
         )
-        
+
         # Validate contract
         validate_response = client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/validate/',
+            f'/api/v1/contracts/{contract_id}/validate/',
             {'async': False},
             format='json'
         )
@@ -373,16 +373,16 @@ class TestJOURNEYDE001ProgrammaticContractFirst(E2ETestBase):
 class TestJOURNEYDE002ExternalComplianceScan(E2ETestBase):
     """
     JOURNEY-DE-002: External Compliance Scan
-    
+
     Happy path: External compliance scan → Results integration → Compliance report generation
-    
+
     Error scenarios: Scan failure, integration failure
     """
-    
+
     def test_happy_path_external_compliance_scan(self):
         """Test external compliance scan - happy path"""
         client = self.client
-        
+
         # Step 1: Prepare data file (upload to MinIO)
         file_id = self.init_file_upload(
             name='external_data.csv',
@@ -390,11 +390,11 @@ class TestJOURNEYDE002ExternalComplianceScan(E2ETestBase):
             size=4096
         )
         self.complete_file_upload(file_id)
-        
+
         # Step 2: Call compliance API in scan mode (external)
         # Note: This may require a specific endpoint or parameter
         scan_response = client.post(
-            '/api/v1/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'file_id': file_id,
                 'scan_mode': 'external',  # External scan mode
@@ -406,29 +406,29 @@ class TestJOURNEYDE002ExternalComplianceScan(E2ETestBase):
         if scan_response.status_code == status.HTTP_404_NOT_FOUND:
             # Alternative: Create compliance run without asset/dataset
             scan_response = client.post(
-                '/api/v1/compliance-runs/',
+                '/api/v1/compliance/runs/',
                 {
                     'file_id': file_id,
                     'tenant_id': str(self.tenant.id)
                 },
                 format='json'
             )
-        
+
         self.assertIn(scan_response.status_code, [
             status.HTTP_201_CREATED,
             status.HTTP_202_ACCEPTED,
             status.HTTP_404_NOT_FOUND  # If endpoint doesn't exist yet
         ])
-        
+
         if scan_response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
             compliance_run_id = scan_response.data.get('id')
-            
+
             # Step 3: Poll job status
             self.wait_for_job_completion(compliance_run_id, timeout=120)
-            
+
             # Step 4: Retrieve compliance report
             report_response = client.get(
-                f'/api/v1/compliance-runs/{compliance_run_id}/',
+                f'/api/v1/compliance/runs/{compliance_run_id}/',
                 format='json'
             )
             if report_response.status_code == status.HTTP_200_OK:
@@ -438,11 +438,11 @@ class TestJOURNEYDE002ExternalComplianceScan(E2ETestBase):
                     ComplianceRunStatus.COMPLETED,
                     ComplianceRunStatus.FAILED
                 ])
-    
+
     def test_error_scan_failure(self):
         """Test error scenario: Scan failure"""
         client = self.client
-        
+
         # Upload file that may cause scan failure
         file_id = self.init_file_upload(
             name='problematic_data.csv',
@@ -450,23 +450,23 @@ class TestJOURNEYDE002ExternalComplianceScan(E2ETestBase):
             size=1024
         )
         self.complete_file_upload(file_id)
-        
+
         # Attempt compliance scan
         scan_response = client.post(
-            '/api/v1/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {
                 'file_id': file_id,
                 'tenant_id': str(self.tenant.id)
             },
             format='json'
         )
-        
+
         if scan_response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
             compliance_run_id = scan_response.data.get('id')
-            
+
             # Wait for job completion
             self.wait_for_job_completion(compliance_run_id, timeout=120)
-            
+
             # Check if scan failed
             run = ComplianceRun.objects.get(id=compliance_run_id)
             # Scan may fail or complete with errors
@@ -479,17 +479,17 @@ class TestJOURNEYDE002ExternalComplianceScan(E2ETestBase):
 class TestJOURNEYDE003ScheduledIngestionSetup(E2ETestBase):
     """
     JOURNEY-DE-003: Scheduled Ingestion Setup
-    
+
     Test setting up scheduled ingestion via API
     """
-    
+
     def test_setup_scheduled_ingestion_s3(self):
         """Test setting up scheduled ingestion from S3"""
         client = self.client
-        
+
         # Create asset first
         asset_id = self.create_asset(key='scheduled-asset', name='Scheduled Asset')
-        
+
         # Create scheduled ingestion
         ingestion_data = {
             'name': 'Daily Sales Ingestion',
@@ -513,7 +513,7 @@ class TestJOURNEYDE003ScheduledIngestionSetup(E2ETestBase):
             'status': ScheduledIngestionStatus.ACTIVE,
             'test_connection': False  # Disable connection test for test data
         }
-        
+
         response = client.post(
             '/api/v1/scheduled-ingestions/',
             ingestion_data,
@@ -527,7 +527,7 @@ class TestJOURNEYDE003ScheduledIngestionSetup(E2ETestBase):
         ])
         if response.status_code == status.HTTP_201_CREATED:
             ingestion_id = response.data['id']
-            
+
             # Verify scheduled ingestion was created
             ingestion = ScheduledIngestion.objects.get(id=ingestion_id)
             self.assertEqual(ingestion.name, 'Daily Sales Ingestion')
@@ -535,11 +535,11 @@ class TestJOURNEYDE003ScheduledIngestionSetup(E2ETestBase):
             self.assertEqual(ingestion.status, ScheduledIngestionStatus.ACTIVE)
             # Compare UUIDs (convert to string for comparison)
             self.assertEqual(str(ingestion.asset_id), str(asset_id))
-    
+
     def test_setup_scheduled_ingestion_http(self):
         """Test setting up scheduled ingestion from HTTP source"""
         client = self.client
-        
+
         ingestion_data = {
             'name': 'HTTP Data Ingestion',
             'description': 'Ingest data from HTTP endpoint',
@@ -560,7 +560,7 @@ class TestJOURNEYDE003ScheduledIngestionSetup(E2ETestBase):
             'status': ScheduledIngestionStatus.ACTIVE,
             'test_connection': False  # Disable connection test for test data
         }
-        
+
         response = client.post(
             '/api/v1/scheduled-ingestions/',
             ingestion_data,
@@ -591,17 +591,17 @@ class TestJOURNEYDE003ScheduledIngestionSetup(E2ETestBase):
 class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
     """
     JOURNEY-DE-004: Monitor Ingestion Jobs
-    
+
     Test monitoring scheduled ingestion jobs and runs
     """
-    
+
     def test_list_scheduled_ingestions(self):
         """Test listing scheduled ingestions"""
         client = self.client
-        
+
         # Create a few scheduled ingestions
         asset_id = self.create_asset(key='monitor-asset', name='Monitor Asset')
-        
+
         created_count = 0
         for i in range(3):
             ingestion_data = {
@@ -629,11 +629,11 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
                 )
             if create_response.status_code == status.HTTP_201_CREATED:
                 created_count += 1
-        
+
         # Skip if endpoint not available
         if created_count == 0:
             pytest.skip("Scheduled ingestion endpoint not available (405 Method Not Allowed)")
-        
+
         # List scheduled ingestions
         list_response = client.get(
             '/api/v1/scheduled-ingestions/',
@@ -648,13 +648,13 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
         self.assertEqual(list_response.status_code, status.HTTP_200_OK)
         ingestions = list_response.data.get('results', list_response.data) if isinstance(list_response.data, dict) else list_response.data
         self.assertGreaterEqual(len(ingestions), created_count)
-    
+
     def test_get_scheduled_ingestion_details(self):
         """Test getting scheduled ingestion details"""
         client = self.client
-        
+
         asset_id = self.create_asset(key='detail-asset', name='Detail Asset')
-        
+
         ingestion_data = {
             'name': 'Detail Ingestion',
             'source_type': 'S3',
@@ -666,7 +666,7 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
             'status': ScheduledIngestionStatus.ACTIVE,
             'test_connection': False  # Disable connection test for test data
         }
-        
+
         create_response = client.post(
             '/api/v1/scheduled-ingestions/',
             ingestion_data,
@@ -681,7 +681,7 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
         if create_response.status_code != status.HTTP_201_CREATED:
             pytest.skip(f"Scheduled ingestion endpoint not available: {create_response.status_code}")
         ingestion_id = create_response.data.get('id') or create_response.data.get('uuid')
-        
+
         # Get details
         detail_response = client.get(
             f'/api/v1/scheduled-ingestions/{ingestion_id}/',
@@ -696,13 +696,13 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
         self.assertEqual(detail_response.data['name'], 'Detail Ingestion')
         self.assertEqual(detail_response.data['source_type'], 'S3')
-    
+
     def test_list_ingestion_runs(self):
         """Test listing ingestion runs"""
         client = self.client
-        
+
         asset_id = self.create_asset(key='runs-asset', name='Runs Asset')
-        
+
         ingestion_data = {
             'name': 'Runs Ingestion',
             'source_type': 'S3',
@@ -714,7 +714,7 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
             'status': ScheduledIngestionStatus.ACTIVE,
             'test_connection': False  # Disable connection test for test data
         }
-        
+
         create_response = client.post(
             '/api/v1/scheduled-ingestions/',
             ingestion_data,
@@ -729,7 +729,7 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
         if create_response.status_code != status.HTTP_201_CREATED:
             pytest.skip(f"Scheduled ingestion endpoint not available: {create_response.status_code}")
         ingestion_id = create_response.data.get('id') or create_response.data.get('uuid')
-        
+
         # List runs (may be empty if no runs yet)
         runs_response = client.get(
             f'/api/v1/scheduled-ingestions/{ingestion_id}/runs/',
@@ -745,13 +745,13 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
         # Runs may be empty initially
         runs = runs_response.data.get('results', runs_response.data) if isinstance(runs_response.data, dict) else runs_response.data
         self.assertIsInstance(runs, list)
-    
+
     def test_trigger_ingestion_manually(self):
         """Test manually triggering scheduled ingestion"""
         client = self.client
-        
+
         asset_id = self.create_asset(key='trigger-asset', name='Trigger Asset')
-        
+
         ingestion_data = {
             'name': 'Trigger Ingestion',
             'source_type': 'S3',
@@ -763,7 +763,7 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
             'status': ScheduledIngestionStatus.ACTIVE,
             'test_connection': False  # Disable connection test for test data
         }
-        
+
         create_response = client.post(
             '/api/v1/scheduled-ingestions/',
             ingestion_data,
@@ -778,7 +778,7 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
         if create_response.status_code != status.HTTP_201_CREATED:
             pytest.skip(f"Scheduled ingestion endpoint not available: {create_response.status_code}")
         ingestion_id = create_response.data.get('id') or create_response.data.get('uuid')
-        
+
         # Trigger manually
         trigger_response = client.post(
             f'/api/v1/scheduled-ingestions/{ingestion_id}/trigger/',
@@ -804,14 +804,14 @@ class TestJOURNEYDE004MonitorIngestionJobs(E2ETestBase):
 class TestJOURNEYDE005CICDIntegration(E2ETestBase):
     """
     JOURNEY-DE-005: CI/CD Integration
-    
+
     Test integrating hub into CI/CD pipelines
     """
-    
+
     def test_cicd_contract_validation(self):
         """Test CI/CD contract validation workflow"""
         client = self.client
-        
+
         # Simulate CI/CD pipeline: validate contract before deployment
         contract_data = {
             'original_raw': json.dumps({
@@ -826,19 +826,19 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
             'original_format': 'JSON',
             'original_spec_type': 'ODCS'
         }
-        
+
         # Create contract
         create_response = client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             contract_data,
             format='json'
         )
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
         contract_id = create_response.data['id']
-        
+
         # Validate contract (CI/CD gate)
         validate_response = client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/validate/',
+            f'/api/v1/contracts/{contract_id}/validate/',
             {'async': False},
             format='json'
         )
@@ -848,11 +848,11 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
             status.HTTP_202_ACCEPTED,
             status.HTTP_500_INTERNAL_SERVER_ERROR  # Service unavailable
         ])
-        
+
         # Check validation status (CI/CD decision point)
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
-        
+
         # In CI/CD, if validation fails, pipeline should fail
         if hasattr(contract, 'validation_status'):
             validation_passed = contract.validation_status in [
@@ -860,11 +860,11 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
                 ValidationStatus.WARNING_ONLY
             ]
             # Pipeline would proceed if validation_passed is True
-    
+
     def test_cicd_automated_asset_creation(self):
         """Test automated asset creation in CI/CD"""
         client = self.client
-        
+
         # Simulate CI/CD: create asset from contract file
         contract_data = {
             'original_raw': json.dumps({
@@ -875,15 +875,15 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
             'original_format': 'JSON',
             'original_spec_type': 'ODCS'
         }
-        
+
         # Create contract
         contract_response = client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             contract_data,
             format='json'
         )
         contract_id = contract_response.data['id']
-        
+
         # Create asset
         asset_data = {
             'key': 'automated-asset',
@@ -891,15 +891,15 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
             'visibility': 'INTERNAL'
         }
         asset_response = client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             asset_data,
             format='json'
         )
         asset_id = asset_response.data['id']
-        
+
         # Attach contract
         attach_response = client.post(
-            f'/api/v1/assets/assets/{asset_id}/contracts/',
+            f'/api/v1/assets/{asset_id}/contracts/',
             {'contract_id': contract_id},
             format='json'
         )
@@ -907,7 +907,7 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
             status.HTTP_200_OK,
             status.HTTP_201_CREATED
         ])
-        
+
         # Verify asset created successfully
         asset = Asset.objects.get(id=asset_id)
         self.assertIsNotNone(asset)
@@ -917,14 +917,14 @@ class TestJOURNEYDE005CICDIntegration(E2ETestBase):
 class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
     """
     JOURNEY-DE-006: Schema Evolution
-    
+
     Test handling schema changes and evolution
     """
-    
+
     def test_schema_version_creation(self):
         """Test creating new schema version"""
         client = self.client
-        
+
         # Create initial asset and dataset
         asset_id = self.create_asset(key='schema-asset', name='Schema Asset')
         file_id = self.init_file_upload(
@@ -933,9 +933,9 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
             size=2048
         )
         self.complete_file_upload(file_id)
-        
+
         dataset_response = client.post(
-            '/api/v1/datasets/datasets/',
+            '/api/v1/datasets/',
             {
                 'file_id': file_id,
                 'asset_id': asset_id,
@@ -944,10 +944,10 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
             format='json'
         )
         dataset_id = dataset_response.data['id']
-        
+
         # Create new version with schema changes
         version_response = client.post(
-            f'/api/v1/datasets/datasets/{dataset_id}/versions/',
+            f'/api/v1/datasets/{dataset_id}/versions/',
             {
                 'description': 'Schema evolution: added new field',
                 'schema_changes': {
@@ -964,11 +964,11 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
             status.HTTP_202_ACCEPTED,
             status.HTTP_404_NOT_FOUND
         ])
-    
+
     def test_schema_comparison(self):
         """Test comparing schema versions"""
         client = self.client
-        
+
         asset_id = self.create_asset(key='compare-asset', name='Compare Asset')
         file_id = self.init_file_upload(
             name='compare_data.csv',
@@ -976,9 +976,9 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
             size=2048
         )
         self.complete_file_upload(file_id)
-        
+
         dataset_response = client.post(
-            '/api/v1/datasets/datasets/',
+            '/api/v1/datasets/',
             {
                 'file_id': file_id,
                 'asset_id': asset_id,
@@ -987,10 +987,10 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
             format='json'
         )
         dataset_id = dataset_response.data['id']
-        
+
         # Get dataset versions
         versions_response = client.get(
-            f'/api/v1/datasets/datasets/{dataset_id}/versions/',
+            f'/api/v1/datasets/{dataset_id}/versions/',
             format='json'
         )
         # May return versions or 404
@@ -999,7 +999,7 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
             if len(versions) >= 2:
                 # Compare versions
                 compare_response = client.get(
-                    f'/api/v1/datasets/datasets/{dataset_id}/versions/compare/',
+                    f'/api/v1/datasets/{dataset_id}/versions/compare/',
                     {
                         'version1': versions[0]['id'],
                         'version2': versions[1]['id']
@@ -1011,13 +1011,13 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
                     status.HTTP_200_OK,
                     status.HTTP_404_NOT_FOUND
                 ])
-    
+
     def test_schema_impact_analysis(self):
         """Test analyzing impact of schema changes"""
         client = self.client
-        
+
         asset_id = self.create_asset(key='impact-asset', name='Impact Asset')
-        
+
         # Create contract with schema
         contract_id = self.create_contract(
             asset_id,
@@ -1034,10 +1034,10 @@ class TestJOURNEYDE006SchemaEvolution(E2ETestBase):
             original_format='JSON',
             original_spec_type='ODCS'
         )
-        
+
         # Analyze impact of removing a field
         impact_response = client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/analyze-impact/',
+            f'/api/v1/contracts/{contract_id}/analyze-impact/',
             {
                 'proposed_changes': {
                     'removed_fields': ['field1']

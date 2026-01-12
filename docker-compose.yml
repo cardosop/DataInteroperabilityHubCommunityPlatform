@@ -21,22 +21,24 @@ services:
     networks:
       - hub-net
 
-  # Redis for Job Queue and Event Bus
-  redis:
+  # Redis Cache Instance - Response caching, contract caching, lineage caching
+  redis-cache:
     image: redis:7-alpine
-    container_name: hub-redis
+    container_name: hub-redis-cache
     command: >
       redis-server
-      --appendonly yes
-      --maxmemory ${REDIS_MAX_MEMORY:-2gb}
-      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --maxmemory ${REDIS_CACHE_MAX_MEMORY:-2gb}
+      --maxmemory-policy allkeys-lru
       --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
       --timeout ${REDIS_TIMEOUT:-300}
       --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_CACHE_PORT:-6379}:6379"
     volumes:
-      - redis-data:/data
+      - redis-cache-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -44,10 +46,179 @@ services:
       retries: 5
     networks:
       - hub-net
-    # Event bus specific configuration
     environment:
-      - REDIS_MAX_MEMORY=${REDIS_MAX_MEMORY:-2gb}
-      - REDIS_MAXMEMORY_POLICY=${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+      - REDIS_MAX_MEMORY=${REDIS_CACHE_MAX_MEMORY:-2gb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+
+  # Redis Queue Instance - Job queues (RQ)
+  redis-queue:
+    image: redis:7-alpine
+    container_name: hub-redis-queue
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_QUEUE_MAX_MEMORY:-1gb}
+      --maxmemory-policy noeviction
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_QUEUE_PORT:-6380}:6379"
+    volumes:
+      - redis-queue-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_QUEUE_MAX_MEMORY:-1gb}
+      - REDIS_MAXMEMORY_POLICY=noeviction
+
+  # Redis Events Instance - Event bus (Pub/Sub, Streams)
+  redis-events:
+    image: redis:7-alpine
+    container_name: hub-redis-events
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_EVENTS_MAX_MEMORY:-1gb}
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_EVENTS_PORT:-6381}:6379"
+    volumes:
+      - redis-events-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_EVENTS_MAX_MEMORY:-1gb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+
+  # Redis Channels Instance - WebSocket channels (Django Channels)
+  redis-channels:
+    image: redis:7-alpine
+    container_name: hub-redis-channels
+    command: >
+      redis-server
+      --maxmemory ${REDIS_CHANNELS_MAX_MEMORY:-512mb}
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_CHANNELS_PORT:-6382}:6379"
+    volumes:
+      - redis-channels-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_CHANNELS_MAX_MEMORY:-512mb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+
+  # Redis Exporter for Cache Instance
+  redis-exporter-cache:
+    image: oliver006/redis_exporter:latest
+    container_name: hub-redis-exporter-cache
+    command:
+      - '--redis.addr=redis://redis-cache:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_CACHE_PORT:-9121}:9121"
+    networks:
+      - hub-net
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+    # Health check disabled - redis exporter is a minimal image without standard tools
+    # Metrics endpoint verified working at http://localhost:9121/metrics
+    # healthcheck:
+    #   test: ["CMD", "true"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+
+  # Redis Exporter for Queue Instance
+  redis-exporter-queue:
+    image: oliver006/redis_exporter:latest
+    container_name: hub-redis-exporter-queue
+    command:
+      - '--redis.addr=redis://redis-queue:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_QUEUE_PORT:-9122}:9121"
+    networks:
+      - hub-net
+    depends_on:
+      redis-queue:
+        condition: service_healthy
+    # Health check disabled - redis exporter is a minimal image without standard tools
+    # Metrics endpoint verified working at http://localhost:9121/metrics
+    # healthcheck:
+    #   test: ["CMD", "true"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+
+  # Redis Exporter for Events Instance
+  redis-exporter-events:
+    image: oliver006/redis_exporter:latest
+    container_name: hub-redis-exporter-events
+    command:
+      - '--redis.addr=redis://redis-events:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_EVENTS_PORT:-9123}:9121"
+    networks:
+      - hub-net
+    depends_on:
+      redis-events:
+        condition: service_healthy
+    # Health check disabled - redis exporter is a minimal image without standard tools
+    # Metrics endpoint verified working at http://localhost:9121/metrics
+    # healthcheck:
+    #   test: ["CMD", "true"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+
+  # Redis Exporter for Channels Instance
+  redis-exporter-channels:
+    image: oliver006/redis_exporter:latest
+    container_name: hub-redis-exporter-channels
+    command:
+      - '--redis.addr=redis://redis-channels:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_CHANNELS_PORT:-9124}:9121"
+    networks:
+      - hub-net
+    depends_on:
+      redis-channels:
+        condition: service_healthy
+    # Health check disabled - redis exporter is a minimal image without standard tools
+    # Metrics endpoint verified working at http://localhost:9121/metrics
+    # healthcheck:
+    #   test: ["CMD", "true"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
 
   # MinIO (S3-compatible storage)
   minio:
@@ -97,7 +268,7 @@ services:
       dockerfile: services/semantic-service/Dockerfile
     container_name: hub-semantic
     ports:
-      - "${SEMANTIC_PORT:-8081}:8081"
+      - "${SEMANTIC_PORT:-8094}:8081"
     environment:
       FUSEKI_URL: http://fuseki:3030
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
@@ -125,7 +296,7 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
     container_name: hub-api
-    command: python manage.py runserver 0.0.0.0:8000
+    command: python hub/manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
@@ -161,14 +332,44 @@ services:
       - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - APP_VERSION=${APP_VERSION:-1.0.0}
+      # Marketplace Connector Configuration (can be overridden in .env.dev)
+      # dados.gov.br Swagger API (NOT CKAN) - uses DADOS_GOV_BR_API_KEY
+      - DADOS_GOV_BR_API_KEY=${DADOS_GOV_BR_API_KEY:-}
+      # CKAN instances (demo.ckan.org, data.gov) - use CKAN_TEST_URL and CKAN_TEST_API_KEY
+      # Default to demo.ckan.org if CKAN_TEST_URL not set (local CKAN instance setup is optional)
+      # Note: If CKAN_TEST_URL is set to empty string in .env.dev, it will be empty here too
+      - CKAN_TEST_URL=${CKAN_TEST_URL:-https://demo.ckan.org}
+      - CKAN_TEST_API_KEY=${CKAN_TEST_API_KEY:-}
+      # Backward compatibility (deprecated - will be removed in future version)
+      - CKAN_DADOS_GOV_BR_API_KEY=${CKAN_DADOS_GOV_BR_API_KEY:-${DADOS_GOV_BR_API_KEY:-}}
+      # Snowflake Data Marketplace connector configuration
+      # Account identifier in orgname-accountname format (e.g., 'WCGKMGD-XC16102')
+      # See: https://docs.snowflake.com/user-guide/gen-conn-config
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT:-}
+      - SNOWFLAKE_USER=${SNOWFLAKE_USER:-}
+      - SNOWFLAKE_TOKEN=${SNOWFLAKE_TOKEN:-}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE:-}
+      - SNOWFLAKE_ROLE=${SNOWFLAKE_ROLE:-}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE:-}
+      # Mock server for testing marketplace connectors
+      - MOCK_SERVER_URL=${MOCK_SERVER_URL:-http://mock-server:8080}
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
         condition: service_healthy
       minio:
         condition: service_healthy
       jaeger:
+        condition: service_healthy
+      # Test marketplace instances (optional - for testing marketplace connectors)
+      mock-server:
         condition: service_healthy
     networks:
       - hub-net
@@ -217,13 +418,32 @@ services:
       - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - APP_VERSION=${APP_VERSION:-1.0.0}
+      # Marketplace Connector Configuration (inherited from api-service)
+      # dados.gov.br Swagger API (NOT CKAN) - uses DADOS_GOV_BR_API_KEY
+      - DADOS_GOV_BR_API_KEY=${DADOS_GOV_BR_API_KEY:-}
+      # CKAN instances (demo.ckan.org, data.gov) - use CKAN_TEST_URL and CKAN_TEST_API_KEY
+      # Default to demo.ckan.org if CKAN_TEST_URL not set (local CKAN instance setup is optional)
+      # Note: If CKAN_TEST_URL is set to empty string in .env.dev, it will be empty here too
+      - CKAN_TEST_URL=${CKAN_TEST_URL:-https://demo.ckan.org}
+      - CKAN_TEST_API_KEY=${CKAN_TEST_API_KEY:-}
+      # Backward compatibility (deprecated - will be removed in future version)
+      - CKAN_DADOS_GOV_BR_API_KEY=${CKAN_DADOS_GOV_BR_API_KEY:-${DADOS_GOV_BR_API_KEY:-}}
+      # Snowflake Data Marketplace connector configuration
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT:-}
+      - SNOWFLAKE_USER=${SNOWFLAKE_USER:-}
+      - SNOWFLAKE_TOKEN=${SNOWFLAKE_TOKEN:-}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE:-}
+      - SNOWFLAKE_ROLE=${SNOWFLAKE_ROLE:-}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE:-}
+      # Mock server for testing marketplace connectors
+      - MOCK_SERVER_URL=${MOCK_SERVER_URL:-http://mock-server:8080}
     container_name: hub-worker
     # Process all priority queues: job_critical (HIGH) → job_default (NORMAL) → job_low (LOW)
     # Worker polls queues in priority order with reserved slots for HIGH priority
     # Uses services/worker/main.py which includes health check HTTP server on port 8080
     command: python services/worker/main.py job_critical job_default job_low
     ports:
-      - "${WORKER_HEALTH_PORT:-8080}:8080"  # Health check endpoints (/healthz, /ready, /metrics)
+      - "${WORKER_HEALTH_PORT:-8092}:8080"  # Health check endpoints (/healthz, /ready, /metrics) - Changed from 8080 to avoid conflict with traefik
     volumes:
       - .:/app
     env_file:
@@ -231,9 +451,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
         condition: service_healthy
       jaeger:
+        condition: service_healthy
+      # Test marketplace instances (optional - for testing marketplace connectors)
+      mock-server:
         condition: service_healthy
     networks:
       - hub-net
@@ -290,7 +519,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
         condition: service_healthy
       jaeger:
         condition: service_healthy
@@ -310,7 +545,7 @@ services:
       dockerfile: services/datacontract-service/Dockerfile
     container_name: hub-datacontract
     ports:
-      - "${DATACONTRACT_PORT:-8080}:8080"
+      - "${DATACONTRACT_PORT:-8082}:8080"
     networks:
       - hub-net
     healthcheck:
@@ -326,7 +561,7 @@ services:
       dockerfile: services/compliance-service/Dockerfile
     container_name: hub-compliance
     ports:
-      - "${COMPLIANCE_PORT:-8082}:8082"
+      - "${COMPLIANCE_PORT:-8084}:8082"
     networks:
       - hub-net
     healthcheck:
@@ -433,7 +668,7 @@ services:
       dockerfile: services/prefect-integration/Dockerfile
     container_name: hub-prefect-integration
     ports:
-      - "${PREFECT_INTEGRATION_PORT:-8084}:8084"
+      - "${PREFECT_INTEGRATION_PORT:-8093}:8084"
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
       PREFECT_API_KEY: ${PREFECT_API_KEY:-}
@@ -534,6 +769,61 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # API Gateway Service
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: hub-api-gateway
+    ports:
+      - "${API_GATEWAY_PORT:-8088}:8088"
+    environment:
+      # Database configuration (for Django ORM access)
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-hub}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
+      - POSTGRES_DB=${POSTGRES_DB:-hub}
+      # Redis configuration
+      - REDIS_CACHE_URL=redis://redis-cache:6379/0
+      - REDIS_URL=redis://redis-cache:6379/0
+      # Django settings
+      - DJANGO_SETTINGS_MODULE=hub.settings
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - DEBUG=${DEBUG:-False}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # Service configuration
+      - BACKEND_SERVICE_URL=${BACKEND_SERVICE_URL:-http://api-service:8000}
+      - PORT=8088
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # OpenTelemetry configuration
+      - OPENTELEMETRY_ENABLED=${OPENTELEMETRY_ENABLED:-true}
+      - JAEGER_AGENT_HOST=${JAEGER_AGENT_HOST:-jaeger}
+      - JAEGER_AGENT_PORT=${JAEGER_AGENT_PORT:-6831}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+    volumes:
+      - .:/app
+    env_file:
+      - .env.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      api-service:
+        condition: service_started
+      jaeger:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
       start_period: 40s
 
   # Event Bus Health Service
@@ -588,7 +878,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
         condition: service_healthy
       jaeger:
         condition: service_healthy
@@ -727,9 +1023,15 @@ services:
       - prefect-integration-service
       - search-service
       - webhook-service
+      - api-gateway
       - workflow-engine-service
       - workflow-registry-service
       - event-schema-registry-service
+      - event-bus-health-service
+      - redis-exporter-cache
+      - redis-exporter-queue
+      - redis-exporter-events
+      - redis-exporter-channels
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
       interval: 30s
@@ -803,6 +1105,157 @@ services:
       timeout: 10s
       retries: 3
 
+  # CKAN Test Instance - Local CKAN server for testing marketplace connectors
+  # NOTE: CKAN setup is complex and requires custom Docker image or manual setup
+  # For now, we provide the infrastructure (DB, Solr, Redis) but CKAN instance
+  # should be set up separately or use external CKAN instance (demo.ckan.org)
+  # Uncomment and configure when CKAN Docker image is available
+  # ckan-test:
+  #   image: <ckan-image>
+  #   container_name: hub-ckan-test
+  #   environment:
+  #     - CKAN_SQLALCHEMY_URL=postgresql://ckan:ckan@ckan-test-db:5432/ckan_test
+  #     - CKAN_DATASTORE_WRITE_URL=postgresql://ckan:ckan@ckan-test-db:5432/datastore_test
+  #     - CKAN_DATASTORE_READ_URL=postgresql://datastore_ro:datastore_ro@ckan-test-db:5432/datastore_test
+  #     - CKAN_SOLR_URL=http://ckan-test-solr:8983/solr/ckan
+  #     - CKAN_REDIS_URL=redis://ckan-test-redis:6379/1
+  #     - CKAN_SITE_URL=http://localhost:${CKAN_TEST_PORT:-5000}
+  #     - CKAN_MAX_UPLOAD_SIZE_MB=500
+  #     - CKAN_PLUGINS=stats text_view image_view recline_view datastore datapusher
+  #   ports:
+  #     - "${CKAN_TEST_PORT:-5000}:5000"
+  #   volumes:
+  #     - ckan-test-storage:/var/lib/ckan
+  #   depends_on:
+  #     ckan-test-db:
+  #       condition: service_healthy
+  #     ckan-test-solr:
+  #       condition: service_healthy
+  #     ckan-test-redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - hub-net
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:5000/api/3/action/status_show"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 60s
+
+  # CKAN Test Database - PostgreSQL for CKAN test instance
+  ckan-test-db:
+    image: postgres:16-alpine
+    container_name: hub-ckan-test-db
+    environment:
+      POSTGRES_USER: ckan
+      POSTGRES_PASSWORD: ckan
+      POSTGRES_DB: ckan_test
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "${CKAN_TEST_DB_PORT:-5434}:5432"
+    volumes:
+      - ckan-test-db-data:/var/lib/postgresql/data
+      - ./scripts/init-ckan-db.sh:/docker-entrypoint-initdb.d/init-ckan-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ckan -d ckan_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub-net
+
+  # CKAN Test Solr - Search engine for CKAN test instance
+  ckan-test-solr:
+    image: solr:9
+    container_name: hub-ckan-test-solr
+    command:
+      - solr-precreate
+      - ckan
+    ports:
+      - "${CKAN_TEST_SOLR_PORT:-8983}:8983"
+    volumes:
+      - ckan-test-solr-data:/var/solr
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8983/solr/admin/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - hub-net
+
+  # CKAN Test Redis - Cache for CKAN test instance
+  ckan-test-redis:
+    image: redis:7-alpine
+    container_name: hub-ckan-test-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "${CKAN_TEST_REDIS_PORT:-6383}:6379"
+    volumes:
+      - ckan-test-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-net
+
+  # Mock Server - HTTP mock server for testing marketplace connectors
+  # Provides REST API endpoints for testing without external dependencies
+  mock-server:
+    image: mockserver/mockserver:latest
+    container_name: hub-mock-server
+    command: -serverPort 8080 -logLevel INFO
+    ports:
+      - "${MOCK_SERVER_PORT:-8095}:8080"
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/mockserver/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ODH Training Operator Service
+  odh-training-operator:
+    build:
+      context: .
+      dockerfile: services/odh-training-operator/Dockerfile
+    container_name: hub-odh-training-operator
+    ports:
+      - "${ODH_TRAINING_OPERATOR_PORT:-8096}:8080"
+    networks:
+      - hub-net
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ODH Inference Scheduler Service
+  odh-inference-scheduler:
+    build:
+      context: .
+      dockerfile: services/odh-inference-scheduler/Dockerfile
+    container_name: hub-odh-inference-scheduler
+    ports:
+      - "${ODH_INFERENCE_SCHEDULER_PORT:-8097}:8080"
+    networks:
+      - hub-net
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
   # Traefik API Gateway
   traefik:
     image: traefik:v3.0
@@ -810,9 +1263,9 @@ services:
     command:
       - "--api.dashboard=true"
       - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedByDefault=false"
-      - "--providers.docker.network=hub-net"
+      - "--providers.docker=false"
+      # Docker provider disabled due to API version incompatibility with Traefik v3.0
+      # Use file-based configuration in ./infrastructure/traefik/dynamic/ instead
       - "--providers.file.directory=/etc/traefik/dynamic"
       - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
@@ -828,7 +1281,7 @@ services:
     ports:
       - "${TRAEFIK_PORT:-8080}:80"
       - "${TRAEFIK_SECURE_PORT:-8443}:443"
-      - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"  # Dashboard
+      - "${TRAEFIK_DASHBOARD_PORT:-8081}:8080"  # Dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./infrastructure/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
@@ -839,10 +1292,11 @@ services:
     depends_on:
       - jaeger
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/ping"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/rawdata"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 40s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.traefik.rule=Host(`traefik.hub.local`)"
@@ -854,7 +1308,10 @@ networks:
 
 volumes:
   pgdata:
-  redis-data:
+  redis-cache-data:
+  redis-queue-data:
+  redis-events-data:
+  redis-channels-data:
   minio-data:
   fuseki-data:
   prometheus-data:
@@ -863,4 +1320,8 @@ volumes:
   prefect-server-data:
   prefect-db-data:
   traefik-letsencrypt:
+  ckan-test-storage:
+  ckan-test-db-data:
+  ckan-test-solr-data:
+  ckan-test-redis-data:
 

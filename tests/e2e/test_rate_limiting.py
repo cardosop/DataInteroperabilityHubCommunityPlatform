@@ -30,7 +30,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_headers_present(self):
         """Test rate limit headers are present in responses"""
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Check for rate limit headers (may be optional)
         headers = response.headers
@@ -52,7 +52,7 @@ class RateLimitingE2ETest(E2ETestBase):
     def test_rate_limit_enforcement(self):
         """Test rate limit enforcement"""
         # Make multiple rapid requests
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         responses = []
         
         # Make many requests quickly
@@ -88,7 +88,7 @@ class RateLimitingE2ETest(E2ETestBase):
             tenant=other_tenant
         )
         
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make requests from current tenant
         response1 = self.client.get(endpoint)
@@ -106,7 +106,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_exceeded_response(self):
         """Test rate limit exceeded response format"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make many requests to potentially trigger rate limit
         rate_limited_response = None
@@ -131,7 +131,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_headers_consistency(self):
         """Test rate limit headers are consistent across requests"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         responses = []
         for i in range(10):
@@ -155,7 +155,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_reset_header(self):
         """Test rate limit reset header"""
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         headers = response.headers
         reset_headers = ['X-RateLimit-Reset', 'RateLimit-Reset']
@@ -169,7 +169,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_remaining_decreases(self):
         """Test rate limit remaining decreases with requests"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         remaining_values = []
         for i in range(10):
@@ -195,9 +195,9 @@ class RateLimitingE2ETest(E2ETestBase):
     def test_rate_limit_per_endpoint(self):
         """Test rate limits may vary per endpoint"""
         endpoints = [
-            '/api/v1/assets/assets/',
-            '/api/v1/contracts/contracts/',
-            '/api/v1/datasets/datasets/',
+            '/api/v1/assets/',
+            '/api/v1/contracts/',
+            '/api/v1/datasets/',
         ]
         
         limits = {}
@@ -215,7 +215,7 @@ class RateLimitingE2ETest(E2ETestBase):
     
     def test_rate_limit_retry_after_header(self):
         """Test Retry-After header on rate limit exceeded"""
-        endpoint = '/api/v1/assets/assets/'
+        endpoint = '/api/v1/assets/'
         
         # Make many requests to potentially trigger rate limit
         rate_limited_response = None

@@ -64,8 +64,8 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
             
             # Try to upload file within tenant limit (4 GB)
             file_size = 4 * 1024 * 1024 * 1024
-            # URL pattern: /api/v1/files/ includes router that registers "files", so full path is /api/v1/files/files/init/
-            response = self.client.post("/api/v1/files/files/init/", {
+            # URL pattern: /api/v1/files/ includes router that registers "files", so full path is /api/v1/files/init/
+            response = self.client.post("/api/v1/files/init/", {
                 "name": "test.csv",
                 "content_type": "text/csv",
                 "size": file_size,
@@ -87,7 +87,7 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
         
         # Try to upload file exceeding tenant limit (6 GB)
         file_size = 6 * 1024 * 1024 * 1024
-        response = self.client.post("/api/v1/files/files/init/", {
+        response = self.client.post("/api/v1/files/init/", {
             "name": "test.csv",
             "content_type": "text/csv",
             "size": file_size,
@@ -118,7 +118,7 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
             # Use a file size that's within browser method limit (100MB) but still tests platform default
             # Browser method has a 100MB limit, so use 50MB to test platform default logic
             file_size = 50 * 1024 * 1024  # 50MB - within browser limit, tests platform default
-            response = self.client.post("/api/v1/files/files/init/", {
+            response = self.client.post("/api/v1/files/init/", {
                 "name": "test.csv",
                 "content_type": "text/csv",
                 "size": file_size,
@@ -162,7 +162,7 @@ class TenantConfigFileUploadIntegrationTest(TestCase):
             mock_storage.file_exists.return_value = True
             
             # Try to complete upload
-            response = self.client.post(f"/api/v1/files/files/{file_obj.id}/complete/", {
+            response = self.client.post(f"/api/v1/files/{file_obj.id}/complete/", {
                 "content_sha256": "abc123",
                 "parts": [{"ETag": "etag1", "PartNumber": 1}]
             }, format="json")

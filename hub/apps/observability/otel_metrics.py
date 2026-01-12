@@ -578,6 +578,45 @@ odps_ref_cache_misses_total = _CounterWrapper(
     expected_labels=('tenant_id',)
 )
 
+# Cache hit/miss rate gauges (calculated from counters)
+odps_ref_cache_hit_rate = _UpDownCounterWrapper(
+    'odps_ref_cache_hit_rate',
+    'Cache hit rate (hits / (hits + misses)) for external $ref cache',
+    unit='1',
+    expected_labels=('ref_type', 'tenant_id')
+)
+
+odps_ref_cache_miss_rate = _UpDownCounterWrapper(
+    'odps_ref_cache_miss_rate',
+    'Cache miss rate (misses / (hits + misses)) for external $ref cache',
+    unit='1',
+    expected_labels=('ref_type', 'tenant_id')
+)
+
+# Cache size gauge (current number of cached entries)
+odps_ref_cache_size = _UpDownCounterWrapper(
+    'odps_ref_cache_size',
+    'Current number of cached external $ref entries',
+    unit='1',
+    expected_labels=('tenant_id', 'ref_type')
+)
+
+# Cache size limit gauge (maximum number of cached entries)
+odps_ref_cache_size_limit = _UpDownCounterWrapper(
+    'odps_ref_cache_size_limit',
+    'Maximum number of cached external $ref entries (limit)',
+    unit='1',
+    expected_labels=('tenant_id', 'ref_type')
+)
+
+# Cache eviction counter (by eviction reason)
+odps_ref_cache_eviction_rate = _CounterWrapper(
+    'odps_ref_cache_eviction_rate',
+    'Total number of cache evictions by reason',
+    unit='1',
+    expected_labels=('eviction_reason', 'tenant_id')
+)
+
 # ODPS Semantic Mapping Metrics (Task 6.6.3)
 odps_semantic_mapping_duration_seconds = _HistogramWrapper(
     'odps_semantic_mapping_duration_seconds',
@@ -858,6 +897,78 @@ job_queue_length = _UpDownCounterWrapper(
     expected_labels=('job_type', 'queue_name')
 )
 
+job_queue_depth = _UpDownCounterWrapper(
+    'job_queue_depth',
+    'Current depth of job queue (total pending jobs)',
+    unit='1',
+    expected_labels=('job_type', 'queue_name')
+)
+
+job_processing_rate = _CounterWrapper(
+    'job_processing_rate',
+    'Total number of jobs processed per second',
+    unit='1',
+    expected_labels=('job_type', 'status', 'queue_name')
+)
+
+job_queue_length_by_priority = _UpDownCounterWrapper(
+    'job_queue_length_by_priority',
+    'Current number of jobs in queue by priority',
+    unit='1',
+    expected_labels=('priority', 'job_type')
+)
+
+job_processing_rate_by_priority = _CounterWrapper(
+    'job_processing_rate_by_priority',
+    'Total number of jobs processed per second by priority',
+    unit='1',
+    expected_labels=('priority', 'job_type')
+)
+
+job_worker_active = _UpDownCounterWrapper(
+    'job_worker_active',
+    'Current number of active job workers',
+    unit='1',
+    expected_labels=('worker_id', 'queue_name')
+)
+
+job_worker_throughput = _CounterWrapper(
+    'job_worker_throughput',
+    'Total number of jobs processed by worker',
+    unit='1',
+    expected_labels=('worker_id', 'job_type')
+)
+
+job_retry_count = _HistogramWrapper(
+    'job_retry_count',
+    'Number of retries for job processing',
+    unit='1',
+    buckets=(0.0, 1.0, 2.0, 3.0, 5.0, 10.0),
+    expected_labels=('job_type', 'queue_name')
+)
+
+job_retry_delay_seconds = _HistogramWrapper(
+    'job_retry_delay_seconds',
+    'Retry delay duration in seconds',
+    unit='s',
+    buckets=(30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0),
+    expected_labels=('job_type',)
+)
+
+job_retry_failures_total = _CounterWrapper(
+    'job_retry_failures_total',
+    'Total number of jobs that failed after retries',
+    unit='1',
+    expected_labels=('job_type', 'error_type')
+)
+
+job_timeout_rate = _CounterWrapper(
+    'job_timeout_rate',
+    'Total number of jobs that timed out',
+    unit='1',
+    expected_labels=('job_type', 'queue_name')
+)
+
 # Per-tenant job count metrics
 tenant_running_jobs = _UpDownCounterWrapper(
     'tenant_running_jobs',
@@ -1032,12 +1143,124 @@ service_health_status = _UpDownCounterWrapper(
 
 
 # ============================================================================
+# Marketplace Integration Metrics
+# ============================================================================
+
+# Marketplace Connection Metrics
+marketplace_connections_total = _CounterWrapper(
+    'marketplace_connections_total',
+    'Total number of marketplace connections created',
+    unit='1',
+    expected_labels=('marketplace_type', 'tenant_id', 'status')
+)
+
+marketplace_connection_status = _UpDownCounterWrapper(
+    'marketplace_connection_status',
+    'Current status of marketplace connections (1=active, 0=inactive)',
+    unit='1',
+    expected_labels=('marketplace_type', 'tenant_id', 'connection_id')
+)
+
+# Sync Job Metrics
+marketplace_sync_jobs_total = _CounterWrapper(
+    'marketplace_sync_jobs_total',
+    'Total number of marketplace sync jobs started',
+    unit='1',
+    expected_labels=('marketplace_type', 'direction', 'tenant_id', 'status')
+)
+
+marketplace_sync_job_duration_seconds = _HistogramWrapper(
+    'marketplace_sync_job_duration_seconds',
+    'Duration of marketplace sync jobs in seconds',
+    unit='s',
+    buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0, 3600.0),
+    expected_labels=('marketplace_type', 'direction', 'status')
+)
+
+marketplace_sync_job_success_rate = _CounterWrapper(
+    'marketplace_sync_job_success_rate',
+    'Success rate of marketplace sync jobs (incremented on success)',
+    unit='1',
+    expected_labels=('marketplace_type', 'direction', 'tenant_id')
+)
+
+# Connector Operation Metrics
+marketplace_connector_operations_total = _CounterWrapper(
+    'marketplace_connector_operations_total',
+    'Total number of connector operations performed',
+    unit='1',
+    expected_labels=('marketplace_type', 'operation_type', 'status', 'tenant_id')
+)
+
+marketplace_connector_operation_duration_seconds = _HistogramWrapper(
+    'marketplace_connector_operation_duration_seconds',
+    'Duration of connector operations in seconds',
+    unit='s',
+    buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+    expected_labels=('marketplace_type', 'operation_type', 'status')
+)
+
+marketplace_connector_operation_errors_total = _CounterWrapper(
+    'marketplace_connector_operation_errors_total',
+    'Total number of connector operation errors',
+    unit='1',
+    expected_labels=('marketplace_type', 'operation_type', 'error_type', 'tenant_id')
+)
+
+# Marketplace API Call Metrics
+marketplace_api_calls_total = _CounterWrapper(
+    'marketplace_api_calls_total',
+    'Total number of API calls made to marketplaces',
+    unit='1',
+    expected_labels=('marketplace_type', 'endpoint', 'method', 'status_code', 'tenant_id')
+)
+
+marketplace_api_call_duration_seconds = _HistogramWrapper(
+    'marketplace_api_call_duration_seconds',
+    'Duration of API calls to marketplaces in seconds',
+    unit='s',
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    expected_labels=('marketplace_type', 'endpoint', 'method', 'status_code')
+)
+
+marketplace_api_call_errors_total = _CounterWrapper(
+    'marketplace_api_call_errors_total',
+    'Total number of API call errors to marketplaces',
+    unit='1',
+    expected_labels=('marketplace_type', 'endpoint', 'method', 'error_type', 'tenant_id')
+)
+
+# Marketplace Connection Test Metrics
+marketplace_connection_tests_total = _CounterWrapper(
+    'marketplace_connection_tests_total',
+    'Total number of marketplace connection tests performed',
+    unit='1',
+    expected_labels=('marketplace_type', 'tenant_id', 'status')
+)
+
+marketplace_connection_test_failures_total = _CounterWrapper(
+    'marketplace_connection_test_failures_total',
+    'Total number of marketplace connection test failures',
+    unit='1',
+    expected_labels=('marketplace_type', 'tenant_id', 'connection_id', 'error_type')
+)
+
+
+# ============================================================================
 # Metrics View Function
 # ============================================================================
 
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
+
+@csrf_exempt
+@require_GET
 def metrics_view(request):
     """
     Prometheus metrics endpoint using OpenTelemetry Prometheus exporter.
+
+    This endpoint is exempt from authentication as Prometheus scrapers
+    typically don't provide authentication credentials.
 
     Returns:
         HTTP response with Prometheus metrics in text format

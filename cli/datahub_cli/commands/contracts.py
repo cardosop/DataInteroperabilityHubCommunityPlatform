@@ -342,7 +342,14 @@ def create_odps(
     try:
         # Validate parameters
         validate_mutually_exclusive_options('extract-odcs', extract_odcs, 'link-odcs', link_odcs_id)
-        validate_required_option('extract-odcs', extract_odcs, alternative='link-odcs')
+        # Check that either extract_odcs or link_odcs_id is provided
+        if not extract_odcs and not link_odcs_id:
+            raise ODPSParameterError(
+                message="Must specify either --extract-odcs or --link-odcs",
+                error_code="MISSING_REQUIRED_OPTION",
+                context={'extract_odcs': extract_odcs, 'link_odcs_id': link_odcs_id},
+                suggestion="Provide either --extract-odcs or --link-odcs"
+            )
 
         if link_odcs_id:
             validate_contract_id(link_odcs_id, 'odcs')

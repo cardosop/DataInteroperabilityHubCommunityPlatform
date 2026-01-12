@@ -98,7 +98,7 @@ class ContractProductDetailsViewTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{self.odps_contract.id}/product-details/',
+            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
             format='json'
         )
 
@@ -115,7 +115,7 @@ class ContractProductDetailsViewTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{self.odps_contract.id}/product-details/',
+            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
             {'lang': 'fi'},
             format='json'
         )
@@ -132,7 +132,7 @@ class ContractProductDetailsViewTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{self.odps_contract.id}/product-details/',
+            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
             {'lang': 'fr'},
             format='json'
         )
@@ -151,7 +151,7 @@ class ContractProductDetailsViewTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{self.odcs_contract.id}/product-details/',
+            f'/api/v1/contracts/{self.odcs_contract.id}/product-details/',
             format='json'
         )
 
@@ -164,7 +164,7 @@ class ContractProductDetailsViewTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{self.odps_contract.id}/product-details/',
+            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
             {'lang': 'invalid'},
             format='json'
         )
@@ -178,7 +178,7 @@ class ContractProductDetailsViewTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{self.odps_contract.id}/product-details/',
+            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
             {'lang': 'eng'},
             format='json'
         )
@@ -195,7 +195,7 @@ class ContractProductDetailsViewTest(TestCase):
         non_existent_id = uuid.uuid4()
 
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{non_existent_id}/product-details/',
+            f'/api/v1/contracts/{non_existent_id}/product-details/',
             format='json'
         )
 
@@ -204,7 +204,7 @@ class ContractProductDetailsViewTest(TestCase):
     def test_get_product_details_unauthenticated(self):
         """Test getting product details without authentication"""
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{self.odps_contract.id}/product-details/',
+            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
             format='json'
         )
 
@@ -237,7 +237,7 @@ class ContractProductDetailsViewTest(TestCase):
         )
 
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{contract_no_original.id}/product-details/',
+            f'/api/v1/contracts/{contract_no_original.id}/product-details/',
             format='json'
         )
 
@@ -255,7 +255,7 @@ class ContractProductDetailsViewTest(TestCase):
 
         # Test with uppercase language code
         response = self.client.get(
-            f'/api/v1/contracts/contracts/{self.odps_contract.id}/product-details/',
+            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
             {'lang': 'EN'},
             format='json'
         )

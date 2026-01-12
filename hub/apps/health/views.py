@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.db import connection
-import redis
 from django.conf import settings
+from hub.apps.core.redis_pools import health_check_all_redis_instances
 
 
 def health_check(request):
@@ -9,7 +9,12 @@ def health_check(request):
     status = {
         'status': 'healthy',
         'database': 'unknown',
-        'redis': 'unknown',
+        'redis': {
+            'cache': 'unknown',
+            'queue': 'unknown',
+            'events': 'unknown',
+            'channels': 'unknown',
+        },
     }
 
     # Check database
@@ -21,13 +26,17 @@ def health_check(request):
         status['database'] = f'error: {str(e)}'
         status['status'] = 'unhealthy'
 
-    # Check Redis
-    try:
-        r = redis.from_url(settings.REDIS_URL)
-        r.ping()
-        status['redis'] = 'connected'
-    except Exception as e:
-        status['redis'] = f'error: {str(e)}'
+    # Check all Redis instances
+    redis_health = health_check_all_redis_instances()
+    all_redis_healthy = True
+    for instance_name, instance_status in redis_health.items():
+        if instance_status['status'] == 'healthy':
+            status['redis'][instance_name] = 'connected'
+        else:
+            status['redis'][instance_name] = f"error: {instance_status.get('error', 'unknown')}"
+            all_redis_healthy = False
+
+    if not all_redis_healthy:
         status['status'] = 'unhealthy'
 
     http_status = 200 if status['status'] == 'healthy' else 503

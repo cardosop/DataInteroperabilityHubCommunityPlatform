@@ -6,7 +6,7 @@ from rest_framework.routers import DefaultRouter
 from .views import TenantViewSet, TenantConfigViewSet
 
 router = DefaultRouter()
-router.register(r"tenants", TenantViewSet, basename="tenant")
+router.register(r"", TenantViewSet, basename="tenant")
 
 # Manually register TenantConfigViewSet routes to avoid URL pattern conflicts
 # The router would try to add detail routes which conflict with our custom pattern

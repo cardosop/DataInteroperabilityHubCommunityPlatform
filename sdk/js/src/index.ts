@@ -1,6 +1,6 @@
 /**
  * Interoperable Data Hub JavaScript SDK
- * 
+ *
  * TypeScript/JavaScript client library for the Interoperable Data Hub API.
  * Generated from OpenAPI spec with custom authentication and error handling.
  */
@@ -12,6 +12,16 @@ export * from './errors';
 export * from './types';
 export { ContractsAPI } from './contracts';
 export { LineageAPI } from './lineage';
+export { ComplianceAPI } from './compliance';
+export type {
+  CreateComplianceRunParams,
+  ListComplianceRunsParams,
+  ComplianceRun,
+  ComplianceRunResults,
+  ScanMode,
+  ComplianceRunStatus,
+  RiskLevel,
+} from './compliance';
 
 // Re-export generated API clients
 export * from './generated';

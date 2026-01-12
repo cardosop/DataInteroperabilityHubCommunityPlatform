@@ -49,6 +49,36 @@ runserver: ## Run Django development server
 test: ## Run tests
 	pytest
 
+test-api-client-usage: ## Run API client usage search tests (validates JSON report structure)
+	@echo "Running API client usage search tests..."
+	@python3 tests/integration/run_api_client_usage_tests.py
+
+test-api-client-usage-generate: ## Generate API client usage report and run tests
+	@echo "Generating API client usage report..."
+	@python3 scripts/search_api_client_usage.py
+	@echo "Running tests..."
+	@python3 tests/integration/run_api_client_usage_tests.py
+
+test-webhook-payloads: ## Run webhook payloads and events search tests (validates JSON report structure)
+	@echo "Running webhook payloads and events search tests..."
+	@python3 tests/integration/run_webhook_payloads_tests.py
+
+test-webhook-payloads-generate: ## Generate webhook payloads and events report and run tests
+	@echo "Generating webhook payloads and events report..."
+	@python3 scripts/search_webhook_payloads_and_events.py
+	@echo "Running tests..."
+	@python3 tests/integration/run_webhook_payloads_tests.py
+
+test-inter-service-communication: ## Run inter-service communication search tests (validates JSON report structure)
+	@echo "Running inter-service communication search tests..."
+	@python3 tests/integration/run_inter_service_communication_tests.py
+
+test-inter-service-communication-generate: ## Generate inter-service communication report and run tests
+	@echo "Generating inter-service communication report..."
+	@python3 scripts/search_inter_service_communication.py
+	@echo "Running tests..."
+	@python3 tests/integration/run_inter_service_communication_tests.py
+
 test-integration: ## Run integration tests (requires services to be running)
 	pytest -m integration
 
@@ -68,6 +98,36 @@ test-e2e-with-services: ## Run E2E tests with real services
 	@echo "Running E2E tests with real services..."
 	@echo "Make sure services are running: make docker-up-services"
 	USE_REAL_SERVICES=true cd hub && python manage.py test tests.e2e
+
+test-connectors-e2e: ## Run Connector E2E tests (requires credentials)
+	@echo "=========================================="
+	@echo "Connector E2E Testing"
+	@echo "=========================================="
+	@echo ""
+	@echo "This command runs end-to-end tests for marketplace connectors."
+	@echo "Tests use real marketplace instances and real connections - no mocks or stubs."
+	@echo ""
+	@echo "Prerequisites:"
+	@echo "  - Services must be running: make docker-up-all"
+	@echo "  - Database migrations applied: make migrate"
+	@echo ""
+	@echo "Required Environment Variables:"
+	@echo "  - DADOS_GOV_BR_API_KEY: JWT token for dados.gov.br API (optional)"
+	@echo "  - SNOWFLAKE_ACCOUNT: Snowflake account identifier (optional)"
+	@echo "  - SNOWFLAKE_USER: Snowflake username (optional)"
+	@echo "  - SNOWFLAKE_TOKEN: Snowflake PAT token (optional)"
+	@echo "  - SNOWFLAKE_WAREHOUSE: Snowflake warehouse (optional)"
+	@echo "  - SNOWFLAKE_ROLE: Snowflake role (optional)"
+	@echo "  - SNOWFLAKE_DATABASE: Snowflake database (optional)"
+	@echo ""
+	@echo "Note: Tests skip gracefully if credentials are not available."
+	@echo ""
+	@echo "Running tests..."
+	@docker compose exec api-service python -m pytest \
+		hub/apps/integrations/tests/test_connectors_e2e.py \
+		-v \
+		--tb=short \
+		-m integration || echo "⚠️ Some tests may have been skipped due to missing credentials"
 
 test-unit: ## Run unit tests only
 	pytest -m "not integration"

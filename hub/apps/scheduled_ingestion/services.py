@@ -15,15 +15,30 @@ from hub.apps.orchestration.workflows.scheduled_ingestion import ScheduledIngest
 class IngestionService(BaseService, IngestionEventPublisher):
     """
     Service for scheduled ingestion operations.
-    
+
     Provides business logic for:
     - Scheduled ingestion execution
     - Ingestion status monitoring
     - Ingestion configuration management
     """
-    
+
     service_name = "ingestion_service"
-    
+
+    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+        """
+        Initialize IngestionService.
+
+        Args:
+            tenant_id: Optional tenant ID
+            user_id: Optional user ID
+        """
+        # Set tenant_id before calling super().__init__ so IngestionEventPublisher can access it
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        # Call IngestionEventPublisher.__init__ which will call super().__init__
+        # BaseService doesn't have __init__, so this will call object.__init__()
+        super().__init__()
+
     def execute_ingestion(
         self,
         scheduled_ingestion_id: str,
@@ -31,14 +46,14 @@ class IngestionService(BaseService, IngestionEventPublisher):
     ) -> Dict[str, Any]:
         """
         Execute a scheduled ingestion using workflow orchestration.
-        
+
         Args:
             scheduled_ingestion_id: Scheduled ingestion ID
             tenant_id: Optional tenant ID for filtering
-            
+
         Returns:
             Execution result dictionary
-            
+
         Raises:
             NotFoundError: If scheduled ingestion not found
         """
@@ -47,13 +62,13 @@ class IngestionService(BaseService, IngestionEventPublisher):
             scheduled_ingestion_id,
             tenant_id=tenant_id or self.tenant_id
         )
-        
+
         return self.execute_with_metrics(
             operation="execute_ingestion",
             func=lambda: self._execute_ingestion_impl(scheduled_ingestion),
             tenant_id=str(scheduled_ingestion.tenant_id)
         )
-    
+
     def _execute_ingestion_impl(
         self,
         scheduled_ingestion: ScheduledIngestion
@@ -63,11 +78,11 @@ class IngestionService(BaseService, IngestionEventPublisher):
         workflow_result = ScheduledIngestionWorkflow.execute(
             scheduled_ingestion_id=str(scheduled_ingestion.id)
         )
-        
+
         # Extract results from workflow output
         output_data = workflow_result.get("output_data", {})
         state_summary = output_data.get("state_summary", {})
-        
+
         return {
             "files_found": output_data.get("files_found", 0),
             "files_processed": state_summary.get("total_processed", 0),
@@ -82,7 +97,7 @@ class IngestionService(BaseService, IngestionEventPublisher):
             },
             "workflow_instance_id": workflow_result.get("workflow_instance_id")
         }
-    
+
     def get_ingestion_status(
         self,
         scheduled_ingestion_id: str,
@@ -90,21 +105,21 @@ class IngestionService(BaseService, IngestionEventPublisher):
     ) -> ScheduledIngestion:
         """
         Get scheduled ingestion status.
-        
+
         Args:
             scheduled_ingestion_id: Scheduled ingestion ID
             tenant_id: Optional tenant ID for filtering
-            
+
         Returns:
             ScheduledIngestion instance
-            
+
         Raises:
             NotFoundError: If scheduled ingestion not found
         """
         effective_tenant_id = tenant_id or self.tenant_id
         if not effective_tenant_id:
             raise ValidationError("tenant_id is required")
-        
+
         return self.execute_with_metrics(
             operation="get_ingestion_status",
             tenant_id=effective_tenant_id,

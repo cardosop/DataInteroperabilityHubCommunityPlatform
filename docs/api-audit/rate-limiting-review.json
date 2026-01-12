@@ -1,0 +1,2069 @@
+{
+  "generated_at": "2025-12-28T14:55:14.245331",
+  "summary": {
+    "total_categories": 13,
+    "total_rate_limit_rules": 39,
+    "total_endpoint_mappings": 71,
+    "categories_with_mappings": 13,
+    "verification": {
+      "configs_reviewed": {
+        "status": "success",
+        "categories_reviewed": 13,
+        "total_categories": 13,
+        "rules_reviewed": 39,
+        "expected_rules": 39,
+        "category_mappings_reviewed": 13
+      },
+      "mapping_completeness": {
+        "status": "success",
+        "endpoints_mapped": 71,
+        "categories_with_endpoints": 1,
+        "category_coverage": {
+          "file_upload": 0,
+          "file_download": 0,
+          "asset": 0,
+          "general": 71,
+          "search": 0,
+          "contract_validation": 0,
+          "auth": 0,
+          "sparql_query": 0,
+          "dq_run": 0,
+          "catalog_read": 0,
+          "transformation": 0,
+          "contract": 0,
+          "compliance_run": 0
+        },
+        "mapping_working": true
+      }
+    }
+  },
+  "rate_limit_rules": {
+    "by_category": {
+      "asset": [
+        {
+          "category": "asset",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 20,
+          "maximum_limit": 100
+        },
+        {
+          "category": "asset",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 100,
+          "maximum_limit": 500
+        },
+        {
+          "category": "asset",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 50000,
+          "maximum_limit": 200000
+        }
+      ],
+      "auth": [
+        {
+          "category": "auth",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 3,
+          "maximum_limit": 10
+        },
+        {
+          "category": "auth",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 5,
+          "maximum_limit": 20
+        },
+        {
+          "category": "auth",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 1000,
+          "maximum_limit": 5000
+        }
+      ],
+      "catalog_read": [
+        {
+          "category": "catalog_read",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 100,
+          "maximum_limit": 1000
+        },
+        {
+          "category": "catalog_read",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 600,
+          "maximum_limit": 6000
+        },
+        {
+          "category": "catalog_read",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 100000,
+          "maximum_limit": 1000000
+        }
+      ],
+      "compliance_run": [
+        {
+          "category": "compliance_run",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 20,
+          "maximum_limit": 100
+        },
+        {
+          "category": "compliance_run",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 60,
+          "maximum_limit": 300
+        },
+        {
+          "category": "compliance_run",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 10000,
+          "maximum_limit": 100000
+        }
+      ],
+      "contract": [
+        {
+          "category": "contract",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 20,
+          "maximum_limit": 100
+        },
+        {
+          "category": "contract",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 100,
+          "maximum_limit": 500
+        },
+        {
+          "category": "contract",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 50000,
+          "maximum_limit": 200000
+        }
+      ],
+      "contract_validation": [
+        {
+          "category": "contract_validation",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 30,
+          "maximum_limit": 200
+        },
+        {
+          "category": "contract_validation",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 100,
+          "maximum_limit": 500
+        },
+        {
+          "category": "contract_validation",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 20000,
+          "maximum_limit": 200000
+        }
+      ],
+      "dq_run": [
+        {
+          "category": "dq_run",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 20,
+          "maximum_limit": 100
+        },
+        {
+          "category": "dq_run",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 60,
+          "maximum_limit": 300
+        },
+        {
+          "category": "dq_run",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 10000,
+          "maximum_limit": 100000
+        }
+      ],
+      "file_download": [
+        {
+          "category": "file_download",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 50,
+          "maximum_limit": 500
+        },
+        {
+          "category": "file_download",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 300,
+          "maximum_limit": 3000
+        },
+        {
+          "category": "file_download",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 50000,
+          "maximum_limit": 500000
+        }
+      ],
+      "file_upload": [
+        {
+          "category": "file_upload",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 3,
+          "maximum_limit": 15
+        },
+        {
+          "category": "file_upload",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 10,
+          "maximum_limit": 50
+        },
+        {
+          "category": "file_upload",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 5000,
+          "maximum_limit": 20000
+        }
+      ],
+      "general": [
+        {
+          "category": "general",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 100,
+          "maximum_limit": 1000
+        },
+        {
+          "category": "general",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 600,
+          "maximum_limit": 6000
+        },
+        {
+          "category": "general",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 100000,
+          "maximum_limit": 1000000
+        }
+      ],
+      "search": [
+        {
+          "category": "search",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 10,
+          "maximum_limit": 50
+        },
+        {
+          "category": "search",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 50,
+          "maximum_limit": 200
+        },
+        {
+          "category": "search",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 20000,
+          "maximum_limit": 100000
+        }
+      ],
+      "sparql_query": [
+        {
+          "category": "sparql_query",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 50,
+          "maximum_limit": 500
+        },
+        {
+          "category": "sparql_query",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 200,
+          "maximum_limit": 2000
+        },
+        {
+          "category": "sparql_query",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 50000,
+          "maximum_limit": 500000
+        }
+      ],
+      "transformation": [
+        {
+          "category": "transformation",
+          "window": "BURST",
+          "window_seconds": 10,
+          "default_limit": 10,
+          "maximum_limit": 50
+        },
+        {
+          "category": "transformation",
+          "window": "SUSTAINED",
+          "window_seconds": 60,
+          "default_limit": 30,
+          "maximum_limit": 200
+        },
+        {
+          "category": "transformation",
+          "window": "DAILY",
+          "window_seconds": 86400,
+          "default_limit": 5000,
+          "maximum_limit": 50000
+        }
+      ]
+    },
+    "all": [
+      {
+        "category": "asset",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 20,
+        "maximum_limit": 100
+      },
+      {
+        "category": "asset",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 100,
+        "maximum_limit": 500
+      },
+      {
+        "category": "asset",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 50000,
+        "maximum_limit": 200000
+      },
+      {
+        "category": "auth",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 3,
+        "maximum_limit": 10
+      },
+      {
+        "category": "auth",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 5,
+        "maximum_limit": 20
+      },
+      {
+        "category": "auth",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 1000,
+        "maximum_limit": 5000
+      },
+      {
+        "category": "catalog_read",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 100,
+        "maximum_limit": 1000
+      },
+      {
+        "category": "catalog_read",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 600,
+        "maximum_limit": 6000
+      },
+      {
+        "category": "catalog_read",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 100000,
+        "maximum_limit": 1000000
+      },
+      {
+        "category": "compliance_run",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 20,
+        "maximum_limit": 100
+      },
+      {
+        "category": "compliance_run",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 60,
+        "maximum_limit": 300
+      },
+      {
+        "category": "compliance_run",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 10000,
+        "maximum_limit": 100000
+      },
+      {
+        "category": "contract",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 20,
+        "maximum_limit": 100
+      },
+      {
+        "category": "contract",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 100,
+        "maximum_limit": 500
+      },
+      {
+        "category": "contract",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 50000,
+        "maximum_limit": 200000
+      },
+      {
+        "category": "contract_validation",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 30,
+        "maximum_limit": 200
+      },
+      {
+        "category": "contract_validation",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 100,
+        "maximum_limit": 500
+      },
+      {
+        "category": "contract_validation",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 20000,
+        "maximum_limit": 200000
+      },
+      {
+        "category": "dq_run",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 20,
+        "maximum_limit": 100
+      },
+      {
+        "category": "dq_run",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 60,
+        "maximum_limit": 300
+      },
+      {
+        "category": "dq_run",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 10000,
+        "maximum_limit": 100000
+      },
+      {
+        "category": "file_download",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 50,
+        "maximum_limit": 500
+      },
+      {
+        "category": "file_download",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 300,
+        "maximum_limit": 3000
+      },
+      {
+        "category": "file_download",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 50000,
+        "maximum_limit": 500000
+      },
+      {
+        "category": "file_upload",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 3,
+        "maximum_limit": 15
+      },
+      {
+        "category": "file_upload",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 10,
+        "maximum_limit": 50
+      },
+      {
+        "category": "file_upload",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 5000,
+        "maximum_limit": 20000
+      },
+      {
+        "category": "general",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 100,
+        "maximum_limit": 1000
+      },
+      {
+        "category": "general",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 600,
+        "maximum_limit": 6000
+      },
+      {
+        "category": "general",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 100000,
+        "maximum_limit": 1000000
+      },
+      {
+        "category": "search",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 10,
+        "maximum_limit": 50
+      },
+      {
+        "category": "search",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 50,
+        "maximum_limit": 200
+      },
+      {
+        "category": "search",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 20000,
+        "maximum_limit": 100000
+      },
+      {
+        "category": "sparql_query",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 50,
+        "maximum_limit": 500
+      },
+      {
+        "category": "sparql_query",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 200,
+        "maximum_limit": 2000
+      },
+      {
+        "category": "sparql_query",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 50000,
+        "maximum_limit": 500000
+      },
+      {
+        "category": "transformation",
+        "window": "BURST",
+        "window_seconds": 10,
+        "default_limit": 10,
+        "maximum_limit": 50
+      },
+      {
+        "category": "transformation",
+        "window": "SUSTAINED",
+        "window_seconds": 60,
+        "default_limit": 30,
+        "maximum_limit": 200
+      },
+      {
+        "category": "transformation",
+        "window": "DAILY",
+        "window_seconds": 86400,
+        "default_limit": 5000,
+        "maximum_limit": 50000
+      }
+    ]
+  },
+  "endpoint_category_mappings": {
+    "asset": [
+      {
+        "path": "/api/v1/assets/",
+        "method": "POST"
+      },
+      {
+        "path": "/api/v1/assets/{id}/",
+        "method": "PUT"
+      },
+      {
+        "path": "/api/v1/assets/{id}/",
+        "method": "DELETE"
+      }
+    ],
+    "auth": [
+      {
+        "path": "/api/v1/auth/login/",
+        "method": "POST"
+      },
+      {
+        "path": "/api/v1/auth/register/",
+        "method": "POST"
+      },
+      {
+        "path": "/api/v1/auth/password-reset/",
+        "method": "POST"
+      }
+    ],
+    "catalog_read": [
+      {
+        "path": "/api/v1/assets/",
+        "method": "GET"
+      },
+      {
+        "path": "/api/v1/contracts/",
+        "method": "GET"
+      }
+    ],
+    "compliance_run": [
+      {
+        "path": "/api/v1/compliance/runs/",
+        "method": "POST"
+      }
+    ],
+    "contract": [
+      {
+        "path": "/api/v1/contracts/",
+        "method": "POST"
+      }
+    ],
+    "contract_validation": [
+      {
+        "path": "/api/v1/contracts/{id}/validate/",
+        "method": "POST"
+      }
+    ],
+    "dq_run": [
+      {
+        "path": "/api/v1/dq/runs/",
+        "method": "POST"
+      }
+    ],
+    "file_download": [
+      {
+        "path": "/api/v1/files/{id}/download/",
+        "method": "GET"
+      }
+    ],
+    "file_upload": [
+      {
+        "path": "/api/v1/files/",
+        "method": "POST"
+      }
+    ],
+    "general": [
+      {
+        "path": "/api/v1/dq/runs/",
+        "method": "GET"
+      }
+    ],
+    "search": [
+      {
+        "path": "/api/v1/search/",
+        "method": "GET"
+      }
+    ],
+    "sparql_query": [
+      {
+        "path": "/api/v1/semantic/sparql/",
+        "method": "POST"
+      }
+    ],
+    "transformation": [
+      {
+        "path": "/api/v1/transformation/pipelines/",
+        "method": "POST"
+      }
+    ]
+  },
+  "endpoint_rate_limit_mappings": [
+    {
+      "endpoint_path": "accept-invitation/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "access/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "admin/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "ai/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "analytics/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "api-docs/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "api-docs/openapi.json",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "api-docs/redoc/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "api/v1/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "assets/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "audit/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "auth/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "circuit-breakers/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "compliance/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "context.jsonld",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "contracts/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "datasets/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "developer/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "dq/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "files/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "governance/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "graphql-graphene/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "graphql/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "health/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "id/<str:resource_type>/<str:resource_id>",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "id/field/<str:asset_uuid>/<str:field_name>",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "jobs/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "login/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "logout/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "marketplace/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "me/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "mesh/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "metrics/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "metrics/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "ontology",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "openapi.json",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "openapi.yaml",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "password-reset/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "password-reset/confirm/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "refresh/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "register/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/",
+      "method": "DELETE",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/",
+      "method": "PATCH",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/",
+      "method": "POST",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/",
+      "method": "PUT",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/",
+      "method": "get",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/<uuid:id>/",
+      "method": "DELETE",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/<uuid:id>/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/<uuid:id>/",
+      "method": "PATCH",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/<uuid:id>/",
+      "method": "POST",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/<uuid:id>/",
+      "method": "PUT",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "runs/<uuid:id>/",
+      "method": "get",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "scheduled-ingestions/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "search/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "semantic/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "sessions/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "sessions/<uuid:session_id>/revoke/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "social/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "sparql",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "tenants/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "tenants/<uuid:tenant_id>/config/",
+      "method": "DELETE",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "tenants/<uuid:tenant_id>/config/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "tenants/<uuid:tenant_id>/config/",
+      "method": "PATCH",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "tenants/<uuid:tenant_id>/config/",
+      "method": "POST",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "tenants/<uuid:tenant_id>/config/",
+      "method": "PUT",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "tenants/<uuid:tenant_id>/config/",
+      "method": "post",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "transformation/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "users/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "virtualization/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    },
+    {
+      "endpoint_path": "webhooks/",
+      "method": "GET",
+      "category": "general",
+      "limits": {
+        "burst": {
+          "default": 100,
+          "maximum": 1000
+        },
+        "sustained": {
+          "default": 600,
+          "maximum": 6000
+        },
+        "daily": {
+          "default": 100000,
+          "maximum": 1000000
+        }
+      }
+    }
+  ]
+}

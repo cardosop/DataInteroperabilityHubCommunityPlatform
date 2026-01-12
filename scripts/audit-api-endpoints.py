@@ -84,23 +84,23 @@ class URLPatternParser:
             name = pattern.name or ''
 
             # Build full path
-            # prefix already includes the service mount point (e.g., "auth/")
+            # prefix already includes base_path and accumulated path (e.g., "/api/v1/auth/")
             # pattern_str is the endpoint pattern (e.g., "login/")
-            # We need to combine them properly
-            if prefix and prefix != '/':
-                # Remove trailing slash from prefix for combination
+            # Just combine prefix + pattern_str (don't add base_path again)
+            if prefix:
                 prefix_clean = prefix.rstrip('/')
                 pattern_clean = pattern_str.lstrip('/')
                 if pattern_clean:
-                    full_path = base_path.rstrip('/') + '/' + prefix_clean + '/' + pattern_clean
+                    full_path = prefix_clean + '/' + pattern_clean
                 else:
-                    full_path = base_path.rstrip('/') + '/' + prefix_clean
+                    full_path = prefix_clean
             else:
+                # No prefix, use base_path + pattern_str
                 full_path = base_path.rstrip('/') + '/' + pattern_str.lstrip('/')
-            
+
             full_path = re.sub(r'/+', '/', full_path)  # Normalize slashes
             # Keep trailing slash for consistency with Django URL patterns
-            if not full_path.endswith('/') and pattern_str.endswith('/'):
+            if pattern_str.endswith('/') and not full_path.endswith('/'):
                 full_path += '/'
 
             # Determine HTTP methods from callback
@@ -133,21 +133,23 @@ class URLPatternParser:
 
             # Build full path (simplified regex pattern)
             simplified_pattern = self._simplify_regex_pattern(pattern_str)
-            # prefix already includes the service mount point
+            # prefix already includes the full path from root (e.g., "/api/v1/auth/")
             # simplified_pattern is the endpoint pattern
-            if prefix and prefix != '/':
+            if prefix:
+                # Prefix already includes base_path, so just append simplified_pattern
                 prefix_clean = prefix.rstrip('/')
                 pattern_clean = simplified_pattern.lstrip('/')
                 if pattern_clean:
-                    full_path = base_path.rstrip('/') + '/' + prefix_clean + '/' + pattern_clean
+                    full_path = prefix_clean + '/' + pattern_clean
                 else:
-                    full_path = base_path.rstrip('/') + '/' + prefix_clean
+                    full_path = prefix_clean
             else:
+                # No prefix, use base_path + simplified_pattern
                 full_path = base_path.rstrip('/') + '/' + simplified_pattern.lstrip('/')
-            
+
             full_path = re.sub(r'/+', '/', full_path)
             # Keep trailing slash for consistency
-            if not full_path.endswith('/') and pattern_str.endswith('/'):
+            if pattern_str.endswith('/') and not full_path.endswith('/'):
                 full_path += '/'
 
             methods = self._get_http_methods(callback)
@@ -543,7 +545,7 @@ class EndpointAuditor:
                 if not urls_path.is_absolute():
                     urls_path = Path.cwd() / urls_path
                 urls_path = urls_path.resolve()
-                
+
                 # Find the directory containing 'hub' directory
                 # urls_path is /app/hub/apps/api/urls.py
                 # We need to find /app (which contains hub/)
@@ -552,7 +554,7 @@ class EndpointAuditor:
                 project_root = None
                 max_iterations = 10
                 iteration = 0
-                
+
                 # Start from the file's parent directory and walk up
                 # urls_path is /app/hub/apps/api/urls.py
                 # We want to find /app (which contains hub/)
@@ -560,7 +562,7 @@ class EndpointAuditor:
                 while current != current.parent and iteration < max_iterations:
                     # Check if current directory contains 'hub' subdirectory
                     # For /app/hub/apps/api, we check /app/hub/apps/api/hub - doesn't exist
-                    # For /app/hub/apps, we check /app/hub/apps/hub - doesn't exist  
+                    # For /app/hub/apps, we check /app/hub/apps/hub - doesn't exist
                     # For /app/hub, we check /app/hub/hub - doesn't exist
                     # For /app, we check /app/hub - EXISTS!
                     if (current / 'hub').is_dir() and (current / 'hub' / 'apps' / 'api' / 'urls.py').exists():
@@ -568,7 +570,7 @@ class EndpointAuditor:
                         break
                     current = current.parent
                     iteration += 1
-                
+
                 if not project_root:
                     # Fallback: use current working directory
                     cwd = Path.cwd()
@@ -577,14 +579,14 @@ class EndpointAuditor:
                     else:
                         # Last resort: assume /app (Docker environment)
                         project_root = Path('/app')
-                
+
                 # Ensure project_root is absolute and exists
                 project_root = project_root.resolve()
                 if not (project_root / 'hub' / 'apps' / 'api' / 'urls.py').exists():
                     # Final fallback: try /app
                     if Path('/app/hub/apps/api/urls.py').exists():
                         project_root = Path('/app')
-                
+
                 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
                 # Add project root to Python path (must be first, before any other paths)
                 project_root_str = str(project_root.resolve())
@@ -592,7 +594,7 @@ class EndpointAuditor:
                 if project_root_str in sys.path:
                     sys.path.remove(project_root_str)
                 sys.path.insert(0, project_root_str)
-                
+
                 django_setup_done = True
 
             import django
@@ -615,12 +617,14 @@ class EndpointAuditor:
                         break
 
             # Parse all URL patterns
+            # Start with prefix that includes base_path
+            initial_prefix = base_path.rstrip('/') + '/'
             all_endpoints = []
             if api_resolver:
-                self._parse_resolver(api_resolver, base_path, '', all_endpoints, mount_points)
+                self._parse_resolver(api_resolver, base_path, initial_prefix, all_endpoints, mount_points)
             else:
                 # Fallback: parse all patterns
-                self._parse_resolver(resolver, base_path, '', all_endpoints, mount_points)
+                self._parse_resolver(resolver, base_path, initial_prefix, all_endpoints, mount_points)
 
         except Exception as e:
             print(f"Error loading Django URLs: {e}", file=sys.stderr)
@@ -659,8 +663,9 @@ class EndpointAuditor:
         for pattern in resolver.url_patterns:
             # Determine service name from mount points
             service_name = ''
-            if hasattr(pattern, 'urlconf_name'):
-                module = str(pattern.urlconf_name)
+            urlconf_name = getattr(pattern, 'urlconf_name', None)
+            if urlconf_name and isinstance(urlconf_name, str):
+                module = str(urlconf_name)
                 # Find matching mount point
                 for service, mod in mount_points.items():
                     if mod == module:
@@ -674,35 +679,77 @@ class EndpointAuditor:
                         if idx + 1 < len(parts):
                             service_name = parts[idx + 1]
 
-            # Get pattern prefix - this is the mount point prefix (e.g., "auth/" from path('auth/', include(...)))
-            pattern_prefix = ''
-            if hasattr(pattern, 'pattern'):
-                pattern_prefix = str(pattern.pattern)
-                # Remove regex anchors
-                pattern_prefix = pattern_prefix.replace('^', '').replace('$', '')
-            
-            # Combine prefixes - prefix is the accumulated path so far, pattern_prefix is the new segment
-            # Example: prefix="" (at API root), pattern_prefix="auth/" -> new_prefix="auth/"
-            # Then: prefix="auth/", pattern_prefix="login/" (from auth/urls.py) -> new_prefix="auth/login/"
-            if pattern_prefix:
-                prefix_clean = prefix.rstrip('/') if prefix else ''
-                pattern_clean = pattern_prefix.lstrip('/')
-                if prefix_clean:
-                    new_prefix = prefix_clean + '/' + pattern_clean
-                else:
-                    new_prefix = pattern_clean
-                new_prefix = re.sub(r'/+', '/', new_prefix)
-                if not new_prefix.endswith('/'):
-                    new_prefix += '/'
-            else:
-                new_prefix = prefix if prefix.endswith('/') else (prefix + '/' if prefix else '/')
+            # If we still don't have a service name, try to infer from prefix
+            if not service_name and prefix:
+                # Extract service from prefix (e.g., "/api/v1/auth/" -> "auth")
+                parts = prefix.rstrip('/').split('/')
+                if len(parts) >= 3 and parts[-1]:  # parts[-1] is the service name
+                    service_name = parts[-1]
 
-            # Check if this is an include pattern
+            # Check if this is an include pattern (URLResolver) or a direct pattern (URLPattern)
             if hasattr(pattern, 'urlconf_name'):
-                # Recursively parse included patterns
+                # This is a URLResolver (include pattern) - it contributes to the prefix
+                urlconf_name = pattern.urlconf_name
+
+                # Skip if urlconf_name is not a string (some resolvers have lists or other types)
+                if not isinstance(urlconf_name, str):
+                    # Try to get url_patterns directly if available
+                    if hasattr(pattern, 'url_patterns'):
+                        # This resolver already has its patterns loaded
+                        pattern_prefix = ''
+                        if hasattr(pattern, 'pattern'):
+                            pattern_prefix = str(pattern.pattern)
+                            pattern_prefix = pattern_prefix.replace('^', '').replace('$', '')
+
+                        # Build new prefix
+                        if pattern_prefix:
+                            prefix_clean = prefix.rstrip('/') if prefix else ''
+                            pattern_clean = pattern_prefix.lstrip('/')
+                            if prefix_clean:
+                                new_prefix = prefix_clean + '/' + pattern_clean
+                            else:
+                                new_prefix = pattern_clean
+                            new_prefix = re.sub(r'/+', '/', new_prefix)
+                            if not new_prefix.endswith('/'):
+                                new_prefix += '/'
+                        else:
+                            new_prefix = prefix if prefix.endswith('/') else (prefix + '/' if prefix else '/')
+
+                        # Parse the patterns directly
+                        self._parse_resolver(
+                            pattern,
+                            base_path,
+                            new_prefix,
+                            endpoints,
+                            mount_points,
+                        )
+                    continue
+
+                pattern_prefix = ''
+                if hasattr(pattern, 'pattern'):
+                    pattern_prefix = str(pattern.pattern)
+                    # Remove regex anchors
+                    pattern_prefix = pattern_prefix.replace('^', '').replace('$', '')
+
+                # Build new prefix by combining current prefix with pattern_prefix
+                # Example: prefix="/api/v1/", pattern_prefix="auth/" -> new_prefix="/api/v1/auth/"
+                if pattern_prefix:
+                    prefix_clean = prefix.rstrip('/') if prefix else ''
+                    pattern_clean = pattern_prefix.lstrip('/')
+                    if prefix_clean:
+                        new_prefix = prefix_clean + '/' + pattern_clean
+                    else:
+                        new_prefix = pattern_clean
+                    new_prefix = re.sub(r'/+', '/', new_prefix)
+                    if not new_prefix.endswith('/'):
+                        new_prefix += '/'
+                else:
+                    new_prefix = prefix if prefix.endswith('/') else (prefix + '/' if prefix else '/')
+
+                # Recursively parse included patterns with new prefix
                 try:
                     from django.urls import get_resolver
-                    included_resolver = get_resolver(pattern.urlconf_name)
+                    included_resolver = get_resolver(urlconf_name)
                     self._parse_resolver(
                         included_resolver,
                         base_path,
@@ -710,11 +757,15 @@ class EndpointAuditor:
                         endpoints,
                         mount_points,
                     )
-                except Exception:
+                except Exception as e:
+                    # Log error but continue - some includes might fail
+                    if hasattr(self, '_verbose') and self._verbose:
+                        print(f"Warning: Failed to parse {urlconf_name}: {e}", file=sys.stderr)
                     pass
             else:
-                # Parse individual pattern
-                result = self.parser.parse_pattern(pattern, base_path, new_prefix, service_name)
+                # This is a URLPattern (direct endpoint) - use current prefix as-is
+                # The pattern's own pattern_str will be appended in _parse_path_pattern
+                result = self.parser.parse_pattern(pattern, base_path, prefix, service_name)
                 if result and result.get('type') != 'include':
                     endpoints.append(result)
 

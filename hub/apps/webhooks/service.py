@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import hmac
 import hashlib
-import requests
 from typing import Any, Dict, Optional
 from django.utils import timezone
 from datetime import timedelta
@@ -16,6 +15,7 @@ from django.db import transaction
 import structlog
 
 from .models import Webhook, WebhookDelivery, WebhookStatus, DeliveryStatus, WebhookEventType
+from .service_client import WebhookDeliveryClient
 from .odps_webhook_errors import (
     ODPSWebhookError,
     ODPSWebhookDeliveryError,
@@ -294,20 +294,22 @@ class WebhookDeliveryService:
             "User-Agent": "DataInteroperabilityHub/1.0"
         }
 
+        # Use WebhookDeliveryClient for circuit breaker and retry logic
+        webhook_client = WebhookDeliveryClient(timeout=WebhookDeliveryService.REQUEST_TIMEOUT)
+
         try:
-            # Make HTTP request
-            response = requests.post(
-                webhook.url,
+            # Make HTTP request using service client
+            status_code, response_text = webhook_client.deliver_webhook(
+                url=webhook.url,
                 data=payload_json,
-                headers=headers,
-                timeout=WebhookDeliveryService.REQUEST_TIMEOUT
+                headers=headers
             )
 
             # Update delivery record
-            delivery.http_status_code = response.status_code
-            delivery.response_body = response.text[:1000]  # Limit response body size
+            delivery.http_status_code = status_code
+            delivery.response_body = response_text
 
-            if 200 <= response.status_code < 300:
+            if 200 <= status_code < 300:
                 # Success
                 delivery.status = DeliveryStatus.SUCCESS
                 delivery.delivered_at = timezone.now()
@@ -320,86 +322,66 @@ class WebhookDeliveryService:
                     delivery_id=str(delivery.id),
                     webhook_id=str(webhook.id),
                     event_type=delivery.event_type,
-                    status_code=response.status_code
+                    status_code=status_code
                 )
             else:
                 # HTTP error - create structured error
                 error = WebhookDeliveryService._create_http_error(
                     delivery=delivery,
-                    status_code=response.status_code,
-                    response_body=response.text,
+                    status_code=status_code,
+                    response_body=response_text,
                 )
                 WebhookDeliveryService._handle_delivery_error(delivery, error)
 
-        except requests.exceptions.Timeout as e:
-            error = ODPSWebhookDeliveryError(
-                message=f"Webhook delivery timeout: {str(e)}",
-                error_code=ODPSWebhookDeliveryError.ERROR_CODE_TIMEOUT,
-                user_message=f"Webhook delivery to '{webhook.url}' timed out after {WebhookDeliveryService.REQUEST_TIMEOUT} seconds",
-                tenant_id=str(webhook.tenant_id),
-                webhook_id=str(webhook.id),
-                delivery_id=str(delivery.id),
-                event_type=delivery.event_type,
-                url=webhook.url,
-                cause=e,
-            )
-            WebhookDeliveryService._handle_delivery_error(delivery, error)
-
-        except requests.exceptions.SSLError as e:
-            error = ODPSWebhookDeliveryError(
-                message=f"Webhook delivery SSL error: {str(e)}",
-                error_code=ODPSWebhookDeliveryError.ERROR_CODE_SSL_ERROR,
-                user_message=f"SSL error when connecting to webhook URL '{webhook.url}': {str(e)}",
-                tenant_id=str(webhook.tenant_id),
-                webhook_id=str(webhook.id),
-                delivery_id=str(delivery.id),
-                event_type=delivery.event_type,
-                url=webhook.url,
-                cause=e,
-            )
-            WebhookDeliveryService._handle_delivery_error(delivery, error)
-
-        except requests.exceptions.ConnectionError as e:
-            error = ODPSWebhookDeliveryError(
-                message=f"Webhook delivery connection error: {str(e)}",
-                error_code=ODPSWebhookDeliveryError.ERROR_CODE_CONNECTION_ERROR,
-                user_message=f"Failed to connect to webhook URL '{webhook.url}': {str(e)}",
-                tenant_id=str(webhook.tenant_id),
-                webhook_id=str(webhook.id),
-                delivery_id=str(delivery.id),
-                event_type=delivery.event_type,
-                url=webhook.url,
-                cause=e,
-            )
-            WebhookDeliveryService._handle_delivery_error(delivery, error)
-
-        except requests.exceptions.RequestException as e:
-            # Generic network error
-            error = ODPSWebhookDeliveryError(
-                message=f"Webhook delivery network error: {str(e)}",
-                error_code=ODPSWebhookDeliveryError.ERROR_CODE_NETWORK_ERROR,
-                user_message=f"Network error when delivering webhook to '{webhook.url}': {str(e)}",
-                tenant_id=str(webhook.tenant_id),
-                webhook_id=str(webhook.id),
-                delivery_id=str(delivery.id),
-                event_type=delivery.event_type,
-                url=webhook.url,
-                cause=e,
-            )
-            WebhookDeliveryService._handle_delivery_error(delivery, error)
-
         except Exception as e:
-            # Unexpected error
-            error = ODPSWebhookError(
-                message=f"Unexpected error during webhook delivery: {str(e)}",
-                error_code=ODPSWebhookError.ERROR_CODE_WEBHOOK_UNKNOWN,
-                user_message="An unexpected error occurred during webhook delivery",
-                tenant_id=str(webhook.tenant_id),
-                webhook_id=str(webhook.id),
-                delivery_id=str(delivery.id),
-                event_type=delivery.event_type,
-                cause=e,
-            )
+            # Handle various error types from httpx
+            import httpx
+
+            if isinstance(e, httpx.TimeoutException):
+                error = ODPSWebhookDeliveryError(
+                    message=f"Webhook delivery timeout: {str(e)}",
+                    error_code=ODPSWebhookDeliveryError.ERROR_CODE_TIMEOUT,
+                    user_message=f"Webhook delivery to '{webhook.url}' timed out after {WebhookDeliveryService.REQUEST_TIMEOUT} seconds",
+                    tenant_id=str(webhook.tenant_id),
+                    webhook_id=str(webhook.id),
+                    delivery_id=str(delivery.id),
+                    event_type=delivery.event_type,
+                    url=webhook.url,
+                    cause=e,
+                )
+            elif isinstance(e, httpx.ConnectError):
+                error = ODPSWebhookDeliveryError(
+                    message=f"Webhook delivery connection error: {str(e)}",
+                    error_code=ODPSWebhookDeliveryError.ERROR_CODE_CONNECTION_ERROR,
+                    user_message=f"Failed to connect to webhook URL '{webhook.url}': {str(e)}",
+                    tenant_id=str(webhook.tenant_id),
+                    webhook_id=str(webhook.id),
+                    delivery_id=str(delivery.id),
+                    event_type=delivery.event_type,
+                    url=webhook.url,
+                    cause=e,
+                )
+            elif isinstance(e, httpx.HTTPStatusError):
+                # HTTP error - already handled above, but catch here for safety
+                error = WebhookDeliveryService._create_http_error(
+                    delivery=delivery,
+                    status_code=e.response.status_code if e.response else 0,
+                    response_body=e.response.text[:1000] if e.response else "",
+                )
+            else:
+                # Generic network error or unexpected error
+                error = ODPSWebhookDeliveryError(
+                    message=f"Webhook delivery error: {str(e)}",
+                    error_code=ODPSWebhookDeliveryError.ERROR_CODE_NETWORK_ERROR,
+                    user_message=f"Error when delivering webhook to '{webhook.url}': {str(e)}",
+                    tenant_id=str(webhook.tenant_id),
+                    webhook_id=str(webhook.id),
+                    delivery_id=str(delivery.id),
+                    event_type=delivery.event_type,
+                    url=webhook.url,
+                    cause=e,
+                )
+
             WebhookDeliveryService._handle_delivery_error(delivery, error)
 
     @staticmethod

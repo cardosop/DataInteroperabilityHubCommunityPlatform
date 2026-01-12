@@ -64,6 +64,7 @@ from .models import (
     NormalizationStatus,
     OriginalSpecType,
     ValidationStatus,
+    SecurityAuditLog,
 )
 from .normalization import normalize_contract, parse_contract, validate_hubcontract_schema
 from .normalization_metrics import record_all_normalization_metrics
@@ -79,7 +80,7 @@ from .pagination import (
     optimize_queryset_for_pagination,
     paginate_queryset,
 )
-from .serializers import ContractCreateSerializer, ContractSerializer, ContractUpdateSerializer, ProductCreateSerializer, ODPSLinkSerializer
+from .serializers import ContractCreateSerializer, ContractSerializer, ContractUpdateSerializer, ProductCreateSerializer, ODPSLinkSerializer, SecurityAuditLogSerializer
 from .services import ContractService
 from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.observability.otel_metrics import (
@@ -2570,77 +2571,35 @@ class ContractViewSet(viewsets.ModelViewSet):
     def get_field_lineage(self, request, id=None, field_name=None):
         """
         Get field-level lineage with caching support.
+        Uses LineageService which publishes events automatically.
         """
         contract = self.get_object()
         contract_id = str(contract.id)
 
-        if not contract.hub_contract_json:
-            return Response(
-                {"error": "Contract has no hub_contract_json"}, status=status.HTTP_404_NOT_FOUND
-            )
+        # Initialize LineageService with tenant_id and user_id
+        tenant_id = _get_tenant_id_from_request(request)
+        user_id = str(request.user.id) if request.user and request.user.is_authenticated else None
 
-        hub_contract = contract.hub_contract_json
-        models_list = hub_contract.get("models", [])
-
-        for model in models_list:
-            if not isinstance(model, dict):
-                continue
-            model_name = model.get("name")
-            fields = model.get("fields", [])
-            for field in fields:
-                if isinstance(field, dict) and field.get("name") == field_name:
-                    lineage = field.get("lineage", {})
-
-                    # Check cache first
-                    cached_lineage = get_cached_lineage(
-                        contract_id, model_name=model_name, field_name=field_name
-                    )
-                    if cached_lineage:
-                        # Cached data might be in different formats, normalize it
-                        if isinstance(cached_lineage, dict) and "lineage" in cached_lineage:
-                            return Response(cached_lineage)
-                        return Response(
-                            {
-                                "field_name": field_name,
-                                "model_name": model_name,
-                                "lineage": (
-                                    cached_lineage
-                                    if isinstance(cached_lineage, dict)
-                                    and "input_fields" in cached_lineage
-                                    else {
-                                        "input_fields": cached_lineage.get("input_fields", []),
-                                        "transformations": cached_lineage.get(
-                                            "transformations", []
-                                        ),
-                                    }
-                                ),
-                                "_cached": True,
-                            }
-                        )
-
-                    # Format lineage response to match service layer format
-                    field_lineage_result = {
-                        "field_name": field_name,
-                        "model_name": model_name,
-                        "lineage": {
-                            "input_fields": lineage.get("input_fields", []),
-                            "transformations": lineage.get("transformations", []),
-                        },
-                    }
-
-                    # Cache the lineage
-                    cache_lineage(
-                        contract_id,
-                        field_lineage_result,
-                        model_name=model_name,
-                        field_name=field_name,
-                    )
-
-                    return Response(field_lineage_result)
-
-        return Response(
-            {"error": f"Field {field_name} not found"}, status=status.HTTP_404_NOT_FOUND
+        lineage_service = LineageService(
+            tenant_id=tenant_id,
+            user_id=user_id
         )
+
+        # Try to get model_name from query params or infer from contract
+        model_name = request.query_params.get("model_name")
+
+        try:
+            result = lineage_service.get_field_lineage(
+                contract_id=contract_id,
+                field_name=field_name,
+                model_name=model_name,
+                use_cache=True
+            )
+            return Response(result)
+        except NotFoundError:
+            return Response(
+                {"error": f"Field {field_name} not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
     @extend_schema(
         summary="Get model-level lineage",
@@ -2674,61 +2633,31 @@ class ContractViewSet(viewsets.ModelViewSet):
     def get_model_lineage(self, request, id=None, model_name=None):
         """
         Get model-level lineage with caching support.
+        Uses LineageService which publishes events automatically.
         """
         contract = self.get_object()
         contract_id = str(contract.id)
 
-        # Check cache first
-        cached_lineage = get_cached_lineage(contract_id, model_name=model_name)
-        if cached_lineage:
-            # Cached data might be in different formats, normalize it
-            if isinstance(cached_lineage, dict) and "lineage" in cached_lineage:
-                return Response(cached_lineage)
-            return Response(
-                {
-                    "model_name": model_name,
-                    "lineage": (
-                        cached_lineage
-                        if isinstance(cached_lineage, dict) and "models" in cached_lineage
-                        else {
-                            "models": cached_lineage.get("models", []),
-                            "entries": cached_lineage.get("entries", []),
-                        }
-                    ),
-                    "_cached": True,
-                }
-            )
+        # Initialize LineageService with tenant_id and user_id
+        tenant_id = _get_tenant_id_from_request(request)
+        user_id = str(request.user.id) if request.user and request.user.is_authenticated else None
 
-        # Generate lineage
-        if not contract.hub_contract_json:
-            return Response(
-                {"error": "Contract has no hub_contract_json"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        hub_contract = contract.hub_contract_json
-        models_list = hub_contract.get("models", [])
-
-        for model in models_list:
-            if isinstance(model, dict) and model.get("name") == model_name:
-                lineage_data = model.get("lineage", {})
-
-                # Format response to match service layer format
-                model_lineage_result = {
-                    "model_name": model_name,
-                    "lineage": {
-                        "models": lineage_data.get("models", []),
-                        "entries": lineage_data.get("entries", []),
-                    },
-                }
-
-                # Cache the lineage
-                cache_lineage(contract_id, model_lineage_result, model_name=model_name)
-
-                return Response(model_lineage_result)
-
-        return Response(
-            {"error": f"Model {model_name} not found"}, status=status.HTTP_404_NOT_FOUND
+        lineage_service = LineageService(
+            tenant_id=tenant_id,
+            user_id=user_id
         )
+
+        try:
+            result = lineage_service.get_model_lineage(
+                contract_id=contract_id,
+                model_name=model_name,
+                use_cache=True
+            )
+            return Response(result)
+        except NotFoundError:
+            return Response(
+                {"error": f"Model {model_name} not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
     @extend_schema(
         summary="Get contract-level lineage",
@@ -2753,44 +2682,25 @@ class ContractViewSet(viewsets.ModelViewSet):
     def get_contract_lineage(self, request, id=None):
         """
         Get contract-level lineage with caching support.
+        Uses LineageService which publishes events automatically.
         """
         contract = self.get_object()
         contract_id = str(contract.id)
 
-        # Check cache first
-        cached_lineage = get_cached_lineage(contract_id)
-        if cached_lineage:
-            # Cached lineage should already be in {contracts, entries} format
-            if isinstance(cached_lineage, dict):
-                return Response(
-                    {
-                        "contracts": cached_lineage.get("contracts", []),
-                        "entries": cached_lineage.get("entries", []),
-                        "_cached": True,
-                    }
-                )
+        # Initialize LineageService with tenant_id and user_id
+        tenant_id = _get_tenant_id_from_request(request)
+        user_id = str(request.user.id) if request.user and request.user.is_authenticated else None
 
-        # Generate lineage (existing logic)
-        from .lineage import extract_contract_level_lineage
+        lineage_service = LineageService(
+            tenant_id=tenant_id,
+            user_id=user_id
+        )
 
-        hub_contract = contract.hub_contract_json
-        if not hub_contract:
-            return Response(
-                {"error": "Contract is not normalized"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        lineage = hub_contract.get("lineage", {})
-        if not lineage:
-            return Response({"contracts": [], "entries": []})
-
-        # Extract contracts and entries from lineage
-        contracts = lineage.get("contracts", []) if isinstance(lineage, dict) else []
-        entries = lineage.get("entries", []) if isinstance(lineage, dict) else []
-
-        # Cache the lineage in expected format
-        cache_lineage(contract_id, {"contracts": contracts, "entries": entries})
-
-        return Response({"contracts": contracts, "entries": entries})
+        result = lineage_service.get_contract_lineage(
+            contract_id=contract_id,
+            use_cache=True
+        )
+        return Response(result)
 
     @extend_schema(
         summary="Get hierarchical lineage",
@@ -2836,21 +2746,33 @@ class ContractViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=["get"], url_path="lineage/full")
     def get_hierarchical_lineage(self, request, id=None):
-        """Get hierarchical lineage (bidirectional traversal)."""
+        """
+        Get hierarchical lineage (bidirectional traversal).
+        Uses LineageService which publishes events automatically.
+        """
         contract = self.get_object()
+        contract_id = str(contract.id)
 
         max_contract_depth = int(request.query_params.get("max_contract_depth", 10))
         max_model_depth = int(request.query_params.get("max_model_depth", 10))
         max_field_depth = int(request.query_params.get("max_field_depth", 10))
 
-        traverser = LineageTraverser(
-            contract,
+        # Initialize LineageService with tenant_id and user_id
+        tenant_id = _get_tenant_id_from_request(request)
+        user_id = str(request.user.id) if request.user and request.user.is_authenticated else None
+
+        lineage_service = LineageService(
+            tenant_id=tenant_id,
+            user_id=user_id
+        )
+
+        result = lineage_service.get_full_lineage(
+            contract_id=contract_id,
             max_contract_depth=max_contract_depth,
             max_model_depth=max_model_depth,
             max_field_depth=max_field_depth,
+            use_cache=False  # Full lineage is expensive and depth params vary, so skip cache
         )
-
-        result = traverser.traverse_bidirectional()
 
         return Response(result)
 
@@ -2890,7 +2812,10 @@ class ContractViewSet(viewsets.ModelViewSet):
         url_name="lineage-visualization",
     )
     def get_lineage_visualization(self, request, id=None):
-        """Get lineage visualization in various formats."""
+        """
+        Get lineage visualization in various formats.
+        Uses LineageService which publishes events automatically.
+        """
         # Use pre-retrieved contract if available (from custom view), otherwise use get_object()
         # This allows the custom URL view to bypass DRF's get_object() which may have issues
         # with manually instantiated viewsets
@@ -2903,6 +2828,8 @@ class ContractViewSet(viewsets.ModelViewSet):
             # This is the same approach used by get_hierarchical_lineage which works correctly
             # get_object() handles tenant scoping automatically via get_queryset()
             contract = self.get_object()
+
+        contract_id = str(contract.id)
 
         # Get format from query params - prioritize query param over format suffix
         # DRF's DefaultRouter creates format suffix patterns that can interfere with query params
@@ -2925,15 +2852,27 @@ class ContractViewSet(viewsets.ModelViewSet):
         format_type = format_param if format_param in ["json", "dot", "mermaid"] else "json"
         max_depth = int(request.query_params.get("max_depth", 10))
 
+        # Initialize LineageService with tenant_id and user_id
+        tenant_id = _get_tenant_id_from_request(request)
+        user_id = str(request.user.id) if request.user and request.user.is_authenticated else None
+
+        lineage_service = LineageService(
+            tenant_id=tenant_id,
+            user_id=user_id
+        )
+
+        result = lineage_service.get_lineage_visualization(
+            contract_id=contract_id,
+            format=format_type,
+            max_depth=max_depth
+        )
+
         if format_type == "dot":
-            dot_string = generate_lineage_dot(contract, max_depth=max_depth)
-            return Response(dot_string, content_type="text/plain")
+            return Response(result.get("dot", ""), content_type="text/plain")
         elif format_type == "mermaid":
-            mermaid_string = generate_lineage_mermaid(contract, max_depth=max_depth)
-            return Response(mermaid_string, content_type="text/plain")
+            return Response(result.get("mermaid", ""), content_type="text/plain")
         else:  # Default to JSON
-            graph_data = generate_lineage_json(contract, max_depth=max_depth)
-            return Response(graph_data)
+            return Response(result)
 
     @extend_schema(
         summary="Get impact analysis",
@@ -3067,23 +3006,31 @@ class ContractViewSet(viewsets.ModelViewSet):
         include_fields = request.query_params.get("include_fields", "true").lower() == "true"
         format_type = request.query_params.get("format", "json").lower()
 
-        # Get tenant ID for scoping
-        tenant_id = str(contract.tenant_id) if contract.tenant else None
+        # Initialize LineageService with tenant_id and user_id
+        tenant_id = _get_tenant_id_from_request(request)
+        user_id = str(request.user.id) if request.user and request.user.is_authenticated else None
 
-        # Perform impact analysis
-        analyzer = ImpactAnalyzer(
-            max_contract_depth=depth,
-            max_model_depth=depth,
-            max_field_depth=depth if include_fields else 0,
-            include_fields=include_fields,
-        )
-
-        impact_result = analyzer.analyze_impact(
-            contract_id=str(contract.id),
-            model_name=model_name,
-            field_name=field_name,
+        lineage_service = LineageService(
             tenant_id=tenant_id,
+            user_id=user_id
         )
+
+        # Perform impact analysis using LineageService (which publishes events automatically)
+        try:
+            impact_result = lineage_service.analyze_impact(
+                contract_id=str(contract.id),
+                model_name=model_name,
+                field_name=field_name,
+                max_contract_depth=depth,
+                max_model_depth=depth,
+                max_field_depth=depth if include_fields else 0,
+                include_fields=include_fields,
+            )
+        except NotFoundError:
+            return Response(
+                {"error": "Contract not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         # Check for errors
         if "error" in impact_result:
@@ -4831,3 +4778,289 @@ class ContractViewSet(viewsets.ModelViewSet):
                 {"error": f"Failed to get product details: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="List security audit logs",
+        description="""
+        List security audit logs with filtering and pagination.
+
+        **Filtering:**
+        - `event_type`: Filter by event type (e.g., EXTERNAL_REF_FETCH, RATE_LIMIT_EXCEEDED, CACHE_HIT, CACHE_MISS, CACHE_EVICTION, SECURITY_VIOLATION)
+        - `tenant_id`: Filter by tenant ID
+        - `user_id`: Filter by user ID
+        - `ref_type`: Filter by ref type (internal, local, external)
+        - `cache_operation`: Filter by cache operation (hit, miss, eviction)
+        - `start_date`: Filter by start date (ISO 8601 format)
+        - `end_date`: Filter by end date (ISO 8601 format)
+
+        **Sorting:**
+        - `ordering`: Comma-separated list of fields to sort by (e.g., -timestamp,event_type)
+        - Default: `-timestamp` (newest first)
+
+        **Access:**
+        - Admin only (platform admins)
+        """,
+        parameters=[
+            OpenApiParameter(
+                name="event_type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by event type",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="tenant_id",
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.QUERY,
+                description="Filter by tenant ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="user_id",
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.QUERY,
+                description="Filter by user ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="ref_type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by ref type (internal, local, external)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="cache_operation",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by cache operation (hit, miss, eviction)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="start_date",
+                type=OpenApiTypes.DATETIME,
+                location=OpenApiParameter.QUERY,
+                description="Filter by start date (ISO 8601 format)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="end_date",
+                type=OpenApiTypes.DATETIME,
+                location=OpenApiParameter.QUERY,
+                description="Filter by end date (ISO 8601 format)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated list of fields to sort by (e.g., -timestamp,event_type)",
+                required=False,
+            ),
+        ],
+        tags=["Security"],
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve security audit log",
+        description="""
+        Retrieve a security audit log by ID.
+
+        **Access:**
+        - Admin only (platform admins)
+        """,
+        tags=["Security"],
+    ),
+)
+class SecurityAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for security audit logs (read-only).
+
+    Provides queryable access to security audit logs with filtering and pagination.
+    Admin only access.
+    """
+    queryset = SecurityAuditLog.objects.all()
+    serializer_class = SecurityAuditLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = ContractPageNumberPagination
+    filterset_fields = ['event_type', 'ref_type', 'cache_operation']
+    ordering_fields = ['timestamp', 'event_type', 'severity']
+    ordering = ['-timestamp']
+
+    def get_permissions(self):
+        """Require platform admin for all actions."""
+        from hub.apps.tenants.permissions import IsPlatformAdmin
+        return [permissions.IsAuthenticated(), IsPlatformAdmin()]
+
+    def get_queryset(self):
+        """Filter queryset based on query parameters."""
+        queryset = SecurityAuditLog.objects.all()
+
+        # Filter by event_type
+        event_type = self.request.query_params.get('event_type')
+        if event_type:
+            queryset = queryset.filter(event_type=event_type)
+
+        # Filter by tenant_id
+        tenant_id = self.request.query_params.get('tenant_id')
+        if tenant_id:
+            queryset = queryset.filter(tenant_id=tenant_id)
+
+        # Filter by user_id
+        user_id = self.request.query_params.get('user_id')
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+
+        # Filter by ref_type
+        ref_type = self.request.query_params.get('ref_type')
+        if ref_type:
+            queryset = queryset.filter(ref_type=ref_type)
+
+        # Filter by cache_operation
+        cache_operation = self.request.query_params.get('cache_operation')
+        if cache_operation:
+            queryset = queryset.filter(cache_operation=cache_operation)
+
+        # Filter by time range
+        start_date = self.request.query_params.get('start_date')
+        if start_date:
+            try:
+                from django.utils.dateparse import parse_datetime
+                start_dt = parse_datetime(start_date)
+                if start_dt:
+                    queryset = queryset.filter(timestamp__gte=start_dt)
+            except (ValueError, TypeError):
+                pass
+
+        end_date = self.request.query_params.get('end_date')
+        if end_date:
+            try:
+                from django.utils.dateparse import parse_datetime
+                end_dt = parse_datetime(end_date)
+                if end_dt:
+                    queryset = queryset.filter(timestamp__lte=end_dt)
+            except (ValueError, TypeError):
+                pass
+
+        # Apply ordering
+        ordering_param = self.request.query_params.get('ordering')
+        if ordering_param:
+            # Parse comma-separated ordering string
+            ordering = ordering_param.split(',')
+            queryset = queryset.order_by(*ordering)
+        else:
+            # Use default ordering (already a list)
+            queryset = queryset.order_by(*self.ordering)
+
+        return queryset
+
+
+class SecurityIncidentViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for security incident management.
+
+    Provides read-only access to security incidents with filtering by severity, status, and time range.
+    Admin-only access for security incident resolution.
+    """
+    from .models import SecurityIncident
+    from .serializers import SecurityIncidentSerializer, SecurityIncidentResolveSerializer
+    from hub.apps.tenants.permissions import IsPlatformAdmin
+    from django.utils import timezone
+
+    queryset = SecurityIncident.objects.all()
+    serializer_class = SecurityIncidentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'id'
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['title', 'description', 'event_type']
+    ordering_fields = ['first_detected_at', 'severity', 'status', 'violation_count']
+    ordering = ['-first_detected_at']
+
+    def get_queryset(self):
+        """Filter queryset based on user permissions and query parameters."""
+        from .models import SecurityIncident
+        from django.utils import timezone
+
+        queryset = SecurityIncident.objects.all()
+
+        # Platform admins can see all incidents
+        if hasattr(self.request.user, 'is_platform_admin') and self.request.user.is_platform_admin:
+            pass  # No filtering needed
+        else:
+            # Regular users can only see incidents for their tenant
+            tenant = getattr(self.request, 'tenant', None)
+            if tenant is None and hasattr(self.request.user, 'tenant'):
+                tenant = self.request.user.tenant
+            if tenant:
+                queryset = queryset.filter(tenant=tenant)
+            else:
+                queryset = queryset.none()
+
+        # Filter by severity
+        severity = self.request.query_params.get('severity')
+        if severity:
+            queryset = queryset.filter(severity=severity.upper())
+
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter.upper())
+
+        # Filter by event_type
+        event_type = self.request.query_params.get('event_type')
+        if event_type:
+            queryset = queryset.filter(event_type=event_type)
+
+        # Filter by time range
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        if start_date:
+            try:
+                start_dt = timezone.datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                queryset = queryset.filter(first_detected_at__gte=start_dt)
+            except ValueError:
+                pass
+        if end_date:
+            try:
+                end_dt = timezone.datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                queryset = queryset.filter(first_detected_at__lte=end_dt)
+            except ValueError:
+                pass
+
+        return queryset
+
+    def get_permissions(self):
+        """Return appropriate permissions based on action."""
+        from hub.apps.tenants.permissions import IsPlatformAdmin
+
+        if self.action == 'resolve':
+            # Only platform admins can resolve incidents
+            return [permissions.IsAuthenticated(), IsPlatformAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    @extend_schema(
+        summary="Resolve security incident",
+        description="Mark a security incident as resolved. Admin only.",
+        request=SecurityIncidentResolveSerializer,
+        responses={
+            200: SecurityIncidentSerializer,
+            403: OpenApiResponse(description='Forbidden - Admin access required'),
+            404: OpenApiResponse(description='Incident not found'),
+        },
+        tags=['Security']
+    )
+    @action(detail=True, methods=['post'], url_path='resolve')
+    def resolve(self, request, id=None):
+        """Resolve a security incident."""
+        from .serializers import SecurityIncidentResolveSerializer
+
+        incident = self.get_object()
+        serializer = SecurityIncidentResolveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        resolution_notes = serializer.validated_data.get('resolution_notes', '')
+        incident.resolve(resolved_by_user=request.user, resolution_notes=resolution_notes)
+
+        response_serializer = self.get_serializer(incident)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)

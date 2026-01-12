@@ -66,7 +66,7 @@ class AuditorPersonaTest(E2ETestBase):
     
     def test_auditor_can_read_contracts(self):
         """Test AUDITOR can read contracts (read-only)"""
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         
         # Should be able to read
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
@@ -80,7 +80,7 @@ class AuditorPersonaTest(E2ETestBase):
         }
         
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             contract_data,
             format="json"
         )
@@ -112,7 +112,7 @@ class AuditorPersonaTest(E2ETestBase):
         
         data = {"info": {"title": "Updated Title"}}
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             data,
             format="json"
         )
@@ -129,7 +129,7 @@ class AuditorPersonaTest(E2ETestBase):
             created_by=self.user
         )
         
-        response = self.client.delete(f"/api/v1/contracts/contracts/{contract.id}/")
+        response = self.client.delete(f"/api/v1/contracts/{contract.id}/")
         
         # Should be forbidden
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -232,7 +232,7 @@ class AuditorPersonaTest(E2ETestBase):
         """Test AUDITOR has read-only access to most resources"""
         # Test various read operations
         read_endpoints = [
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             "/api/v1/dq/runs/",
             "/api/v1/compliance/runs/",
             "/api/v1/audit/events/"

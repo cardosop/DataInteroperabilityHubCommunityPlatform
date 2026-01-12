@@ -1,0 +1,21 @@
+{
+  "id": "resource-csv-1",
+  "package_id": "sample-dataset-1",
+  "name": "Sample CSV Resource",
+  "description": "A sample CSV file containing test data",
+  "url": "https://example.com/data/sample.csv",
+  "format": "CSV",
+  "size": 1024,
+  "mimetype": "text/csv",
+  "mimetype_inner": null,
+  "hash": "abc123def456",
+  "created": "2024-01-15T10:00:00Z",
+  "last_modified": "2024-01-15T10:00:00Z",
+  "cache_url": null,
+  "cache_last_updated": null,
+  "position": 0,
+  "resource_type": null,
+  "url_type": null,
+  "revision_id": "rev-123"
+}
+

@@ -148,7 +148,7 @@ class ComplianceOfficerTests(E2ETestBase):
         """Test viewing compliance report"""
         # Get compliance run details
         response = self.client.get(
-            f'/api/v1/compliance/compliance-runs/{self.compliance_run_id}/'
+            f'/api/v1/compliance/runs/{self.compliance_run_id}/'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -163,7 +163,7 @@ class ComplianceOfficerTests(E2ETestBase):
         """Test filtering compliance runs by asset"""
         # Query compliance runs for specific asset
         response = self.client.get(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {'asset_id': str(self.asset_id)}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -195,7 +195,7 @@ class ComplianceOfficerTests(E2ETestBase):
         
         # Query compliance runs by status
         response = self.client.get(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {'status': ComplianceRunStatus.SUCCEEDED}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -217,7 +217,7 @@ class ComplianceOfficerTests(E2ETestBase):
         """Test that compliance reports contain detected categories"""
         # Get compliance run details
         response = self.client.get(
-            f'/api/v1/compliance/compliance-runs/{self.compliance_run_id}/'
+            f'/api/v1/compliance/runs/{self.compliance_run_id}/'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -231,7 +231,7 @@ class ComplianceOfficerTests(E2ETestBase):
         """Test that compliance reports contain risk level"""
         # Get compliance run details
         response = self.client.get(
-            f'/api/v1/compliance/compliance-runs/{self.compliance_run_id}/'
+            f'/api/v1/compliance/runs/{self.compliance_run_id}/'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -258,7 +258,7 @@ class ComplianceOfficerWorkflowTests(E2ETestBase):
         
         # View asset compliance tab (simulated by getting compliance runs)
         response = self.client.get(
-            '/api/v1/compliance/compliance-runs/',
+            '/api/v1/compliance/runs/',
             {'asset_id': str(asset_id)}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)

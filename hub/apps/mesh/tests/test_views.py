@@ -3,7 +3,6 @@ Unit tests for Data Mesh Views.
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
-import pytest
 import json
 from django.test import TestCase
 from django.contrib.auth import get_user_model
@@ -16,7 +15,6 @@ from hub.apps.mesh.models import DataMeshDomain, DomainStatus, PolicyApplication
 from hub.apps.auth.models import APIKey
 from hub.apps.users.models import Role, UserRole, UserStatus
 
-pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 

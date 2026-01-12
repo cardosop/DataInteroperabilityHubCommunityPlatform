@@ -63,7 +63,7 @@ class FileUploadDownloadTest(TestCase):
             "upload_method": "browser"
         }
         
-        response = self.client.post("/api/v1/files/files/init/", data, format="json")
+        response = self.client.post("/api/v1/files/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("file_id", response.data)
@@ -95,7 +95,7 @@ class FileUploadDownloadTest(TestCase):
             "upload_method": "sdk"
         }
         
-        response = self.client.post("/api/v1/files/files/init/", data, format="json")
+        response = self.client.post("/api/v1/files/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("file_id", response.data)
@@ -124,7 +124,7 @@ class FileUploadDownloadTest(TestCase):
             "upload_method": "browser"
         }
         
-        response = self.client.post("/api/v1/files/files/init/", data, format="json")
+        response = self.client.post("/api/v1/files/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("size", response.data)
@@ -140,7 +140,7 @@ class FileUploadDownloadTest(TestCase):
             "upload_method": "browser"
         }
         
-        response = self.client.post("/api/v1/files/files/init/", data, format="json")
+        response = self.client.post("/api/v1/files/init/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("type", str(response.data).lower())
@@ -175,7 +175,7 @@ class FileUploadDownloadTest(TestCase):
             "content_sha256": sha256_hash
         }
         
-        response = self.client.post(f"/api/v1/files/files/{file_obj.id}/complete/", data, format="json")
+        response = self.client.post(f"/api/v1/files/{file_obj.id}/complete/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -223,7 +223,7 @@ class FileUploadDownloadTest(TestCase):
             "parts": parts
         }
         
-        response = self.client.post(f"/api/v1/files/files/{file_obj.id}/complete/", data, format="json")
+        response = self.client.post(f"/api/v1/files/{file_obj.id}/complete/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -255,7 +255,7 @@ class FileUploadDownloadTest(TestCase):
         mock_storage_client_class.return_value = mock_storage_client
         mock_storage_client.generate_presigned_download_url.return_value = "https://s3.example.com/download"
         
-        response = self.client.get(f"/api/v1/files/files/{file_obj.id}/download/")
+        response = self.client.get(f"/api/v1/files/{file_obj.id}/download/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("download_url", response.data)
@@ -277,7 +277,7 @@ class FileUploadDownloadTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.get(f"/api/v1/files/files/{file_obj.id}/download/")
+        response = self.client.get(f"/api/v1/files/{file_obj.id}/download/")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
     
@@ -301,7 +301,7 @@ class FileUploadDownloadTest(TestCase):
         mock_storage_client = MagicMock()
         mock_storage_client_class.return_value = mock_storage_client
         
-        response = self.client.delete(f"/api/v1/files/files/{file_obj.id}/")
+        response = self.client.delete(f"/api/v1/files/{file_obj.id}/")
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -343,7 +343,7 @@ class FileUploadDownloadTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.get("/api/v1/files/files/")
+        response = self.client.get("/api/v1/files/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         file_ids = [f["id"] for f in response.data["results"]]

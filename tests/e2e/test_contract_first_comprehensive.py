@@ -236,7 +236,7 @@ class ContractFirstFlowFailureTests(E2ETestBase):
         
         # Use real DataContract service
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/validate/',
+            f'/api/v1/contracts/{contract_id}/validate/',
             {'async': False},
             format='json'
         )

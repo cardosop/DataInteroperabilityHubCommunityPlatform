@@ -7,7 +7,6 @@ error handling, progress tracking, and event publishing.
 These tests use REAL implementations (no mocks/stubs) to validate the
 complete job execution path.
 """
-import pytest
 import json
 from django.test import TestCase
 from django.utils import timezone
@@ -28,9 +27,6 @@ from hub.apps.contracts.models import (
     OriginalFormat,
     NormalizationStatus
 )
-
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ODPSExportJobTest(TestCase):

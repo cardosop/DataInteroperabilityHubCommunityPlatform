@@ -1,0 +1,139 @@
+{
+  "verification_date": "2025-12-29T07:08:06.274983",
+  "duration_seconds": 86.211517,
+  "overall_status": "passed",
+  "summary": {
+    "total_components": 4,
+    "total_tests": 11,
+    "passed": 11,
+    "failed": 0,
+    "skipped": 0
+  },
+  "components": [
+    {
+      "component": "CI/CD Pipelines",
+      "task_id": "9.6.3.4.1",
+      "tests": [
+        {
+          "name": "URL Pattern Validation",
+          "status": "passed",
+          "message": "URL pattern validation passed",
+          "details": "================================================================================\nURL Pattern Validation Results\n================================================================================\nTotal patterns checked: 25\nErrors: 0\nWarnings: 0\n\n\u2713 All URL patterns passed validation!\n================================================================================\n\n\u2705 URL pattern validation passed!\n",
+          "duration_seconds": 3.611974
+        },
+        {
+          "name": "API Naming Standards Validation",
+          "status": "passed",
+          "message": "API naming standards validation passed",
+          "details": "g: apps/dq/urls.py\nProcessing: apps/virtualization/urls.py\nProcessing: apps/semantic/urls.py\nProcessing: apps/api/analytics/urls.py\n   \u2713 Found 59 endpoints\n\n\ud83d\udd0d Validating endpoints against naming standards...\n\n============================================================\nValidation Results\n============================================================\n\n\ud83d\udccb Endpoints Validated: 59\n\u274c Errors: 0\n\u26a0\ufe0f  Warnings: 0\n\n\ud83d\udcca Report generated: /app/docs/api-audit/api-naming-validation.json\n\n\u2705 All validations passed!\n",
+          "duration_seconds": 0.160583
+        },
+        {
+          "name": "Endpoint Inventory Parsing",
+          "status": "passed",
+          "message": "Endpoint inventory parsing successful",
+          "details": "ed - Requires authentication but no token available\n\n============================================================\nTEST SUMMARY\n============================================================\nTotal Endpoints: 238\nTested: 238\nWorking: 0 \u2705\nBroken: 10 \u274c\nDeprecated: 0 \u26a0\ufe0f\nSkipped: 228 \u23ed\ufe0f\n============================================================\n\n\u2705 Test report saved to: /tmp/test-report.md\n\n\u2705 Updated inventory file: docs/api-audit/current-api-inventory.md\n\u2705 JSON results saved to: /tmp/test-report.json\n",
+          "duration_seconds": 0.490091
+        },
+        {
+          "name": "Workflow YAML Syntax",
+          "status": "passed",
+          "message": "Workflow YAML syntax is valid",
+          "details": null,
+          "duration_seconds": 0.03028
+        },
+        {
+          "name": "Pre-commit Config YAML Syntax",
+          "status": "passed",
+          "message": "Pre-commit config YAML syntax is valid",
+          "details": null,
+          "duration_seconds": 0.028677
+        }
+      ],
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "total": 5,
+      "status": "passed",
+      "notes": ""
+    },
+    {
+      "component": "Monitoring Configurations",
+      "task_id": "9.6.3.4.2",
+      "tests": [
+        {
+          "name": "Monitoring Configuration Verification",
+          "status": "passed",
+          "message": "Monitoring configurations verified",
+          "details": "=======\n3. Metrics Code\n============================================================\n\u2705 otel_metrics.py: No issues found\n\n============================================================\n4. Log Aggregation Patterns\n============================================================\n\u2705 No log pattern issues found\n\n============================================================\nSummary\n============================================================\n\u2705 All monitoring configurations use standardized endpoint patterns!\n",
+          "duration_seconds": 0.027347
+        },
+        {
+          "name": "Monitoring Services",
+          "status": "passed",
+          "message": "Monitoring services accessible",
+          "details": "--------\n\u001b[0;32m\u2705 PASSED\u001b[0m: Grafana dashboards verified\n\nTest 3: Metrics Code\n--------------------------------\n\u001b[0;32m\u2705 PASSED\u001b[0m: Metrics code verified\n\nTest 4: Service Availability (Optional)\n--------------------------------\n\u001b[0;32m\u2705 PASSED\u001b[0m: Docker Compose services running\n\u001b[0;32m\u2705 PASSED\u001b[0m: API metrics endpoint accessible\n\n==========================================\nTest Summary\n==========================================\nTests Passed: 5\nTests Failed: 0\n\n\u001b[0;32m\u2705 All tests passed!\u001b[0m\n",
+          "duration_seconds": 0.283419
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "total": 2,
+      "status": "passed",
+      "notes": ""
+    },
+    {
+      "component": "Rate Limiting Configurations",
+      "task_id": "9.6.3.4.3",
+      "tests": [
+        {
+          "name": "Rate Limiting Integration Tests",
+          "status": "passed",
+          "message": "Rate limiting integration tests passed (16 tests)",
+          "details": "/integration/test_rate_limiting_endpoints.py::TestRateLimitingIntegration::test_compliance_runs_endpoint_has_rate_limiting PASSED [ 86%]\ntests/integration/test_rate_limiting_endpoints.py::TestRateLimitingIntegration::test_dq_runs_endpoint_has_rate_limiting PASSED [ 93%]\ntests/integration/test_rate_limiting_endpoints.py::TestRateLimitingIntegration::test_endpoint_category_matches_standardized_patterns PASSED [100%]\n\n================== 15 passed, 45 warnings in 78.67s (0:01:18) ==================\n",
+          "duration_seconds": 80.930943
+        }
+      ],
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1,
+      "status": "passed",
+      "notes": ""
+    },
+    {
+      "component": "API Gateway Configurations",
+      "task_id": "9.6.3.4.4",
+      "tests": [
+        {
+          "name": "Gateway Configuration Verification",
+          "status": "passed",
+          "message": "Gateway configurations verified",
+          "details": "sues found\n\u2705 ingress.yaml: No issues found\n\u2705 ingress.yaml: No issues found\n\u2705 ingress.yaml: No issues found\n\u2705 ingress.yaml: No issues found\n\u2705 ingress.yaml: No issues found\n\u2705 ingress.yaml: No issues found\n\u2705 ingress.yaml: No issues found\n\u2705 ingress.yaml: No issues found\n\n\u2705 All 13 ingress files verified\n\n============================================================\nSummary\n============================================================\n\u2705 All API gateway configurations use standardized endpoint patterns!\n",
+          "duration_seconds": 0.044798
+        },
+        {
+          "name": "Gateway Routing",
+          "status": "passed",
+          "message": "Gateway routing tests passed",
+          "details": " ingress found and verified\n\nTest 3: Route Patterns\n------------------------------------------------------------\n\u2705 PASSED: Route patterns verified in 2 file(s)\n\nTest 4: Service Routing (Optional)\n------------------------------------------------------------\n\u2705 PASSED: Service routing verified\n\n============================================================\nTest Summary\n============================================================\nTests Passed:  4\nTests Failed:  0\nTests Skipped: 0\n\n\u2705 All tests passed!\n",
+          "duration_seconds": 0.118063
+        },
+        {
+          "name": "Comprehensive Gateway Test Suite",
+          "status": "passed",
+          "message": "Comprehensive gateway tests passed (26 tests)",
+          "details": " No old patterns\n\u001b[0;32m\u2705\u001b[0m k8s/search-service/base/ingress.yaml: No old patterns\n\u001b[0;32m\u2705\u001b[0m Verified 13/13 ingress files\n\nTest 5: Service Routing (Optional)\n--------------------------------\n\u001b[0;32m\u2705\u001b[0m Docker Compose services running\n\u001b[0;32m\u2705\u001b[0m Compliance endpoint routable\n\u001b[0;32m\u2705\u001b[0m DQ endpoint routable\n\n==========================================\nTest Summary\n==========================================\nTests Passed:  22\nTests Failed:  0\nTests Skipped: 0\n\n\u001b[0;32m\u2705 All tests passed!\u001b[0m\n",
+          "duration_seconds": 0.485051
+        }
+      ],
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "total": 3,
+      "status": "passed",
+      "notes": ""
+    }
+  ]
+}

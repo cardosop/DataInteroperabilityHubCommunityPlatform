@@ -2,7 +2,7 @@
 Performance Tests for DQ Endpoints
 
 Tests performance requirements for DQ endpoints:
-- GET /api/v1/dq/dq-runs/{id}/results/ - Target: < 500ms p95
+- GET /api/v1/dq/runs/{id}/results/ - Target: < 500ms p95
 
 These tests use real services and infrastructure (no mocks).
 """
@@ -23,7 +23,7 @@ User = get_user_model()
 
 class DQPerformanceTest(TestCase):
     """Performance tests for DQ endpoints"""
-    
+
     def setUp(self):
         """Set up test data"""
         self.client = APIClient()
@@ -35,7 +35,7 @@ class DQPerformanceTest(TestCase):
             tenant=self.tenant
         )
         self.client.force_authenticate(user=self.user)
-        
+
         # Create test DQ runs
         self.dq_runs = []
         for i in range(10):
@@ -62,34 +62,34 @@ class DQPerformanceTest(TestCase):
                 }
             )
             self.dq_runs.append(dq_run)
-    
+
     def measure_endpoint_performance(self, method, url, data=None, iterations=30):
         """Measure endpoint performance"""
         execution_times = []
         query_counts = []
-        
+
         for i in range(iterations):
             dq_run = self.dq_runs[i % len(self.dq_runs)]
-            
+
             reset_queries()
             start_queries = len(connection.queries)
-            
+
             start_time = time.perf_counter()
-            
+
             if method == 'GET':
                 response = self.client.get(url.format(id=dq_run.id), format='json')
             elif method == 'POST':
                 response = self.client.post(url.format(id=dq_run.id), data, format='json')
-            
+
             end_time = time.perf_counter()
-            
+
             execution_time = (end_time - start_time) * 1000  # Convert to milliseconds
             execution_times.append(execution_time)
-            
+
             end_queries = len(connection.queries)
             query_count = end_queries - start_queries
             query_counts.append(query_count)
-        
+
         return {
             'execution_times': execution_times,
             'query_counts': query_counts,
@@ -99,25 +99,25 @@ class DQPerformanceTest(TestCase):
             'avg_queries': statistics.mean(query_counts) if query_counts else 0,
             'max_queries': max(query_counts) if query_counts else 0,
         }
-    
+
     def test_dq_results_performance(self):
-        """Test GET /api/v1/dq/dq-runs/{id}/results/ performance - Target: < 500ms p95"""
+        """Test GET /api/v1/dq/runs/{id}/results/ performance - Target: < 500ms p95"""
         results = self.measure_endpoint_performance(
             method='GET',
-            url='/api/v1/dq/dq-runs/{id}/results/',
+            url='/api/v1/dq/runs/{id}/results/',
             iterations=30
         )
-        
+
         # Assert performance targets
         self.assertLess(
             results['p95'],
             500,
             f"P95 response time ({results['p95']:.2f}ms) exceeds target (500ms)"
         )
-        
+
         # Log results
         print(f"\n{'='*60}")
-        print("GET /api/v1/dq/dq-runs/{id}/results/ Performance Results")
+        print("GET /api/v1/dq/runs/{id}/results/ Performance Results")
         print(f"{'='*60}")
         print(f"P50: {results['p50']:.2f}ms")
         print(f"P95: {results['p95']:.2f}ms (Target: < 500ms)")
@@ -125,21 +125,21 @@ class DQPerformanceTest(TestCase):
         print(f"Average Queries: {results['avg_queries']:.2f}")
         print(f"Max Queries: {results['max_queries']}")
         print(f"{'='*60}\n")
-    
+
     def test_dq_results_query_count(self):
         """Test that DQ results endpoint uses optimized queries"""
         dq_run = self.dq_runs[0]
-        
+
         reset_queries()
         start_queries = len(connection.queries)
-        
-        response = self.client.get(f'/api/v1/dq/dq-runs/{dq_run.id}/results/', format='json')
-        
+
+        response = self.client.get(f'/api/v1/dq/runs/{dq_run.id}/results/', format='json')
+
         end_queries = len(connection.queries)
         query_count = end_queries - start_queries
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Results endpoint should use select_related to avoid N+1 queries
         # Target: < 5 queries (1 for DQ run with select_related, 0-4 for trend analysis)
         self.assertLess(
@@ -147,29 +147,29 @@ class DQPerformanceTest(TestCase):
             5,
             f"DQ results uses too many queries: {query_count} (target: < 5)"
         )
-    
+
     def test_dq_results_caching(self):
         """Test that DQ results are cached for completed runs"""
         dq_run = self.dq_runs[0]
-        
+
         # First request (cache miss)
-        response1 = self.client.get(f'/api/v1/dq/dq-runs/{dq_run.id}/results/', format='json')
+        response1 = self.client.get(f'/api/v1/dq/runs/{dq_run.id}/results/', format='json')
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
-        
+
         # Second request (cache hit)
         reset_queries()
         start_queries = len(connection.queries)
         start_time = time.perf_counter()
-        
-        response2 = self.client.get(f'/api/v1/dq/dq-runs/{dq_run.id}/results/', format='json')
-        
+
+        response2 = self.client.get(f'/api/v1/dq/runs/{dq_run.id}/results/', format='json')
+
         end_time = time.perf_counter()
         end_queries = len(connection.queries)
         query_count = end_queries - start_queries
         execution_time = (end_time - start_time) * 1000
-        
+
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
-        
+
         # Cached request should be faster and use fewer queries
         self.assertLess(
             execution_time,
@@ -181,29 +181,29 @@ class DQPerformanceTest(TestCase):
             2,  # Cached requests should use minimal queries
             f"Cached DQ results uses too many queries: {query_count}"
         )
-    
+
     def test_dq_results_enhanced_response(self):
         """Test that DQ results endpoint returns enhanced response"""
         dq_run = self.dq_runs[0]
-        
-        response = self.client.get(f'/api/v1/dq/dq-runs/{dq_run.id}/results/', format='json')
-        
+
+        response = self.client.get(f'/api/v1/dq/runs/{dq_run.id}/results/', format='json')
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.data
-        
+
         # Verify enhanced response structure
         self.assertIn('dq_run_id', data)
         self.assertIn('quality_score_breakdown', data)
         self.assertIn('check_details', data)
         self.assertIn('trend_analysis', data)
-        
+
         # Verify quality score breakdown
         breakdown = data['quality_score_breakdown']
         self.assertIn('overall_score', breakdown)
         self.assertIn('total_checks', breakdown)
         self.assertIn('passed_checks', breakdown)
         self.assertIn('pass_rate', breakdown)
-        
+
         # Verify check details
         self.assertIsInstance(data['check_details'], list)
         if data['check_details']:

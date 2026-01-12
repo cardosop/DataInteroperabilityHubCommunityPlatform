@@ -70,7 +70,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         """Test DATA_CONSUMER is subject to rate limits"""
         from django.http import HttpRequest
         request = HttpRequest()
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         request.tenant_id = str(self.tenant.id)
         request.user = self.consumer_user
@@ -87,13 +87,13 @@ class DataConsumerPersonaTest(E2ETestBase):
     
     def test_data_consumer_rate_limit_headers(self):
         """Test rate limit headers are present for DATA_CONSUMER"""
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS])
     
     def test_data_consumer_can_access_contracts(self):
         """Test DATA_CONSUMER can access contracts (subject to rate limits)"""
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS])
     
@@ -122,7 +122,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         
         from django.http import HttpRequest
         request = HttpRequest()
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         request.tenant_id = str(self.tenant.id)
         request.api_key_obj = api_key
@@ -140,13 +140,13 @@ class DataConsumerPersonaTest(E2ETestBase):
     
     def test_data_consumer_can_use_cli_for_contracts(self):
         """Test DATA_CONSUMER can use CLI for contract operations"""
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS])
     
     def test_data_consumer_rate_limit_per_endpoint(self):
         """Test rate limits are enforced per endpoint category"""
         endpoints = [
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             "/api/v1/dq/runs/",
             "/api/v1/compliance/runs/"
         ]
@@ -180,7 +180,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         # check_rate_limit requires a request object, not individual parameters
         from django.http import HttpRequest
         request = HttpRequest()
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         request.tenant_id = str(self.tenant.id)
         request.user = self.consumer_user
@@ -205,7 +205,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         # check_rate_limit requires a request object
         from django.http import HttpRequest
         request = HttpRequest()
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         request.tenant_id = str(self.tenant.id)
         request.user = self.consumer_user
@@ -245,7 +245,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         """Test rate limit Retry-After header for DATA_CONSUMER"""
         response = None
         for i in range(20):
-            response = self.client.get("/api/v1/contracts/contracts/")
+            response = self.client.get("/api/v1/contracts/")
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 break
         
@@ -256,7 +256,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         """Test rate limit error format for DATA_CONSUMER"""
         response = None
         for i in range(20):
-            response = self.client.get("/api/v1/contracts/contracts/")
+            response = self.client.get("/api/v1/contracts/")
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 break
         
@@ -279,7 +279,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         from django.http import HttpRequest
         
         request1 = HttpRequest()
-        request1.path = "/api/v1/contracts/contracts/"
+        request1.path = "/api/v1/contracts/"
         request1.method = "GET"
         request1.tenant_id = str(self.tenant.id)
         request1.user = self.consumer_user
@@ -293,7 +293,7 @@ class DataConsumerPersonaTest(E2ETestBase):
         result1 = {"allowed": allowed1, "results": results1}
         
         request2 = HttpRequest()
-        request2.path = "/api/v1/contracts/contracts/"
+        request2.path = "/api/v1/contracts/"
         request2.method = "GET"
         request2.tenant_id = str(self.tenant.id)
         request2.user = other_consumer

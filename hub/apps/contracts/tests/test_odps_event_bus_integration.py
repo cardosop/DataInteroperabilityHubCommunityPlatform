@@ -18,8 +18,7 @@ All tests use real implementations (no mocks/stubs) and verify:
 import json
 import time
 import uuid
-import pytest
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
@@ -41,8 +40,6 @@ from hub.apps.webhooks.odps_event_subscriber import (
 )
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import User, UserStatus
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ODPSEventBusIntegrationTestBase(TestCase):
@@ -84,6 +81,7 @@ class ODPSEventBusIntegrationTestBase(TestCase):
         DeadLetterQueue.objects.filter(event__source__tenant_id=str(self.tenant.id)).delete()
 
 
+@override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
 class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
     """Tests for ODPS event publishing to event bus."""
 
@@ -205,18 +203,15 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
 
         # Create ODCS contract first
         odcs_raw = json.dumps({
-            "schema": "https://datacontract-specification.io/schema/v3.0.2",
+            "apiVersion": "odcs/v3",
+            "kind": "DataContract",
             "id": "test-odcs",
-            "info": {
-                "title": "Test ODCS",
-                "version": "1.0.0"
-            },
-            "tables": {
-                "users": {
-                    "columns": {
-                        "id": {"type": "string"}
-                    }
-                }
+            "name": "Test ODCS",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {"name": "id", "type": "string"}
+                ]
             }
         })
 
@@ -353,6 +348,7 @@ class ODPSEventSubscriberTest(ODPSEventBusIntegrationTestBase):
             pass
 
 
+@override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
 class ODPSEventReplayTest(ODPSEventBusIntegrationTestBase):
     """Tests for ODPS event replay functionality."""
 
@@ -562,6 +558,7 @@ class ODPSDeadLetterQueueTest(ODPSEventBusIntegrationTestBase):
         self.assertEqual(stored_event["data"]["contract_id"], "test-contract-id")
 
 
+@override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
 class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
     """End-to-end tests for ODPS event bus integration."""
 

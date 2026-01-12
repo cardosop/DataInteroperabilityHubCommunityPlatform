@@ -156,7 +156,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Step 1: Create product via Product-First endpoint
         response = self.client.post(
-            '/api/v1/contracts/contracts/products/',
+            '/api/v1/contracts/products/',
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
@@ -214,10 +214,10 @@ class CreationFlowsIntegrationTest(TestCase):
             )
 
         # Step 4: Verify contracts are accessible via API
-        odps_get_response = self.client.get(f'/api/v1/contracts/contracts/{odps_contract_id}/')
+        odps_get_response = self.client.get(f'/api/v1/contracts/{odps_contract_id}/')
         self.assertEqual(odps_get_response.status_code, status.HTTP_200_OK)
 
-        odcs_get_response = self.client.get(f'/api/v1/contracts/contracts/{odcs_contract_id}/')
+        odcs_get_response = self.client.get(f'/api/v1/contracts/{odcs_contract_id}/')
         self.assertEqual(odcs_get_response.status_code, status.HTTP_200_OK)
 
     def test_product_first_flow_with_asset(self):
@@ -235,7 +235,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Create product with asset_id
         response = self.client.post(
-            '/api/v1/contracts/contracts/products/',
+            '/api/v1/contracts/products/',
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
@@ -265,7 +265,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Step 1: Create ODCS contract
         response = self.client.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 "original_raw": json.dumps(self.odcs_contract_data),
                 "original_format": "JSON",
@@ -316,7 +316,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Step 4: Link ODPS contract (upload mode)
         link_response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract_id}/link-odps/',
+            f'/api/v1/contracts/{odcs_contract_id}/link-odps/',
             {
                 "original_raw": json.dumps(odps_doc_with_matching_odcs),
                 "original_format": "JSON",
@@ -411,7 +411,7 @@ class CreationFlowsIntegrationTest(TestCase):
         # Step 2: Generate ODPS from HubContract
         # Note: generate-odps endpoint accepts query params, not body
         generate_response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract.id}/generate-odps/?output_format=json',
+            f'/api/v1/contracts/{odcs_contract.id}/generate-odps/?output_format=json',
             {},
             format='json'
         )
@@ -426,7 +426,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Step 3: Link generated ODPS
         link_response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract.id}/link-odps/',
+            f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
             {
                 "original_raw": json.dumps(generated_odps),
                 "original_format": "JSON",
@@ -533,7 +533,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Step 3: Link existing ODPS to ODCS
         link_response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract.id}/link-odps/',
+            f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
             {
                 "odps_contract_id": str(existing_odps.id),
             },
@@ -633,7 +633,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Step 4: Link ODPS contract
         link_response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract.id}/link-odps/',
+            f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
             {
                 "original_raw": json.dumps(odps_doc_with_matching_odcs),
                 "original_format": "JSON",
@@ -694,7 +694,7 @@ class CreationFlowsIntegrationTest(TestCase):
         # Step 3: Generate ODPS from HubContract
         # Note: generate-odps endpoint accepts query params, not body
         generate_response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract.id}/generate-odps/?output_format=json',
+            f'/api/v1/contracts/{odcs_contract.id}/generate-odps/?output_format=json',
             {},
             format='json'
         )
@@ -708,7 +708,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Step 4: Link generated ODPS
         link_response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract.id}/link-odps/',
+            f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
             {
                 "original_raw": json.dumps(generated_odps),
                 "original_format": "JSON",
@@ -745,7 +745,7 @@ class CreationFlowsIntegrationTest(TestCase):
 
         # Test 1: Product-First flow linking
         product_response = self.client.post(
-            '/api/v1/contracts/contracts/products/',
+            '/api/v1/contracts/products/',
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
@@ -786,7 +786,7 @@ class CreationFlowsIntegrationTest(TestCase):
             }
         }
         technical_link_response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract.id}/link-odps/',
+            f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
             {
                 "original_raw": json.dumps(odps_doc_technical),
                 "original_format": "JSON",
@@ -835,7 +835,7 @@ class CreationFlowsIntegrationTest(TestCase):
             }
         }
         data_link_response = self.client.post(
-            f'/api/v1/contracts/contracts/{data_odcs.id}/link-odps/',
+            f'/api/v1/contracts/{data_odcs.id}/link-odps/',
             {
                 "original_raw": json.dumps(odps_doc_data),
                 "original_format": "JSON",
@@ -886,7 +886,7 @@ class CreationFlowsIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
-            '/api/v1/contracts/contracts/products/',
+            '/api/v1/contracts/products/',
             {
                 "original_raw": json.dumps({"invalid": "odps"}),
                 "original_format": "JSON",
@@ -909,7 +909,7 @@ class CreationFlowsIntegrationTest(TestCase):
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{odcs_contract.id}/link-odps/',
+            f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
             {
                 "original_raw": json.dumps({"invalid": "odps"}),
                 "original_format": "JSON",
@@ -933,7 +933,7 @@ class CreationFlowsIntegrationTest(TestCase):
         )
 
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{odps_contract.id}/link-odps/',
+            f'/api/v1/contracts/{odps_contract.id}/link-odps/',
             {
                 "original_raw": json.dumps(self.odps_document_for_linking),
                 "original_format": "JSON",

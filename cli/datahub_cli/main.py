@@ -3,7 +3,7 @@ DataHub CLI main entry point.
 """
 import click
 import sys
-from .commands import assets, contracts, files, jobs, config as config_cmd, lineage, dq, compliance, governance, mesh, transformation, virtualization
+from .commands import assets, contracts, files, jobs, config as config_cmd, lineage, dq, compliance, governance, mesh, transformation, virtualization, marketplace, baas, ml
 from .auth import auth_manager
 from .config import config
 
@@ -48,6 +48,9 @@ cli.add_command(governance.governance, name='governance')
 cli.add_command(mesh.mesh, name='mesh')
 cli.add_command(transformation.transformation, name='transformation')
 cli.add_command(virtualization.virtualization, name='virtualization')
+cli.add_command(marketplace.marketplace, name='marketplace')
+cli.add_command(baas.baas, name='baas')
+cli.add_command(ml.ml, name='ml')
 
 
 def main():

@@ -1,8 +1,8 @@
 # RB-DEPLOY-001: Standard Deployment Procedure
 
-**Runbook ID:** `RB-DEPLOY-001`  
-**Title:** Standard Deployment Procedure  
-**Last Updated:** 2025-01-15  
+**Runbook ID:** `RB-DEPLOY-001`
+**Title:** Standard Deployment Procedure
+**Last Updated:** 2025-01-15
 **Version:** 1.0
 
 ---
@@ -244,6 +244,33 @@ make test-production-smoke
 - ✅ File upload/download
 - ✅ Job processing
 - ✅ DQ/compliance runs
+
+**Verify Compliance and DQ Endpoints:**
+```bash
+# Test compliance endpoints
+curl -X GET https://api.[domain]/api/v1/compliance/runs/ \
+  -H "Authorization: Bearer <token>"
+
+curl -X GET https://api.[domain]/api/v1/compliance/runs/{id}/ \
+  -H "Authorization: Bearer <token>"
+
+# Test DQ endpoints
+curl -X GET https://api.[domain]/api/v1/dq/runs/ \
+  -H "Authorization: Bearer <token>"
+
+curl -X GET https://api.[domain]/api/v1/dq/runs/{id}/ \
+  -H "Authorization: Bearer <token>"
+
+# Verify old patterns return 404 (deprecated - DO NOT USE)
+# These endpoints are deprecated and should return 404:
+# curl -X GET https://api.[domain]/api/v1/compliance/compliance-runs/  # DEPRECATED - returns 404
+# curl -X GET https://api.[domain]/api/v1/dq/dq-runs/  # DEPRECATED - returns 404
+```
+
+**Expected Results:**
+- ✅ Compliance endpoints (`/api/v1/compliance/runs/`) return 200 OK or 401 Unauthorized
+- ✅ DQ endpoints (`/api/v1/dq/runs/`) return 200 OK or 401 Unauthorized
+- ✅ Old patterns (`/compliance-runs/`, `/dq-runs/`) return 404 Not Found
 
 ---
 

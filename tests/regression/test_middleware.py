@@ -56,7 +56,7 @@ class TenantScopingMiddlewareTest(MiddlewareRegressionTest):
         self.client.force_authenticate(user=self.user)
         
         # Make a request
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Should succeed (tenant should be set by middleware)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
@@ -73,7 +73,7 @@ class TenantScopingMiddlewareTest(MiddlewareRegressionTest):
         
         # Make request with API key
         response = self.client.get(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             HTTP_AUTHORIZATION="ApiKey test-key-123"
         )
         
@@ -83,7 +83,7 @@ class TenantScopingMiddlewareTest(MiddlewareRegressionTest):
     def test_tenant_scoping_without_authentication(self):
         """Test tenant scoping without authentication"""
         # Make unauthenticated request
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Should fail with authentication required
         self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
@@ -119,7 +119,7 @@ class TenantSuspensionMiddlewareTest(MiddlewareRegressionTest):
         
         # Make a write request (POST) - should be blocked
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {'key': 'test-asset', 'name': 'Test Asset'},
             format='json'
         )
@@ -141,7 +141,7 @@ class TenantSuspensionMiddlewareTest(MiddlewareRegressionTest):
         self.assertIn('suspended', response_data.get('error', '').lower() or '')
         
         # GET requests should still work (read-only mode)
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
     
     def test_active_tenant_allows_access(self):
@@ -150,7 +150,7 @@ class TenantSuspensionMiddlewareTest(MiddlewareRegressionTest):
         self.client.force_authenticate(user=self.user)
         
         # Make a request
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Should succeed
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
@@ -172,7 +172,7 @@ class RateLimitMiddlewareTest(MiddlewareRegressionTest):
         self.client.force_authenticate(user=self.user)
         
         # Make a request
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Should have rate limit headers (if middleware is active)
         # Headers may or may not be present depending on configuration
@@ -187,7 +187,7 @@ class RateLimitMiddlewareTest(MiddlewareRegressionTest):
         # Make many requests to potentially exceed rate limit
         # This depends on rate limit configuration
         for _ in range(100):
-            response = self.client.get('/api/v1/assets/assets/')
+            response = self.client.get('/api/v1/assets/')
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 # Rate limit exceeded
                 self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
@@ -202,7 +202,7 @@ class RequestIDMiddlewareTest(MiddlewareRegressionTest):
         self.client.force_authenticate(user=self.user)
         
         # Make a request
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Should have request ID in response headers (if middleware is active)
         # Request ID may be in X-Request-ID header or response data
@@ -222,7 +222,7 @@ class RequestIDMiddlewareTest(MiddlewareRegressionTest):
         
         # Make request with custom request ID
         response = self.client.get(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             HTTP_X_REQUEST_ID=custom_request_id
         )
         
@@ -239,7 +239,7 @@ class MetricsMiddlewareTest(MiddlewareRegressionTest):
         self.client.force_authenticate(user=self.user)
         
         # Make a request
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Metrics should be recorded (verified via Prometheus metrics endpoint)
         # This is tested in integration tests, here we just verify the request succeeds
@@ -254,7 +254,7 @@ class MiddlewareIntegrationTest(MiddlewareRegressionTest):
         self.client.force_authenticate(user=self.user)
         
         # Make a request through full middleware stack
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Should process through all middleware
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
@@ -271,7 +271,7 @@ class MiddlewareIntegrationTest(MiddlewareRegressionTest):
         # Tenant suspension should block write operations before rate limiting
         # Make a write request (POST) - should be blocked by suspension middleware
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {'key': 'test-asset', 'name': 'Test Asset'},
             format='json'
         )

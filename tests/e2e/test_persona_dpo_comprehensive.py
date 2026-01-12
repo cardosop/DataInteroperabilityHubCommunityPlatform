@@ -291,7 +291,7 @@ class JourneyDPO001DataFirstOnboardingTests(E2ETestBase):
         # Update asset via API
         asset = Asset.objects.get(id=asset_id)
         response = self.client.patch(
-            f'/api/v1/assets/assets/{asset_id}/',
+            f'/api/v1/assets/{asset_id}/',
             {
                 'name': 'Updated Asset Name',
                 'description': 'Updated description',
@@ -310,7 +310,7 @@ class JourneyDPO001DataFirstOnboardingTests(E2ETestBase):
         asset_id = self.create_asset(key='delete-asset-test', name='Delete Asset Test')
         
         # Delete asset via API
-        response = self.client.delete(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.delete(f'/api/v1/assets/{asset_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         asset = Asset.objects.get(id=asset_id)
@@ -505,7 +505,7 @@ class JourneyDPO003UpdateAssetContractTests(E2ETestBase):
         # Update contract via API
         contract = Contract.objects.get(id=contract_id)
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{contract_id}/',
+            f'/api/v1/contracts/{contract_id}/',
             {
                 'hub_contract_json': {
                     'hub_contract_version': '1.0.0',
@@ -549,7 +549,7 @@ class JourneyDPO003UpdateAssetContractTests(E2ETestBase):
         
         # Update contract
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{contract_id}/',
+            f'/api/v1/contracts/{contract_id}/',
             {
                 'hub_contract_json': {
                     'hub_contract_version': '1.0.0',
@@ -596,7 +596,7 @@ class JourneyDPO004MonitorAssetQualityTests(E2ETestBase):
             dq_run.refresh_from_db()
         
         # Get DQ run results
-        response = self.client.get(f'/api/v1/dq/dq-runs/{dq_run_id}/')
+        response = self.client.get(f'/api/v1/dq/runs/{dq_run_id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify DQ results are available
@@ -605,7 +605,7 @@ class JourneyDPO004MonitorAssetQualityTests(E2ETestBase):
         self.assertIn('quality_score', dq_data or {})
         
         # Get asset health score
-        health_response = self.client.get(f'/api/v1/assets/assets/{asset_id}/health-score/')
+        health_response = self.client.get(f'/api/v1/assets/{asset_id}/health-score/')
         self.assertEqual(health_response.status_code, status.HTTP_200_OK)
         
         # Verify health score data
@@ -629,7 +629,7 @@ class JourneyDPO004MonitorAssetQualityTests(E2ETestBase):
         
         # Get DQ runs for asset
         response = self.client.get(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {'asset_id': str(asset_id)},
             format='json'
         )
@@ -706,7 +706,7 @@ class JourneyDPO005ManageAssetVersionsTests(E2ETestBase):
         
         # Get datasets for asset (versions)
         response = self.client.get(
-            '/api/v1/datasets/datasets/',
+            '/api/v1/datasets/',
             {'asset_id': str(asset_id)},
             format='json'
         )
@@ -734,7 +734,7 @@ class JourneyDPO006RetireAssetTests(E2ETestBase):
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
         
         # Retire asset (DELETE endpoint sets status to RETIRED)
-        response = self.client.delete(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.delete(f'/api/v1/assets/{asset_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -775,7 +775,7 @@ class JourneyDPO006RetireAssetTests(E2ETestBase):
             )
             
             # Retire asset
-            self.client.delete(f'/api/v1/assets/assets/{asset_id}/')
+            self.client.delete(f'/api/v1/assets/{asset_id}/')
             
             # Verify listing is unpublished
             listing = Listing.objects.get(id=listing_id)
@@ -797,7 +797,7 @@ class JourneyDPO006RetireAssetTests(E2ETestBase):
         )
         
         # Retire asset
-        self.client.delete(f'/api/v1/assets/assets/{asset_id}/')
+        self.client.delete(f'/api/v1/assets/{asset_id}/')
         
         # Verify asset is retired but data is preserved
         asset = Asset.objects.get(id=asset_id)

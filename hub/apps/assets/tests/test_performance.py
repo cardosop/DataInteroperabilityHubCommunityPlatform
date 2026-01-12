@@ -80,7 +80,7 @@ class AssetPerformanceTest(TestCase):
         """Test POST /api/v1/assets/ performance - Target: < 1000ms p95"""
         results = self.measure_endpoint_performance(
             method='POST',
-            url='/api/v1/assets/assets/',
+            url='/api/v1/assets/',
             data={
                 'key': f'test-asset-{int(time.time())}',
                 'name': 'Test Asset',
@@ -140,7 +140,7 @@ class AssetPerformanceTest(TestCase):
         
         results = self.measure_endpoint_performance(
             method='POST',
-            url=f'/api/v1/assets/assets/{asset.id}/activate/',
+            url=f'/api/v1/assets/{asset.id}/activate/',
             data={'version': asset.version},
             iterations=30  # Fewer iterations for activate (more complex)
         )
@@ -173,7 +173,7 @@ class AssetPerformanceTest(TestCase):
         start_queries = len(connection.queries)
         
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': f'test-asset-query-{int(time.time())}',
                 'name': 'Test Asset',
@@ -236,7 +236,7 @@ class AssetPerformanceTest(TestCase):
         
         asset.refresh_from_db()
         response = self.client.post(
-            f'/api/v1/assets/assets/{asset.id}/activate/',
+            f'/api/v1/assets/{asset.id}/activate/',
             {'version': asset.version},
             format='json'
         )
@@ -274,7 +274,7 @@ class AssetPerformanceTest(TestCase):
             try:
                 start_time = time.perf_counter()
                 response = self.client.post(
-                    '/api/v1/assets/assets/',
+                    '/api/v1/assets/',
                     {
                         'key': f'concurrent-test-{thread_id}-{int(time.time())}',
                         'name': f'Concurrent Test Asset {thread_id}',

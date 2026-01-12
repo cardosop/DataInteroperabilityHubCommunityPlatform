@@ -55,6 +55,11 @@ from hub.apps.observability.otel_metrics import (
     odps_ref_resolution_duration_seconds,
     odps_ref_cache_hits_total,
     odps_ref_cache_misses_total,
+    odps_ref_cache_hit_rate,
+    odps_ref_cache_miss_rate,
+    odps_ref_cache_size,
+    odps_ref_cache_size_limit,
+    odps_ref_cache_eviction_rate,
 )
 
 try:
@@ -78,6 +83,7 @@ DEFAULT_CACHE_MAX_ENTRIES = 1000  # Maximum number of cached refs
 REDIS_CACHE_PREFIX = "odps_ref:"
 REDIS_CACHE_INDEX_PREFIX = "odps_ref_index:"  # For LRU tracking
 REDIS_CACHE_STATS_PREFIX = "odps_ref_stats:"  # For hit rate tracking
+REDIS_CACHE_ACCESS_PREFIX = "odps_ref_access:"  # For per-URL access tracking
 # Maximum URL length for external $ref (2048 characters)
 MAX_URL_LENGTH = 2048
 
@@ -265,10 +271,14 @@ class RefResolver:
                     self._update_lru_index(cache_key)
                     # Track cache hit
                     self._track_cache_hit()
+                    # Track per-URL access for cache warming
+                    self._track_ref_access(ref_path)
                     return data
             else:
                 # Cache miss
                 self._track_cache_miss()
+                # Track per-URL access even on miss (for warming)
+                self._track_ref_access(ref_path)
         except Exception as e:
             logger.debug(
                 "ref_resolver_cache_get_failed",
@@ -324,9 +334,28 @@ class RefResolver:
                 if existing_content_hash != content_hash:
                     # Content changed - invalidate old cache entry
                     old_cache_key = self._get_cache_key(ref_path, existing_content_hash)
-                    self._redis_client.delete(old_cache_key)
+                    deleted = self._redis_client.delete(old_cache_key)
                     # Remove from LRU index
                     self._remove_from_lru_index(old_cache_key)
+
+                    # Track eviction metrics
+                    if deleted:
+                        tenant_id = self.tenant_id or 'unknown'
+                        eviction_reason = 'content_changed'
+                        odps_ref_cache_eviction_rate.labels(
+                            eviction_reason=eviction_reason,
+                            tenant_id=tenant_id
+                        ).inc()
+                        # Log cache eviction
+                        self._security_logger.log_cache_operation(
+                            operation="eviction",
+                            cache_key=old_cache_key,
+                            eviction_reason=eviction_reason,
+                            tenant_id=self.tenant_id,
+                            user_id=self.user_id,
+                        )
+                        # Update cache size gauge
+                        self._update_cache_size_gauge(tenant_id)
 
             # Encode JSON to bytes
             json_data = json.dumps(data, sort_keys=True, ensure_ascii=False)
@@ -354,7 +383,7 @@ class RefResolver:
             # Update LRU index (add to front of list)
             self._update_lru_index(cache_key)
 
-            # Track cache write
+            # Track cache write (this also updates cache size gauge)
             self._track_cache_write()
         except Exception as e:
             logger.debug(
@@ -446,11 +475,38 @@ class RefResolver:
                     # Remove from LRU index
                     self._redis_client.lrem(lru_index_key, 0, key)
 
+                # Track eviction metrics
+                tenant_id = self.tenant_id or 'unknown'
+                eviction_reason = 'size_limit'
+                odps_ref_cache_eviction_rate.labels(
+                    eviction_reason=eviction_reason,
+                    tenant_id=tenant_id
+                ).inc(evict_count)
+
+                # Log cache evictions
+                for key_bytes in keys_to_evict:
+                    key = key_bytes.decode('utf-8') if isinstance(key_bytes, bytes) else key_bytes
+                    self._security_logger.log_cache_operation(
+                        operation="eviction",
+                        cache_key=key,
+                        eviction_reason=eviction_reason,
+                        tenant_id=self.tenant_id,
+                        user_id=self.user_id,
+                    )
+
+                # Update cache size gauge
+                new_size = current_size - evict_count
+                ref_type = 'external'  # Cache is only for external refs
+                odps_ref_cache_size.labels(
+                    tenant_id=tenant_id,
+                    ref_type=ref_type
+                ).set(new_size)
+
                 logger.debug(
                     "ref_resolver_cache_eviction",
                     evicted_count=evict_count,
                     cache_size_before=current_size,
-                    cache_size_after=current_size - evict_count,
+                    cache_size_after=new_size,
                     message=f"Evicted {evict_count} cache entries due to size limit"
                 )
         except Exception as e:
@@ -469,8 +525,120 @@ class RefResolver:
             stats_key = f"{REDIS_CACHE_STATS_PREFIX}writes"
             self._redis_client.incr(stats_key)
             self._redis_client.expire(stats_key, self.cache_ttl * 24)  # Keep stats for 24 hours
+
+            # Update cache size gauge
+            tenant_id = self.tenant_id or 'unknown'
+            self._update_cache_size_gauge(tenant_id)
         except Exception:
             pass  # Stats tracking failure should not affect caching
+
+    def _update_cache_rate_gauges(self, tenant_id: str, ref_type: str) -> None:
+        """
+        Update cache hit/miss rate gauges from Redis stats.
+
+        Args:
+            tenant_id: Tenant ID
+            ref_type: Reference type (always 'external' for cache)
+        """
+        if not self._redis_client:
+            return
+
+        try:
+            hits_key = f"{REDIS_CACHE_STATS_PREFIX}hits"
+            misses_key = f"{REDIS_CACHE_STATS_PREFIX}misses"
+
+            hits_bytes = self._redis_client.get(hits_key)
+            misses_bytes = self._redis_client.get(misses_key)
+
+            hits_count = int(hits_bytes.decode('utf-8')) if hits_bytes else 0
+            misses_count = int(misses_bytes.decode('utf-8')) if misses_bytes else 0
+
+            total = hits_count + misses_count
+            if total > 0:
+                hit_rate = hits_count / total
+                miss_rate = misses_count / total
+
+                # Update gauges
+                odps_ref_cache_hit_rate.labels(
+                    ref_type=ref_type,
+                    tenant_id=tenant_id
+                ).set(hit_rate)
+
+                odps_ref_cache_miss_rate.labels(
+                    ref_type=ref_type,
+                    tenant_id=tenant_id
+                ).set(miss_rate)
+        except Exception:
+            pass  # Metrics failure should not affect caching
+
+    def _update_cache_size_gauge(self, tenant_id: str) -> None:
+        """
+        Update cache size gauge from Redis LRU index.
+
+        Tracks:
+        - Current cache size (number of entries)
+        - Cache size limit (1000 entries)
+        - Cache size by ref_type (always 'external' for cache)
+
+        Args:
+            tenant_id: Tenant ID
+        """
+        if not self._redis_client:
+            return
+
+        try:
+            lru_index_key = f"{REDIS_CACHE_INDEX_PREFIX}lru"
+            current_size = self._redis_client.llen(lru_index_key)
+            ref_type = 'external'  # Cache is only for external refs
+
+            # Update cache size gauge (current number of entries)
+            odps_ref_cache_size.labels(
+                tenant_id=tenant_id,
+                ref_type=ref_type
+            ).set(current_size)
+
+            # Update cache size limit gauge (constant limit)
+            odps_ref_cache_size_limit.labels(
+                tenant_id=tenant_id,
+                ref_type=ref_type
+            ).set(self.cache_max_entries)
+        except Exception:
+            pass  # Metrics failure should not affect caching
+
+    def _track_ref_access(self, ref_path: str) -> None:
+        """
+        Track per-URL access for cache warming identification.
+
+        Stores access count per URL in Redis sorted set for frequency analysis.
+
+        Args:
+            ref_path: $ref URL being accessed
+        """
+        if not self._redis_client:
+            return
+
+        try:
+            # Only track external refs (cache warming is only for external refs)
+            if not ref_path.startswith(('http://', 'https://')):
+                return
+
+            # Use URL hash as key for access tracking
+            url_hash = hashlib.sha256(ref_path.encode('utf-8')).hexdigest()[:16]
+            access_key = f"{REDIS_CACHE_ACCESS_PREFIX}{url_hash}"
+
+            # Increment access count (using sorted set score)
+            # Score represents access count, member is the URL hash
+            # zincrby(key, increment, member) - increment score by 1
+            self._redis_client.zincrby(REDIS_CACHE_ACCESS_PREFIX + "all", 1, url_hash.encode('utf-8'))
+
+            # Store URL mapping (hash -> URL) for later retrieval
+            url_mapping_key = f"{REDIS_CACHE_ACCESS_PREFIX}url:{url_hash}"
+            self._redis_client.setex(url_mapping_key, self.cache_ttl * 24, ref_path.encode('utf-8'))
+
+            # Set expiration on sorted set (24 hours)
+            self._redis_client.expire(REDIS_CACHE_ACCESS_PREFIX + "all", self.cache_ttl * 24)
+        except Exception:
+            pass  # Access tracking failure should not affect caching
 
     def _track_cache_hit(self) -> None:
         """Track cache hit for statistics."""
@@ -487,7 +655,11 @@ class RefResolver:
         # Track cache hit in Prometheus metrics
         try:
             tenant_id = self.tenant_id or 'unknown'
+            ref_type = 'external'  # Cache is only for external refs
             odps_ref_cache_hits_total.labels(tenant_id=tenant_id).inc()
+
+            # Update hit rate gauge (calculate from Redis stats)
+            self._update_cache_rate_gauges(tenant_id, ref_type)
         except Exception:
             pass  # Metrics failure should not affect caching
 
@@ -506,7 +678,11 @@ class RefResolver:
         # Track cache miss in Prometheus metrics
         try:
             tenant_id = self.tenant_id or 'unknown'
+            ref_type = 'external'  # Cache is only for external refs
             odps_ref_cache_misses_total.labels(tenant_id=tenant_id).inc()
+
+            # Update miss rate gauge (calculate from Redis stats)
+            self._update_cache_rate_gauges(tenant_id, ref_type)
         except Exception:
             pass  # Metrics failure should not affect caching
 
@@ -578,6 +754,17 @@ class RefResolver:
                     # Remove from LRU index
                     self._remove_from_lru_index(cache_key)
 
+                    # Track eviction metrics
+                    tenant_id = self.tenant_id or 'unknown'
+                    eviction_reason = 'manual_invalidation'
+                    if deleted > 0:
+                        odps_ref_cache_eviction_rate.labels(
+                            eviction_reason=eviction_reason,
+                            tenant_id=tenant_id
+                        ).inc(deleted)
+                        # Update cache size gauge
+                        self._update_cache_size_gauge(tenant_id)
+
                     return deleted
                 return 0
             else:
@@ -602,6 +789,18 @@ class RefResolver:
 
                 if keys:
                     deleted = self._redis_client.delete(*keys)
+
+                    # Track eviction metrics
+                    tenant_id = self.tenant_id or 'unknown'
+                    eviction_reason = 'manual_invalidation_all'
+                    if deleted > 0:
+                        odps_ref_cache_eviction_rate.labels(
+                            eviction_reason=eviction_reason,
+                            tenant_id=tenant_id
+                        ).inc(deleted)
+                        # Update cache size gauge
+                        self._update_cache_size_gauge(tenant_id)
+
                     return deleted
                 return 0
         except Exception as e:
@@ -1318,6 +1517,23 @@ class RefResolver:
                 user_id=self.user_id,
             )
             if not is_allowed and error:
+                # Extract rate limit level from error message or metadata
+                rate_limit_level = "unknown"
+                if hasattr(error, 'context') and error.context:
+                    rate_limit_level = error.context.get("level", "unknown")
+
+                # Log rate limit violation explicitly
+                self._security_logger.log_rate_limit_violation(
+                    level=rate_limit_level,
+                    tenant_id=self.tenant_id,
+                    user_id=self.user_id,
+                    ref_path=ref_path,
+                    retry_after=error.retry_after,
+                    metadata={
+                        "retry_after_seconds": error.context.get("retry_after_seconds") if hasattr(error, 'context') else None,
+                        "error_code": error.error_code,
+                    }
+                )
                 # Log rate limit violation as security event with full context
                 self._security_logger.log_security_violation(
                     event_type=SecurityEventType.RATE_LIMIT_EXCEEDED,
@@ -1331,6 +1547,7 @@ class RefResolver:
                         "retry_after": error.retry_after,
                         "retry_after_seconds": error.context.get("retry_after_seconds") if hasattr(error, 'context') else None,
                         "error_code": error.error_code,
+                        "level": rate_limit_level,
                     }
                 )
                 # Raise error with clear message including retry-after suggestion
@@ -1367,14 +1584,39 @@ class RefResolver:
             cache_check_start = time.time()
 
             cached_data = self._get_from_cache(ref_path)
+            if cached_data is None:
+                # Log cache miss
+                self._security_logger.log_cache_operation(
+                    operation="miss",
+                    ref_path=ref_path,
+                    tenant_id=self.tenant_id,
+                    user_id=self.user_id,
+                )
             if cached_data is not None:
                 logger.debug(
                     "ref_resolver_cache_hit",
                     ref_path=ref_path,
                     message="Using cached external $ref"
                 )
+                # Log cache hit
+                self._security_logger.log_cache_operation(
+                    operation="hit",
+                    ref_path=ref_path,
+                    tenant_id=self.tenant_id,
+                    user_id=self.user_id,
+                )
                 duration = time.time() - start_time
                 duration_ms = duration * 1000
+                # Log external ref fetch (from cache)
+                self._security_logger.log_external_ref_fetch(
+                    ref_path=ref_path,
+                    success=True,
+                    tenant_id=self.tenant_id,
+                    user_id=self.user_id,
+                    duration_ms=duration_ms,
+                    size_bytes=len(json.dumps(cached_data)),
+                    cache_hit=True,
+                )
                 self._security_logger.log_ref_resolution_audit(
                     operation_id=operation_id,
                     ref_type=ref_type,
@@ -1416,9 +1658,21 @@ class RefResolver:
 
                 # Store in cache with content hash
                 self._set_cache(ref_path, data, content_bytes=response.content)
+                # Track per-URL access for cache warming (on-demand warming)
+                self._track_ref_access(ref_path)
 
                 duration = time.time() - start_time
                 duration_ms = duration * 1000
+                # Log external ref fetch (from network)
+                self._security_logger.log_external_ref_fetch(
+                    ref_path=ref_path,
+                    success=True,
+                    tenant_id=self.tenant_id,
+                    user_id=self.user_id,
+                    duration_ms=duration_ms,
+                    size_bytes=content_length,
+                    cache_hit=False,
+                )
                 self._security_logger.log_ref_resolution_audit(
                     operation_id=operation_id,
                     ref_type=ref_type,

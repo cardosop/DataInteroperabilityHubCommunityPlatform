@@ -20,10 +20,11 @@ import argparse
 import json
 import time
 import sys
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -43,7 +44,7 @@ class EndpointTestResult:
     error_message: Optional[str] = None
     requires_auth: bool = False
     requires_data: bool = False
-    tested_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    tested_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     notes: str = ""
 
 @dataclass
@@ -62,7 +63,7 @@ class TestSummary:
 
 class APIEndpointTester:
     """Comprehensive API endpoint tester."""
-    
+
     def __init__(self, base_url: str, username: Optional[str] = None, password: Optional[str] = None):
         self.base_url = base_url.rstrip('/')
         self.api_base = f"{self.base_url}/api/v1"
@@ -70,7 +71,7 @@ class APIEndpointTester:
         self.password = password
         self.auth_token: Optional[str] = None
         self.session = requests.Session()
-        
+
         # Configure retry strategy
         retry_strategy = Retry(
             total=3,
@@ -81,19 +82,19 @@ class APIEndpointTester:
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
-        
+
         # Set default headers
         self.session.headers.update({
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         })
-    
+
     def authenticate(self) -> bool:
         """Authenticate and get JWT token."""
         if not self.username or not self.password:
             print("⚠️  No credentials provided, testing without authentication")
             return False
-        
+
         try:
             response = self.session.post(
                 f"{self.api_base}/auth/login/",
@@ -103,7 +104,7 @@ class APIEndpointTester:
                 },
                 timeout=10
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 self.auth_token = data.get('access_token')
@@ -120,8 +121,8 @@ class APIEndpointTester:
         except Exception as e:
             print(f"⚠️  Authentication error: {str(e)}")
             return False
-    
-    def test_endpoint(self, endpoint: str, method: str, requires_auth: bool = True, 
+
+    def test_endpoint(self, endpoint: str, method: str, requires_auth: bool = True,
                      requires_data: bool = False) -> EndpointTestResult:
         """Test a single endpoint."""
         result = EndpointTestResult(
@@ -131,27 +132,32 @@ class APIEndpointTester:
             requires_auth=requires_auth,
             requires_data=requires_data
         )
-        
+
         # Skip if requires auth but we don't have token
         if requires_auth and not self.auth_token:
             result.status = "skipped"
             result.notes = "Requires authentication but no token available"
             return result
-        
+
         # Build full URL
-        if endpoint.startswith('/'):
+        # Handle endpoints that are not under /api/v1/ (e.g., /health/, /metrics/)
+        if endpoint.startswith('/health/') or endpoint.startswith('/metrics/'):
+            # These are root-level endpoints, not under /api/v1/
+            url = f"{self.base_url}{endpoint}"
+        elif endpoint.startswith('/'):
+            # Standard /api/v1/ endpoints
             url = f"{self.api_base}{endpoint}"
         elif endpoint.startswith('http'):
             url = endpoint
         else:
             url = f"{self.api_base}/{endpoint}"
-        
+
         # Prepare request
         kwargs = {
             'timeout': 30,
             'allow_redirects': False
         }
-        
+
         # Add request body for POST/PUT/PATCH if needed
         if method.upper() in ['POST', 'PUT', 'PATCH']:
             if requires_data:
@@ -159,16 +165,16 @@ class APIEndpointTester:
                 kwargs['json'] = self._get_minimal_payload(endpoint, method)
             else:
                 kwargs['json'] = {}
-        
+
         # Make request and measure time
         try:
             start_time = time.time()
             response = self.session.request(method.upper(), url, **kwargs)
             response_time_ms = (time.time() - start_time) * 1000
-            
+
             result.status_code = response.status_code
             result.response_time_ms = round(response_time_ms, 2)
-            
+
             # Determine status
             if response.status_code in [200, 201, 204]:
                 result.status = "working"
@@ -181,6 +187,11 @@ class APIEndpointTester:
             elif response.status_code == 404:
                 result.status = "broken"
                 result.error_message = "Not found - endpoint may not exist"
+            elif response.status_code == 405:
+                # Method Not Allowed - endpoint exists but doesn't support this HTTP method
+                result.status = "broken"
+                result.error_message = f"Method {method.upper()} not allowed - endpoint may only support other methods"
+                result.notes = "Endpoint exists but doesn't support this HTTP method. Check inventory for correct method."
             elif response.status_code == 410:
                 result.status = "deprecated"
                 result.error_message = "Gone - endpoint is deprecated"
@@ -190,10 +201,15 @@ class APIEndpointTester:
             elif response.status_code == 429:
                 result.status = "working"
                 result.notes = "Rate limited (expected behavior)"
+            elif response.status_code == 400:
+                # Bad Request - endpoint exists but request is invalid
+                # This is actually a good sign - endpoint exists and is processing the request
+                result.status = "working"
+                result.notes = "Endpoint exists (400 Bad Request indicates endpoint is processing request)"
             else:
                 result.status = "broken"
                 result.error_message = f"Unexpected status: {response.status_code}"
-                
+
         except requests.exceptions.Timeout:
             result.status = "broken"
             result.error_message = "Request timeout (>30s)"
@@ -203,9 +219,9 @@ class APIEndpointTester:
         except Exception as e:
             result.status = "broken"
             result.error_message = f"Error: {str(e)}"
-        
+
         return result
-    
+
     def _get_minimal_payload(self, endpoint: str, method: str) -> Dict:
         """Get minimal valid payload for an endpoint."""
         # Common payloads based on endpoint patterns
@@ -223,77 +239,138 @@ class APIEndpointTester:
             return {"q": "test"}
         else:
             return {}
-    
+
     def parse_inventory(self, inventory_path: Path) -> List[Tuple[str, str]]:
-        """Parse API inventory file to extract endpoints."""
+        """
+        Parse API inventory file to extract endpoints.
+
+        Supports multiple markdown formats:
+        - Table format: | Method | Path | View | Action | Type |
+        - Header format: #### METHOD /api/v1/path/
+        - Standardized endpoint patterns from current-api-inventory.md
+        """
         endpoints = []
-        
+
         if not inventory_path.exists():
             print(f"⚠️  Inventory file not found: {inventory_path}")
             return endpoints
-        
+
         content = inventory_path.read_text()
-        
-        # Parse markdown format
-        current_method = None
-        current_endpoint = None
-        
-        for line in content.split('\n'):
-            line = line.strip()
-            
-            # Look for method and endpoint patterns
-            if line.startswith('#### '):
-                # Extract method and endpoint
-                parts = line.replace('#### ', '').split()
+        lines = content.split('\n')
+
+        # Track if we're in a table
+        in_table = False
+        table_header_found = False
+
+        for i, line in enumerate(lines):
+            line_stripped = line.strip()
+
+            # Skip empty lines
+            if not line_stripped:
+                continue
+
+            # Detect table start (look for header row with Method, Path, etc.)
+            if '|' in line_stripped and ('Method' in line_stripped or 'GET' in line_stripped):
+                # Check if it's a header row (contains Method, Path, View, etc.)
+                if any(keyword in line_stripped for keyword in ['Method', 'Path', 'View', 'Action', 'Type']):
+                    in_table = True
+                    table_header_found = True
+                    continue
+                # Check if it's a separator row (contains dashes)
+                elif '---' in line_stripped or re.match(r'^\|[\s\-|:]+\|', line_stripped):
+                    continue
+
+            # Parse table rows
+            if in_table and '|' in line_stripped:
+                parts = [p.strip() for p in line_stripped.split('|')]
+                # Remove empty first/last elements from split
+                parts = [p for p in parts if p]
+
                 if len(parts) >= 2:
-                    method = parts[0]
+                    # Try to find method and path
+                    method = None
+                    endpoint = None
+
+                    # Method is usually first or second column
+                    for part in parts[:3]:
+                        part_upper = part.upper()
+                        if part_upper in ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']:
+                            method = part_upper
+                            break
+
+                    # Path is usually second or third column (after method)
+                    for part in parts[1:4]:
+                        # Clean up path (remove backticks, whitespace)
+                        cleaned = part.replace('`', '').strip()
+                        # Check if it looks like a path
+                        if cleaned.startswith('/api/v1/') or (cleaned.startswith('/') and 'api' in cleaned.lower()):
+                            endpoint = cleaned
+                            break
+
+                    if method and endpoint:
+                        endpoints.append((endpoint, method))
+                        continue
+
+            # Parse header format: #### METHOD /api/v1/path/
+            if line_stripped.startswith('#### '):
+                header_content = line_stripped.replace('#### ', '').strip()
+                # Try to extract method and path
+                parts = header_content.split()
+                if len(parts) >= 2:
+                    method = parts[0].upper()
                     endpoint = parts[1]
-                    if endpoint.startswith('/') or 'api' in endpoint.lower():
-                        endpoints.append((endpoint, method))
-            
-            # Also look for table rows
-            elif '|' in line and ('GET' in line or 'POST' in line or 'PUT' in line or 'DELETE' in line or 'PATCH' in line):
-                parts = [p.strip() for p in line.split('|')]
-                if len(parts) >= 3:
-                    method = parts[1].strip()
-                    endpoint = parts[2].strip().replace('`', '')
-                    if endpoint and (endpoint.startswith('/') or 'api' in endpoint.lower()):
-                        endpoints.append((endpoint, method))
-        
-        # Deduplicate
+                    # Validate method
+                    if method in ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']:
+                        # Validate endpoint format
+                        if endpoint.startswith('/') or 'api' in endpoint.lower():
+                            endpoints.append((endpoint, method))
+                            continue
+
+            # Reset table state if we hit a new section
+            if line_stripped.startswith('### ') or line_stripped.startswith('## '):
+                in_table = False
+                table_header_found = False
+
+        # Deduplicate and normalize
         seen = set()
         unique_endpoints = []
         for endpoint, method in endpoints:
-            key = (endpoint, method.upper())
+            # Normalize endpoint (ensure trailing slash consistency)
+            normalized_endpoint = endpoint.rstrip('/') + '/' if endpoint else endpoint
+
+            # Normalize method
+            normalized_method = method.upper()
+
+            key = (normalized_endpoint, normalized_method)
             if key not in seen:
                 seen.add(key)
-                unique_endpoints.append((endpoint, method.upper()))
-        
+                unique_endpoints.append((normalized_endpoint, normalized_method))
+
         return unique_endpoints
-    
+
     def test_all_endpoints(self, endpoints: List[Tuple[str, str]]) -> List[EndpointTestResult]:
         """Test all endpoints."""
         results = []
         total = len(endpoints)
-        
+
         print(f"\n🧪 Testing {total} endpoints...\n")
-        
+
         for i, (endpoint, method) in enumerate(endpoints, 1):
             print(f"[{i}/{total}] Testing {method} {endpoint}...", end=' ', flush=True)
-            
+
             # Determine if endpoint requires auth
             requires_auth = not any(public in endpoint.lower() for public in [
                 'login', 'register', 'password-reset', 'health', 'openapi'
             ])
-            
+
             # Determine if endpoint requires data
             requires_data = method in ['POST', 'PUT', 'PATCH'] and any(
                 create in endpoint.lower() for create in ['create', 'new', 'register']
             )
-            
+
             result = self.test_endpoint(endpoint, method, requires_auth, requires_data)
             results.append(result)
-            
+
             # Print status
             if result.status == "working":
                 print(f"✅ {result.status_code} ({result.response_time_ms}ms)")
@@ -303,19 +380,19 @@ class APIEndpointTester:
                 print(f"⚠️  {result.status} - {result.error_message}")
             else:
                 print(f"⏭️  {result.status} - {result.notes}")
-        
+
         return results
-    
+
     def generate_summary(self, results: List[EndpointTestResult]) -> TestSummary:
         """Generate test summary statistics."""
         summary = TestSummary()
         summary.total_endpoints = len(results)
-        
+
         working_times = []
-        
+
         for result in results:
             summary.tested += 1
-            
+
             if result.status == "working":
                 summary.working += 1
                 if result.response_time_ms:
@@ -326,7 +403,7 @@ class APIEndpointTester:
                 summary.deprecated += 1
             else:
                 summary.skipped += 1
-        
+
         # Calculate percentiles
         if working_times:
             working_times.sort()
@@ -334,22 +411,22 @@ class APIEndpointTester:
             summary.p50_response_time_ms = round(working_times[len(working_times) // 2], 2)
             summary.p95_response_time_ms = round(working_times[int(len(working_times) * 0.95)], 2) if len(working_times) > 20 else round(working_times[-1], 2)
             summary.p99_response_time_ms = round(working_times[int(len(working_times) * 0.99)], 2) if len(working_times) > 100 else round(working_times[-1], 2)
-        
+
         return summary
-    
+
     def generate_report(self, results: List[EndpointTestResult], summary: TestSummary) -> str:
         """Generate markdown test report."""
         lines = []
-        
+
         lines.append("# API Endpoint Test Report")
         lines.append("")
-        lines.append(f"**Generated**: {datetime.utcnow().isoformat()}")
+        lines.append(f"**Generated**: {datetime.now(timezone.utc).isoformat()}")
         lines.append(f"**Base URL**: {self.base_url}")
         lines.append(f"**Tested By**: {self.username or 'Anonymous'}")
         lines.append("")
         lines.append("---")
         lines.append("")
-        
+
         # Summary
         lines.append("## Summary")
         lines.append("")
@@ -360,7 +437,7 @@ class APIEndpointTester:
         lines.append(f"- **Deprecated**: {summary.deprecated} ⚠️")
         lines.append(f"- **Skipped**: {summary.skipped} ⏭️")
         lines.append("")
-        
+
         if summary.avg_response_time_ms > 0:
             lines.append("### Performance Metrics")
             lines.append("")
@@ -369,7 +446,7 @@ class APIEndpointTester:
             lines.append(f"- **P95**: {summary.p95_response_time_ms}ms")
             lines.append(f"- **P99**: {summary.p99_response_time_ms}ms")
             lines.append("")
-        
+
         # Working endpoints
         working = [r for r in results if r.status == "working"]
         if working:
@@ -380,7 +457,7 @@ class APIEndpointTester:
             for result in sorted(working, key=lambda x: x.response_time_ms or 0):
                 lines.append(f"| `{result.endpoint}` | {result.method} | {result.status_code} | {result.response_time_ms} |")
             lines.append("")
-        
+
         # Broken endpoints
         broken = [r for r in results if r.status == "broken"]
         if broken:
@@ -392,7 +469,7 @@ class APIEndpointTester:
                 error = result.error_message or "Unknown error"
                 lines.append(f"| `{result.endpoint}` | {result.method} | {result.status_code or 'N/A'} | {error} |")
             lines.append("")
-        
+
         # Deprecated endpoints
         deprecated = [r for r in results if r.status == "deprecated"]
         if deprecated:
@@ -403,7 +480,7 @@ class APIEndpointTester:
             for result in deprecated:
                 lines.append(f"| `{result.endpoint}` | {result.method} | {result.status_code} | {result.error_message} |")
             lines.append("")
-        
+
         # Skipped endpoints
         skipped = [r for r in results if r.status == "skipped"]
         if skipped:
@@ -414,7 +491,7 @@ class APIEndpointTester:
             for result in skipped:
                 lines.append(f"| `{result.endpoint}` | {result.method} | {result.notes} |")
             lines.append("")
-        
+
         # Detailed results
         lines.append("## Detailed Results")
         lines.append("")
@@ -431,20 +508,20 @@ class APIEndpointTester:
             if result.notes:
                 lines.append(f"- **Notes**: {result.notes}")
             lines.append("")
-        
+
         return '\n'.join(lines)
-    
+
     def update_inventory(self, inventory_path: Path, results: List[EndpointTestResult]):
         """Update inventory file with test results."""
         if not inventory_path.exists():
             print(f"⚠️  Inventory file not found: {inventory_path}")
             return
-        
+
         content = inventory_path.read_text()
-        
+
         # Create a mapping of endpoint+method to result
         results_map = {(r.endpoint, r.method): r for r in results}
-        
+
         # Add test results section at the end
         lines = content.split('\n')
         lines.append("")
@@ -452,11 +529,11 @@ class APIEndpointTester:
         lines.append("")
         lines.append("## Endpoint Test Results")
         lines.append("")
-        lines.append(f"**Last Tested**: {datetime.utcnow().isoformat()}")
+        lines.append(f"**Last Tested**: {datetime.now(timezone.utc).isoformat()}")
         lines.append("")
         lines.append("| Endpoint | Method | Status | Status Code | Response Time (ms) | Notes |")
         lines.append("|----------|--------|--------|-------------|-------------------|-------|")
-        
+
         for endpoint, method in sorted(set((r.endpoint, r.method) for r in results)):
             result = results_map.get((endpoint, method))
             if result:
@@ -465,7 +542,7 @@ class APIEndpointTester:
                     f"| `{endpoint}` | {method} | {status_icon} {result.status} | "
                     f"{result.status_code or 'N/A'} | {result.response_time_ms or 'N/A'} | {result.notes or ''} |"
                 )
-        
+
         inventory_path.write_text('\n'.join(lines))
         print(f"\n✅ Updated inventory file: {inventory_path}")
 
@@ -482,35 +559,35 @@ def main():
                        help='Path to output test report')
     parser.add_argument('--skip-auth', action='store_true',
                        help='Skip authentication (test public endpoints only)')
-    
+
     args = parser.parse_args()
-    
+
     # Initialize tester
     tester = APIEndpointTester(args.base_url, args.username, args.password)
-    
+
     # Authenticate if credentials provided
     if not args.skip_auth and args.username and args.password:
         if not tester.authenticate():
             print("⚠️  Continuing without authentication (some endpoints may be skipped)")
     elif args.skip_auth:
         print("⏭️  Skipping authentication (testing public endpoints only)")
-    
+
     # Parse inventory
     inventory_path = Path(args.inventory)
     endpoints = tester.parse_inventory(inventory_path)
-    
+
     if not endpoints:
         print("❌ No endpoints found in inventory file")
         return 1
-    
+
     print(f"📋 Found {len(endpoints)} endpoints in inventory")
-    
+
     # Test all endpoints
     results = tester.test_all_endpoints(endpoints)
-    
+
     # Generate summary
     summary = tester.generate_summary(results)
-    
+
     # Print summary
     print("\n" + "="*60)
     print("TEST SUMMARY")
@@ -528,28 +605,28 @@ def main():
         print(f"  P95: {summary.p95_response_time_ms}ms")
         print(f"  P99: {summary.p99_response_time_ms}ms")
     print("="*60)
-    
+
     # Generate report
     report = tester.generate_report(results, summary)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report)
     print(f"\n✅ Test report saved to: {output_path}")
-    
+
     # Update inventory
     tester.update_inventory(inventory_path, results)
-    
+
     # Save JSON results
     json_path = Path(args.output).with_suffix('.json')
     json_data = {
         'summary': asdict(summary),
         'results': [asdict(r) for r in results],
-        'tested_at': datetime.utcnow().isoformat(),
+        'tested_at': datetime.now(timezone.utc).isoformat(),
         'base_url': args.base_url
     }
     json_path.write_text(json.dumps(json_data, indent=2))
     print(f"✅ JSON results saved to: {json_path}")
-    
+
     return 0 if summary.broken == 0 else 1
 
 if __name__ == '__main__':

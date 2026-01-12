@@ -2,6 +2,12 @@
 DataContract CLI Service Client
 
 Client for interacting with the DataContract CLI service.
+
+**Important Notes:**
+- This client calls an EXTERNAL microservice (datacontract-service), not Django API endpoints
+- Endpoints are microservice-specific paths (e.g., '/validate', '/lint', '/convert')
+- For Django API endpoint construction, use `hub.apps.api.utils.api_url_builder.APIURLBuilder`
+- This client follows service-to-service communication patterns with circuit breaker protection
 """
 import httpx
 import hashlib

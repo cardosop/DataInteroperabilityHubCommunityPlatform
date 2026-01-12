@@ -100,6 +100,10 @@ class DataHubClient:
         from .versioning import VersioningAPI
         from .virtualization import VirtualizationAPI
         from .webhooks import WebhooksAPI
+        from .marketplace import MarketplaceIntegrationAPI
+        from .baas import BaaSAPI
+        from .ml import ODHIntegrationAPI, TrainingAPI, InferenceAPI
+        from .model_serving import ModelServingAPI
 
         self.contracts = ContractsAPI(self)
         self.lineage = LineageAPI(self)
@@ -112,6 +116,12 @@ class DataHubClient:
         self.transformation = TransformationAPI(self)
         self.virtualization = VirtualizationAPI(self)
         self.webhooks = WebhooksAPI(self)
+        self.marketplace = MarketplaceIntegrationAPI(self)
+        self.baas = BaaSAPI(self)
+        self.ml = ODHIntegrationAPI(self)
+        self.training = TrainingAPI(self)
+        self.inference = InferenceAPI(self)
+        self.model_serving = ModelServingAPI(self)
 
     def set_api_token(self, token: str) -> None:
         """

@@ -53,7 +53,7 @@ class JobCancellationTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], JobStatus.CANCELLED)
@@ -75,7 +75,7 @@ class JobCancellationTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], JobStatus.CANCELLED)
@@ -96,7 +96,7 @@ class JobCancellationTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("cannot be cancelled", response.data["error"])
@@ -117,7 +117,7 @@ class JobCancellationTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         
@@ -137,7 +137,7 @@ class JobCancellationTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         
@@ -163,7 +163,7 @@ class JobCancellationTest(TestCase):
         increment_tenant_job_counter(str(self.tenant.id), "running")
         self.assertEqual(get_tenant_job_counter(str(self.tenant.id), "running"), 1)
         
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], JobStatus.CANCELLED)
@@ -189,7 +189,7 @@ class JobCancellationTest(TestCase):
         # No running counter should exist
         self.assertEqual(get_tenant_job_counter(str(self.tenant.id), "running"), 0)
         
-        response = self.client.post(f"/api/v1/jobs/jobs/{job.id}/cancel/")
+        response = self.client.post(f"/api/v1/jobs/{job.id}/cancel/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], JobStatus.CANCELLED)

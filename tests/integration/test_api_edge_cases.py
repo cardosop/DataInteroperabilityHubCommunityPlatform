@@ -55,7 +55,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         # Update via API
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )
@@ -76,7 +76,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         current_hub["info"]["tags"] = new_tags
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )
@@ -103,7 +103,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         current_hub["quality"]["rules"] = new_rules
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )
@@ -128,7 +128,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         current_hub["privacy_compliance"] = new_compliance
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )
@@ -151,7 +151,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         current_hub["lifecycle"] = new_lifecycle
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )
@@ -174,7 +174,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         current_hub["marketplace"] = new_marketplace
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )
@@ -200,7 +200,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         current_hub["schema"]["fields"] = new_fields
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )
@@ -219,7 +219,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         import json
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(hub_contract),
                 "original_format": "JSON",
@@ -249,7 +249,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         import json
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(hub_contract),
                 "original_format": "JSON"
@@ -276,7 +276,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         import json
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(hub_contract),
                 "original_format": "JSON"
@@ -304,7 +304,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         import json
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(hub_contract),
                 "original_format": "JSON"
@@ -332,7 +332,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         import json
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(hub_contract),
                 "original_format": "JSON"
@@ -387,7 +387,7 @@ class APIEdgeCaseTest(TransactionTestCase):
                 # Convert to JSON string properly
                 import json
                 response = client.patch(
-                    f"/api/v1/contracts/contracts/{contract_id}/",
+                    f"/api/v1/contracts/{contract_id}/",
                     {"original_raw": json.dumps(current_hub)},
                     format="json"
                 )
@@ -437,7 +437,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         current_hub["info"]["name"] = "Updated During Mapping"
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )
@@ -459,7 +459,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         fake_id = uuid.uuid4()
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{fake_id}/",
+            f"/api/v1/contracts/{fake_id}/",
             {"status": "ACTIVE"},
             format="json"
         )
@@ -472,7 +472,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         fake_id = uuid.uuid4()
         
         response = self.client.delete(
-            f"/api/v1/contracts/contracts/{fake_id}/"
+            f"/api/v1/contracts/{fake_id}/"
         )
         
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -480,7 +480,7 @@ class APIEdgeCaseTest(TransactionTestCase):
     def test_create_contract_invalid_json(self):
         """Test creating contract with invalid JSON"""
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": "invalid json {",
                 "original_format": "JSON"
@@ -493,7 +493,7 @@ class APIEdgeCaseTest(TransactionTestCase):
     def test_create_contract_missing_required_fields(self):
         """Test creating contract with missing required fields"""
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {},
             format="json"
         )
@@ -511,7 +511,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         unauth_client = APIClient()
         
         response = unauth_client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"status": "ACTIVE"},
             format="json"
         )
@@ -537,7 +537,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         other_client.force_authenticate(user=other_user)
         
         response = other_client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"status": "ACTIVE"},
             format="json"
         )
@@ -550,7 +550,7 @@ class APIEdgeCaseTest(TransactionTestCase):
     
     def test_list_contracts_empty_result(self):
         """Test listing contracts with no results"""
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("results", response.data)
@@ -573,7 +573,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         ]
         
         for filter_params in filters:
-            response = self.client.get("/api/v1/contracts/contracts/", filter_params)
+            response = self.client.get("/api/v1/contracts/", filter_params)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertIn("results", response.data)
     
@@ -584,7 +584,7 @@ class APIEdgeCaseTest(TransactionTestCase):
             created_by=self.user
         )
         
-        response = self.client.get(f"/api/v1/contracts/contracts/{contract.id}/")
+        response = self.client.get(f"/api/v1/contracts/{contract.id}/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(contract.id))
@@ -595,7 +595,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         import json
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(hub_contract),
                 "original_format": "JSON",
@@ -615,7 +615,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         )
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"status": "ACTIVE"},
             format="json"
         )
@@ -643,7 +643,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         import json
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {
                 "original_raw": json.dumps(new_contract),
                 "original_format": "JSON"
@@ -675,7 +675,7 @@ class APIEdgeCaseTest(TransactionTestCase):
         
         import json
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(odcs_contract),
                 "original_format": "JSON"
@@ -702,7 +702,7 @@ class APIEdgeCaseTest(TransactionTestCase):
                 created_by=self.user
             )
         
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("results", response.data)
@@ -718,7 +718,7 @@ class APIEdgeCaseTest(TransactionTestCase):
             )
         
         # Test ordering
-        response = self.client.get("/api/v1/contracts/contracts/", {"ordering": "-created_at"})
+        response = self.client.get("/api/v1/contracts/", {"ordering": "-created_at"})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("results", response.data)
@@ -735,7 +735,7 @@ schema:
 """
         
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": yaml_content,
                 "original_format": "YAML"
@@ -768,7 +768,7 @@ schema:
         
         import json
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {
                 "original_raw": json.dumps(large_contract),
                 "original_format": "JSON"
@@ -792,7 +792,7 @@ schema:
         
         import json
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(hub_contract, ensure_ascii=False),
                 "original_format": "JSON"
@@ -817,7 +817,7 @@ schema:
         current_hub["info"]["name"] = "Contract with Special: !@#$%^&*()"
         
         response = self.client.patch(
-            f"/api/v1/contracts/contracts/{contract.id}/",
+            f"/api/v1/contracts/{contract.id}/",
             {"original_raw": str(current_hub).replace("'", '"')},
             format="json"
         )

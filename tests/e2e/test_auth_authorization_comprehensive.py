@@ -75,7 +75,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {api_key}")
 
         # Try to access protected endpoint
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify user is authenticated (if wsgi_request is available)
@@ -103,14 +103,14 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_X_API_KEY=api_key)
 
         # Try to access protected endpoint
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_api_key_authentication_invalid_key(self):
         """Test API key authentication with invalid key"""
         self.client.credentials(HTTP_AUTHORIZATION="ApiKey invalid-key-12345")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_api_key_authentication_expired_key(self):
@@ -130,7 +130,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
 
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {plaintext_key}")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_api_key_authentication_revoked_key(self):
@@ -157,7 +157,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         api_key = create_response.data["api_key"]
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {api_key}")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_api_key_authentication_inactive_user(self):
@@ -183,7 +183,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         # Try to use API key with inactive user
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {api_key}")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # ========== JWT Authentication Tests ==========
@@ -210,7 +210,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         # Try to access protected endpoint
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Verify user is authenticated (if wsgi_request is available)
@@ -222,7 +222,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         """Test JWT authentication with invalid token"""
         self.client.credentials(HTTP_AUTHORIZATION="Bearer invalid-token-12345")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     @override_settings(JWT_ACCESS_TOKEN_EXPIRY=1)  # 1 second for testing
@@ -236,14 +236,14 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_jwt_authentication_malformed_token(self):
         """Test JWT authentication with malformed token"""
         self.client.credentials(HTTP_AUTHORIZATION="Bearer not.a.valid.jwt.token")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_jwt_authentication_token_version_mismatch(self):
@@ -257,7 +257,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         # Token should be invalidated due to version mismatch
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -272,7 +272,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # ========== Token Refresh Tests ==========
@@ -308,7 +308,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
         self.client.force_authenticate(user=None)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {new_access_token}")
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_token_refresh_invalid_token(self):
@@ -404,14 +404,14 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
 
         # Use token immediately (should work)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Wait for token to expire
         time.sleep(2)
 
         # Try to use expired token (should fail)
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_token_refresh_before_expiration(self):
@@ -431,7 +431,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
 
         # Use access token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Refresh token before expiration
@@ -445,7 +445,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
 
         # Use new access token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {new_access_token}")
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
@@ -518,7 +518,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
 
         # Admin should be able to create assets
         response = self.client.post(
-            "/api/v1/assets/assets/", {"key": "admin-asset", "name": "Admin Asset"}, format="json"
+            "/api/v1/assets/", {"key": "admin-asset", "name": "Admin Asset"}, format="json"
         )
 
         # Should succeed (assuming assets endpoint doesn't require specific role)
@@ -538,7 +538,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
 
         # Provider should be able to create assets
         response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {"key": "provider-asset", "name": "Provider Asset"},
             format="json",
         )
@@ -559,7 +559,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         create_response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {"key": "consumer-read-asset", "name": "Consumer Read Asset"},
             format="json",
         )
@@ -577,7 +577,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         # Consumer should be able to read
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Consumer should not be able to update (if endpoint requires role)
@@ -597,7 +597,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         # Regular user should be able to authenticate and access basic endpoints
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         # Should succeed (authentication works) but may have limited permissions
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
 
@@ -619,7 +619,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         # Admin should be able to access tenant resources
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_permission_platform_admin_bypass(self):
@@ -643,7 +643,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         # Platform admin should have access
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     # ========== Multi-Tenant Isolation Tests ==========
@@ -653,7 +653,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         # Create asset in current tenant
         self.client.force_authenticate(user=self.user)
         create_response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {"key": "isolated-asset", "name": "Isolated Asset"},
             format="json",
         )
@@ -682,7 +682,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         # Try to access asset from other tenant (should fail)
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_multi_tenant_isolation_api_keys(self):
@@ -723,7 +723,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {api_key}")
 
         # Should not be able to access other tenant's asset
-        response = self.client.get(f"/api/v1/assets/assets/{other_asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{other_asset.id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_multi_tenant_isolation_jwt_tokens(self):
@@ -731,7 +731,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         # Create asset in current tenant
         self.client.force_authenticate(user=self.user)
         create_response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {"key": "jwt-isolated-asset", "name": "JWT Isolated Asset"},
             format="json",
         )
@@ -765,7 +765,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
 
         # Try to access asset from other tenant (should fail)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_multi_tenant_isolation_list_operations(self):
@@ -807,7 +807,7 @@ class AuthorizationFlowsE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         # List assets (should only see other tenant's assets)
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         asset_ids = {a["id"] for a in response.data["results"]}
@@ -885,7 +885,7 @@ class ErrorScenariosE2ETest(E2ETestBase):
         time.sleep(2)
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_expired_refresh_token(self):
@@ -931,7 +931,7 @@ class ErrorScenariosE2ETest(E2ETestBase):
         # Regular user should be able to authenticate
         # But may have limited permissions depending on endpoint requirements
         # This test verifies authentication works, permissions are endpoint-specific
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         # Should either succeed (if no role required) or return 403 (if role required)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
 
@@ -940,7 +940,7 @@ class ErrorScenariosE2ETest(E2ETestBase):
         # Create asset in current tenant
         self.client.force_authenticate(user=self.user)
         create_response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {"key": "permission-test-asset", "name": "Permission Test Asset"},
             format="json",
         )
@@ -969,7 +969,7 @@ class ErrorScenariosE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
         # Try to access asset from other tenant (should fail)
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_insufficient_permissions_api_key_scopes(self):
@@ -990,7 +990,7 @@ class ErrorScenariosE2ETest(E2ETestBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {api_key}")
 
         # Should be able to read
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Write operations may be restricted by scope (if endpoint checks scopes)
@@ -1001,19 +1001,19 @@ class ErrorScenariosE2ETest(E2ETestBase):
 
     def test_token_validation_missing_header(self):
         """Test request without authorization header"""
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_token_validation_malformed_header(self):
         """Test request with malformed authorization header"""
         self.client.credentials(HTTP_AUTHORIZATION="InvalidFormat token")
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_token_validation_empty_token(self):
         """Test request with empty token"""
         self.client.credentials(HTTP_AUTHORIZATION="Bearer ")
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_token_validation_wrong_scheme(self):
@@ -1021,6 +1021,6 @@ class ErrorScenariosE2ETest(E2ETestBase):
         # Use ApiKey scheme with JWT token (should fail)
         access_token = JWTTokenGenerator.generate_access_token(self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {access_token}")
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         # Should fail because ApiKey authentication expects API key format, not JWT
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

@@ -102,7 +102,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "hubcontract", "output_format": "json"},
         )
 
@@ -122,7 +122,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "hubcontract", "output_format": "yaml"},
         )
 
@@ -144,7 +144,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "odcs", "output_format": "json"},
         )
 
@@ -163,7 +163,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "odcs", "output_format": "yaml"},
         )
 
@@ -185,7 +185,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "odps", "output_format": "json"},
         )
 
@@ -205,7 +205,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "odps", "output_format": "yaml"},
         )
 
@@ -227,7 +227,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -245,7 +245,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"format": "invalid"},
         )
 
@@ -257,7 +257,7 @@ class ContractDownloadEndpointTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
             {"output_format": "invalid"},
         )
 
@@ -272,7 +272,7 @@ class ContractDownloadEndpointTest(TestCase):
 
         nonexistent_id = uuid.uuid4()
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{nonexistent_id}/download/",
+            f"/api/v1/contracts/{nonexistent_id}/download/",
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -281,7 +281,7 @@ class ContractDownloadEndpointTest(TestCase):
         """Test download endpoint requires authentication"""
         # Don't authenticate
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract.id}/download/",
+            f"/api/v1/contracts/{self.contract.id}/download/",
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -305,7 +305,7 @@ class ContractDownloadEndpointTest(TestCase):
 
         # Try to download as hubcontract (should fail)
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{contract_no_hub.id}/download/",
+            f"/api/v1/contracts/{contract_no_hub.id}/download/",
             {"format": "hubcontract"},
         )
 
@@ -314,7 +314,7 @@ class ContractDownloadEndpointTest(TestCase):
 
         # Try to download as odcs (should work if original_raw exists)
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{contract_no_hub.id}/download/",
+            f"/api/v1/contracts/{contract_no_hub.id}/download/",
             {"format": "odcs"},
         )
 
@@ -345,7 +345,7 @@ class ContractDownloadEndpointTest(TestCase):
         )
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{contract_special.id}/download/",
+            f"/api/v1/contracts/{contract_special.id}/download/",
             {"format": "hubcontract", "output_format": "json"},
         )
 
@@ -388,7 +388,7 @@ class ContractDownloadEndpointTest(TestCase):
 
         # Try to download contract from other tenant
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{other_contract.id}/download/",
+            f"/api/v1/contracts/{other_contract.id}/download/",
         )
 
         # Should return 404 (not found) due to tenant isolation
@@ -492,7 +492,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -521,7 +521,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "yaml", "version": "3.0.2"},
         )
 
@@ -543,7 +543,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.1"},
         )
 
@@ -560,7 +560,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.0"},
         )
 
@@ -573,7 +573,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.0-preview"},
         )
 
@@ -586,7 +586,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "2.2.2"},
         )
 
@@ -599,7 +599,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json"},
         )
 
@@ -618,7 +618,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_with_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_with_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -636,7 +636,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_with_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_with_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.1"},
         )
 
@@ -654,7 +654,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_with_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_with_original.id}/download/",
             {"format": "odcs", "output_format": "yaml", "version": "3.0.2"},
         )
 
@@ -690,7 +690,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         )
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{contract_yaml.id}/download/",
+            f"/api/v1/contracts/{contract_yaml.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -711,7 +711,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "99.99.99"},
         )
 
@@ -738,7 +738,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         )
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{invalid_contract.id}/download/",
+            f"/api/v1/contracts/{invalid_contract.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -755,7 +755,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         for version in versions:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/download/",
                     {"format": "odcs", "output_format": "json", "version": version},
                 )
 
@@ -775,7 +775,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         for version in versions:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/download/",
                     {"format": "odcs", "output_format": "json", "version": version},
                 )
 
@@ -796,7 +796,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         for version in versions:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/download/",
                     {"format": "odcs", "output_format": "yaml", "version": version},
                 )
 
@@ -814,7 +814,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -834,7 +834,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
 
         # Test JSON
         response_json = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         self.assertEqual(response_json.status_code, status.HTTP_200_OK)
@@ -842,7 +842,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
 
         # Test YAML
         response_yaml = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "yaml", "version": "3.0.2"},
         )
         self.assertEqual(response_yaml.status_code, status.HTTP_200_OK)

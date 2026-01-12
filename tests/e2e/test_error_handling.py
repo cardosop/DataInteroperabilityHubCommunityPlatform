@@ -35,7 +35,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         import uuid
         fake_id = uuid.uuid4()
         
-        response = self.client.get(f'/api/v1/assets/assets/{fake_id}/')
+        response = self.client.get(f'/api/v1/assets/{fake_id}/')
         
         # Should return 404
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -56,7 +56,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         # Unauthenticated request
         self.client.force_authenticate(user=None)
         
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         
         # Should return 401
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -72,7 +72,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         """Test validation error format"""
         # Try to create asset with invalid data
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': '',  # Invalid: empty key
                 'name': 'Test Asset'
@@ -96,7 +96,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         import uuid
         fake_id = uuid.uuid4()
         
-        response = self.client.get(f'/api/v1/assets/assets/{fake_id}/')
+        response = self.client.get(f'/api/v1/assets/{fake_id}/')
         
         # Should return 404
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -124,7 +124,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         self.client.force_authenticate(user=other_user)
         
         # Try to access asset from other tenant
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/')
         
         # Should return 404 (not found due to tenant isolation) or 403
         self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
@@ -142,7 +142,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         import uuid
         fake_id = uuid.uuid4()
         
-        response = self.client.get(f'/api/v1/assets/assets/{fake_id}/')
+        response = self.client.get(f'/api/v1/assets/{fake_id}/')
         
         # Check if request_id is present (may be in error object or headers)
         if 'error' in response.data:
@@ -156,7 +156,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         import uuid
         fake_id = uuid.uuid4()
         
-        response = self.client.get(f'/api/v1/assets/assets/{fake_id}/')
+        response = self.client.get(f'/api/v1/assets/{fake_id}/')
         
         # Check if timestamp is present
         if 'error' in response.data:
@@ -172,9 +172,9 @@ class ErrorHandlingE2ETest(E2ETestBase):
         
         # Test multiple endpoints return consistent error format
         endpoints = [
-            f'/api/v1/assets/assets/{fake_id}/',
-            f'/api/v1/contracts/contracts/{fake_id}/',
-            f'/api/v1/datasets/datasets/{fake_id}/',
+            f'/api/v1/assets/{fake_id}/',
+            f'/api/v1/contracts/{fake_id}/',
+            f'/api/v1/datasets/{fake_id}/',
         ]
         
         for endpoint in endpoints:
@@ -193,7 +193,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         """Test error details structure for validation errors"""
         # Try to create asset with multiple validation errors
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': '',  # Invalid
                 'name': '',  # Invalid
@@ -216,7 +216,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         # Test various error scenarios
         test_cases = [
             # (endpoint, method, expected_status, expected_code_prefix)
-            ('/api/v1/assets/assets/', 'GET', status.HTTP_401_UNAUTHORIZED, 'AUTH'),
+            ('/api/v1/assets/', 'GET', status.HTTP_401_UNAUTHORIZED, 'AUTH'),
         ]
         
         # Unauthenticated
@@ -239,7 +239,7 @@ class ErrorHandlingE2ETest(E2ETestBase):
         import uuid
         fake_id = uuid.uuid4()
         
-        response = self.client.get(f'/api/v1/assets/assets/{fake_id}/')
+        response = self.client.get(f'/api/v1/assets/{fake_id}/')
         
         if 'error' in response.data:
             error = response.data['error']

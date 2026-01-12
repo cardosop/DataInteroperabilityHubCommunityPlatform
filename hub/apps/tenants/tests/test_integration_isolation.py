@@ -76,7 +76,7 @@ class MultiTenantIsolationTest(TestCase):
     def test_tenant_cannot_see_other_tenant_assets(self):
         """Test that tenant A cannot see tenant B's assets"""
         # Tenant A lists assets
-        response = self.client_a.get('/api/v1/assets/assets/')
+        response = self.client_a.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         asset_ids = [asset['id'] for asset in response.data['results']]
@@ -88,7 +88,7 @@ class MultiTenantIsolationTest(TestCase):
     def test_tenant_cannot_access_other_tenant_asset(self):
         """Test that tenant A cannot access tenant B's asset by ID"""
         # Tenant A tries to access tenant B's asset
-        response = self.client_a.get(f'/api/v1/assets/assets/{self.asset_b.id}/')
+        response = self.client_a.get(f'/api/v1/assets/{self.asset_b.id}/')
         
         # Should return 404 (not found) due to tenant filtering
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -96,7 +96,7 @@ class MultiTenantIsolationTest(TestCase):
     def test_tenant_cannot_update_other_tenant_asset(self):
         """Test that tenant A cannot update tenant B's asset"""
         response = self.client_a.patch(
-            f'/api/v1/assets/assets/{self.asset_b.id}/',
+            f'/api/v1/assets/{self.asset_b.id}/',
             {'name': 'Hacked Asset'},
             format='json'
         )
@@ -110,7 +110,7 @@ class MultiTenantIsolationTest(TestCase):
     
     def test_tenant_cannot_delete_other_tenant_asset(self):
         """Test that tenant A cannot delete tenant B's asset"""
-        response = self.client_a.delete(f'/api/v1/assets/assets/{self.asset_b.id}/')
+        response = self.client_a.delete(f'/api/v1/assets/{self.asset_b.id}/')
         
         # Should return 404
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -121,7 +121,7 @@ class MultiTenantIsolationTest(TestCase):
     def test_tenant_cannot_create_contract_for_other_tenant_asset(self):
         """Test that tenant A cannot create contract for tenant B's asset"""
         response = self.client_a.post(
-            '/api/v1/contracts/contracts/',
+            '/api/v1/contracts/',
             {
                 'asset_id': str(self.asset_b.id),
                 'original_raw': '{"id": "test"}',
@@ -154,7 +154,7 @@ class MultiTenantIsolationTest(TestCase):
         )
         
         # Tenant B tries to access tenant A's contract
-        response = self.client_b.get(f'/api/v1/contracts/contracts/{contract_a.id}/')
+        response = self.client_b.get(f'/api/v1/contracts/{contract_a.id}/')
         
         # Should return 404
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -173,7 +173,7 @@ class MultiTenantIsolationTest(TestCase):
         )
         
         # Tenant B tries to access tenant A's file
-        response = self.client_b.get(f'/api/v1/files/files/{file_a.id}/')
+        response = self.client_b.get(f'/api/v1/files/{file_a.id}/')
         
         # Should return 404
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

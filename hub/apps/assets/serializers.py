@@ -7,7 +7,7 @@ from .models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceSta
 
 class AssetSerializer(serializers.ModelSerializer):
     """Serializer for Asset model"""
-    
+
     class Meta:
         model = Asset
         fields = [
@@ -55,24 +55,24 @@ class AssetUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=AssetStatus.choices, required=False)
     visibility = serializers.ChoiceField(choices=AssetVisibility.choices, required=False)
     version = serializers.IntegerField(help_text="Current version for optimistic locking")
-    
+
     def save(self, instance=None):
         """
         Update the asset instance with validated data.
-        
+
         Args:
             instance: Asset instance to update (uses self.instance if not provided)
-            
+
         Returns:
             Updated Asset instance
         """
         # Use instance from constructor if not provided
         if not instance:
             instance = self.instance
-        
+
         if not instance:
             raise ValueError("Instance is required for AssetUpdateSerializer.save()")
-        
+
         # Update fields
         if 'name' in self.validated_data:
             instance.name = self.validated_data['name']
@@ -84,7 +84,7 @@ class AssetUpdateSerializer(serializers.Serializer):
             instance.status = self.validated_data['status']
         if 'visibility' in self.validated_data:
             instance.visibility = self.validated_data['visibility']
-        
+
         # Save and return
         instance.save()
         return instance
@@ -98,4 +98,42 @@ class AttachDatasetSerializer(serializers.Serializer):
 class AttachContractSerializer(serializers.Serializer):
     """Serializer for attaching contract to asset"""
     contract_id = serializers.UUIDField(help_text="ID of the contract to attach")
+
+
+class ExternalResourceSerializer(serializers.Serializer):
+    """Serializer for external resource reference"""
+    id = serializers.UUIDField(read_only=True)
+    resource_id = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    url = serializers.URLField(read_only=True)
+    format = serializers.CharField(read_only=True)
+    size_bytes = serializers.IntegerField(read_only=True, allow_null=True)
+    marketplace_type = serializers.CharField(read_only=True)
+    metadata = serializers.DictField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+    # Download status fields
+    is_downloaded = serializers.BooleanField(read_only=True, help_text="Whether resource has been downloaded")
+    file_id = serializers.UUIDField(read_only=True, allow_null=True, help_text="File ID if downloaded")
+    dataset_id = serializers.UUIDField(read_only=True, allow_null=True, help_text="Dataset ID if downloaded")
+
+
+class BatchDownloadSerializer(serializers.Serializer):
+    """Serializer for batch download request"""
+    resource_ids = serializers.ListField(
+        child=serializers.CharField(),
+        min_length=1,
+        max_length=100,
+        help_text="List of resource IDs to download (max 100)"
+    )
+
+
+class ResourceDownloadResponseSerializer(serializers.Serializer):
+    """Serializer for resource download response"""
+    resource_id = serializers.CharField()
+    status = serializers.CharField(help_text="Download status: success, failed, skipped")
+    file_id = serializers.UUIDField(allow_null=True, help_text="File ID if download succeeded")
+    dataset_id = serializers.UUIDField(allow_null=True, help_text="Dataset ID if download succeeded")
+    error = serializers.CharField(allow_null=True, allow_blank=True, help_text="Error message if download failed")
+    message = serializers.CharField(allow_null=True, allow_blank=True, help_text="Status message")
 

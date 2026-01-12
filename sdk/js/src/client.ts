@@ -1,6 +1,6 @@
 /**
  * DataHub Client
- * 
+ *
  * Main SDK client with authentication, error handling, and retry logic.
  */
 
@@ -30,14 +30,14 @@ function isRetryableError(error: any): boolean {
     // Retry on 5xx errors and 429 (rate limit)
     return status >= 500 || status === 429;
   }
-  
+
   // Check if it's an axios error with response
   if (error.response) {
     const status = error.response.status;
     // Retry on 5xx errors and 429 (rate limit)
     return status >= 500 || status === 429;
   }
-  
+
   // Network error (no response) - retryable
   return true;
 }
@@ -52,7 +52,7 @@ export class DataHubClient {
 
   constructor(config: DataHubClientConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    
+
     if (!this.config.baseUrl) {
       throw new Error('baseUrl is required');
     }
@@ -161,7 +161,7 @@ export class DataHubClient {
 
         // Calculate backoff delay
         const delay = calculateBackoffDelay(attempt);
-        
+
         if (this.config.enableLogging) {
           console.log(`[DataHub SDK] Retrying after ${delay}ms...`);
         }
@@ -245,6 +245,7 @@ export class DataHubClient {
   // API modules
   contracts: any;
   lineage: any;
+  compliance: any;
   scheduledIngestion: any;
   versioning: any;
   governance: any;
@@ -260,10 +261,12 @@ export class DataHubClient {
     // Using dynamic imports to avoid circular dependencies
     const { ContractsAPI } = require('./contracts');
     const { LineageAPI } = require('./lineage');
+    const { ComplianceAPI } = require('./compliance');
     // Note: Other APIs will be added as they are created
-    
+
     this.contracts = new ContractsAPI(this);
     this.lineage = new LineageAPI(this);
+    this.compliance = new ComplianceAPI(this);
     // Initialize other APIs when modules are created
     // this.scheduledIngestion = new ScheduledIngestionAPI(this);
     // this.versioning = new VersioningAPI(this);

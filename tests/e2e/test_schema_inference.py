@@ -262,7 +262,7 @@ class SchemaInferenceE2ETest(E2ETestBase):
         asset_id = self.create_asset(key='empty-file-test', name='Empty File Test')
         
         response = self.client.post(
-            '/api/v1/datasets/datasets/',
+            '/api/v1/datasets/',
             {
                 'file_id': file_id,
                 'asset_id': asset_id,

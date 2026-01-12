@@ -83,3 +83,41 @@ repos:
         files: ^(tests/fixtures/odps/|examples/contracts/).*\.(json|yaml|yml)$
         pass_filenames: true
 
+      - id: validate-url-patterns
+        name: Validate URL Patterns
+        entry: python scripts/validate_url_patterns.py --strict
+        language: system
+        types: [file]
+        files: ^(hub/apps/.*/urls\.py|hub/urls\.py)$
+        pass_filenames: false
+        always_run: false
+        description: "Validate Django URL patterns against API naming standards"
+
+      - id: lint-marketplace-code
+        name: Lint Marketplace Integration Code
+        entry: bash -c 'ruff check --select I,F,E,W --ignore E501 "$@"' --
+        language: system
+        types: [python]
+        files: ^hub/apps/integrations/.*\.py$
+        pass_filenames: true
+        description: "Lint marketplace integration code with ruff"
+
+      - id: format-check-marketplace-code
+        name: Check Marketplace Code Formatting
+        entry: bash -c 'black --check --line-length=100 "$@"' --
+        language: system
+        types: [python]
+        files: ^hub/apps/integrations/.*\.py$
+        pass_filenames: true
+        description: "Check marketplace integration code formatting with black"
+
+      - id: type-check-marketplace-code
+        name: Type Check Marketplace Integration Code
+        entry: bash -c 'mypy --ignore-missing-imports --show-error-codes "$@"' --
+        language: system
+        types: [python]
+        files: ^hub/apps/integrations/.*\.py$
+        pass_filenames: true
+        additional_dependencies: [django-stubs, types-redis, types-requests]
+        description: "Type check marketplace integration code with mypy"
+

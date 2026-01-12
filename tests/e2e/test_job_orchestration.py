@@ -197,7 +197,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
         
         # Cancel job
         response = self.client.post(
-            f'/api/v1/jobs/jobs/{job.id}/cancel/',
+            f'/api/v1/jobs/{job.id}/cancel/',
             format='json'
         )
         
@@ -225,7 +225,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
         
         # Cancel running job
         response = self.client.post(
-            f'/api/v1/jobs/jobs/{job.id}/cancel/',
+            f'/api/v1/jobs/{job.id}/cancel/',
             format='json'
         )
         
@@ -254,7 +254,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
         
         # Try to cancel completed job
         response = self.client.post(
-            f'/api/v1/jobs/jobs/{job.id}/cancel/',
+            f'/api/v1/jobs/{job.id}/cancel/',
             format='json'
         )
         
@@ -293,18 +293,18 @@ class JobOrchestrationE2ETest(E2ETestBase):
             pytest.skip(f"Redis connection error - job creation requires Redis: {e}")
         
         # List all jobs
-        response = self.client.get('/api/v1/jobs/jobs/')
+        response = self.client.get('/api/v1/jobs/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data['results']), 2)
         
         # Filter by type
-        response = self.client.get(f'/api/v1/jobs/jobs/?type={JobType.DQ_RUN}')
+        response = self.client.get(f'/api/v1/jobs/?type={JobType.DQ_RUN}')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         job_types = {j['type'] for j in response.data['results']}
         self.assertEqual(job_types, {JobType.DQ_RUN})
         
         # Filter by status
-        response = self.client.get(f'/api/v1/jobs/jobs/?status={JobStatus.PENDING}')
+        response = self.client.get(f'/api/v1/jobs/?status={JobStatus.PENDING}')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         job_statuses = {j['status'] for j in response.data['results']}
         self.assertEqual(job_statuses, {JobStatus.PENDING})
@@ -322,7 +322,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
             user=self.user
         )
         
-        response = self.client.get(f'/api/v1/jobs/jobs/{job.id}/')
+        response = self.client.get(f'/api/v1/jobs/{job.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(job.id))
@@ -422,7 +422,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
             time.sleep(0.1)  # Small delay to ensure different timestamps
         
         # List jobs (should be ordered by creation time, newest first typically)
-        response = self.client.get('/api/v1/jobs/jobs/')
+        response = self.client.get('/api/v1/jobs/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify jobs are in queue (all PENDING)

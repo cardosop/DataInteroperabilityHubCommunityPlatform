@@ -50,7 +50,7 @@ class FileUploadTest(FileStorageRegressionTest):
     def test_file_upload_init(self):
         """Test initializing file upload"""
         response = self.client.post(
-            '/api/v1/files/files/init/',
+            '/api/v1/files/init/',
             {
                 'name': 'test-upload.csv',
                 'content_type': 'text/csv',
@@ -71,7 +71,7 @@ class FileUploadTest(FileStorageRegressionTest):
         """Test completing file upload"""
         # Initialize upload
         init_response = self.client.post(
-            '/api/v1/files/files/init/',
+            '/api/v1/files/init/',
             {
                 'name': 'complete-upload.csv',
                 'content_type': 'text/csv',
@@ -87,7 +87,7 @@ class FileUploadTest(FileStorageRegressionTest):
             
             # Complete upload
             complete_response = self.client.post(
-                f'/api/v1/files/files/{file_id}/complete/',
+                f'/api/v1/files/{file_id}/complete/',
                 {},
                 format='json'
             )
@@ -100,7 +100,7 @@ class FileUploadTest(FileStorageRegressionTest):
     def test_file_upload_with_ingestion_mode(self):
         """Test file upload with ingestion mode"""
         init_response = self.client.post(
-            '/api/v1/files/files/init/',
+            '/api/v1/files/init/',
             {
                 'name': 'ingestion-upload.csv',
                 'content_type': 'text/csv',
@@ -116,7 +116,7 @@ class FileUploadTest(FileStorageRegressionTest):
             
             # Complete with ingestion mode
             complete_response = self.client.post(
-                f'/api/v1/files/files/{file_id}/complete/',
+                f'/api/v1/files/{file_id}/complete/',
                 {
                     'ingestion_mode': 'DATA_FIRST',
                     'run_dq': True,
@@ -148,7 +148,7 @@ class FileDownloadTest(FileStorageRegressionTest):
         )
         
         # Download file
-        response = self.client.get(f'/api/v1/files/files/{file.id}/download/')
+        response = self.client.get(f'/api/v1/files/{file.id}/download/')
         # May return 200 (success), 404 (not found), or 503 (service unavailable)
         self.assertIn(response.status_code, [
             status.HTTP_200_OK,
@@ -159,7 +159,7 @@ class FileDownloadTest(FileStorageRegressionTest):
     def test_file_download_not_found(self):
         """Test downloading non-existent file"""
         fake_id = "00000000-0000-0000-0000-000000000000"
-        response = self.client.get(f'/api/v1/files/files/{fake_id}/download/')
+        response = self.client.get(f'/api/v1/files/{fake_id}/download/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
@@ -182,7 +182,7 @@ class FileDeletionTest(FileStorageRegressionTest):
         file_id = file.id
         
         # Delete file
-        response = self.client.delete(f'/api/v1/files/files/{file_id}/')
+        response = self.client.delete(f'/api/v1/files/{file_id}/')
         self.assertIn(response.status_code, [
             status.HTTP_204_NO_CONTENT,
             status.HTTP_403_FORBIDDEN
@@ -235,7 +235,7 @@ class FileStatusTrackingTest(FileStorageRegressionTest):
             storage_path=f"{self.tenant.id}/{file_id}/status-retrieve-test.csv"
         )
         
-        response = self.client.get(f'/api/v1/files/files/{file.id}/')
+        response = self.client.get(f'/api/v1/files/{file.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['status'], 'ACTIVE')
 
@@ -256,7 +256,7 @@ class FileMetadataTest(FileStorageRegressionTest):
             storage_path=f"{self.tenant.id}/{file_id}/metadata-test.csv"
         )
         
-        response = self.client.get(f'/api/v1/files/files/{file.id}/')
+        response = self.client.get(f'/api/v1/files/{file.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['name'], 'metadata-test.csv')
         self.assertEqual(response.data['content_type'], 'text/csv')
@@ -276,7 +276,7 @@ class FileMetadataTest(FileStorageRegressionTest):
         )
         
         response = self.client.patch(
-            f'/api/v1/files/files/{file.id}/',
+            f'/api/v1/files/{file.id}/',
             {'name': 'updated-metadata-test.csv'},
             format='json'
         )
@@ -302,13 +302,13 @@ class FileStorageIntegrationTest(FileStorageRegressionTest):
         
         # File should be stored in S3/MinIO
         # This is verified by successful file operations
-        response = self.client.get(f'/api/v1/files/files/{file.id}/')
+        response = self.client.get(f'/api/v1/files/{file.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     def test_file_storage_error_handling(self):
         """Test file storage error handling"""
         # Try to access non-existent file
         fake_id = "00000000-0000-0000-0000-000000000000"
-        response = self.client.get(f'/api/v1/files/files/{fake_id}/')
+        response = self.client.get(f'/api/v1/files/{fake_id}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 

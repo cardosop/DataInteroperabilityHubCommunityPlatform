@@ -11,13 +11,16 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import Asset, AssetStatus
+from .models import Asset, AssetStatus, AssetSourceType, DataStrategy, ExternalResourceReference
 from .serializers import (
     AssetSerializer,
     AssetCreateSerializer,
     AssetUpdateSerializer,
     AttachDatasetSerializer,
-    AttachContractSerializer
+    AttachContractSerializer,
+    ExternalResourceSerializer,
+    BatchDownloadSerializer,
+    ResourceDownloadResponseSerializer
 )
 from .caching import (
     get_tenant_id_from_request,
@@ -486,16 +489,41 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Validate contract attachment using business rules
+        from hub.apps.assets.business_rules import AssetsBusinessRules
+        from hub.apps.tenants.models import Tenant
+
+        tenant_id = str(asset.tenant.id) if asset.tenant else None
+        user_id = str(request.user.id) if request.user.is_authenticated else None
+
+        business_rules = AssetsBusinessRules(tenant_id=tenant_id, user_id=user_id)
+
+        # Calculate proposed version
+        latest_contract = asset.contracts.order_by('-version').first()
+        proposed_version = (latest_contract.version + 1) if latest_contract else 1
+
+        # Validate attachment
+        validation_result = business_rules.validate_contract_attachment(
+            asset=asset,
+            contract=contract,
+            user=request.user if request.user.is_authenticated else None,
+            proposed_version=proposed_version
+        )
+
+        if not validation_result.is_valid:
+            return Response(
+                {
+                    'error': 'Contract attachment validation failed',
+                    'errors': validation_result.errors,
+                    'warnings': validation_result.warnings,
+                    'details': validation_result.details
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Attach contract to asset
         contract.asset = asset
-
-        # Get next version for asset
-        latest_contract = asset.contracts.order_by('-version').first()
-        if latest_contract:
-            contract.version = latest_contract.version + 1
-        else:
-            contract.version = 1
-
+        contract.version = proposed_version
         contract.save(update_fields=['asset', 'version'])
 
         # Remap contract to semantic store to include fields now that asset is linked
@@ -800,7 +828,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         """
         Get asset recommendations.
 
-        GET /api/v1/assets/assets/recommendations/
+        GET /api/v1/assets/recommendations/
 
         Query Parameters:
         - user_id: Optional user UUID for personalized recommendations
@@ -837,7 +865,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         """
         Track an asset view.
 
-        POST /api/v1/assets/assets/{id}/track-view/
+        POST /api/v1/assets/{id}/track-view/
         """
         from .popularity import AssetPopularityService
 
@@ -856,7 +884,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         """
         Track an asset download.
 
-        POST /api/v1/assets/assets/{id}/track-download/
+        POST /api/v1/assets/{id}/track-download/
         """
         from .popularity import AssetPopularityService
 
@@ -875,7 +903,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         """
         Get asset health score.
 
-        GET /api/v1/assets/assets/{id}/health-score/
+        GET /api/v1/assets/{id}/health-score/
 
         Query Parameters:
         - recalculate: Recalculate health score (default: false)
@@ -909,7 +937,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         """
         Get asset dependency graph.
 
-        GET /api/v1/assets/assets/{id}/dependencies/
+        GET /api/v1/assets/{id}/dependencies/
 
         Query Parameters:
         - direction: "upstream", "downstream", or "both" (default: "both")
@@ -949,4 +977,690 @@ class AssetViewSet(viewsets.ModelViewSet):
         response_data['stats'] = stats
 
         return Response(response_data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='external-resources')
+    def list_external_resources(self, request, id=None):
+        """
+        List all external resources for an asset.
+
+        GET /api/v1/assets/{id}/external-resources/
+
+        Returns list of external resources with download status.
+        """
+        asset = self.get_object()
+
+        # Check if asset is federated
+        if asset.source_type != AssetSourceType.FEDERATED:
+            return Response(
+                {
+                    'error': 'Asset is not a federated asset',
+                    'code': 'NOT_FEDERATED_ASSET'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get external resources
+        external_resources = asset.external_resource_references.all()
+
+        # Check download status for each resource
+        # A resource is considered downloaded if there's a File/Dataset linked to it
+        from hub.apps.files.models import File
+        from hub.apps.datasets.models import Dataset
+
+        resources_data = []
+        for ext_res in external_resources:
+            # Check if resource has been downloaded by looking for Files/Datasets
+            # with matching name or metadata reference
+            is_downloaded = False
+            file_id = None
+            dataset_id = None
+
+            # Check for files with matching name or metadata reference
+            matching_files = File.objects.filter(
+                tenant=asset.tenant,
+                name=ext_res.name
+            ).order_by('-created_at')
+
+            # Also check datasets linked to this asset
+            if asset.datasets.exists():
+                # Check if any dataset's file matches this resource
+                for dataset in asset.datasets.all():
+                    if dataset.file and dataset.file.name == ext_res.name:
+                        is_downloaded = True
+                        file_id = dataset.file.id
+                        dataset_id = dataset.id
+                        break
+
+            # If not found via dataset, check files directly
+            if not is_downloaded and matching_files.exists():
+                file_obj = matching_files.first()
+                is_downloaded = True
+                file_id = file_obj.id
+                # Check if there's a dataset for this file
+                dataset = Dataset.objects.filter(file=file_obj, asset=asset).first()
+                if dataset:
+                    dataset_id = dataset.id
+
+            resource_data = ExternalResourceSerializer({
+                'id': ext_res.id,
+                'resource_id': ext_res.resource_id,
+                'name': ext_res.name,
+                'url': ext_res.url,
+                'format': ext_res.format,
+                'size_bytes': ext_res.size_bytes,
+                'marketplace_type': ext_res.marketplace_type,
+                'metadata': ext_res.metadata or {},
+                'created_at': ext_res.created_at,
+                'updated_at': ext_res.updated_at,
+                'is_downloaded': is_downloaded,
+                'file_id': file_id,
+                'dataset_id': dataset_id
+            }).data
+
+            resources_data.append(resource_data)
+
+        return Response(
+            {
+                'asset_id': str(asset.id),
+                'resources': resources_data,
+                'count': len(resources_data)
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @transaction.atomic
+    @action(detail=True, methods=['post'], url_path='external-resources/download')
+    def download_external_resource(self, request, id=None):
+        """
+        Download an external resource on-demand.
+
+        POST /api/v1/assets/{id}/external-resources/{resource_id}/download
+
+        Downloads the resource, creates File/Dataset records, and updates asset data_strategy.
+
+        POST /api/v1/assets/{id}/external-resources/download
+        Body: {
+            "resource_id": "res-123"
+        }
+        """
+        asset = self.get_object()
+
+        # Get resource_id from request body
+        resource_id = request.data.get('resource_id')
+        if not resource_id:
+            return Response(
+                {
+                    'error': 'resource_id is required',
+                    'code': 'VALIDATION_ERROR'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if asset is federated
+        if asset.source_type != AssetSourceType.FEDERATED:
+            return Response(
+                {
+                    'error': 'Asset is not a federated asset',
+                    'code': 'NOT_FEDERATED_ASSET'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check permissions
+        tenant = asset.tenant
+        user = request.user
+
+        # Check user has permission to download resources
+        # For now, any authenticated user in the same tenant can download
+        # In production, this would check specific permissions
+        if not hasattr(user, 'tenant') or user.tenant != tenant:
+            return Response(
+                {
+                    'error': 'Permission denied: user must belong to asset tenant',
+                    'code': 'PERMISSION_DENIED'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check tenant resource download quota
+        from hub.apps.rate_limiting.quota import QuotaManager
+        from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
+        has_quota, quota_info = QuotaManager.check_quota(
+            tenant_id=str(tenant.id),
+            category=EndpointCategory.GENERAL,  # Use GENERAL for now, could add RESOURCE_DOWNLOAD category
+            window=TimeWindow.DAILY
+        )
+        if not has_quota:
+            return Response(
+                {
+                    'error': 'Tenant has exceeded daily resource download quota',
+                    'code': 'QUOTA_EXCEEDED',
+                    'quota_info': quota_info
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        # Get external resource
+        try:
+            external_resource = asset.external_resource_references.get(
+                resource_id=resource_id
+            )
+        except asset.external_resource_references.model.DoesNotExist:
+            return Response(
+                {
+                    'error': f'External resource "{resource_id}" not found for asset',
+                    'code': 'RESOURCE_NOT_FOUND'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check if resource is already downloaded
+        from hub.apps.files.models import File
+        from hub.apps.datasets.models import Dataset
+        existing_file = File.objects.filter(
+            tenant=tenant,
+            name=external_resource.name
+        ).first()
+        existing_dataset = None
+        if existing_file:
+            existing_dataset = Dataset.objects.filter(
+                file=existing_file,
+                asset=asset
+            ).first()
+
+        if existing_file and existing_dataset:
+            # Resource already downloaded
+            return Response(
+                {
+                    'resource_id': resource_id,
+                    'status': 'already_downloaded',
+                    'file_id': str(existing_file.id),
+                    'dataset_id': str(existing_dataset.id),
+                    'message': 'Resource has already been downloaded'
+                },
+                status=status.HTTP_200_OK
+            )
+
+        # Download resource
+        try:
+            file_path, file_content = asset.download_external_resource(resource_id)
+        except DjangoValidationError as e:
+            return Response(
+                {
+                    'error': str(e),
+                    'code': 'DOWNLOAD_FAILED',
+                    'resource_id': resource_id
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Failed to download external resource {resource_id} for asset {asset.id}: {e}",
+                exc_info=True
+            )
+            return Response(
+                {
+                    'error': f'Failed to download resource: {str(e)}',
+                    'code': 'DOWNLOAD_FAILED',
+                    'resource_id': resource_id
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Create File record
+        import hashlib
+        import uuid
+        from pathlib import Path
+        from hub.apps.files.models import FileStatus
+        from hub.apps.files.storage import S3StorageClient
+        from django.core.files.base import ContentFile
+
+        # Determine content type from format
+        content_type_map = {
+            'CSV': 'text/csv',
+            'JSON': 'application/json',
+            'PARQUET': 'application/octet-stream',
+            'XLSX': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'PDF': 'application/pdf',
+        }
+        content_type = content_type_map.get(
+            external_resource.format.upper(),
+            'application/octet-stream'
+        )
+
+        # Calculate SHA-256 hash
+        content_sha256 = hashlib.sha256(file_content).hexdigest()
+
+        # Create File record
+        file_obj = File.objects.create(
+            tenant=tenant,
+            name=external_resource.name or Path(file_path).name,
+            content_type=content_type,
+            size=len(file_content),
+            content_sha256=content_sha256,
+            status=FileStatus.ACTIVE,
+            created_by=user,
+            metadata_json={
+                'source': 'external_resource_download',
+                'external_resource_id': str(external_resource.id),
+                'resource_id': resource_id,
+                'marketplace_type': external_resource.marketplace_type,
+                'connection_id': str(external_resource.connection_id)
+            }
+        )
+
+        # Upload file to S3 storage
+        try:
+            storage_client = S3StorageClient()
+            storage_path = storage_client.save_file(
+                tenant_id=str(tenant.id),
+                file_id=str(file_obj.id),
+                file_content=ContentFile(file_content, name=file_obj.name)
+            )
+            file_obj.storage_path = storage_path
+            file_obj.save(update_fields=['storage_path'])
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Failed to upload file to storage for resource {resource_id}: {e}",
+                exc_info=True
+            )
+            # Cleanup file record
+            file_obj.delete()
+            return Response(
+                {
+                    'error': f'Failed to upload file to storage: {str(e)}',
+                    'code': 'STORAGE_UPLOAD_FAILED',
+                    'resource_id': resource_id
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Create Dataset record
+        # Note: We call _create_dataset_impl directly since we're already in a transaction
+        # and DatasetService.create_dataset() calls execute_with_transaction which doesn't exist
+        from hub.apps.datasets.services import DatasetService
+        dataset_service = DatasetService(
+            tenant_id=str(tenant.id),
+            user_id=str(user.id)
+        )
+
+        try:
+            # Call implementation directly since we're already in @transaction.atomic
+            dataset = dataset_service._create_dataset_impl(
+                tenant_id=str(tenant.id),
+                user_id=str(user.id),
+                file_id=str(file_obj.id),
+                asset_id=str(asset.id)
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Failed to create dataset for downloaded resource {resource_id}: {e}",
+                exc_info=True
+            )
+            # File is created, but dataset creation failed
+            # We'll still return success but note the dataset creation issue
+            return Response(
+                {
+                    'resource_id': resource_id,
+                    'status': 'partial_success',
+                    'file_id': str(file_obj.id),
+                    'dataset_id': None,
+                    'message': f'File downloaded but dataset creation failed: {str(e)}',
+                    'warning': 'Dataset creation failed'
+                },
+                status=status.HTTP_207_MULTI_STATUS
+            )
+
+        # Update asset data_strategy if needed
+        # If asset was METADATA_ONLY and we're downloading, update to DOWNLOAD_SELECTIVE
+        if asset.data_strategy == DataStrategy.METADATA_ONLY:
+            asset.data_strategy = DataStrategy.DOWNLOAD_SELECTIVE
+            asset.save(update_fields=['data_strategy', 'updated_at'])
+
+        # Increment quota usage
+        QuotaManager.increment_quota(
+            tenant_id=str(tenant.id),
+            category=EndpointCategory.GENERAL,
+            window=TimeWindow.DAILY,
+            amount=1
+        )
+
+        # Log audit event
+        create_audit_event(
+            resource_type="ASSET",
+            action="EXTERNAL_RESOURCE_DOWNLOADED",
+            actor_user=user,
+            tenant=tenant,
+            resource_id=str(asset.id),
+            details={
+                'resource_id': resource_id,
+                'external_resource_id': str(external_resource.id),
+                'file_id': str(file_obj.id),
+                'dataset_id': str(dataset.id),
+                'resource_name': external_resource.name,
+                'resource_format': external_resource.format,
+                'resource_size_bytes': external_resource.size_bytes,
+                'marketplace_type': external_resource.marketplace_type,
+                'data_strategy_before': DataStrategy.METADATA_ONLY,
+                'data_strategy_after': asset.data_strategy
+            },
+            request=request
+        )
+
+        # Cleanup temp file
+        try:
+            import os
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception:
+            pass  # Ignore cleanup errors
+
+        return Response(
+            {
+                'resource_id': resource_id,
+                'status': 'success',
+                'file_id': str(file_obj.id),
+                'dataset_id': str(dataset.id),
+                'message': 'Resource downloaded successfully'
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @transaction.atomic
+    @action(detail=True, methods=['post'], url_path='external-resources/batch-download')
+    def batch_download_external_resources(self, request, id=None):
+        """
+        Download multiple external resources in batch.
+
+        POST /api/v1/assets/{id}/external-resources/batch-download
+        Body: {
+            "resource_ids": ["res-1", "res-2", ...]
+        }
+
+        Downloads multiple resources in parallel and returns batch status.
+        """
+        asset = self.get_object()
+
+        # Check if asset is federated
+        if asset.source_type != AssetSourceType.FEDERATED:
+            return Response(
+                {
+                    'error': 'Asset is not a federated asset',
+                    'code': 'NOT_FEDERATED_ASSET'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate request
+        serializer = BatchDownloadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        resource_ids = serializer.validated_data['resource_ids']
+
+        # Check permissions
+        tenant = asset.tenant
+        user = request.user
+
+        if not hasattr(user, 'tenant') or user.tenant != tenant:
+            return Response(
+                {
+                    'error': 'Permission denied: user must belong to asset tenant',
+                    'code': 'PERMISSION_DENIED'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check quota for batch download
+        from hub.apps.rate_limiting.quota import QuotaManager
+        from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
+        has_quota, quota_info = QuotaManager.check_quota(
+            tenant_id=str(tenant.id),
+            category=EndpointCategory.GENERAL,
+            window=TimeWindow.DAILY
+        )
+        if not has_quota:
+            return Response(
+                {
+                    'error': 'Tenant has exceeded daily resource download quota',
+                    'code': 'QUOTA_EXCEEDED',
+                    'quota_info': quota_info
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        # Download resources in parallel
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import structlog
+
+        logger = structlog.get_logger(__name__)
+
+        results = []
+        successful_downloads = 0
+        failed_downloads = 0
+        skipped_downloads = 0
+
+        def download_single_resource(resource_id):
+            """Download a single resource and return result."""
+            try:
+                # Check if resource exists
+                try:
+                    external_resource = asset.external_resource_references.get(
+                        resource_id=resource_id
+                    )
+                except asset.external_resource_references.model.DoesNotExist:
+                    return {
+                        'resource_id': resource_id,
+                        'status': 'failed',
+                        'error': f'Resource "{resource_id}" not found',
+                        'file_id': None,
+                        'dataset_id': None
+                    }
+
+                # Check if already downloaded
+                from hub.apps.files.models import File
+                from hub.apps.datasets.models import Dataset
+                existing_file = File.objects.filter(
+                    tenant=tenant,
+                    name=external_resource.name
+                ).first()
+                if existing_file:
+                    existing_dataset = Dataset.objects.filter(
+                        file=existing_file,
+                        asset=asset
+                    ).first()
+                    if existing_dataset:
+                        return {
+                            'resource_id': resource_id,
+                            'status': 'skipped',
+                            'message': 'Resource already downloaded',
+                            'file_id': str(existing_file.id),
+                            'dataset_id': str(existing_dataset.id)
+                        }
+
+                # Download resource
+                file_path, file_content = asset.download_external_resource(resource_id)
+
+                # Create File and Dataset (reuse logic from single download)
+                import hashlib
+                from pathlib import Path
+                from hub.apps.files.models import FileStatus
+                from hub.apps.files.storage import S3StorageClient
+                from django.core.files.base import ContentFile
+
+                content_type_map = {
+                    'CSV': 'text/csv',
+                    'JSON': 'application/json',
+                    'PARQUET': 'application/octet-stream',
+                    'XLSX': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'PDF': 'application/pdf',
+                }
+                content_type = content_type_map.get(
+                    external_resource.format.upper(),
+                    'application/octet-stream'
+                )
+
+                content_sha256 = hashlib.sha256(file_content).hexdigest()
+
+                file_obj = File.objects.create(
+                    tenant=tenant,
+                    name=external_resource.name or Path(file_path).name,
+                    content_type=content_type,
+                    size=len(file_content),
+                    content_sha256=content_sha256,
+                    status=FileStatus.ACTIVE,
+                    created_by=user,
+                    metadata_json={
+                        'source': 'external_resource_batch_download',
+                        'external_resource_id': str(external_resource.id),
+                        'resource_id': resource_id,
+                        'marketplace_type': external_resource.marketplace_type,
+                        'connection_id': str(external_resource.connection_id)
+                    }
+                )
+
+                # Upload to storage
+                storage_client = S3StorageClient()
+                storage_path = storage_client.save_file(
+                    tenant_id=str(tenant.id),
+                    file_id=str(file_obj.id),
+                    file_content=ContentFile(file_content, name=file_obj.name)
+                )
+                file_obj.storage_path = storage_path
+                file_obj.save(update_fields=['storage_path'])
+
+                # Create Dataset
+                # Note: We call _create_dataset_impl directly since we're already in a transaction
+                # and DatasetService.create_dataset() calls execute_with_transaction which doesn't exist
+                from hub.apps.datasets.services import DatasetService
+                dataset_service = DatasetService(
+                    tenant_id=str(tenant.id),
+                    user_id=str(user.id)
+                )
+                dataset = dataset_service._create_dataset_impl(
+                    tenant_id=str(tenant.id),
+                    user_id=str(user.id),
+                    file_id=str(file_obj.id),
+                    asset_id=str(asset.id)
+                )
+
+                # Cleanup temp file
+                try:
+                    import os
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except Exception:
+                    pass
+
+                return {
+                    'resource_id': resource_id,
+                    'status': 'success',
+                    'file_id': str(file_obj.id),
+                    'dataset_id': str(dataset.id),
+                    'message': 'Resource downloaded successfully'
+                }
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to download resource {resource_id} in batch: {e}",
+                    exc_info=True
+                )
+                return {
+                    'resource_id': resource_id,
+                    'status': 'failed',
+                    'error': str(e),
+                    'file_id': None,
+                    'dataset_id': None
+                }
+
+        # Execute downloads in parallel (max 5 concurrent downloads)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_resource = {
+                executor.submit(download_single_resource, resource_id): resource_id
+                for resource_id in resource_ids
+            }
+
+            for future in as_completed(future_to_resource):
+                resource_id = future_to_resource[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+
+                    if result['status'] == 'success':
+                        successful_downloads += 1
+                    elif result['status'] == 'failed':
+                        failed_downloads += 1
+                    elif result['status'] == 'skipped':
+                        skipped_downloads += 1
+                except Exception as e:
+                    logger.error(
+                        f"Exception in batch download for resource {resource_id}: {e}",
+                        exc_info=True
+                    )
+                    results.append({
+                        'resource_id': resource_id,
+                        'status': 'failed',
+                        'error': str(e),
+                        'file_id': None,
+                        'dataset_id': None
+                    })
+                    failed_downloads += 1
+
+        # Update asset data_strategy if any downloads succeeded
+        if successful_downloads > 0:
+            from .models import DataStrategy
+            if asset.data_strategy == DataStrategy.METADATA_ONLY:
+                asset.data_strategy = DataStrategy.DOWNLOAD_SELECTIVE
+                asset.save(update_fields=['data_strategy', 'updated_at'])
+
+        # Increment quota usage
+        QuotaManager.increment_quota(
+            tenant_id=str(tenant.id),
+            category=EndpointCategory.GENERAL,
+            window=TimeWindow.DAILY,
+            amount=successful_downloads
+        )
+
+        # Log audit event
+        create_audit_event(
+            resource_type="ASSET",
+            action="EXTERNAL_RESOURCES_BATCH_DOWNLOADED",
+            actor_user=user,
+            tenant=tenant,
+            resource_id=str(asset.id),
+            details={
+                'resource_ids': resource_ids,
+                'total_requested': len(resource_ids),
+                'successful': successful_downloads,
+                'failed': failed_downloads,
+                'skipped': skipped_downloads,
+                'results': results
+            },
+            request=request
+        )
+
+        # Serialize results
+        response_data = {
+            'asset_id': str(asset.id),
+            'total_requested': len(resource_ids),
+            'successful': successful_downloads,
+            'failed': failed_downloads,
+            'skipped': skipped_downloads,
+            'results': [ResourceDownloadResponseSerializer(result).data for result in results]
+        }
+
+        # Determine HTTP status code
+        if failed_downloads == 0:
+            http_status = status.HTTP_200_OK
+        elif successful_downloads > 0:
+            http_status = status.HTTP_207_MULTI_STATUS  # Partial success
+        else:
+            http_status = status.HTTP_500_INTERNAL_SERVER_ERROR  # All failed
+
+        return Response(response_data, status=http_status)
 

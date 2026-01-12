@@ -43,7 +43,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         # Try to access non-existent resource
         fake_id = uuid.uuid4()
 
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         # Should return 404
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -73,7 +73,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         """Test error codes for different error types"""
         # Test unauthenticated request (401)
         self.client.force_authenticate(user=None)
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         if "error" in response.data:
             error = response.data["error"]
@@ -84,7 +84,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         # Test not found (404) - need to authenticate first
         self.client.force_authenticate(user=self.user)
         fake_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         if "error" in response.data:
             error = response.data["error"]
@@ -97,7 +97,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         # Try to access non-existent resource
         fake_id = uuid.uuid4()
 
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         if "error" in response.data:
             error = response.data["error"]
@@ -124,7 +124,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         """Test error details structure for validation errors"""
         # Try to create asset with invalid data
         response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {
                 "key": "",  # Invalid: empty key
                 "name": "",  # Invalid: empty name
@@ -159,7 +159,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         """Test error response includes request ID"""
         fake_id = uuid.uuid4()
 
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         if "error" in response.data:
             error = response.data["error"]
@@ -179,7 +179,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         """Test error response includes timestamp"""
         fake_id = uuid.uuid4()
 
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         if "error" in response.data:
             error = response.data["error"]
@@ -216,9 +216,9 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         fake_id = uuid.uuid4()
 
         endpoints = [
-            f"/api/v1/assets/assets/{fake_id}/",
-            f"/api/v1/contracts/contracts/{fake_id}/",
-            f"/api/v1/datasets/datasets/{fake_id}/",
+            f"/api/v1/assets/{fake_id}/",
+            f"/api/v1/contracts/{fake_id}/",
+            f"/api/v1/datasets/{fake_id}/",
         ]
 
         for endpoint in endpoints:
@@ -241,7 +241,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         """Test validation errors include field-level errors"""
         # Try to create asset with multiple validation errors
         response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {
                 "key": "",  # Invalid: empty
                 "name": "",  # Invalid: empty
@@ -267,7 +267,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         # Unauthenticated request
         self.client.force_authenticate(user=None)
 
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
 
         # Should return 401
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -299,7 +299,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         self.client.force_authenticate(user=other_user)
 
         # Try to access asset from other tenant
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
 
         # Should return 404 (tenant isolation) or 403
         self.assertIn(response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN])
@@ -324,7 +324,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
 
         # Test unauthenticated for 401
         self.client.force_authenticate(user=None)
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         if response.status_code == status.HTTP_401_UNAUTHORIZED:
             if "error" in response.data:
                 error = response.data["error"]
@@ -334,7 +334,7 @@ class ErrorResponseFormatE2ETest(E2ETestBase):
         # Test not found for 404
         self.client.force_authenticate(user=self.user)
         fake_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
         if response.status_code == status.HTTP_404_NOT_FOUND:
             if "error" in response.data:
                 error = response.data["error"]
@@ -547,7 +547,7 @@ class ErrorLoggingE2ETest(E2ETestBase):
 
         # Log an error
         fake_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         # Error should be logged (verified by checking response has request_id)
         if "error" in response.data:
@@ -566,12 +566,12 @@ class ErrorLoggingE2ETest(E2ETestBase):
 
         # 404 error (not found)
         fake_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
         # 400 error (validation)
         response = self.client.post(
-            "/api/v1/assets/assets/", {"key": "", "name": ""}, format="json"
+            "/api/v1/assets/", {"key": "", "name": ""}, format="json"
         )
         if response.status_code == status.HTTP_400_BAD_REQUEST:
             if "error" in response.data:
@@ -589,7 +589,7 @@ class ErrorLoggingE2ETest(E2ETestBase):
         # Generate multiple errors
         for _ in range(3):
             fake_id = uuid.uuid4()
-            response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+            response = self.client.get(f"/api/v1/assets/{fake_id}/")
             if "error" in response.data:
                 error = response.data["error"]
                 if "request_id" in error:
@@ -620,7 +620,7 @@ class ErrorLoggingE2ETest(E2ETestBase):
         # Error responses should include context for logging
         fake_id = uuid.uuid4()
 
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         if "error" in response.data:
             error = response.data["error"]
@@ -641,7 +641,7 @@ class ErrorLoggingE2ETest(E2ETestBase):
         # Error responses should support trace context for distributed tracing
         fake_id = uuid.uuid4()
 
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         if "error" in response.data:
             error = response.data["error"]
@@ -662,7 +662,7 @@ class ErrorLoggingE2ETest(E2ETestBase):
         # Error responses should be structured for log aggregation
         fake_id = uuid.uuid4()
 
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         # Response should be JSON (structured)
         self.assertEqual(response.get("Content-Type"), "application/json")
@@ -690,13 +690,13 @@ class ErrorLoggingE2ETest(E2ETestBase):
         fake_id = uuid.uuid4()
 
         # First request
-        response1 = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response1 = self.client.get(f"/api/v1/assets/{fake_id}/")
         request_id1 = None
         if "error" in response1.data:
             request_id1 = response1.data["error"].get("request_id")
 
         # Second request (different endpoint, same resource)
-        response2 = self.client.get(f"/api/v1/contracts/contracts/{fake_id}/")
+        response2 = self.client.get(f"/api/v1/contracts/{fake_id}/")
         request_id2 = None
         if "error" in response2.data:
             request_id2 = response2.data["error"].get("request_id")
@@ -715,7 +715,7 @@ class ErrorLoggingE2ETest(E2ETestBase):
         # Generate multiple errors
         for _ in range(3):
             fake_id = uuid.uuid4()
-            response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+            response = self.client.get(f"/api/v1/assets/{fake_id}/")
             if "error" in response.data:
                 error = response.data["error"]
                 if "code" in error:

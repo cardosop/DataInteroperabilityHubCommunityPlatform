@@ -11,7 +11,7 @@ These tests verify:
 import uuid
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
-from django.test import TestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 from django.utils import timezone as django_timezone
 from asgiref.sync import sync_to_async
 
@@ -27,19 +27,15 @@ from hub.apps.core.events.models import Event as EventModel
 from hub.apps.core.events.bus import get_event_bus
 
 
-class EventConsumerODPSEventTest(TestCase):
+class EventConsumerODPSEventTest(AsyncWebSocketTestCase):
     """Test ODPS event handling in EventConsumer."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
+        self.tenant = self.create_unique_tenant()
+        self.user = self.create_unique_user(
+            tenant=self.tenant,
             password="testpass123",
-            tenant=self.tenant
         )
 
     def _create_consumer(self, user=None, tenant=None):
@@ -402,19 +398,15 @@ class EventConsumerODPSEventTest(TestCase):
         self.assertEqual(consumer.send_json_message.call_count, 1)
 
 
-class EventConsumerODPSIntegrationTest(TestCase):
+class EventConsumerODPSIntegrationTest(AsyncWebSocketTestCase):
     """Integration tests for ODPS WebSocket events with real event bus."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
+        self.tenant = self.create_unique_tenant()
+        self.user = self.create_unique_user(
+            tenant=self.tenant,
             password="testpass123",
-            tenant=self.tenant
         )
 
     def _create_consumer(self, user=None, tenant=None):
@@ -691,19 +683,16 @@ class EventConsumerODPSIntegrationTest(TestCase):
                 self.assertFalse(consumer.send_json_message.called)
 
 
-class EventConsumerODPSProgressEventsTest(TestCase):
+class EventConsumerODPSProgressEventsTest(AsyncWebSocketTestCase):
     """Test ODPS progress events real-time updates (Task 7.3.2)"""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant Progress",
-            slug="test-tenant-progress"
-        )
-        self.user = User.objects.create_user(
-            email="test-progress@example.com",
+        self.tenant = self.create_unique_tenant(name_prefix="Test Tenant Progress", slug_prefix="test-tenant-progress")
+        self.user = self.create_unique_user(
+            tenant=self.tenant,
             password="testpass123",
-            tenant=self.tenant
+            email_prefix="test-progress",
         )
 
     def _create_consumer(self, user=None, tenant=None):

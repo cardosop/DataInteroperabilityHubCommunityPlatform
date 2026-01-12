@@ -90,7 +90,7 @@ class AssetRecommendationsE2ETest(TestCase):
         
         # Step 2: Get recommendations via API
         response = self.client.get(
-            '/api/v1/assets/assets/recommendations/',
+            '/api/v1/assets/recommendations/',
             {
                 'user_id': str(self.user.id),
                 'limit': 10
@@ -153,7 +153,7 @@ class AssetPopularityE2ETest(TestCase):
         """
         # Step 1: Track view
         response = self.client.post(
-            f'/api/v1/assets/assets/{self.asset.id}/track-view/'
+            f'/api/v1/assets/{self.asset.id}/track-view/'
         )
         
         self.assertEqual(response.status_code, 200)
@@ -164,7 +164,7 @@ class AssetPopularityE2ETest(TestCase):
         
         # Step 2: Track download
         response = self.client.post(
-            f'/api/v1/assets/assets/{self.asset.id}/track-download/'
+            f'/api/v1/assets/{self.asset.id}/track-download/'
         )
         
         self.assertEqual(response.status_code, 200)
@@ -265,7 +265,7 @@ class AssetHealthScoreE2ETest(TestCase):
         
         # Step 2: Get health score
         response = self.client.get(
-            f'/api/v1/assets/assets/{self.asset.id}/health-score/'
+            f'/api/v1/assets/{self.asset.id}/health-score/'
         )
         
         self.assertEqual(response.status_code, 200)
@@ -274,7 +274,7 @@ class AssetHealthScoreE2ETest(TestCase):
         
         # Step 3: Get health score with breakdown
         response = self.client.get(
-            f'/api/v1/assets/assets/{self.asset.id}/health-score/',
+            f'/api/v1/assets/{self.asset.id}/health-score/',
             {'breakdown': 'true'}
         )
         
@@ -284,7 +284,7 @@ class AssetHealthScoreE2ETest(TestCase):
         
         # Step 4: Recalculate health score
         response = self.client.get(
-            f'/api/v1/assets/assets/{self.asset.id}/health-score/',
+            f'/api/v1/assets/{self.asset.id}/health-score/',
             {'recalculate': 'true'}
         )
         

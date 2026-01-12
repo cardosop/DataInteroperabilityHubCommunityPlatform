@@ -107,7 +107,7 @@ class ContractViewFilteringTest(TestCase):
         self.assertEqual(self.user.tenant_id, self.tenant.id, "User tenant_id should match tenant id")
         
         # Now test the API
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.json().get('results', [])
@@ -355,7 +355,7 @@ class ContractViewSortingTest(TestCase):
     
     def test_default_sorting(self):
         """Test default sorting (newest first) (GAP-9.2.2)"""
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.json().get('results', [])

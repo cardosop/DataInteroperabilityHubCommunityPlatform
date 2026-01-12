@@ -1,0 +1,31 @@
+{
+  "id": "odcs-dataset-1",
+  "name": "odcs-dataset-1",
+  "title": "Dataset with ODCS Metadata",
+  "notes": "A dataset containing ODCS contract metadata",
+  "tags": [
+    {
+      "id": "tag-odcs-1",
+      "name": "odcs",
+      "vocabulary_id": null,
+      "display_name": "ODCS"
+    }
+  ],
+  "organization": {
+    "id": "test-org",
+    "name": "test-org",
+    "title": "Test Organization"
+  },
+  "license_id": "odc-pddl",
+  "metadata_created": "2024-01-15T10:00:00Z",
+  "metadata_modified": "2024-01-15T10:00:00Z",
+  "type": "dataset",
+  "state": "active",
+  "extras": [
+    {
+      "key": "x_odcs",
+      "value": "{\"schema\": {\"fields\": [{\"name\": \"id\", \"type\": \"string\", \"description\": \"Unique identifier\"}, {\"name\": \"value\", \"type\": \"number\", \"description\": \"Numeric value\"}]}, \"quality\": {\"completeness\": 0.95, \"accuracy\": 0.98}, \"sla\": {\"availability\": 0.99, \"latency_ms\": 100}}"
+    }
+  ]
+}
+

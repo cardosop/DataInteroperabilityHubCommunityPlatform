@@ -8,7 +8,7 @@ from datetime import timedelta
 from django_rq import job
 from django.utils import timezone
 from django.db import transaction
-from .models import Job, JobStatus, JobType
+from .models import Job, JobStatus, JobType, JobPriority
 from .utils import (
     WORKER_MAX_CONCURRENCY,
     WORKER_MAX_CONCURRENCY_PER_TENANT,
@@ -111,6 +111,24 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
         # Mark job as started
         job_obj.mark_started()
 
+        # Track priority metrics: decrement queue length, increment processing rate
+        try:
+            from hub.apps.observability.otel_metrics import (
+                job_queue_length_by_priority,
+                job_processing_rate_by_priority
+            )
+            job_priority = job_obj.priority
+            job_queue_length_by_priority.labels(
+                priority=job_priority,
+                job_type=job_type
+            ).dec()
+            job_processing_rate_by_priority.labels(
+                priority=job_priority,
+                job_type=job_type
+            ).inc()
+        except Exception:
+            pass  # Metrics may not be available
+
         # Update tenant job counters: decrement queued, increment running
         if job_obj.tenant:
             decrement_tenant_job_counter(str(job_obj.tenant.id), "queued")
@@ -120,6 +138,7 @@ def process_job(job_id: str, job_type: str, timeout: int = 600):
                 job_id=str(job_obj.id),
                 tenant_id=str(job_obj.tenant.id),
                 job_type=job_type,
+                priority=job_obj.priority,
                 queue_name=queue_name,
                 slot_type=slot_type,
                 is_elevated=is_elevated,
@@ -412,6 +431,9 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
 
     elif job_type == JobType.VIRTUAL_QUERY_EXECUTION:
         return _execute_virtual_query_job(job_obj)
+
+    elif job_type == JobType.MARKETPLACE_SYNC:
+        return _execute_marketplace_sync_job(job_obj)
 
     else:
         raise ValueError(f"Unknown job type: {job_type}")
@@ -996,7 +1018,7 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
     try:
         # Import here to avoid circular imports
         from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalSpecType
-        from hub.apps.contracts.normalization import normalize_contract
+        from hub.apps.contracts.normalization_service import NormalizationService
         from hub.apps.core.events.service_publishers import ODPSEventPublisher
         from hub.apps.core.events.publisher import EventPublisher
 
@@ -1098,11 +1120,19 @@ def _execute_odps_normalization_job(job_obj: Job) -> dict:
         except Exception:
             pass  # Event publishing failure should not affect job
 
-        # Normalize contract
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
+        # Normalize contract using NormalizationService (event publishing integrated)
+        # This will publish normalization.started, normalization.completed/failed events
+        normalization_service = NormalizationService(
+            tenant_id=tenant_id,
+            user_id=user_id
+        )
+        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalization_service.normalize_contract(
             raw_contract=contract.original_raw,
             format=contract.original_format,
-            spec_type="ODPS"
+            spec_type="ODPS",
+            tenant_id=tenant_id,
+            user_id=user_id,
+            contract_id=str(contract_id)  # Contract exists, so events will be published
         )
 
         # Update progress: Validation (60%)
@@ -3046,6 +3076,55 @@ def _execute_virtual_query_job(job_obj: Job) -> dict:
             message=f"Error during virtual query execution: {error_msg}"
         )
         raise Exception(f"Virtual query execution error: {error_msg}") from e
+
+
+def _execute_marketplace_sync_job(job_obj: Job) -> dict:
+    """
+    Execute MARKETPLACE_SYNC job.
+
+    Processes a marketplace synchronization job by calling the execute_marketplace_sync task.
+
+    Args:
+        job_obj: Job instance
+
+    Returns:
+        Result dictionary with sync job execution results
+
+    Raises:
+        ValueError: If sync_job_id is missing or sync job not found
+        ConnectionError: If connector cannot connect to marketplace
+        Exception: For other errors
+    """
+    # Get sync_job_id from job details or resource_id
+    sync_job_id = job_obj.details_json.get('sync_job_id')
+    if not sync_job_id:
+        sync_job_id = job_obj.resource_id
+
+    # Convert to string if it's a UUID object
+    if sync_job_id is not None:
+        sync_job_id = str(sync_job_id)
+
+    if not sync_job_id:
+        raise ValueError("Sync job ID is required")
+
+    # Get retry count from job details
+    retry_count = job_obj.details_json.get('retry_count', 0) if job_obj.details_json else 0
+
+    # Import here to avoid circular imports
+    from hub.apps.integrations.tasks import execute_marketplace_sync
+
+    # Execute the sync task
+    # Note: execute_marketplace_sync is a django-rq job, but we can call it directly
+    # from within another job handler. The @job decorator makes it callable as a function.
+    result = execute_marketplace_sync(sync_job_id, retry_count=retry_count)
+
+    # Ensure result is a dict
+    if result is None:
+        return {
+            "status": "completed",
+            "sync_job_id": sync_job_id
+        }
+    return result
 
 
 def check_job_timeouts():

@@ -535,13 +535,18 @@ class DomainViewSet(viewsets.ModelViewSet):
         new_owner_id = serializer.validated_data.get("new_owner_id")
         new_owner_id_str = str(new_owner_id) if new_owner_id is not None else None
 
-        # Validate ownership transfer using business rules
+        # Validate ownership transfer using business rules with framework features
         business_rules = DataMeshBusinessRules(tenant_id=tenant_id, user_id=user_id)
-        validation_result = business_rules.validate_ownership_transfer(
+        validation_result = business_rules.execute(
             domain=instance,
+            validation_type='ownership',
             new_owner_id=new_owner_id_str,
-            raise_on_error=True,
         )
+
+        # Raise error if validation failed (matching previous behavior)
+        if not validation_result.is_valid:
+            from hub.apps.core.services.base import ValidationError
+            raise ValidationError("; ".join(validation_result.errors))
 
         # Initialize service
         service = DataMeshService(tenant_id=tenant_id, user_id=user_id)

@@ -15,14 +15,14 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Error handling
 """
 import json
-import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.business_rules import (
     ODPSBusinessRules,
-    ValidationResult,
+    ODPSRuleExecutionContext,
     SUPPORTED_ODPS_VERSIONS
 )
+from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -32,8 +32,6 @@ from hub.apps.contracts.models import (
 from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import User, UserStatus
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ODPSBusinessRulesTestBase(TestCase):
@@ -88,13 +86,19 @@ class ODPSBusinessRulesTestBase(TestCase):
             }
         }
 
+        # Create business rules instance
+        self.rules = ODPSBusinessRules(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+
 
 class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
     """Tests for validate_odps_structure() method."""
 
     def test_validate_odps_structure_valid_document(self):
         """Test validation of valid ODPS document."""
-        result = ODPSBusinessRules.validate_odps_structure(self.valid_odps_doc)
+        result = self.rules.validate_odps_structure(self.valid_odps_doc)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -106,7 +110,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             "version": "4.1"
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -123,7 +127,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -141,7 +145,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -163,7 +167,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -183,7 +187,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -204,7 +208,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -227,7 +231,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         # Empty fields should generate a warning, not an error
         self.assertTrue(result.is_valid)
@@ -253,7 +257,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -280,7 +284,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -307,7 +311,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -324,7 +328,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertTrue(result.is_valid)
 
@@ -333,7 +337,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         odps_doc = self.valid_odps_doc.copy()
         odps_doc["product"]["contract"] = "invalid"  # Should be an object
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -346,7 +350,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             "invalid": "field"
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -364,7 +368,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             ]
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertTrue(result.is_valid)
 
@@ -373,7 +377,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         odps_doc = self.valid_odps_doc.copy()
         odps_doc["product"]["marketplace"] = "invalid"  # Should be an object
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -386,14 +390,14 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             "pricingPlans": "invalid"  # Should be an array
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc, strict=True)
+        result = self.rules.validate_odps_structure(odps_doc, strict=True)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
 
     def test_validate_odps_structure_non_dict(self):
         """Test validation fails when document is not a dictionary."""
-        result = ODPSBusinessRules.validate_odps_structure("not a dict")
+        result = self.rules.validate_odps_structure("not a dict")
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -415,7 +419,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_structure(odps_doc)
+        result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -427,7 +431,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_version_valid_version(self):
         """Test validation of valid ODPS version."""
-        result = ODPSBusinessRules.validate_odps_version(self.valid_odps_doc)
+        result = self.rules.validate_odps_version(self.valid_odps_doc)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -442,7 +446,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_version(odps_doc)
+        result = self.rules.validate_odps_version(odps_doc)
 
         self.assertTrue(result.is_valid)
 
@@ -456,7 +460,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_version(odps_doc)
+        result = self.rules.validate_odps_version(odps_doc)
 
         self.assertTrue(result.is_valid)
 
@@ -469,7 +473,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_version(odps_doc)
+        result = self.rules.validate_odps_version(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -487,7 +491,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_version(odps_doc)
+        result = self.rules.validate_odps_version(odps_doc)
 
         # Version 5.0 should be detected as "unknown" or normalized to unsupported
         # If it's detected as unknown, that's also a failure case
@@ -501,7 +505,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_version_required_version_match(self):
         """Test validation passes when required version matches."""
-        result = ODPSBusinessRules.validate_odps_version(
+        result = self.rules.validate_odps_version(
             self.valid_odps_doc,
             required_version="4.1"
         )
@@ -510,7 +514,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_version_required_version_mismatch(self):
         """Test validation fails when required version doesn't match."""
-        result = ODPSBusinessRules.validate_odps_version(
+        result = self.rules.validate_odps_version(
             self.valid_odps_doc,
             required_version="4.0"
         )
@@ -529,7 +533,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             }
         }
 
-        result = ODPSBusinessRules.validate_odps_version(odps_doc)
+        result = self.rules.validate_odps_version(odps_doc)
 
         # Deprecated versions may still be valid but generate warnings
         self.assertTrue(result.is_valid or len(result.errors) == 0)
@@ -561,7 +565,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
                 }
             }
 
-            result = ODPSBusinessRules.validate_odps_version(odps_doc)
+            result = self.rules.validate_odps_version(odps_doc)
 
             self.assertTrue(result.is_valid, f"Version {test_version} (normalized to {version}) should be valid")
 
@@ -596,7 +600,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS.value
         )
 
         # Create ODPS contract
@@ -633,7 +637,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_linking_valid(self):
         """Test validation of valid ODPS-ODCS linking."""
-        result = ODPSBusinessRules.validate_odps_linking(
+        result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
             tenant_id=str(self.tenant.id)
@@ -644,7 +648,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_linking_missing_odps_id(self):
         """Test validation fails when ODPS contract ID is missing."""
-        result = ODPSBusinessRules.validate_odps_linking(
+        result = self.rules.validate_odps_linking(
             odps_contract_id="",
             odcs_contract_id=str(self.odcs_contract.id),
             tenant_id=str(self.tenant.id)
@@ -656,7 +660,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_linking_missing_odcs_id(self):
         """Test validation fails when ODCS contract ID is missing."""
-        result = ODPSBusinessRules.validate_odps_linking(
+        result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id="",
             tenant_id=str(self.tenant.id)
@@ -671,7 +675,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
         from uuid import uuid4
         fake_id = str(uuid4())
 
-        result = ODPSBusinessRules.validate_odps_linking(
+        result = self.rules.validate_odps_linking(
             odps_contract_id=fake_id,
             odcs_contract_id=str(self.odcs_contract.id),
             tenant_id=str(self.tenant.id)
@@ -685,7 +689,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
         from uuid import uuid4
         fake_id = str(uuid4())
 
-        result = ODPSBusinessRules.validate_odps_linking(
+        result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=fake_id,
             tenant_id=str(self.tenant.id)
@@ -704,7 +708,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
             kyc_status=KYCStatus.VERIFIED,
         )
 
-        result = ODPSBusinessRules.validate_odps_linking(
+        result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
             tenant_id=str(other_tenant.id)
@@ -731,7 +735,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
         )
 
         # Validate again (should warn about already being linked)
-        result = ODPSBusinessRules.validate_odps_linking(
+        result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
             tenant_id=str(self.tenant.id)
@@ -768,7 +772,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_contract_valid(self):
         """Test validation of valid ODPS contract."""
-        result = ODPSBusinessRules.validate_odps_contract(self.odps_contract)
+        result = self.rules.validate_odps_contract(self.odps_contract)
 
         self.assertTrue(result.is_valid)
 
@@ -797,10 +801,10 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS.value
         )
 
-        result = ODPSBusinessRules.validate_odps_contract(odcs_contract)
+        result = self.rules.validate_odps_contract(odcs_contract)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -819,7 +823,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
             hub_contract_json=None  # Missing
         )
 
-        result = ODPSBusinessRules.validate_odps_contract(odps_contract)
+        result = self.rules.validate_odps_contract(odps_contract)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -827,7 +831,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_contract_strict_mode(self):
         """Test strict mode validation."""
-        result = ODPSBusinessRules.validate_odps_contract(
+        result = self.rules.validate_odps_contract(
             self.odps_contract,
             strict=True
         )

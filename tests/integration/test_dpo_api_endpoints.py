@@ -48,9 +48,9 @@ class DPOAssetAPIEndpointTests(TestCase):
         self.client.force_authenticate(user=self.user)
     
     def test_create_asset_endpoint(self):
-        """Test POST /api/v1/assets/assets/"""
+        """Test POST /api/v1/assets/"""
         response = self.client.post(
-            '/api/v1/assets/assets/',
+            '/api/v1/assets/',
             {
                 'key': 'test-asset-api',
                 'name': 'Test Asset API',
@@ -70,7 +70,7 @@ class DPOAssetAPIEndpointTests(TestCase):
         self.assertEqual(asset.status, AssetStatus.DRAFT)
     
     def test_get_asset_endpoint(self):
-        """Test GET /api/v1/assets/assets/{id}/"""
+        """Test GET /api/v1/assets/{id}/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
             key='get-asset-test',
@@ -78,14 +78,14 @@ class DPOAssetAPIEndpointTests(TestCase):
             created_by=self.user
         )
         
-        response = self.client.get(f'/api/v1/assets/assets/{asset.id}/')
+        response = self.client.get(f'/api/v1/assets/{asset.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(asset.id))
         self.assertEqual(response.data['key'], 'get-asset-test')
     
     def test_update_asset_endpoint(self):
-        """Test PATCH /api/v1/assets/assets/{id}/"""
+        """Test PATCH /api/v1/assets/{id}/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
             key='update-asset-test',
@@ -94,7 +94,7 @@ class DPOAssetAPIEndpointTests(TestCase):
         )
         
         response = self.client.patch(
-            f'/api/v1/assets/assets/{asset.id}/',
+            f'/api/v1/assets/{asset.id}/',
             {
                 'name': 'Updated Asset Name',
                 'description': 'Updated description',
@@ -108,7 +108,7 @@ class DPOAssetAPIEndpointTests(TestCase):
         self.assertEqual(asset.name, 'Updated Asset Name')
     
     def test_delete_asset_endpoint(self):
-        """Test DELETE /api/v1/assets/assets/{id}/"""
+        """Test DELETE /api/v1/assets/{id}/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
             key='delete-asset-test',
@@ -116,14 +116,14 @@ class DPOAssetAPIEndpointTests(TestCase):
             created_by=self.user
         )
         
-        response = self.client.delete(f'/api/v1/assets/assets/{asset.id}/')
+        response = self.client.delete(f'/api/v1/assets/{asset.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         asset.refresh_from_db()
         self.assertEqual(asset.status, AssetStatus.RETIRED)
     
     def test_activate_asset_endpoint(self):
-        """Test POST /api/v1/assets/assets/{id}/activate/"""
+        """Test POST /api/v1/assets/{id}/activate/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
             key='activate-asset-test',
@@ -148,7 +148,7 @@ class DPOAssetAPIEndpointTests(TestCase):
         )
         
         response = self.client.post(
-            f'/api/v1/assets/assets/{asset.id}/activate/',
+            f'/api/v1/assets/{asset.id}/activate/',
             {'version': asset.version},
             format='json'
         )
@@ -158,7 +158,7 @@ class DPOAssetAPIEndpointTests(TestCase):
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
     
     def test_get_asset_health_score_endpoint(self):
-        """Test GET /api/v1/assets/assets/{id}/health-score/"""
+        """Test GET /api/v1/assets/{id}/health-score/"""
         asset = Asset.objects.create(
             tenant=self.tenant,
             key='health-score-test',
@@ -169,7 +169,7 @@ class DPOAssetAPIEndpointTests(TestCase):
             created_by=self.user
         )
         
-        response = self.client.get(f'/api/v1/assets/assets/{asset.id}/health-score/')
+        response = self.client.get(f'/api/v1/assets/{asset.id}/health-score/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('health_score', response.data)
@@ -198,7 +198,7 @@ class DPOContractAPIEndpointTests(TestCase):
         )
     
     def test_update_contract_endpoint(self):
-        """Test PATCH /api/v1/contracts/contracts/{id}/"""
+        """Test PATCH /api/v1/contracts/{id}/"""
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -220,7 +220,7 @@ class DPOContractAPIEndpointTests(TestCase):
         )
         
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{contract.id}/',
+            f'/api/v1/contracts/{contract.id}/',
             {
                 'original_raw': '{"id": "updated-contract", "name": "Updated Contract", "schema": {"fields": []}}',
                 'original_format': 'JSON'
@@ -242,7 +242,7 @@ class DPOContractAPIEndpointTests(TestCase):
             self.assertIsNotNone(contract.original_raw)
     
     def test_validate_contract_endpoint(self):
-        """Test POST /api/v1/contracts/contracts/{id}/validate/"""
+        """Test POST /api/v1/contracts/{id}/validate/"""
         contract = Contract.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -254,7 +254,7 @@ class DPOContractAPIEndpointTests(TestCase):
         )
         
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract.id}/validate/',
+            f'/api/v1/contracts/{contract.id}/validate/',
             {'async': False},
             format='json'
         )
@@ -383,9 +383,9 @@ class DPOQualityMonitoringAPIEndpointTests(TestCase):
         )
     
     def test_create_dq_run_endpoint(self):
-        """Test POST /api/v1/dq/dq-runs/"""
+        """Test POST /api/v1/dq/runs/"""
         response = self.client.post(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {
                 'asset_id': str(self.asset.id),
                 'dataset_id': str(self.dataset.id),
@@ -403,7 +403,7 @@ class DPOQualityMonitoringAPIEndpointTests(TestCase):
         self.assertEqual(dq_run.asset_id, self.asset.id)
     
     def test_get_dq_run_endpoint(self):
-        """Test GET /api/v1/dq/dq-runs/{id}/"""
+        """Test GET /api/v1/dq/runs/{id}/"""
         from hub.apps.jobs.models import Job, JobType, JobStatus
         
         # Create a job first (DQRun requires a job)
@@ -427,14 +427,14 @@ class DPOQualityMonitoringAPIEndpointTests(TestCase):
             quality_score=95.0
         )
         
-        response = self.client.get(f'/api/v1/dq/dq-runs/{dq_run.id}/')
+        response = self.client.get(f'/api/v1/dq/runs/{dq_run.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(dq_run.id))
         self.assertIn('quality_score', response.data)
     
     def test_list_dq_runs_for_asset_endpoint(self):
-        """Test GET /api/v1/dq/dq-runs/?asset_id={id}"""
+        """Test GET /api/v1/dq/runs/?asset_id={id}"""
         from hub.apps.jobs.models import Job, JobType, JobStatus
         
         # Create multiple DQ runs
@@ -459,7 +459,7 @@ class DPOQualityMonitoringAPIEndpointTests(TestCase):
             )
         
         response = self.client.get(
-            '/api/v1/dq/dq-runs/',
+            '/api/v1/dq/runs/',
             {'asset_id': str(self.asset.id)},
             format='json'
         )
@@ -521,7 +521,7 @@ class DPOVersionManagementAPIEndpointTests(TestCase):
         ])
     
     def test_list_datasets_for_asset_endpoint(self):
-        """Test GET /api/v1/datasets/datasets/?asset_id={id}"""
+        """Test GET /api/v1/datasets/?asset_id={id}"""
         # Create another dataset version (version 2)
         file_obj_v2 = File.objects.create(
             tenant=self.tenant,
@@ -544,7 +544,7 @@ class DPOVersionManagementAPIEndpointTests(TestCase):
         )
         
         response = self.client.get(
-            '/api/v1/datasets/datasets/',
+            '/api/v1/datasets/',
             {'asset_id': str(self.asset.id)},
             format='json'
         )

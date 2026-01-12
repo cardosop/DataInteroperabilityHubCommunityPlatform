@@ -20,13 +20,13 @@ class ImpactNotifier:
     """
     Sends notifications for high-impact changes.
     """
-    
+
     # Severity thresholds for notifications
     NOTIFY_CRITICAL = True  # Always notify for CRITICAL
     NOTIFY_HIGH = True      # Always notify for HIGH
     NOTIFY_MEDIUM = False   # Optional notification for MEDIUM
     NOTIFY_LOW = False      # Don't notify for LOW
-    
+
     @staticmethod
     def send_impact_notification(
         impact_result: Dict[str, Any],
@@ -36,22 +36,22 @@ class ImpactNotifier:
     ) -> bool:
         """
         Send email notification for high-impact changes.
-        
+
         Args:
             impact_result: Impact analysis result
             recipients: List of email addresses
             change_description: Description of the change
             change_type: Type of change (CREATE, UPDATE, DELETE)
-        
+
         Returns:
             True if notification sent successfully
         """
         if not recipients:
             return False
-        
+
         summary = impact_result.get("summary", {})
         severity_dist = summary.get("severity_distribution", {})
-        
+
         # Check if notification is needed
         if not ImpactNotifier._should_notify(severity_dist):
             logger.info(
@@ -59,15 +59,15 @@ class ImpactNotifier:
                 severity_distribution=severity_dist
             )
             return False
-        
+
         try:
             source = impact_result.get("source", {})
             contract_name = source.get("contract_name", "Unknown")
-            
+
             # Generate subject
             max_severity = ImpactNotifier._get_max_severity(severity_dist)
             subject = f"Impact Analysis Alert: {max_severity} Impact Detected - {contract_name}"
-            
+
             # Generate email body
             context = {
                 "impact_result": impact_result,
@@ -79,7 +79,7 @@ class ImpactNotifier:
                 "total_affected": impact_result.get("total_affected", 0),
                 "severity_distribution": severity_dist
             }
-            
+
             # Try to render HTML template
             try:
                 html_message = render_to_string(
@@ -88,7 +88,7 @@ class ImpactNotifier:
                 )
             except Exception:
                 html_message = None
-            
+
             # Plain text message
             text_message = f"""
 Impact Analysis Alert: {max_severity} Impact Detected
@@ -114,7 +114,7 @@ Please review the impact analysis to understand affected resources.
 
 Generated at: {timezone.now()}
 """
-            
+
             # Send email
             send_mail(
                 subject=subject,
@@ -124,16 +124,16 @@ Generated at: {timezone.now()}
                 html_message=html_message,
                 fail_silently=False
             )
-            
+
             logger.info(
                 "Impact notification sent",
                 recipients=recipients,
                 max_severity=max_severity,
                 total_affected=impact_result.get("total_affected", 0)
             )
-            
+
             return True
-        
+
         except Exception as e:
             logger.error(
                 "Failed to send impact notification",
@@ -141,7 +141,7 @@ Generated at: {timezone.now()}
                 recipients=recipients
             )
             return False
-    
+
     @staticmethod
     def _should_notify(severity_distribution: Dict[str, int]) -> bool:
         """Check if notification should be sent based on severity distribution"""
@@ -152,7 +152,7 @@ Generated at: {timezone.now()}
         if ImpactNotifier.NOTIFY_MEDIUM and severity_distribution.get("MEDIUM", 0) > 0:
             return True
         return False
-    
+
     @staticmethod
     def _get_max_severity(severity_distribution: Dict[str, int]) -> str:
         """Get maximum severity from distribution"""
@@ -164,7 +164,7 @@ Generated at: {timezone.now()}
             return "MEDIUM"
         else:
             return "LOW"
-    
+
     @staticmethod
     def send_slack_notification(
         impact_result: Dict[str, Any],
@@ -173,27 +173,27 @@ Generated at: {timezone.now()}
     ) -> bool:
         """
         Send Slack notification for high-impact changes (optional).
-        
+
         Args:
             impact_result: Impact analysis result
             webhook_url: Slack webhook URL
             change_description: Description of the change
-        
+
         Returns:
             True if notification sent successfully
         """
         try:
             import requests
-            
+
             summary = impact_result.get("summary", {})
             severity_dist = summary.get("severity_distribution", {})
-            
+
             if not ImpactNotifier._should_notify(severity_dist):
                 return False
-            
+
             source = impact_result.get("source", {})
             max_severity = ImpactNotifier._get_max_severity(severity_dist)
-            
+
             # Build Slack message
             color_map = {
                 "CRITICAL": "#FF0000",
@@ -201,7 +201,7 @@ Generated at: {timezone.now()}
                 "MEDIUM": "#FFAA00",
                 "LOW": "#00AA00"
             }
-            
+
             payload = {
                 "attachments": [
                     {
@@ -235,18 +235,32 @@ Generated at: {timezone.now()}
                     }
                 ]
             }
-            
-            response = requests.post(webhook_url, json=payload, timeout=10)
-            response.raise_for_status()
-            
-            logger.info(
-                "Slack impact notification sent",
-                max_severity=max_severity,
-                total_affected=impact_result.get("total_affected", 0)
+
+            # Use WebhookDeliveryClient for circuit breaker and retry logic
+            from hub.apps.webhooks.service_client import WebhookDeliveryClient
+
+            webhook_client = WebhookDeliveryClient(timeout=10)
+            status_code, response_text = webhook_client.deliver_webhook(
+                url=webhook_url,
+                payload=payload
             )
-            
-            return True
-        
+
+            # Check if successful (2xx status codes)
+            if 200 <= status_code < 300:
+                logger.info(
+                    "Slack impact notification sent",
+                    max_severity=max_severity,
+                    total_affected=impact_result.get("total_affected", 0)
+                )
+                return True
+            else:
+                logger.error(
+                    "Failed to send Slack impact notification",
+                    status_code=status_code,
+                    response=response_text[:200]
+                )
+                return False
+
         except Exception as e:
             logger.error(
                 "Failed to send Slack impact notification",

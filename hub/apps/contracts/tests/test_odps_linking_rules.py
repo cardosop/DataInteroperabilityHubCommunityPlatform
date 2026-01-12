@@ -14,13 +14,13 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Error handling
 """
 import json
-import pytest
 from django.test import TestCase
 
 from hub.apps.contracts.business_rules import (
     ODPSLinkingRules,
-    ValidationResult
+    ODPSRuleExecutionContext
 )
+from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -32,8 +32,6 @@ from hub.apps.contracts.linking_validation import LinkingValidationError
 from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
 from hub.apps.users.models import User, UserStatus
-
-pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class ODPSLinkingRulesTestBase(TestCase):
@@ -81,7 +79,7 @@ class ODPSLinkingRulesTestBase(TestCase):
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS.value
         )
 
         # Create ODPS contract
@@ -116,6 +114,12 @@ class ODPSLinkingRulesTestBase(TestCase):
             user_id=str(self.user.id)
         )
 
+        # Create business rules instance
+        self.rules = ODPSLinkingRules(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+
 
 class ODPSLinkingRulesODPSToODCSLinkTest(ODPSLinkingRulesTestBase):
     """Tests for validate_odps_to_odcs_link() method."""
@@ -140,14 +144,14 @@ class ODPSLinkingRulesODPSToODCSLinkTest(ODPSLinkingRulesTestBase):
         self.odps_contract.refresh_from_db()
 
         # Validate the link
-        result = ODPSLinkingRules.validate_odps_to_odcs_link(self.odps_contract)
+        result = self.rules.validate_odps_to_odcs_link(self.odps_contract)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
 
     def test_validate_odps_to_odcs_link_no_link(self):
         """Test validation when ODPS contract has no ODCS link."""
-        result = ODPSLinkingRules.validate_odps_to_odcs_link(self.odps_contract)
+        result = self.rules.validate_odps_to_odcs_link(self.odps_contract)
 
         # No link is valid (not an error), but should have a warning
         self.assertTrue(result.is_valid)
@@ -157,7 +161,7 @@ class ODPSLinkingRulesODPSToODCSLinkTest(ODPSLinkingRulesTestBase):
 
     def test_validate_odps_to_odcs_link_invalid_contract_type(self):
         """Test validation fails for non-ODPS contract."""
-        result = ODPSLinkingRules.validate_odps_to_odcs_link(self.odcs_contract)
+        result = self.rules.validate_odps_to_odcs_link(self.odcs_contract)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -180,7 +184,7 @@ class ODPSLinkingRulesODPSToODCSLinkTest(ODPSLinkingRulesTestBase):
         self.odps_contract.save()
 
         # Validate the link
-        result = ODPSLinkingRules.validate_odps_to_odcs_link(self.odps_contract)
+        result = self.rules.validate_odps_to_odcs_link(self.odps_contract)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -230,7 +234,7 @@ class ODPSLinkingRulesODPSToODCSLinkTest(ODPSLinkingRulesTestBase):
         self.odps_contract.save()
 
         # Validate the link
-        result = ODPSLinkingRules.validate_odps_to_odcs_link(self.odps_contract)
+        result = self.rules.validate_odps_to_odcs_link(self.odps_contract)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -242,7 +246,7 @@ class ODPSLinkingRulesCircularReferencesTest(ODPSLinkingRulesTestBase):
 
     def test_validate_circular_references_no_cycle(self):
         """Test validation passes when no circular reference would be created."""
-        result = ODPSLinkingRules.validate_circular_references(
+        result = self.rules.validate_circular_references(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id)
         )
@@ -271,7 +275,7 @@ class ODPSLinkingRulesCircularReferencesTest(ODPSLinkingRulesTestBase):
         self.odcs_contract.refresh_from_db()
 
         # Try to link again (would create cycle)
-        result = ODPSLinkingRules.validate_circular_references(
+        result = self.rules.validate_circular_references(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id)
         )
@@ -312,7 +316,7 @@ class ODPSLinkingRulesCircularReferencesTest(ODPSLinkingRulesTestBase):
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS.value
         )
 
         # Create ODPS2
@@ -374,7 +378,7 @@ class ODPSLinkingRulesCircularReferencesTest(ODPSLinkingRulesTestBase):
         self.odcs_contract.save()
 
         # Now try to link ODPS2 → ODCS1 (would create cycle)
-        result = ODPSLinkingRules.validate_circular_references(
+        result = self.rules.validate_circular_references(
             odps_contract_id=str(odps_contract2.id),
             odcs_contract_id=str(self.odcs_contract.id)
         )
@@ -385,7 +389,7 @@ class ODPSLinkingRulesCircularReferencesTest(ODPSLinkingRulesTestBase):
 
     def test_validate_circular_references_missing_ids(self):
         """Test validation fails when contract IDs are missing."""
-        result = ODPSLinkingRules.validate_circular_references(
+        result = self.rules.validate_circular_references(
             odps_contract_id="",
             odcs_contract_id=str(self.odcs_contract.id)
         )
@@ -394,7 +398,7 @@ class ODPSLinkingRulesCircularReferencesTest(ODPSLinkingRulesTestBase):
         self.assertGreater(len(result.errors), 0)
         self.assertTrue(any("odps" in err.lower() for err in result.errors))
 
-        result = ODPSLinkingRules.validate_circular_references(
+        result = self.rules.validate_circular_references(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=""
         )
@@ -427,14 +431,14 @@ class ODPSLinkingRulesReferentialIntegrityTest(ODPSLinkingRulesTestBase):
         self.odps_contract.refresh_from_db()
 
         # Validate referential integrity
-        result = ODPSLinkingRules.validate_referential_integrity(self.odps_contract)
+        result = self.rules.validate_referential_integrity(self.odps_contract)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
 
     def test_validate_referential_integrity_no_link(self):
         """Test validation passes when contract has no link."""
-        result = ODPSLinkingRules.validate_referential_integrity(self.odps_contract)
+        result = self.rules.validate_referential_integrity(self.odps_contract)
 
         # No link means no integrity check needed
         self.assertTrue(result.is_valid)
@@ -454,7 +458,7 @@ class ODPSLinkingRulesReferentialIntegrityTest(ODPSLinkingRulesTestBase):
             created_by=self.user
         )
 
-        result = ODPSLinkingRules.validate_referential_integrity(odps_contract_no_hub)
+        result = self.rules.validate_referential_integrity(odps_contract_no_hub)
 
         # Should pass with warning
         self.assertTrue(result.is_valid)
@@ -489,7 +493,7 @@ class ODPSLinkingRulesReferentialIntegrityTest(ODPSLinkingRulesTestBase):
         self.odcs_contract.save()
 
         # Validate referential integrity
-        result = ODPSLinkingRules.validate_referential_integrity(self.odps_contract)
+        result = self.rules.validate_referential_integrity(self.odps_contract)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -520,7 +524,7 @@ class ODPSLinkingRulesReferentialIntegrityTest(ODPSLinkingRulesTestBase):
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS.value
         )
 
         # Link ODPS → ODCS1
@@ -548,7 +552,7 @@ class ODPSLinkingRulesReferentialIntegrityTest(ODPSLinkingRulesTestBase):
         odcs_contract2.save()
 
         # Validate referential integrity (should fail because ODCS1 doesn't link back)
-        result = ODPSLinkingRules.validate_referential_integrity(self.odps_contract)
+        result = self.rules.validate_referential_integrity(self.odps_contract)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -582,7 +586,7 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         # Note: When contracts are already linked, circular reference check
         # may detect the existing link as a cycle. This is expected behavior.
         # We should validate without the ODCS contract to avoid this.
-        result = ODPSLinkingRules.validate_all_linking_rules(
+        result = self.rules.validate_all_linking_rules(
             odps_contract=self.odps_contract,
             odcs_contract=None  # Don't pass ODCS to avoid circular reference check on already-linked contracts
         )
@@ -623,7 +627,7 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS.value
         )
 
         # Create ODPS2
@@ -686,7 +690,7 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         odps_contract2.refresh_from_db()
 
         # Validate all linking rules (should detect circular reference)
-        result = ODPSLinkingRules.validate_all_linking_rules(
+        result = self.rules.validate_all_linking_rules(
             odps_contract=odps_contract2,
             odcs_contract=self.odcs_contract
         )
@@ -698,7 +702,7 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
 
     def test_validate_all_linking_rules_without_odcs_contract(self):
         """Test comprehensive validation when ODCS contract not provided."""
-        result = ODPSLinkingRules.validate_all_linking_rules(
+        result = self.rules.validate_all_linking_rules(
             odps_contract=self.odps_contract,
             odcs_contract=None
         )
@@ -734,7 +738,7 @@ class ODPSLinkingRulesComprehensiveTest(ODPSLinkingRulesTestBase):
         self.odcs_contract.save()
 
         # Validate all linking rules
-        result = ODPSLinkingRules.validate_all_linking_rules(
+        result = self.rules.validate_all_linking_rules(
             odps_contract=self.odps_contract,
             odcs_contract=self.odcs_contract
         )

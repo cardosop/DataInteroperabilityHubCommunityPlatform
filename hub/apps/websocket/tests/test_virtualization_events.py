@@ -11,7 +11,7 @@ These tests verify:
 import uuid
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
-from django.test import TestCase
+from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
 from django.utils import timezone as django_timezone
 from asgiref.sync import sync_to_async
 
@@ -27,19 +27,15 @@ from hub.apps.core.events.models import Event as EventModel
 from hub.apps.core.events.bus import get_event_bus
 
 
-class EventConsumerVirtualizationEventTest(TestCase):
+class EventConsumerVirtualizationEventTest(AsyncWebSocketTestCase):
     """Test Virtualization event handling in EventConsumer."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
+        self.tenant = self.create_unique_tenant()
+        self.user = self.create_unique_user(
+            tenant=self.tenant,
             password="testpass123",
-            tenant=self.tenant
         )
 
     def _create_consumer(self, user=None, tenant=None):

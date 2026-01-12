@@ -1,0 +1,21 @@
+{
+  "id": "resource-json-1",
+  "package_id": "sample-dataset-1",
+  "name": "Sample JSON Resource",
+  "description": "A sample JSON file containing test data",
+  "url": "https://example.com/data/sample.json",
+  "format": "JSON",
+  "size": 2048,
+  "mimetype": "application/json",
+  "mimetype_inner": null,
+  "hash": "def456ghi789",
+  "created": "2024-01-15T11:00:00Z",
+  "last_modified": "2024-01-15T11:00:00Z",
+  "cache_url": null,
+  "cache_last_updated": null,
+  "position": 1,
+  "resource_type": null,
+  "url_type": null,
+  "revision_id": "rev-124"
+}
+

@@ -51,7 +51,7 @@ class AssetActivationIntegrationTest(TestCase):
         """Test complete activation flow: create asset → attach contract → attach dataset → run DQ/compliance → activate"""
         # Step 1: Create asset
         create_response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {
                 "key": "test-asset",
                 "name": "Test Asset",
@@ -104,7 +104,7 @@ class AssetActivationIntegrationTest(TestCase):
         
         # Step 5: Activate asset
         activate_response = self.client.post(
-            f"/api/v1/assets/assets/{asset_id}/activate/",
+            f"/api/v1/assets/{asset_id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -119,7 +119,7 @@ class AssetActivationIntegrationTest(TestCase):
         """Test activation flow for contract-only asset (no dataset)"""
         # Step 1: Create asset
         create_response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {
                 "key": "contract-only-asset",
                 "name": "Contract Only Asset",
@@ -147,7 +147,7 @@ class AssetActivationIntegrationTest(TestCase):
         
         # Step 3: Activate asset (no dataset required)
         activate_response = self.client.post(
-            f"/api/v1/assets/assets/{asset_id}/activate/",
+            f"/api/v1/assets/{asset_id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -163,7 +163,7 @@ class AssetActivationIntegrationTest(TestCase):
         """Test that activation is blocked until all requirements are met"""
         # Step 1: Create asset
         create_response = self.client.post(
-            "/api/v1/assets/assets/",
+            "/api/v1/assets/",
             {
                 "key": "test-asset",
                 "name": "Test Asset"
@@ -175,7 +175,7 @@ class AssetActivationIntegrationTest(TestCase):
         
         # Step 2: Try to activate without contract (should fail)
         activate_response = self.client.post(
-            f"/api/v1/assets/assets/{asset_id}/activate/",
+            f"/api/v1/assets/{asset_id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -197,7 +197,7 @@ class AssetActivationIntegrationTest(TestCase):
         )
         
         activate_response = self.client.post(
-            f"/api/v1/assets/assets/{asset_id}/activate/",
+            f"/api/v1/assets/{asset_id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -208,7 +208,7 @@ class AssetActivationIntegrationTest(TestCase):
         contract.save()
         
         activate_response = self.client.post(
-            f"/api/v1/assets/assets/{asset_id}/activate/",
+            f"/api/v1/assets/{asset_id}/activate/",
             {"version": asset.version},
             format="json"
         )
@@ -262,7 +262,7 @@ class AssetActivationIntegrationTest(TestCase):
         
         # Activate should succeed with WARN statuses
         activate_response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/",
+            f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
             format="json"
         )

@@ -9,6 +9,29 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from datahub_cli.config import Config, CONFIG_FILE, CONFIG_DIR
 
+# Ensure Django is initialized for CLI integration tests that use Django
+# This is needed when tests are run from CLI directory with CLI's pytest.ini
+# Note: For proper Django test support, run tests from Django project root
+try:
+    import django
+    from django.conf import settings
+    if not settings.configured:
+        # Only configure if not already configured (e.g., by pytest-django)
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'hub.settings')
+        django.setup()
+except (ImportError, RuntimeError):
+    # Django not available or already configured - that's OK
+    pass
+
+# Register pytest-django marker if pytest-django is available
+# This prevents warnings when using @pytest.mark.django_db
+try:
+    import pytest_django
+    # pytest-django will handle Django initialization
+except ImportError:
+    # pytest-django not available - tests should be run from Django project root
+    pass
+
 
 @pytest.fixture
 def temp_config_dir(tmp_path, monkeypatch):
@@ -16,11 +39,11 @@ def temp_config_dir(tmp_path, monkeypatch):
     config_dir = tmp_path / ".datahub"
     config_dir.mkdir()
     config_file = config_dir / "config.yaml"
-    
+
     # Patch the config paths at module level
     monkeypatch.setattr('datahub_cli.config.CONFIG_DIR', config_dir)
     monkeypatch.setattr('datahub_cli.config.CONFIG_FILE', config_file)
-    
+
     return config_dir, config_file
 
 

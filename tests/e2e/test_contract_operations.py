@@ -146,12 +146,12 @@ schema:
         )
         
         # List all contracts
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data['results']), 2)
         
         # Filter by asset
-        response = self.client.get(f'/api/v1/contracts/contracts/?asset_id={asset_id}')
+        response = self.client.get(f'/api/v1/contracts/?asset_id={asset_id}')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         contract_ids = {c['id'] for c in response.data['results']}
         self.assertIn(str(contract1), contract_ids)
@@ -165,7 +165,7 @@ schema:
             original_raw='{"id": "test", "name": "Test Contract", "schema": {}}'
         )
         
-        response = self.client.get(f'/api/v1/contracts/contracts/{contract_id}/')
+        response = self.client.get(f'/api/v1/contracts/{contract_id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(contract_id))
@@ -182,7 +182,7 @@ schema:
         
         # Update contract
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{contract_id}/',
+            f'/api/v1/contracts/{contract_id}/',
             {
                 'original_raw': '{"id": "test", "name": "Updated Name", "schema": {}}'
             },
@@ -242,7 +242,7 @@ schema:
         
         # Validate contract (async)
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/validate/',
+            f'/api/v1/contracts/{contract_id}/validate/',
             {'async': True},
             format='json'
         )
@@ -291,7 +291,7 @@ schema:
         
         # Lint contract
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/lint/',
+            f'/api/v1/contracts/{contract_id}/lint/',
             format='json'
         )
         
@@ -324,7 +324,7 @@ schema:
         
         # Convert to YAML
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/convert/',
+            f'/api/v1/contracts/{contract_id}/convert/',
             {'target_format': 'YAML'},
             format='json'
         )
@@ -368,7 +368,7 @@ schema:
         
         # Convert to JSON
         response = self.client.post(
-            f'/api/v1/contracts/contracts/{contract_id}/convert/',
+            f'/api/v1/contracts/{contract_id}/convert/',
             {'target_format': 'JSON'},
             format='json'
         )
@@ -471,7 +471,7 @@ schema:
         )
         
         # Delete contract (soft delete - sets status to RETIRED)
-        response = self.client.delete(f'/api/v1/contracts/contracts/{contract_id}/')
+        response = self.client.delete(f'/api/v1/contracts/{contract_id}/')
         
         # Delete may return 204 or 404 (if already deleted)
         self.assertIn(response.status_code, [status.HTTP_204_NO_CONTENT, status.HTTP_404_NOT_FOUND])
@@ -516,7 +516,7 @@ schema:
         contract.save(update_fields=['validation_status', 'normalization_status', 'hub_contract_json', 'hub_contract_version'])
         
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{contract_id}/',
+            f'/api/v1/contracts/{contract_id}/',
             {'status': ContractStatus.ACTIVE},
             format='json'
         )
@@ -534,7 +534,7 @@ schema:
         
         # Update to RETIRED
         response = self.client.patch(
-            f'/api/v1/contracts/contracts/{contract_id}/',
+            f'/api/v1/contracts/{contract_id}/',
             {'status': ContractStatus.RETIRED},
             format='json'
         )

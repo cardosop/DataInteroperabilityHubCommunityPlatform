@@ -103,7 +103,7 @@ class ODCSExportIntegrationTest(TestCase):
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/export/",
                     {"format": "odcs", "output_format": "json", "version": version},
                 )
 
@@ -124,7 +124,7 @@ class ODCSExportIntegrationTest(TestCase):
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/export/",
                     {"format": "odcs", "output_format": "yaml", "version": version},
                 )
 
@@ -144,7 +144,7 @@ class ODCSExportIntegrationTest(TestCase):
 
         # Export as JSON first
         response_json = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         self.assertEqual(response_json.status_code, status.HTTP_200_OK)
@@ -152,7 +152,7 @@ class ODCSExportIntegrationTest(TestCase):
 
         # Export as YAML
         response_yaml = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "yaml", "version": "3.0.2"},
         )
         self.assertEqual(response_yaml.status_code, status.HTTP_200_OK)
@@ -169,7 +169,7 @@ class ODCSExportIntegrationTest(TestCase):
 
         # Export as YAML first
         response_yaml = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "yaml", "version": "3.0.2"},
         )
         self.assertEqual(response_yaml.status_code, status.HTTP_200_OK)
@@ -177,7 +177,7 @@ class ODCSExportIntegrationTest(TestCase):
 
         # Export as JSON
         response_json = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         self.assertEqual(response_json.status_code, status.HTTP_200_OK)
@@ -193,7 +193,7 @@ class ODCSExportIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "99.99.99"},
         )
 
@@ -219,7 +219,7 @@ class ODCSExportIntegrationTest(TestCase):
         )
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{contract_no_hub.id}/export/",
+            f"/api/v1/contracts/{contract_no_hub.id}/export/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
 
@@ -237,7 +237,7 @@ class ODCSExportIntegrationTest(TestCase):
         for i in range(iterations):
             start_time = time.time()
             response = self.client.get(
-                f"/api/v1/contracts/contracts/{self.contract_without_original.id}/export/",
+                f"/api/v1/contracts/{self.contract_without_original.id}/export/",
                 {"format": "odcs", "output_format": "json", "version": "3.0.2"},
             )
             duration = time.time() - start_time
@@ -317,7 +317,7 @@ class ODCSDownloadIntegrationTest(TestCase):
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/download/",
                     {"format": "odcs", "output_format": "json", "version": version},
                 )
 
@@ -340,7 +340,7 @@ class ODCSDownloadIntegrationTest(TestCase):
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
                 response = self.client.get(
-                    f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+                    f"/api/v1/contracts/{self.contract_without_original.id}/download/",
                     {"format": "odcs", "output_format": "yaml", "version": version},
                 )
 
@@ -362,7 +362,7 @@ class ODCSDownloadIntegrationTest(TestCase):
 
         # Download as JSON first
         response_json = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "3.0.2"},
         )
         self.assertEqual(response_json.status_code, status.HTTP_200_OK)
@@ -370,7 +370,7 @@ class ODCSDownloadIntegrationTest(TestCase):
 
         # Download as YAML
         response_yaml = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "yaml", "version": "3.0.2"},
         )
         self.assertEqual(response_yaml.status_code, status.HTTP_200_OK)
@@ -386,7 +386,7 @@ class ODCSDownloadIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+            f"/api/v1/contracts/{self.contract_without_original.id}/download/",
             {"format": "odcs", "output_format": "json", "version": "99.99.99"},
         )
 
@@ -405,7 +405,7 @@ class ODCSDownloadIntegrationTest(TestCase):
         for i in range(iterations):
             start_time = time.time()
             response = self.client.get(
-                f"/api/v1/contracts/contracts/{self.contract_without_original.id}/download/",
+                f"/api/v1/contracts/{self.contract_without_original.id}/download/",
                 {"format": "odcs", "output_format": "json", "version": "3.0.2"},
             )
             duration = time.time() - start_time

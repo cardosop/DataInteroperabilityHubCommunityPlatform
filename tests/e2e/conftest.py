@@ -427,12 +427,14 @@ class E2ETestBase(TestCase):
 
     def create_asset(self, key: str, name: str, description: str = "", domain: str = "", **kwargs):
         """Create an asset via API and return its ID"""
+        from django.urls import reverse
         from rest_framework import status
 
         from hub.apps.assets.models import Asset
 
+        url = reverse('asset-list')
         response = self.client.post(
-            "/api/v1/assets/assets/",
+            url,
             {"key": key, "name": name, "description": description, "domain": domain, **kwargs},
             format="json",
         )
@@ -479,7 +481,7 @@ class E2ETestBase(TestCase):
                 original_format = original_format.upper()
 
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             {
                 "asset_id": asset_id,
                 "original_raw": original_raw,
@@ -520,7 +522,15 @@ class E2ETestBase(TestCase):
         )
 
         if response.status_code != status.HTTP_201_CREATED:
-            raise Exception(f"Failed to init file upload: {response.status_code} - {response.data}")
+            # Handle both DRF Response and JsonResponse
+            error_data = getattr(response, "data", None)
+            if error_data is None:
+                try:
+                    import json
+                    error_data = json.loads(response.content) if hasattr(response, "content") else str(response)
+                except (json.JSONDecodeError, AttributeError):
+                    error_data = str(response)
+            raise Exception(f"Failed to init file upload: {response.status_code} - {error_data}")
 
         # Response uses 'file_id' not 'id' (see FileInitResponseSerializer)
         return response.data.get("file_id") or response.data.get("id")
@@ -941,7 +951,7 @@ class E2ETestBase(TestCase):
         from rest_framework import status
 
         response = self.client.post(
-            f"/api/v1/contracts/contracts/{contract_id}/validate/",
+            f"/api/v1/contracts/{contract_id}/validate/",
             {"async": async_mode, **kwargs},
             format="json",
         )
@@ -969,7 +979,7 @@ class E2ETestBase(TestCase):
             payload["asset_id"] = str(asset_id)
         payload.update(kwargs)
 
-        response = self.client.post("/api/v1/compliance/compliance-runs/", payload, format="json")
+        response = self.client.post("/api/v1/compliance/runs/", payload, format="json")
 
         if response.status_code != status.HTTP_201_CREATED:
             raise Exception(
@@ -991,7 +1001,7 @@ class E2ETestBase(TestCase):
             payload["asset_id"] = str(asset_id)
         payload.update(kwargs)
 
-        response = self.client.post("/api/v1/dq/dq-runs/", payload, format="json")
+        response = self.client.post("/api/v1/dq/runs/", payload, format="json")
 
         if response.status_code != status.HTTP_201_CREATED:
             raise Exception(f"Failed to create DQ run: {response.status_code} - {response.data}")

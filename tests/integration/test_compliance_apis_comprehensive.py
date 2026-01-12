@@ -756,6 +756,384 @@ class TestComplianceRunRetrieveAPI(TestCase):
         self.assertIsNotNone(response.data["file"])
 
 
+class TestComplianceRunUpdateAPI(TestCase):
+    """Comprehensive tests for PUT/PATCH /api/v1/compliance/runs/{id}/"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        cache.clear()
+
+        self.client = APIClient()
+        self.tenant = TenantFactory.create_tenant(
+            name="Test Tenant",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE.value,
+        )
+        self.user = User.objects.create_user(
+            email=f"complianceuser-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            password="testpass123",
+            status=UserStatus.ACTIVE.value,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        # Create asset and compliance run
+        self.asset = AssetFactory.create_asset(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
+            name="Test Asset",
+        )
+
+        # Create another asset for update tests
+        self.other_asset = AssetFactory.create_asset(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"other-asset-{uuid.uuid4().hex[:8]}",
+            name="Other Asset",
+        )
+
+        # Create job
+        self.job = JobFactory.create_job(
+            tenant=self.tenant,
+            created_by=self.user,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.PENDING,
+            resource_type="COMPLIANCE_RUN",
+        )
+
+        # Create compliance run
+        self.compliance_run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
+            status=ComplianceRunStatus.PENDING,
+        )
+
+        # Update job with compliance_run_id
+        self.job.resource_id = str(self.compliance_run.id)
+        self.job.details_json = {"compliance_run_id": str(self.compliance_run.id)}
+        self.job.save()
+
+    def tearDown(self):
+        """Clean up after each test"""
+        cache.clear()
+
+    # ========== SUCCESS SCENARIOS ==========
+
+    def test_partial_update_compliance_run_success(self):
+        """Test successful partial update of compliance run"""
+        # Most fields are read-only, but we can test with empty update
+        # or fields that might be updatable
+        response = self.client.patch(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/",
+            {},
+            format="json",
+        )
+
+        # Should succeed even with empty update (no-op)
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
+
+    def test_partial_update_compliance_run_with_regulations(self):
+        """Test partial update with regulations field if updatable"""
+        # Note: regulations might be read-only, but we test the endpoint
+        response = self.client.patch(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/",
+            {"regulations": ["GDPR", "HIPAA"]},
+            format="json",
+        )
+
+        # May succeed or return 400 if field is read-only
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT, status.HTTP_400_BAD_REQUEST],
+        )
+
+    def test_full_update_compliance_run_success(self):
+        """Test successful full update of compliance run"""
+        # Most fields are read-only, so PUT might only accept read-only fields
+        response = self.client.put(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/",
+            {
+                "asset": str(self.asset.id),
+                "regulations": ["GDPR"],
+            },
+            format="json",
+        )
+
+        # May succeed or return 400 if most fields are read-only
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT, status.HTTP_400_BAD_REQUEST],
+        )
+
+    # ========== SECURITY TESTS ==========
+
+    def test_update_compliance_run_tenant_isolation(self):
+        """Test that users can only update compliance runs from their tenant"""
+        # Create another tenant and compliance run
+        other_tenant = TenantFactory.create_tenant(
+            name="Other Tenant",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+        )
+        other_user = UserFactory.create_user(tenant=other_tenant)
+        other_asset = AssetFactory.create_asset(
+            tenant=other_tenant,
+            created_by=other_user,
+            key=f"other-asset-{uuid.uuid4().hex[:8]}",
+        )
+        other_job = JobFactory.create_job(
+            tenant=other_tenant,
+            created_by=other_user,
+            type=JobType.COMPLIANCE_RUN,
+        )
+        other_compliance_run = ComplianceRun.objects.create(
+            tenant=other_tenant,
+            asset=other_asset,
+            job=other_job,
+            status=ComplianceRunStatus.PENDING,
+        )
+
+        response = self.client.patch(
+            f"/api/v1/compliance/runs/{other_compliance_run.id}/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_compliance_run_requires_authentication(self):
+        """Test that compliance run update requires authentication"""
+        self.client.force_authenticate(user=None)
+
+        response = self.client.patch(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_update_compliance_run_auditor_readonly(self):
+        """Test that AUDITOR role cannot update compliance runs"""
+        # Create user with AUDITOR role
+        from hub.apps.users.models import Role, UserRole
+
+        auditor_role, _ = Role.objects.get_or_create(name="AUDITOR", tenant=self.tenant)
+        auditor_user = User.objects.create_user(
+            email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            password="testpass123",
+            status=UserStatus.ACTIVE.value,
+        )
+        UserRole.objects.create(user=auditor_user, role=auditor_role)
+
+        self.client.force_authenticate(user=auditor_user)
+
+        response = self.client.patch(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    # ========== EDGE CASES ==========
+
+    def test_update_compliance_run_not_found(self):
+        """Test updating non-existent compliance run"""
+        non_existent_id = uuid.uuid4()
+        response = self.client.patch(
+            f"/api/v1/compliance/runs/{non_existent_id}/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_update_compliance_run_with_completed_status(self):
+        """Test updating compliance run that is already completed"""
+        # Mark compliance run as completed
+        self.compliance_run.status = ComplianceRunStatus.SUCCEEDED
+        self.compliance_run.completed_at = timezone.now()
+        self.compliance_run.save()
+
+        response = self.client.patch(
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/",
+            {},
+            format="json",
+        )
+
+        # May succeed or return 400/403 if updates are restricted for completed runs
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT, status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
+        )
+
+
+class TestComplianceRunDeleteAPI(TestCase):
+    """Comprehensive tests for DELETE /api/v1/compliance/runs/{id}/"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        cache.clear()
+
+        self.client = APIClient()
+        self.tenant = TenantFactory.create_tenant(
+            name="Test Tenant",
+            slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+            status=TenantStatus.ACTIVE.value,
+        )
+        self.user = User.objects.create_user(
+            email=f"complianceuser-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            password="testpass123",
+            status=UserStatus.ACTIVE.value,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        # Create asset
+        self.asset = AssetFactory.create_asset(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"test-asset-{uuid.uuid4().hex[:8]}",
+            name="Test Asset",
+        )
+
+        # Create job
+        self.job = JobFactory.create_job(
+            tenant=self.tenant,
+            created_by=self.user,
+            type=JobType.COMPLIANCE_RUN,
+            status=JobStatus.PENDING,
+            resource_type="COMPLIANCE_RUN",
+        )
+
+        # Create compliance run
+        self.compliance_run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            job=self.job,
+            status=ComplianceRunStatus.PENDING,
+        )
+
+        # Update job with compliance_run_id
+        self.job.resource_id = str(self.compliance_run.id)
+        self.job.details_json = {"compliance_run_id": str(self.compliance_run.id)}
+        self.job.save()
+
+    def tearDown(self):
+        """Clean up after each test"""
+        cache.clear()
+
+    # ========== SUCCESS SCENARIOS ==========
+
+    def test_delete_compliance_run_success(self):
+        """Test successful deletion of compliance run"""
+        compliance_run_id = self.compliance_run.id
+
+        response = self.client.delete(f"/api/v1/compliance/runs/{compliance_run_id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Verify compliance run was deleted
+        self.assertFalse(ComplianceRun.objects.filter(id=compliance_run_id).exists())
+
+    def test_delete_compliance_run_with_completed_status(self):
+        """Test deletion of completed compliance run"""
+        # Mark compliance run as completed
+        self.compliance_run.status = ComplianceRunStatus.SUCCEEDED
+        self.compliance_run.completed_at = timezone.now()
+        self.compliance_run.save()
+
+        compliance_run_id = self.compliance_run.id
+
+        response = self.client.delete(f"/api/v1/compliance/runs/{compliance_run_id}/")
+
+        # Should succeed (soft delete or hard delete)
+        self.assertIn(response.status_code, [status.HTTP_204_NO_CONTENT, status.HTTP_200_OK])
+
+        # Verify compliance run was deleted (or soft-deleted)
+        self.assertFalse(ComplianceRun.objects.filter(id=compliance_run_id).exists())
+
+    # ========== SECURITY TESTS ==========
+
+    def test_delete_compliance_run_tenant_isolation(self):
+        """Test that users can only delete compliance runs from their tenant"""
+        # Create another tenant and compliance run
+        other_tenant = TenantFactory.create_tenant(
+            name="Other Tenant",
+            slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
+        )
+        other_user = UserFactory.create_user(tenant=other_tenant)
+        other_asset = AssetFactory.create_asset(
+            tenant=other_tenant,
+            created_by=other_user,
+            key=f"other-asset-{uuid.uuid4().hex[:8]}",
+        )
+        other_job = JobFactory.create_job(
+            tenant=other_tenant,
+            created_by=other_user,
+            type=JobType.COMPLIANCE_RUN,
+        )
+        other_compliance_run = ComplianceRun.objects.create(
+            tenant=other_tenant,
+            asset=other_asset,
+            job=other_job,
+            status=ComplianceRunStatus.PENDING,
+        )
+
+        response = self.client.delete(f"/api/v1/compliance/runs/{other_compliance_run.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        # Verify other tenant's compliance run still exists
+        self.assertTrue(ComplianceRun.objects.filter(id=other_compliance_run.id).exists())
+
+    def test_delete_compliance_run_requires_authentication(self):
+        """Test that compliance run deletion requires authentication"""
+        self.client.force_authenticate(user=None)
+
+        response = self.client.delete(f"/api/v1/compliance/runs/{self.compliance_run.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # Verify compliance run still exists
+        self.assertTrue(ComplianceRun.objects.filter(id=self.compliance_run.id).exists())
+
+    def test_delete_compliance_run_auditor_readonly(self):
+        """Test that AUDITOR role cannot delete compliance runs"""
+        # Create user with AUDITOR role
+        from hub.apps.users.models import Role, UserRole
+
+        auditor_role, _ = Role.objects.get_or_create(name="AUDITOR", tenant=self.tenant)
+        auditor_user = User.objects.create_user(
+            email=f"auditor-{uuid.uuid4().hex[:8]}@example.com",
+            tenant=self.tenant,
+            password="testpass123",
+            status=UserStatus.ACTIVE.value,
+        )
+        UserRole.objects.create(user=auditor_user, role=auditor_role)
+
+        self.client.force_authenticate(user=auditor_user)
+
+        response = self.client.delete(f"/api/v1/compliance/runs/{self.compliance_run.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Verify compliance run still exists
+        self.assertTrue(ComplianceRun.objects.filter(id=self.compliance_run.id).exists())
+
+    # ========== EDGE CASES ==========
+
+    def test_delete_compliance_run_not_found(self):
+        """Test deleting non-existent compliance run"""
+        non_existent_id = uuid.uuid4()
+        response = self.client.delete(f"/api/v1/compliance/runs/{non_existent_id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class TestComplianceReportsAPI(TestCase):
     """Comprehensive tests for GET /api/v1/compliance/reports/ (list endpoint)"""
 
@@ -1002,7 +1380,7 @@ class TestComplianceReportsAPI(TestCase):
 
 
 class TestComplianceRunResultsAPI(TestCase):
-    """Comprehensive tests for GET /api/v1/compliance/compliance-runs/{id}/results/"""
+    """Comprehensive tests for GET /api/v1/compliance/runs/{id}/results/"""
 
     def setUp(self):
         """Set up test fixtures"""
@@ -1089,7 +1467,7 @@ class TestComplianceRunResultsAPI(TestCase):
     def test_get_compliance_run_results_success(self):
         """Test successful retrieval of compliance run results"""
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{self.compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1101,7 +1479,7 @@ class TestComplianceRunResultsAPI(TestCase):
     def test_get_compliance_run_results_includes_violations(self):
         """Test that results include violation details"""
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{self.compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1112,7 +1490,7 @@ class TestComplianceRunResultsAPI(TestCase):
     def test_get_compliance_run_results_includes_remediation_suggestions(self):
         """Test that results include remediation suggestions"""
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{self.compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1122,7 +1500,7 @@ class TestComplianceRunResultsAPI(TestCase):
     def test_get_compliance_run_results_includes_score_breakdown(self):
         """Test that results include compliance score breakdown"""
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{self.compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1134,7 +1512,7 @@ class TestComplianceRunResultsAPI(TestCase):
     def test_get_compliance_run_results_includes_risk_assessment(self):
         """Test that results include risk assessment"""
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{self.compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1145,7 +1523,7 @@ class TestComplianceRunResultsAPI(TestCase):
     def test_get_compliance_run_results_logs_audit_event(self):
         """Test that accessing results logs audit event"""
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{self.compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1186,7 +1564,7 @@ class TestComplianceRunResultsAPI(TestCase):
         )
 
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{other_compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{other_compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -1196,7 +1574,7 @@ class TestComplianceRunResultsAPI(TestCase):
         self.client.force_authenticate(user=None)
 
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{self.compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{self.compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -1206,7 +1584,7 @@ class TestComplianceRunResultsAPI(TestCase):
     def test_get_compliance_run_results_not_found(self):
         """Test retrieving results for non-existent compliance run"""
         non_existent_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/compliance/compliance-runs/{non_existent_id}/results/")
+        response = self.client.get(f"/api/v1/compliance/runs/{non_existent_id}/results/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -1235,7 +1613,7 @@ class TestComplianceRunResultsAPI(TestCase):
         job.save()
 
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{compliance_run.id}/results/"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1378,7 +1756,7 @@ class TestComplianceAPIPerformance(TestCase):
         start_time = time.time()
 
         response = self.client.get(
-            f"/api/v1/compliance/compliance-runs/{compliance_run.id}/results/"
+            f"/api/v1/compliance/runs/{compliance_run.id}/results/"
         )
 
         elapsed_time = time.time() - start_time

@@ -23,7 +23,7 @@ from .serializers import (
     TenantConfigSerializer,
     TenantConfigUpdateSerializer,
 )
-from .services import get_tenant_config
+from .services import get_tenant_config, TenantService
 from hub.apps.audit.utils import log_tenant_operation
 from hub.apps.auth.permissions import HasRole
 
@@ -31,14 +31,14 @@ from hub.apps.auth.permissions import HasRole
 class TenantViewSet(viewsets.ModelViewSet):
     """
     ViewSet for tenant management.
-    
+
     Only platform admins can manage tenants.
     """
     queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
     permission_classes = [IsAuthenticated, IsPlatformAdmin]
     lookup_field = "id"
-    
+
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
         if self.action == "create":
@@ -46,37 +46,48 @@ class TenantViewSet(viewsets.ModelViewSet):
         elif self.action in ["update", "partial_update"]:
             return TenantUpdateSerializer
         return TenantSerializer
-    
+
     def get_queryset(self):
         """Filter queryset based on user permissions"""
         # Platform admins can see all tenants
         # Regular users can only see their own tenant
         user = self.request.user
-        
+
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             return Tenant.objects.all()
-        
+
         # For now, return all (will be filtered by tenant_id in middleware)
         return Tenant.objects.all()
-    
+
     # Permission check is handled by IsPlatformAdmin permission class
-    
+
     def list(self, request, *args, **kwargs):
         """List tenants (paginated)"""
         return super().list(request, *args, **kwargs)
-    
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """
         Create a new tenant.
-        
+
         Creates tenant with ACTIVE status and UNVERIFIED KYC status.
         Default roles are created via signal.
+        Events are published automatically via TenantService.
         """
         serializer = TenantCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        tenant = serializer.save()
-        
+
+        # Use TenantService to create tenant (publishes events automatically)
+        service = TenantService(
+            tenant_id=None,  # Platform admin operations
+            user_id=str(request.user.id)
+        )
+        tenant = service.create_tenant(
+            name=serializer.validated_data["name"],
+            slug=serializer.validated_data["slug"],
+            region=serializer.validated_data.get("region")
+        )
+
         # Log audit event
         log_tenant_operation(
             action="TENANT_CREATED",
@@ -85,25 +96,41 @@ class TenantViewSet(viewsets.ModelViewSet):
             details={"name": tenant.name, "slug": tenant.slug},
             request=request
         )
-        
+
         return Response(
             TenantSerializer(tenant).data,
             status=status.HTTP_201_CREATED
         )
-    
+
     def retrieve(self, request, *args, **kwargs):
         """Retrieve tenant by ID"""
         tenant = self.get_object()
         return Response(TenantSerializer(tenant).data)
-    
+
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        """Update tenant (full update)"""
+        """
+        Update tenant (full update).
+
+        Events are published automatically via TenantService.
+        """
         tenant = self.get_object()
         serializer = TenantUpdateSerializer(tenant, data=request.data)
         serializer.is_valid(raise_exception=True)
-        tenant = serializer.save()
-        
+
+        # Use TenantService to update tenant (publishes events automatically)
+        service = TenantService(
+            tenant_id=str(tenant.id),
+            user_id=str(request.user.id)
+        )
+        tenant = service.update_tenant(
+            tenant_id=str(tenant.id),
+            name=serializer.validated_data.get("name"),
+            slug=serializer.validated_data.get("slug"),
+            kyc_status=serializer.validated_data.get("kyc_status"),
+            region=serializer.validated_data.get("region")
+        )
+
         # Log audit event
         log_tenant_operation(
             action="TENANT_UPDATED",
@@ -112,17 +139,33 @@ class TenantViewSet(viewsets.ModelViewSet):
             details=serializer.validated_data,
             request=request
         )
-        
+
         return Response(TenantSerializer(tenant).data)
-    
+
     @transaction.atomic
     def partial_update(self, request, *args, **kwargs):
-        """Update tenant (partial update)"""
+        """
+        Update tenant (partial update).
+
+        Events are published automatically via TenantService.
+        """
         tenant = self.get_object()
         serializer = TenantUpdateSerializer(tenant, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        tenant = serializer.save()
-        
+
+        # Use TenantService to update tenant (publishes events automatically)
+        service = TenantService(
+            tenant_id=str(tenant.id),
+            user_id=str(request.user.id)
+        )
+        tenant = service.update_tenant(
+            tenant_id=str(tenant.id),
+            name=serializer.validated_data.get("name"),
+            slug=serializer.validated_data.get("slug"),
+            kyc_status=serializer.validated_data.get("kyc_status"),
+            region=serializer.validated_data.get("region")
+        )
+
         # Log audit event
         log_tenant_operation(
             action="TENANT_UPDATED",
@@ -131,35 +174,35 @@ class TenantViewSet(viewsets.ModelViewSet):
             details=serializer.validated_data,
             request=request
         )
-        
+
         return Response(TenantSerializer(tenant).data)
-    
+
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="suspend")
     def suspend(self, request, id=None):
         """
         Suspend a tenant.
-        
+
         Sets status to SUSPENDED and blocks write operations.
         Sends notification to tenant admins.
         """
         tenant = self.get_object()
-        
+
         if tenant.status == TenantStatus.DELETED:
             return Response(
                 {"error": "Cannot suspend a deleted tenant"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         serializer = TenantSuspendSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         # Suspend tenant
         tenant.suspend()
-        
+
         # Send notification to tenant admins
         self._send_suspension_notification(tenant, serializer.validated_data.get("reason"))
-        
+
         # Log audit event
         log_tenant_operation(
             action="TENANT_SUSPENDED",
@@ -168,38 +211,38 @@ class TenantViewSet(viewsets.ModelViewSet):
             details={"reason": serializer.validated_data.get("reason")},
             request=request
         )
-        
+
         return Response(
             TenantSerializer(tenant).data,
             status=status.HTTP_200_OK
         )
-    
+
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="reactivate")
     def reactivate(self, request, id=None):
         """
         Reactivate a suspended tenant.
-        
+
         Sets status to ACTIVE and restores write operations.
         Sends notification to tenant admins.
         """
         tenant = self.get_object()
-        
+
         if tenant.status != TenantStatus.SUSPENDED:
             return Response(
                 {"error": "Can only reactivate suspended tenants"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         serializer = TenantReactivateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         # Reactivate tenant
         tenant.reactivate()
-        
+
         # Send notification to tenant admins
         self._send_reactivation_notification(tenant)
-        
+
         # Log audit event
         log_tenant_operation(
             action="TENANT_REACTIVATED",
@@ -208,31 +251,33 @@ class TenantViewSet(viewsets.ModelViewSet):
             details={},
             request=request
         )
-        
+
         return Response(
             TenantSerializer(tenant).data,
             status=status.HTTP_200_OK
         )
-    
+
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         """
         Delete a tenant (soft delete).
-        
+
         Sets status to DELETED and blocks all access.
         Data retention period begins (default: 30 days).
+        Events are published automatically via TenantService.
         """
         tenant = self.get_object()
-        
-        if tenant.status == TenantStatus.DELETED:
-            return Response(
-                {"error": "Tenant is already deleted"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Soft delete tenant
-        tenant.soft_delete()
-        
+
+        # Use TenantService to delete tenant (publishes events automatically)
+        service = TenantService(
+            tenant_id=str(tenant.id),
+            user_id=str(request.user.id)
+        )
+        tenant = service.delete_tenant(
+            tenant_id=str(tenant.id),
+            reason=request.data.get("reason") if hasattr(request, "data") else None
+        )
+
         # Log audit event
         log_tenant_operation(
             action="TENANT_DELETED",
@@ -241,9 +286,9 @@ class TenantViewSet(viewsets.ModelViewSet):
             details={},
             request=request
         )
-        
+
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
+
     def _send_suspension_notification(self, tenant, reason=None):
         """Send suspension notification to tenant admins (placeholder)"""
         # TODO: Implement email notification when notification service is ready
@@ -256,7 +301,7 @@ class TenantViewSet(viewsets.ModelViewSet):
         # for admin in admins:
         #     send_email(admin.email, "tenant_suspended", {"tenant": tenant, "reason": reason})
         pass
-    
+
     def _send_reactivation_notification(self, tenant):
         """Send reactivation notification to tenant admins (placeholder)"""
         # TODO: Implement email notification when notification service is ready
@@ -274,13 +319,13 @@ class TenantViewSet(viewsets.ModelViewSet):
 class TenantConfigViewSet(viewsets.ViewSet):
     """
     ViewSet for tenant configuration management.
-    
+
     Allows TENANT_ADMIN (for own tenant) or Platform Admin (for any tenant)
     to get and update tenant configuration.
     """
     permission_classes = [IsAuthenticated]
     lookup_field = "tenant_id"
-    
+
     def get_tenant(self, tenant_id: str) -> Tenant:
         """Get tenant by ID with permission check"""
         try:
@@ -290,15 +335,15 @@ class TenantConfigViewSet(viewsets.ViewSet):
             not_found = NotFound("Tenant not found")
             not_found.code = "TENANT_NOT_FOUND"  # Set specific error code per API spec
             raise not_found
-        
+
         # Check permissions: Platform Admin can access any tenant,
         # TENANT_ADMIN can only access own tenant
         user = self.request.user
-        
+
         # Platform admins have access to all tenants
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             return tenant
-        
+
         # TENANT_ADMIN can only access own tenant
         if hasattr(user, "tenant") and user.tenant.id == tenant.id:
             # Check if user has TENANT_ADMIN role
@@ -306,11 +351,11 @@ class TenantConfigViewSet(viewsets.ViewSet):
                 role_names = [ur.role.name for ur in user.user_roles.all()]
                 if "TENANT_ADMIN" in role_names:
                     return tenant
-        
+
         # No permission
         from rest_framework.exceptions import PermissionDenied
         raise PermissionDenied("You do not have permission to access this tenant configuration.")
-    
+
     @extend_schema(
         operation_id="get_tenant_config",
         summary="Get tenant configuration",
@@ -326,7 +371,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
     def retrieve(self, request, tenant_id=None, **kwargs):
         """
         Get tenant configuration.
-        
+
         Returns tenant configuration with platform defaults for any unset values.
         """
         # Extract tenant_id from kwargs if not provided directly
@@ -334,9 +379,9 @@ class TenantConfigViewSet(viewsets.ViewSet):
             tenant_id = kwargs.get('tenant_id')
         tenant = self.get_tenant(tenant_id)
         config_dict = get_tenant_config(tenant)
-        
+
         return Response(config_dict, status=status.HTTP_200_OK)
-    
+
     @extend_schema(
         operation_id="update_tenant_config",
         summary="Update tenant configuration",
@@ -355,21 +400,38 @@ class TenantConfigViewSet(viewsets.ViewSet):
     def partial_update(self, request, tenant_id=None, **kwargs):
         """
         Update tenant configuration (partial update).
-        
+
         Updates only the provided fields, leaving others unchanged.
+        Events are published automatically via TenantService for quota changes.
         """
         # Extract tenant_id from kwargs if not provided directly
         if tenant_id is None:
             tenant_id = kwargs.get('tenant_id')
         tenant = self.get_tenant(tenant_id)
-        
-        # Get or create tenant config
+
+        # Get or create tenant config for validation
         config, created = TenantConfig.objects.get_or_create(tenant=tenant)
-        
+
         serializer = TenantConfigUpdateSerializer(config, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        config = serializer.save()
-        
+
+        # Use TenantService to update config (publishes quota change events automatically)
+        service = TenantService(
+            tenant_id=str(tenant.id),
+            user_id=str(request.user.id)
+        )
+        service.update_tenant_config(
+            tenant_id=str(tenant.id),
+            default_dq_profile=serializer.validated_data.get("default_dq_profile"),
+            allowed_compliance_regimes=serializer.validated_data.get("allowed_compliance_regimes"),
+            default_compliance_regimes=serializer.validated_data.get("default_compliance_regimes"),
+            data_retention_days=serializer.validated_data.get("data_retention_days"),
+            rate_limits=serializer.validated_data.get("rate_limits"),
+            max_file_size_bytes=serializer.validated_data.get("max_file_size_bytes"),
+            max_job_concurrency=serializer.validated_data.get("max_job_concurrency"),
+            max_queued_jobs=serializer.validated_data.get("max_queued_jobs")
+        )
+
         # Log audit event
         log_tenant_operation(
             action="TENANT_CONFIG_UPDATED",
@@ -378,7 +440,7 @@ class TenantConfigViewSet(viewsets.ViewSet):
             details=serializer.validated_data,
             request=request
         )
-        
+
         # Return complete config with defaults
         config_dict = get_tenant_config(tenant)
         return Response(config_dict, status=status.HTTP_200_OK)

@@ -7,7 +7,7 @@ from rest_framework import serializers
 from typing import Dict, Any, List, Optional
 from drf_spectacular.utils import extend_schema_serializer, extend_schema_field, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
-from .models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
+from .models import Contract, ContractStatus, OriginalSpecType, OriginalFormat, SecurityAuditLog
 from .ref_resolver import ExternalRefHandling
 
 
@@ -673,6 +673,46 @@ class ProductCreateSerializer(serializers.Serializer):
     )
 
 
+class SecurityAuditLogSerializer(serializers.ModelSerializer):
+    """Serializer for SecurityAuditLog model."""
+
+    tenant_id = serializers.UUIDField(source='tenant.id', read_only=True, allow_null=True)
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True, allow_null=True)
+    user_id = serializers.UUIDField(source='user.id', read_only=True, allow_null=True)
+    user_email = serializers.CharField(source='user.email', read_only=True, allow_null=True)
+    contract_id = serializers.UUIDField(source='contract.id', read_only=True, allow_null=True)
+
+    class Meta:
+        model = SecurityAuditLog
+        fields = [
+            'id',
+            'event_type',
+            'timestamp',
+            'severity',
+            'ref_type',
+            'ref_path',
+            'resolved_path',
+            'rate_limit_level',
+            'cache_operation',
+            'cache_key',
+            'eviction_reason',
+            'violation_type',
+            'attempted_path',
+            'attempted_url',
+            'description',
+            'metadata_json',
+            'request_id',
+            'ip_address',
+            'user_agent',
+            'tenant_id',
+            'tenant_name',
+            'user_id',
+            'user_email',
+            'contract_id',
+        ]
+        read_only_fields = fields
+
+
 class ODPSLinkSerializer(serializers.Serializer):
     """Serializer for ODPS linking request"""
     odps_contract_id = serializers.UUIDField(
@@ -722,3 +762,49 @@ class ODPSLinkSerializer(serializers.Serializer):
             )
 
         return attrs
+
+
+class SecurityIncidentSerializer(serializers.ModelSerializer):
+    """Serializer for SecurityIncident model"""
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    resolved_by_email = serializers.CharField(source='resolved_by.email', read_only=True)
+
+    class Meta:
+        from .models import SecurityIncident
+        model = SecurityIncident
+        fields = [
+            'id',
+            'title',
+            'description',
+            'severity',
+            'status',
+            'event_type',
+            'violation_count',
+            'first_detected_at',
+            'last_updated_at',
+            'resolved_at',
+            'resolution_notes',
+            'tenant',
+            'tenant_name',
+            'user',
+            'user_email',
+            'contract',
+            'resolved_by',
+            'resolved_by_email',
+            'metadata_json',
+        ]
+        read_only_fields = [
+            'id',
+            'first_detected_at',
+            'last_updated_at',
+        ]
+
+
+class SecurityIncidentResolveSerializer(serializers.Serializer):
+    """Serializer for resolving security incidents"""
+    resolution_notes = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Notes about how the incident was resolved"
+    )

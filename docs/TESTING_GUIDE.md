@@ -150,6 +150,19 @@ pytest tests/integration/ -v
 
 E2E tests test complete user journeys.
 
+### Connector E2E Testing
+
+For comprehensive documentation on end-to-end testing of marketplace connectors, see:
+
+**[Connector End-to-End Testing Guide](testing/CONNECTOR_E2E_TESTING.md)**
+
+This guide covers:
+- Complete workflow testing (connection → discovery → asset creation → verification)
+- Real connections only (no mocks/stubs)
+- Detailed test scenarios for dados.gov.br and Snowflake connectors
+- Troubleshooting guide for common issues
+- Best practices for engineering-grade testing
+
 ### Example E2E Test
 
 ```python
@@ -160,19 +173,19 @@ from tests.e2e.helpers import create_test_client, create_test_tenant
 def test_contract_to_asset_journey():
     client = create_test_client()
     tenant = create_test_tenant()
-    
+
     # Create contract
     contract = client.contracts.create({...})
-    
+
     # Create asset
     asset = client.assets.create({...})
-    
+
     # Attach contract to asset
     client.assets.attach_contract(asset.id, contract.id)
-    
+
     # Activate asset
     client.assets.activate(asset.id)
-    
+
     assert asset.status == 'ACTIVE'
 ```
 
@@ -182,6 +195,19 @@ def test_contract_to_asset_journey():
 # Requires Docker Compose services running
 docker compose up -d
 pytest tests/e2e/ -v
+
+# Run connector E2E tests
+docker compose exec api-service python -m pytest \
+  hub/apps/integrations/tests/test_connectors_e2e.py \
+  -v \
+  -m integration
+
+# Run connector E2E tests via management command
+docker compose exec api-service python hub/manage.py test_connectors_e2e \
+  --source both \
+  --limit 5 \
+  --wait \
+  --verify-assets
 ```
 
 ## Performance Tests
@@ -269,7 +295,7 @@ from unittest.mock import patch
 def test_external_service_call(mock_post):
     mock_post.return_value.status_code = 200
     mock_post.return_value.json.return_value = {'result': 'success'}
-    
+
     # Test code that calls external service
     result = call_external_service()
     assert result == {'result': 'success'}

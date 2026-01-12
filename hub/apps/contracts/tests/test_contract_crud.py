@@ -61,7 +61,7 @@ class ContractCRUDTest(TestCase):
             "original_format": OriginalFormat.JSON
         }
         
-        response = self.client.post("/api/v1/contracts/contracts/", data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn("id", response.data)
@@ -94,7 +94,7 @@ schema:
             "original_format": OriginalFormat.YAML
         }
         
-        response = self.client.post("/api/v1/contracts/contracts/", data, format="json")
+        response = self.client.post("/api/v1/contracts/", data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["original_format"], OriginalFormat.YAML)
@@ -113,7 +113,7 @@ schema:
             created_by=self.user
         )
         
-        response = self.client.get(f"/api/v1/contracts/contracts/{contract.id}/")
+        response = self.client.get(f"/api/v1/contracts/{contract.id}/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(contract.id))
@@ -138,7 +138,7 @@ schema:
             "original_format": OriginalFormat.JSON
         }
         
-        response = self.client.patch(f"/api/v1/contracts/contracts/{contract.id}/", updated_data, format="json")
+        response = self.client.patch(f"/api/v1/contracts/{contract.id}/", updated_data, format="json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -161,7 +161,7 @@ schema:
             created_by=self.user
         )
         
-        response = self.client.delete(f"/api/v1/contracts/contracts/{contract.id}/")
+        response = self.client.delete(f"/api/v1/contracts/{contract.id}/")
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         
@@ -199,7 +199,7 @@ schema:
             created_by=self.user
         )
         
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         contract_ids = [c["id"] for c in response.data["results"]]

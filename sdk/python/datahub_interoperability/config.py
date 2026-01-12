@@ -2,13 +2,13 @@
 SDK Configuration
 """
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class DataHubClientConfig(BaseModel):
     """
     Configuration for DataHub Client
-    
+
     Attributes:
         base_url: Base URL for the API (e.g., https://api.hub.example.com/api/v1)
         api_token: API token (JWT or API key) for authentication
@@ -17,7 +17,9 @@ class DataHubClientConfig(BaseModel):
         user_agent: Custom user agent string
         enable_logging: Enable request/response logging (default: False)
     """
-    
+
+    model_config = ConfigDict(frozen=True)  # Immutable config
+
     base_url: str = Field(..., description="Base URL for the API")
     api_token: Optional[str] = Field(None, description="API token for authentication")
     timeout: float = Field(30.0, description="Request timeout in seconds")
@@ -27,8 +29,4 @@ class DataHubClientConfig(BaseModel):
         description="User agent string"
     )
     enable_logging: bool = Field(False, description="Enable request/response logging")
-    
-    class Config:
-        """Pydantic config"""
-        frozen = True  # Immutable config
 

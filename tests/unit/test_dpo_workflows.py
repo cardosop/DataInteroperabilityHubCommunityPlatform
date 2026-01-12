@@ -485,7 +485,7 @@ class AssetRetirementWorkflowUnitTests(TestCase):
         client = APIClient()
         client.force_authenticate(user=self.user)
         
-        response = client.delete(f'/api/v1/assets/assets/{self.asset.id}/')
+        response = client.delete(f'/api/v1/assets/{self.asset.id}/')
         self.assertEqual(response.status_code, 204)
         
         # Verify asset is retired

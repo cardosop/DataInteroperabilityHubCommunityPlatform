@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from .models import SearchIndex, SearchAnalytics
 from .search_engine import SearchEngine
+from .services import SearchService
 from .serializers import (
     SearchResponseSerializer,
     SearchSuggestionSerializer,
@@ -135,8 +136,12 @@ class SearchViewSet(viewsets.ViewSet):
         if cached_results is not None:
             results, total = cached_results
         else:
-            # Perform search
-            results, total = SearchEngine.search(
+            # Perform search using SearchService (which publishes events)
+            search_service = SearchService(
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id) if request.user.is_authenticated else None
+            )
+            results, total = search_service.search(
                 tenant_id=str(tenant.id),
                 query=query,
                 resource_type=resource_type,
@@ -149,7 +154,8 @@ class SearchViewSet(viewsets.ViewSet):
                 limit=limit,
                 offset=offset,
                 sort_by=sort_by,
-                sort_order=sort_order
+                sort_order=sort_order,
+                user_id=str(request.user.id) if request.user.is_authenticated else None
             )
             # Cache results for 5 minutes
             cache.set(cache_key, (results, total), 300)
@@ -382,8 +388,21 @@ class SearchViewSet(viewsets.ViewSet):
         """
         tenant_id = request.data.get('tenant_id')
 
-        # Rebuild index
-        SearchIndexer.rebuild_index(tenant_id=tenant_id)
+        # Rebuild index using SearchService (which publishes events)
+        search_service = SearchService(
+            tenant_id=tenant_id,
+            user_id=str(request.user.id) if request.user.is_authenticated else None
+        )
+        result = search_service.rebuild_index(
+            tenant_id=tenant_id,
+            user_id=str(request.user.id) if request.user.is_authenticated else None
+        )
 
-        return Response({'status': 'index rebuild started'})
+        return Response({
+            'status': 'index rebuild started',
+            'resource_count': result.get('resource_count', 0),
+            'duration_ms': result.get('duration_ms', 0),
+            'success': result.get('success', True),
+            'resource_types': result.get('resource_types', [])
+        })
 

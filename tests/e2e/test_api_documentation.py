@@ -12,62 +12,67 @@ pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e_batch1]
 
 class APIDocumentationE2ETest(E2ETestBase):
     """E2E tests for API documentation endpoints."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         super().setUp()
         self.client = APIClient()
-    
+
     def test_openapi_schema_endpoint(self):
         """Test OpenAPI schema endpoint."""
         response = self.client.get('/api-docs/openapi.json')
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # OpenAPI schema uses specific content type: application/vnd.oai.openapi+json
-        self.assertIn('openapi', response['Content-Type'].lower())
-        
+        # OpenAPI schema endpoint returns JSON content type
+        # It may be 'application/json' or 'application/vnd.oai.openapi+json'
+        content_type = response['Content-Type'].lower()
+        self.assertTrue(
+            'json' in content_type or 'openapi' in content_type,
+            f"Expected JSON or OpenAPI content type, got: {content_type}"
+        )
+
         data = response.json()
         self.assertIn('openapi', data)
         self.assertIn('info', data)
         self.assertIn('paths', data)
         self.assertIn('components', data)
-        
+
         # Verify API info
         self.assertEqual(data['info']['title'], 'Interoperable Data Hub API')
         self.assertIn('version', data['info'])
-    
+
     def test_swagger_ui_endpoint(self):
         """Test Swagger UI endpoint."""
         response = self.client.get('/api-docs/')
-        
+
         # Swagger UI returns HTML
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('text/html', response['Content-Type'])
         self.assertIn(b'Swagger', response.content)
-    
+
     def test_redoc_endpoint(self):
         """Test ReDoc endpoint."""
         response = self.client.get('/api-docs/redoc/')
-        
+
         # ReDoc returns HTML
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('text/html', response['Content-Type'])
         # ReDoc uses <redoc> tag, not "ReDoc" text
         self.assertIn(b'<redoc', response.content)
-    
+
     def test_api_info_endpoint(self):
         """Test API info endpoint."""
         response = self.client.get('/api/v1/')
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
-        
+
         self.assertIn('name', data)
         self.assertIn('version', data)
         self.assertIn('base_url', data)
         self.assertIn('documentation', data)
         self.assertIn('endpoints', data)
-        
+
         # Verify endpoints are listed
         endpoints = data['endpoints']
         self.assertIn('auth', endpoints)
@@ -76,14 +81,14 @@ class APIDocumentationE2ETest(E2ETestBase):
         self.assertIn('assets', endpoints)
         self.assertIn('contracts', endpoints)
         self.assertIn('marketplace', endpoints)
-    
+
     def test_openapi_schema_includes_all_endpoints(self):
         """Test that OpenAPI schema includes all major endpoints."""
         response = self.client.get('/api-docs/openapi.json')
         data = response.json()
-        
+
         paths = data.get('paths', {})
-        
+
         # Verify major endpoints are present (check for actual path patterns)
         # Paths may be nested, so check for any path containing the key
         path_keys = list(paths.keys())

@@ -1,0 +1,733 @@
+"""
+Tests for Scheduled Marketplace Sync
+
+Comprehensive tests for scheduled sync functionality including:
+- Unit tests for schedule_sync() and unschedule_sync() methods
+- Integration tests with scheduler
+- E2E tests for scheduled sync execution
+"""
+import pytest
+import uuid
+from unittest.mock import patch, MagicMock
+from django.test import TestCase
+from django.utils import timezone
+from datetime import timedelta
+
+from hub.apps.integrations.services import MarketplaceIntegrationService
+from hub.apps.integrations.models import (
+    MarketplaceConnection,
+    MarketplaceSyncJob,
+    ScheduledMarketplaceSync,
+    ScheduleType,
+    ScheduledMarketplaceSyncStatus
+)
+from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.tasks import process_scheduled_syncs
+from hub.apps.core.services.base import ValidationError, NotFoundError, ConflictError
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+from hub.apps.assets.models import Asset
+from hub.apps.jobs.models import Job, JobType, JobStatus
+from tests.fixtures.test_data_factories import TenantFactory, UserFactory
+
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+class ScheduledSyncServiceUnitTest(TestCase):
+    """Unit tests for schedule_sync() and unschedule_sync() methods"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.tenant = TenantFactory.create_tenant()
+        self.user = UserFactory.create_user(tenant=self.tenant)
+        self.service = MarketplaceIntegrationService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            request_id="test-request-123"
+        )
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            name="Test Connection",
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            is_active=True
+        )
+        self.connection.set_config({
+            "api_key": "test-api-key",
+            "endpoint": "https://api.example.com"
+        })
+
+    def test_schedule_sync_daily_success(self):
+        """Test successful scheduling of daily sync"""
+        schedule_config = {"time": "02:00"}
+
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Daily Sync Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config=schedule_config,
+            sync_options={"asset_ids": ["asset-1", "asset-2"]}
+        )
+
+        # Verify scheduled sync was created
+        self.assertIsNotNone(scheduled_sync.id)
+        self.assertEqual(scheduled_sync.name, "Daily Sync Test")
+        self.assertEqual(scheduled_sync.direction, SyncDirection.PUSH.value)
+        self.assertEqual(scheduled_sync.schedule_type, ScheduleType.DAILY.value)
+        self.assertEqual(scheduled_sync.schedule_config, schedule_config)
+        self.assertEqual(scheduled_sync.status, ScheduledMarketplaceSyncStatus.ACTIVE.value)
+        self.assertIsNotNone(scheduled_sync.next_run_at)
+        self.assertEqual(scheduled_sync.connection, self.connection)
+        self.assertEqual(scheduled_sync.tenant, self.tenant)
+
+    def test_schedule_sync_weekly_success(self):
+        """Test successful scheduling of weekly sync"""
+        schedule_config = {
+            "days_of_week": [0, 2, 4],  # Monday, Wednesday, Friday
+            "time": "03:00"
+        }
+
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Weekly Sync Test",
+            direction=SyncDirection.PULL.value,
+            schedule_type=ScheduleType.WEEKLY.value,
+            schedule_config=schedule_config,
+            sync_options={"listing_ids": ["listing-1"]}
+        )
+
+        # Verify scheduled sync was created
+        self.assertIsNotNone(scheduled_sync.id)
+        self.assertEqual(scheduled_sync.schedule_type, ScheduleType.WEEKLY.value)
+        self.assertEqual(scheduled_sync.schedule_config, schedule_config)
+        self.assertIsNotNone(scheduled_sync.next_run_at)
+
+    def test_schedule_sync_monthly_success(self):
+        """Test successful scheduling of monthly sync"""
+        schedule_config = {
+            "day_of_month": 15,
+            "time": "04:00"
+        }
+
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Monthly Sync Test",
+            direction=SyncDirection.BIDIRECTIONAL.value,
+            schedule_type=ScheduleType.MONTHLY.value,
+            schedule_config=schedule_config,
+            sync_options={
+                "asset_ids": ["asset-1"],
+                "listing_ids": ["listing-1"]
+            }
+        )
+
+        # Verify scheduled sync was created
+        self.assertIsNotNone(scheduled_sync.id)
+        self.assertEqual(scheduled_sync.schedule_type, ScheduleType.MONTHLY.value)
+        self.assertIsNotNone(scheduled_sync.next_run_at)
+
+    def test_schedule_sync_custom_cron_success(self):
+        """Test successful scheduling with custom cron expression"""
+        schedule_config = {
+            "cron": "0 2 * * *",  # Daily at 2 AM
+            "timezone": "UTC"
+        }
+
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Cron Sync Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.CUSTOM_CRON.value,
+            schedule_config=schedule_config,
+            sync_options={"asset_ids": ["asset-1"]}
+        )
+
+        # Verify scheduled sync was created
+        self.assertIsNotNone(scheduled_sync.id)
+        self.assertEqual(scheduled_sync.schedule_type, ScheduleType.CUSTOM_CRON.value)
+        self.assertIsNotNone(scheduled_sync.next_run_at)
+
+    def test_schedule_sync_connection_not_found(self):
+        """Test error handling when connection not found"""
+        fake_id = str(uuid.uuid4())
+
+        with self.assertRaises(NotFoundError):
+            self.service.schedule_sync(
+                connection_id=fake_id,
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                name="Test Sync",
+                direction=SyncDirection.PUSH.value,
+                schedule_type=ScheduleType.DAILY.value,
+                schedule_config={"time": "00:00"}
+            )
+
+    def test_schedule_sync_connection_not_active(self):
+        """Test error handling when connection is not active"""
+        self.connection.is_active = False
+        self.connection.save()
+
+        with self.assertRaises(ValidationError) as cm:
+            self.service.schedule_sync(
+                connection_id=str(self.connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                name="Test Sync",
+                direction=SyncDirection.PUSH.value,
+                schedule_type=ScheduleType.DAILY.value,
+                schedule_config={"time": "00:00"}
+            )
+
+        self.assertIn("not active", str(cm.exception).lower())
+
+    def test_schedule_sync_invalid_direction(self):
+        """Test error handling for invalid sync direction"""
+        with self.assertRaises(ValidationError) as cm:
+            self.service.schedule_sync(
+                connection_id=str(self.connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                name="Test Sync",
+                direction="INVALID_DIRECTION",
+                schedule_type=ScheduleType.DAILY.value,
+                schedule_config={"time": "00:00"}
+            )
+
+        self.assertIn("direction", str(cm.exception).lower())
+
+    def test_schedule_sync_invalid_schedule_type(self):
+        """Test error handling for invalid schedule type"""
+        with self.assertRaises(ValidationError) as cm:
+            self.service.schedule_sync(
+                connection_id=str(self.connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                name="Test Sync",
+                direction=SyncDirection.PUSH.value,
+                schedule_type="INVALID_TYPE",
+                schedule_config={"time": "00:00"}
+            )
+
+        self.assertIn("schedule type", str(cm.exception).lower())
+
+    def test_schedule_sync_invalid_cron_expression(self):
+        """Test error handling for invalid cron expression"""
+        with self.assertRaises(ValidationError) as cm:
+            self.service.schedule_sync(
+                connection_id=str(self.connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                name="Test Sync",
+                direction=SyncDirection.PUSH.value,
+                schedule_type=ScheduleType.CUSTOM_CRON.value,
+                schedule_config={"cron": "invalid cron"}
+            )
+
+        self.assertIn("cron", str(cm.exception).lower())
+
+    def test_schedule_sync_duplicate_name(self):
+        """Test error handling for duplicate schedule name"""
+        # Create first scheduled sync
+        self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Duplicate Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"}
+        )
+
+        # Try to create another with same name
+        with self.assertRaises(ConflictError) as cm:
+            self.service.schedule_sync(
+                connection_id=str(self.connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                name="Duplicate Test",
+                direction=SyncDirection.PULL.value,
+                schedule_type=ScheduleType.DAILY.value,
+                schedule_config={"time": "01:00"}
+            )
+
+        self.assertIn("already exists", str(cm.exception).lower())
+
+    def test_unschedule_sync_success(self):
+        """Test successful unscheduling of sync"""
+        # Create scheduled sync
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Unschedule Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"}
+        )
+
+        scheduled_sync_id = str(scheduled_sync.id)
+
+        # Unschedule it
+        self.service.unschedule_sync(
+            scheduled_sync_id=scheduled_sync_id,
+            tenant_id=str(self.tenant.id)
+        )
+
+        # Verify it was deleted
+        with self.assertRaises(ScheduledMarketplaceSync.DoesNotExist):
+            ScheduledMarketplaceSync.objects.get(id=scheduled_sync_id)
+
+    def test_unschedule_sync_not_found(self):
+        """Test error handling when scheduled sync not found"""
+        fake_id = str(uuid.uuid4())
+
+        with self.assertRaises(NotFoundError):
+            self.service.unschedule_sync(
+                scheduled_sync_id=fake_id,
+                tenant_id=str(self.tenant.id)
+            )
+
+    def test_schedule_sync_calculates_next_run_at(self):
+        """Test that next_run_at is calculated correctly"""
+        schedule_config = {"time": "14:30"}  # 2:30 PM
+
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Next Run Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config=schedule_config
+        )
+
+        # Verify next_run_at is set and in the future
+        self.assertIsNotNone(scheduled_sync.next_run_at)
+        self.assertGreater(scheduled_sync.next_run_at, timezone.now())
+
+        # Verify time is correct (within same day or next day)
+        if scheduled_sync.next_run_at.date() == timezone.now().date():
+            # Same day - should be at 14:30
+            self.assertEqual(scheduled_sync.next_run_at.hour, 14)
+            self.assertEqual(scheduled_sync.next_run_at.minute, 30)
+        else:
+            # Next day - should also be at 14:30
+            self.assertEqual(scheduled_sync.next_run_at.hour, 14)
+            self.assertEqual(scheduled_sync.next_run_at.minute, 30)
+
+
+class ScheduledSyncSchedulerIntegrationTest(TestCase):
+    """Integration tests for scheduled sync with scheduler"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.tenant = TenantFactory.create_tenant()
+        self.user = UserFactory.create_user(tenant=self.tenant)
+        self.service = MarketplaceIntegrationService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            name="Test Connection",
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            is_active=True
+        )
+        self.connection.set_config({
+            "api_key": "test-api-key",
+            "endpoint": "https://api.example.com"
+        })
+
+        # Register test connector
+        from hub.apps.integrations.tests.test_tasks import TestMarketplaceConnector
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+            TestMarketplaceConnector
+        )
+
+    def tearDown(self):
+        """Clean up after tests"""
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+        try:
+            MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
+        except ValueError:
+            pass
+
+    def test_process_scheduled_syncs_triggers_due_sync(self):
+        """Test that process_scheduled_syncs triggers due syncs"""
+        # Create asset
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-1",
+            name="Test Asset 1",
+            description="Test asset description"
+        )
+
+        # Create scheduled sync that's due (next_run_at in the past)
+        # First create it, then update next_run_at to bypass the save() calculation
+        scheduled_sync = ScheduledMarketplaceSync.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            name="Due Sync Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={
+                "asset_ids": [str(asset.id)],
+                "options": {}
+            },
+            status=ScheduledMarketplaceSyncStatus.ACTIVE,
+            created_by=self.user
+        )
+        # Override next_run_at after creation to make it due
+        scheduled_sync.next_run_at = timezone.now() - timedelta(minutes=1)
+        scheduled_sync.save(update_fields=['next_run_at'])
+
+        # Process scheduled syncs - need to patch the service method that will be called
+        # The process_scheduled_syncs creates a new service instance, so we need to patch
+        # the MarketplaceIntegrationService class method
+        from hub.apps.integrations.services import MarketplaceIntegrationService
+
+        with patch.object(MarketplaceIntegrationService, 'sync_assets_to_marketplace') as mock_sync:
+            mock_sync.return_value = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
+                connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                status=SyncStatus.PENDING.value,
+                metadata={"asset_ids": [str(asset.id)]}
+            )
+
+            result = process_scheduled_syncs()
+
+            # Verify sync was triggered
+            self.assertEqual(result["processed"], 1)
+            self.assertEqual(result["failed"], 0)
+            mock_sync.assert_called_once()
+
+            # Verify scheduled sync was updated
+            scheduled_sync.refresh_from_db()
+            self.assertIsNotNone(scheduled_sync.last_run_at)
+            self.assertIsNotNone(scheduled_sync.last_sync_job_id)
+            self.assertGreater(scheduled_sync.next_run_at, timezone.now())
+
+    def test_process_scheduled_syncs_skips_not_due(self):
+        """Test that process_scheduled_syncs skips syncs that are not due"""
+        # Create scheduled sync that's not due (next_run_at in the future)
+        scheduled_sync = ScheduledMarketplaceSync.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            name="Not Due Sync Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={"asset_ids": ["asset-1"]},
+            status=ScheduledMarketplaceSyncStatus.ACTIVE,
+            next_run_at=timezone.now() + timedelta(hours=1),  # Due in 1 hour
+            created_by=self.user
+        )
+
+        # Process scheduled syncs
+        with patch.object(self.service, 'sync_assets_to_marketplace') as mock_sync:
+            result = process_scheduled_syncs()
+
+            # Verify sync was not triggered
+            self.assertEqual(result["processed"], 0)
+            self.assertEqual(result["failed"], 0)
+            mock_sync.assert_not_called()
+
+    def test_process_scheduled_syncs_skips_paused(self):
+        """Test that process_scheduled_syncs skips paused syncs"""
+        # Create paused scheduled sync that's due
+        scheduled_sync = ScheduledMarketplaceSync.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            name="Paused Sync Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={"asset_ids": ["asset-1"]},
+            status=ScheduledMarketplaceSyncStatus.PAUSED,
+            next_run_at=timezone.now() - timedelta(minutes=1),  # Due but paused
+            created_by=self.user
+        )
+
+        # Process scheduled syncs
+        with patch.object(self.service, 'sync_assets_to_marketplace') as mock_sync:
+            result = process_scheduled_syncs()
+
+            # Verify sync was not triggered
+            self.assertEqual(result["processed"], 0)
+            self.assertEqual(result["failed"], 0)
+            mock_sync.assert_not_called()
+
+    def test_process_scheduled_syncs_handles_errors(self):
+        """Test that process_scheduled_syncs handles errors gracefully"""
+        # Create asset
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-error",
+            name="Test Asset Error",
+            description="Test asset for error handling"
+        )
+
+        # Create scheduled sync that will fail
+        scheduled_sync = ScheduledMarketplaceSync.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            name="Error Sync Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={"asset_ids": [str(asset.id)]},
+            status=ScheduledMarketplaceSyncStatus.ACTIVE,
+            created_by=self.user
+        )
+        # Override next_run_at after creation to make it due
+        scheduled_sync.next_run_at = timezone.now() - timedelta(minutes=1)
+        scheduled_sync.save(update_fields=['next_run_at'])
+
+        # Process scheduled syncs with service that raises error
+        from hub.apps.integrations.services import MarketplaceIntegrationService
+
+        with patch.object(MarketplaceIntegrationService, 'sync_assets_to_marketplace') as mock_sync:
+            mock_sync.side_effect = Exception("Sync failed")
+
+            result = process_scheduled_syncs()
+
+            # Verify error was recorded
+            self.assertEqual(result["processed"], 0)
+            self.assertEqual(result["failed"], 1)
+            self.assertEqual(len(result["errors"]), 1)
+            self.assertIn("scheduled_sync_id", result["errors"][0])
+
+
+class ScheduledSyncE2ETest(TestCase):
+    """End-to-end tests for scheduled sync execution"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.tenant = TenantFactory.create_tenant()
+        self.user = UserFactory.create_user(tenant=self.tenant)
+        self.service = MarketplaceIntegrationService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id)
+        )
+        self.connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            name="Test Connection",
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            is_active=True
+        )
+        self.connection.set_config({
+            "api_key": "test-api-key",
+            "endpoint": "https://api.example.com"
+        })
+
+        # Register test connector
+        from hub.apps.integrations.tests.test_tasks import TestMarketplaceConnector
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+            TestMarketplaceConnector
+        )
+
+    def tearDown(self):
+        """Clean up after tests"""
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
+        try:
+            MarketplaceConnectorFactory.unregister_connector(
+                MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            )
+        except ValueError:
+            pass
+
+    def test_scheduled_sync_e2e_push(self):
+        """Test end-to-end scheduled sync execution for PUSH"""
+        # Create asset
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-1",
+            name="Test Asset 1",
+            description="Test asset description"
+        )
+
+        # Schedule sync
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="E2E Push Test",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={
+                "asset_ids": [str(asset.id)],
+                "options": {}
+            }
+        )
+
+        # Set next_run_at to past to make it due
+        scheduled_sync.next_run_at = timezone.now() - timedelta(minutes=1)
+        scheduled_sync.save()
+
+        # Process scheduled syncs (this will trigger real sync)
+        result = process_scheduled_syncs()
+
+        # Verify sync was processed
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["failed"], 0)
+
+        # Verify scheduled sync was updated
+        scheduled_sync.refresh_from_db()
+        self.assertIsNotNone(scheduled_sync.last_run_at)
+        self.assertIsNotNone(scheduled_sync.last_sync_job_id)
+
+        # Verify sync job was created
+        sync_job = MarketplaceSyncJob.objects.get(id=scheduled_sync.last_sync_job_id)
+        self.assertEqual(sync_job.direction, SyncDirection.PUSH.value)
+        self.assertEqual(sync_job.connection, self.connection)
+
+    def test_scheduled_sync_e2e_pull(self):
+        """Test end-to-end scheduled sync execution for PULL"""
+        # Schedule sync
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="E2E Pull Test",
+            direction=SyncDirection.PULL.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={
+                "listing_ids": ["listing-1", "listing-2"],
+                "options": {}
+            }
+        )
+
+        # Set next_run_at to past to make it due
+        scheduled_sync.next_run_at = timezone.now() - timedelta(minutes=1)
+        scheduled_sync.save()
+
+        # Process scheduled syncs
+        result = process_scheduled_syncs()
+
+        # Verify sync was processed
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["failed"], 0)
+
+        # Verify scheduled sync was updated
+        scheduled_sync.refresh_from_db()
+        self.assertIsNotNone(scheduled_sync.last_run_at)
+        self.assertIsNotNone(scheduled_sync.last_sync_job_id)
+
+        # Verify sync job was created
+        sync_job = MarketplaceSyncJob.objects.get(id=scheduled_sync.last_sync_job_id)
+        self.assertEqual(sync_job.direction, SyncDirection.PULL.value)
+
+    def test_scheduled_sync_e2e_bidirectional(self):
+        """Test end-to-end scheduled sync execution for BIDIRECTIONAL"""
+        # Create asset
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-1",
+            name="Test Asset 1",
+            description="Test asset description"
+        )
+
+        # Schedule bidirectional sync
+        scheduled_sync = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="E2E Bidirectional Test",
+            direction=SyncDirection.BIDIRECTIONAL.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={
+                "asset_ids": [str(asset.id)],
+                "listing_ids": ["listing-1"],
+                "options": {}
+            }
+        )
+
+        # Set next_run_at to past to make it due
+        scheduled_sync.next_run_at = timezone.now() - timedelta(minutes=1)
+        scheduled_sync.save()
+
+        # Process scheduled syncs
+        result = process_scheduled_syncs()
+
+        # Verify sync was processed
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["failed"], 0)
+
+        # Verify scheduled sync was updated
+        scheduled_sync.refresh_from_db()
+        self.assertIsNotNone(scheduled_sync.last_run_at)
+        self.assertIsNotNone(scheduled_sync.last_sync_job_id)
+
+    def test_scheduled_sync_e2e_multiple_due_syncs(self):
+        """Test end-to-end execution with multiple due syncs"""
+        # Create multiple scheduled syncs
+        asset1 = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-1",
+            name="Test Asset 1"
+        )
+        asset2 = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset-2",
+            name="Test Asset 2"
+        )
+
+        scheduled_sync1 = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="E2E Multi Test 1",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={"asset_ids": [str(asset1.id)]}
+        )
+        scheduled_sync1.next_run_at = timezone.now() - timedelta(minutes=1)
+        scheduled_sync1.save()
+
+        scheduled_sync2 = self.service.schedule_sync(
+            connection_id=str(self.connection.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="E2E Multi Test 2",
+            direction=SyncDirection.PUSH.value,
+            schedule_type=ScheduleType.DAILY.value,
+            schedule_config={"time": "00:00"},
+            sync_options={"asset_ids": [str(asset2.id)]}
+        )
+        scheduled_sync2.next_run_at = timezone.now() - timedelta(minutes=1)
+        scheduled_sync2.save()
+
+        # Process scheduled syncs
+        result = process_scheduled_syncs()
+
+        # Verify both syncs were processed
+        self.assertEqual(result["processed"], 2)
+        self.assertEqual(result["failed"], 0)
+
+        # Verify both scheduled syncs were updated
+        scheduled_sync1.refresh_from_db()
+        scheduled_sync2.refresh_from_db()
+        self.assertIsNotNone(scheduled_sync1.last_run_at)
+        self.assertIsNotNone(scheduled_sync2.last_run_at)
+

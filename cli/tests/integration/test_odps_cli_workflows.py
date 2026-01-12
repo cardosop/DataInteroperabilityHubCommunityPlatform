@@ -149,7 +149,10 @@ print(api_key_value)
 
     def _create_asset_via_api(self, key, name, description=None):
         """Create an asset via HTTP request to the API service"""
-        url = 'http://localhost:8000/api/v1/assets/assets/'
+        # This test doesn't use Django test framework, so use hardcoded URL
+        # Note: asset-list resolves to /api/v1/assets/
+        # This matches the actual URL pattern from reverse("asset-list")
+        url = 'http://localhost:8000/api/v1/assets/'
         data = {
             'key': key,
             'name': name,

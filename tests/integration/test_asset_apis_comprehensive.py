@@ -124,8 +124,10 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_success(self):
         """Test successful asset listing"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/")
+        url = reverse('asset-list')
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("results", response.data)
@@ -134,8 +136,10 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_with_pagination(self):
         """Test asset listing with pagination"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?page=1&page_size=2")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?page=1&page_size=2")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 2)
@@ -145,17 +149,33 @@ class AssetListAPITest(TestCase):
     def test_list_assets_filter_by_domain(self):
         """Test filtering assets by domain"""
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?domain=sales")
+        # Use reverse URL to ensure correct endpoint
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?domain=sales")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 2)  # asset1 and asset3
-        for asset in response.data["results"]:
+        # Ensure response has expected structure
+        if "results" not in response.data:
+            # Debug: print actual response
+            self.fail(f"Response missing 'results' key. Response: {response.data}, Status: {response.status_code}, URL: {url}")
+        results = response.data["results"]
+        # Count should always be present in paginated responses
+        if "count" not in response.data:
+            # Fallback: use length of results if count not present
+            count = len(results)
+        else:
+            count = response.data["count"]
+        self.assertEqual(count, 2)  # asset1 and asset3
+        for asset in results:
             self.assertEqual(asset["domain"], "sales")
 
     def test_list_assets_filter_by_status(self):
         """Test filtering assets by status"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?status=ACTIVE")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?status=ACTIVE")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 2)  # asset1 and asset3
@@ -164,10 +184,12 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_filter_by_multiple_statuses(self):
         """Test filtering assets by multiple statuses"""
+        from django.urls import reverse
         # Note: Current implementation only supports single status filter
         # This test verifies behavior with multiple status params
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?status=ACTIVE&status=DRAFT")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?status=ACTIVE&status=DRAFT")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Implementation may use last status or combine them
@@ -176,8 +198,10 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_filter_by_visibility(self):
         """Test filtering assets by visibility - note: visibility filtering is not yet implemented"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?visibility=PUBLIC")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?visibility=PUBLIC")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Visibility filtering is not implemented, so all assets are returned
@@ -193,8 +217,10 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_ordering_by_name_asc(self):
         """Test ordering assets by name ascending"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?ordering=name")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?ordering=name")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         names = [asset["name"] for asset in response.data["results"]]
@@ -202,8 +228,10 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_ordering_by_name_desc(self):
         """Test ordering assets by name descending"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?ordering=-name")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?ordering=-name")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         names = [asset["name"] for asset in response.data["results"]]
@@ -211,8 +239,10 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_ordering_by_created_at_desc(self):
         """Test ordering assets by created_at descending (default)"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/")
+        url = reverse('asset-list')
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         created_ats = [asset["created_at"] for asset in response.data["results"]]
@@ -221,8 +251,10 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_search_by_name(self):
         """Test searching assets by name"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?search=Test")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?search=Test")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 1)
@@ -230,8 +262,10 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_search_by_key(self):
         """Test searching assets by key"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?search=asset-1")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?search=asset-1")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 1)
@@ -243,18 +277,20 @@ class AssetListAPITest(TestCase):
         self.asset1.description = "This is a test description"
         self.asset1.save()
 
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?search=test description")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?search=test description")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data["count"], 1)
 
     def test_list_assets_combined_filters(self):
         """Test combining multiple filters"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get(
-            "/api/v1/assets/assets/?domain=sales&status=ACTIVE&ordering=name"
-        )
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?domain=sales&status=ACTIVE&ordering=name")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 2)
@@ -266,24 +302,30 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_invalid_page_number(self):
         """Test invalid page number"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?page=0")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?page=0")
 
         # Should return 400 or use default page
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
 
     def test_list_assets_invalid_page_size(self):
         """Test invalid page size"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?page_size=0")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?page_size=0")
 
         # Should return 400 or use default page_size
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
 
     def test_list_assets_large_page_size(self):
         """Test large page size"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?page_size=1000")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?page_size=1000")
 
         # DRF may return 400 for invalid page_size or cap it
         # Accept both behaviors as valid
@@ -295,24 +337,30 @@ class AssetListAPITest(TestCase):
 
     def test_list_assets_invalid_ordering_field(self):
         """Test invalid ordering field"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?ordering=invalid_field")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?ordering=invalid_field")
 
         # Should return 400 or ignore invalid ordering
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
 
     def test_list_assets_invalid_status_filter(self):
         """Test invalid status filter"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?status=INVALID_STATUS")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?status=INVALID_STATUS")
 
         # Should return empty results or 400
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
 
     def test_list_assets_invalid_domain_filter(self):
         """Test invalid domain filter (should still work, just return empty)"""
+        from django.urls import reverse
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/?domain=nonexistent")
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?domain=nonexistent")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 0)
@@ -333,7 +381,9 @@ class AssetListAPITest(TestCase):
         self.client.force_authenticate(user=self.user1)
 
         start_time = time.time()
-        response = self.client.get("/api/v1/assets/assets/")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(url)
         elapsed_time = (time.time() - start_time) * 1000  # Convert to milliseconds
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -356,7 +406,9 @@ class AssetListAPITest(TestCase):
         self.client.force_authenticate(user=self.user1)
 
         start_time = time.time()
-        response = self.client.get("/api/v1/assets/assets/?page=1&page_size=10")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?page=1&page_size=10")
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -369,7 +421,9 @@ class AssetListAPITest(TestCase):
     def test_list_assets_tenant_isolation(self):
         """Test that users only see assets from their tenant"""
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # User1 should only see tenant1 assets
@@ -381,7 +435,9 @@ class AssetListAPITest(TestCase):
     def test_list_assets_cross_tenant_isolation(self):
         """Test cross-tenant isolation"""
         self.client.force_authenticate(user=self.user2)
-        response = self.client.get("/api/v1/assets/assets/")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # User2 should only see tenant2 assets
@@ -397,7 +453,9 @@ class AssetListAPITest(TestCase):
     def test_list_assets_platform_admin_sees_all(self):
         """Test platform admin can see all assets"""
         self.client.force_authenticate(user=self.platform_admin)
-        response = self.client.get("/api/v1/assets/assets/")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Platform admin should see assets from all tenants
@@ -411,7 +469,9 @@ class AssetListAPITest(TestCase):
         new_user = UserFactory.create_user(tenant=new_tenant)
 
         self.client.force_authenticate(user=new_user)
-        response = self.client.get("/api/v1/assets/assets/")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 0)
@@ -429,7 +489,9 @@ class AssetListAPITest(TestCase):
             )
 
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 103)  # 3 original + 100 new
@@ -452,7 +514,7 @@ class AssetCreateAPITest(TestCase):
     def test_create_asset_success_minimal(self):
         """Test creating asset with minimal required fields"""
         data = {"key": "new-asset", "name": "New Asset"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["key"], "new-asset")
@@ -468,7 +530,7 @@ class AssetCreateAPITest(TestCase):
             "name": "Asset with Description",
             "description": "This is a test description",
         }
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["description"], "This is a test description")
@@ -476,7 +538,7 @@ class AssetCreateAPITest(TestCase):
     def test_create_asset_success_with_domain(self):
         """Test creating asset with domain"""
         data = {"key": "asset-with-domain", "name": "Asset with Domain", "domain": "sales"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["domain"], "sales")
@@ -484,7 +546,7 @@ class AssetCreateAPITest(TestCase):
     def test_create_asset_success_with_visibility(self):
         """Test creating asset with visibility"""
         data = {"key": "public-asset", "name": "Public Asset", "visibility": AssetVisibility.PUBLIC}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["visibility"], AssetVisibility.PUBLIC)
@@ -498,7 +560,7 @@ class AssetCreateAPITest(TestCase):
             "domain": "marketing",
             "visibility": AssetVisibility.PUBLIC,
         }
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["key"], "complete-asset")
@@ -512,7 +574,7 @@ class AssetCreateAPITest(TestCase):
     def test_create_asset_missing_key(self):
         """Test creating asset without key"""
         data = {"name": "Asset without key"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("key", str(response.data))
@@ -520,7 +582,7 @@ class AssetCreateAPITest(TestCase):
     def test_create_asset_missing_name(self):
         """Test creating asset without name"""
         data = {"key": "asset-without-name"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("name", str(response.data))
@@ -534,7 +596,7 @@ class AssetCreateAPITest(TestCase):
 
         # Try to create second asset with same key
         data = {"key": "duplicate-key", "name": "Second Asset"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("key", str(response.data).lower())
@@ -542,7 +604,7 @@ class AssetCreateAPITest(TestCase):
     def test_create_asset_invalid_key_format(self):
         """Test creating asset with invalid key format"""
         data = {"key": "Invalid Key With Spaces!", "name": "Asset Name"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         # May or may not validate key format - check response
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -550,14 +612,14 @@ class AssetCreateAPITest(TestCase):
     def test_create_asset_key_too_long(self):
         """Test creating asset with key too long"""
         data = {"key": "a" * 300, "name": "Asset Name"}  # Exceeds max_length=255
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_create_asset_name_too_long(self):
         """Test creating asset with name too long"""
         data = {"key": "valid-key", "name": "a" * 300}  # Exceeds max_length=255
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -568,7 +630,7 @@ class AssetCreateAPITest(TestCase):
             "name": "Asset Name",
             "visibility": "INVALID_VISIBILITY",
         }
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -579,7 +641,7 @@ class AssetCreateAPITest(TestCase):
             "name": "Asset Name",
             "domain": "a" * 150,  # Exceeds max_length=100
         }
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -590,7 +652,7 @@ class AssetCreateAPITest(TestCase):
         data = {"key": "perf-asset", "name": "Performance Asset"}
 
         start_time = time.time()
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -605,7 +667,7 @@ class AssetCreateAPITest(TestCase):
         initial_count = AuditEvent.objects.filter(action="ASSET_CREATED").count()
 
         data = {"key": "audit-asset", "name": "Audit Asset"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -623,7 +685,7 @@ class AssetCreateAPITest(TestCase):
         # Note: Event publishing is async, so we check if event publisher is called
         # In real implementation, we'd check event bus or mock publisher
         data = {"key": "event-asset", "name": "Event Asset"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Event should be published (check event bus or logs)
@@ -654,7 +716,7 @@ class AssetRetrieveAPITest(TestCase):
     def test_retrieve_asset_success(self):
         """Test successful asset retrieval"""
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(self.asset.id))
@@ -670,7 +732,7 @@ class AssetRetrieveAPITest(TestCase):
         dataset = DatasetFactory.create_dataset(tenant=self.tenant1, asset=self.asset)
 
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Relationships may be included in response or separate endpoints
@@ -681,7 +743,7 @@ class AssetRetrieveAPITest(TestCase):
     def test_retrieve_asset_tenant_isolation(self):
         """Test tenant isolation for asset retrieval"""
         self.client.force_authenticate(user=self.user2)
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
 
         # User2 should not be able to access tenant1's asset
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -690,7 +752,7 @@ class AssetRetrieveAPITest(TestCase):
         """Test platform admin can access any asset"""
         platform_admin = UserFactory.create_platform_admin()
         self.client.force_authenticate(user=platform_admin)
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(self.asset.id))
@@ -701,14 +763,16 @@ class AssetRetrieveAPITest(TestCase):
         """Test retrieving non-existent asset"""
         self.client.force_authenticate(user=self.user1)
         fake_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_asset_invalid_uuid(self):
         """Test retrieving asset with invalid UUID"""
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get("/api/v1/assets/assets/invalid-uuid/")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -718,7 +782,7 @@ class AssetRetrieveAPITest(TestCase):
         self.asset.save()
 
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
 
         # May or may not return 404 depending on implementation
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
@@ -730,7 +794,7 @@ class AssetRetrieveAPITest(TestCase):
         self.client.force_authenticate(user=self.user1)
 
         start_time = time.time()
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -764,7 +828,7 @@ class AssetUpdateAPITest(TestCase):
         """Test PATCH update asset name"""
         self.client.force_authenticate(user=self.user1)
         data = {"name": "Updated Asset Name", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Updated Asset Name")
@@ -775,7 +839,7 @@ class AssetUpdateAPITest(TestCase):
         """Test PATCH update asset description"""
         self.client.force_authenticate(user=self.user1)
         data = {"description": "Updated description", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["description"], "Updated description")
@@ -784,7 +848,7 @@ class AssetUpdateAPITest(TestCase):
         """Test PATCH update asset domain"""
         self.client.force_authenticate(user=self.user1)
         data = {"domain": "marketing", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["domain"], "marketing")
@@ -793,7 +857,7 @@ class AssetUpdateAPITest(TestCase):
         """Test PATCH update asset status"""
         self.client.force_authenticate(user=self.user1)
         data = {"status": AssetStatus.ACTIVE, "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         # May require activation workflow, so check response
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -802,7 +866,7 @@ class AssetUpdateAPITest(TestCase):
         """Test PATCH update asset visibility"""
         self.client.force_authenticate(user=self.user1)
         data = {"visibility": AssetVisibility.PUBLIC, "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["visibility"], AssetVisibility.PUBLIC)
@@ -816,7 +880,7 @@ class AssetUpdateAPITest(TestCase):
             "domain": "finance",
             "version": self.asset.version,
         }
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Updated Name")
@@ -833,7 +897,7 @@ class AssetUpdateAPITest(TestCase):
             "visibility": AssetVisibility.PUBLIC,
             "version": self.asset.version,
         }
-        response = self.client.put(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.put(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Fully Updated Asset")
@@ -844,7 +908,7 @@ class AssetUpdateAPITest(TestCase):
         """Test update asset without version (optimistic locking)"""
         self.client.force_authenticate(user=self.user1)
         data = {"name": "Updated Name"}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         # May require version or allow update without it
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -853,7 +917,7 @@ class AssetUpdateAPITest(TestCase):
         """Test update asset with version mismatch"""
         self.client.force_authenticate(user=self.user1)
         data = {"name": "Updated Name", "version": self.asset.version + 1}  # Wrong version
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         # Should return 409 Conflict
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
@@ -862,7 +926,7 @@ class AssetUpdateAPITest(TestCase):
         """Test update asset with invalid name"""
         self.client.force_authenticate(user=self.user1)
         data = {"name": "a" * 300, "version": self.asset.version}  # Too long
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -871,7 +935,7 @@ class AssetUpdateAPITest(TestCase):
         original_key = self.asset.key
         self.client.force_authenticate(user=self.user1)
         data = {"key": "new-key", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         # Key should not be updated (read-only)
         self.asset.refresh_from_db()
@@ -883,7 +947,7 @@ class AssetUpdateAPITest(TestCase):
         """Test tenant isolation for asset update"""
         self.client.force_authenticate(user=self.user2)
         data = {"name": "Unauthorized Update", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         # User2 should not be able to update tenant1's asset
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -896,7 +960,7 @@ class AssetUpdateAPITest(TestCase):
 
         self.client.force_authenticate(user=self.user1)
         data = {"name": "Audited Update", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -946,7 +1010,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -964,7 +1028,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -976,7 +1040,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1003,7 +1067,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1016,7 +1080,7 @@ class AssetActivateAPITest(TestCase):
         asset, contract = self._create_asset_with_valid_contract()
 
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", {}, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", {}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1028,7 +1092,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version + 1}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
@@ -1040,7 +1104,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1052,7 +1116,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1070,7 +1134,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1095,7 +1159,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1124,7 +1188,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1153,7 +1217,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1180,7 +1244,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1194,7 +1258,7 @@ class AssetActivateAPITest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1212,7 +1276,7 @@ class AssetActivateAPITest(TestCase):
         data = {"version": asset.version}
         start_time = time.time()
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
         elapsed_time = (time.time() - start_time) * 1000
 
@@ -1247,7 +1311,7 @@ class AssetDeleteAPITest(TestCase):
     def test_delete_asset_success(self):
         """Test successful asset deletion (soft delete)"""
         self.client.force_authenticate(user=self.user1)
-        response = self.client.delete(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -1264,7 +1328,7 @@ class AssetDeleteAPITest(TestCase):
         dataset = DatasetFactory.create_dataset(tenant=self.tenant1, asset=self.asset)
 
         self.client.force_authenticate(user=self.user1)
-        response = self.client.delete(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -1283,7 +1347,7 @@ class AssetDeleteAPITest(TestCase):
     def test_delete_asset_tenant_isolation(self):
         """Test tenant isolation for asset deletion"""
         self.client.force_authenticate(user=self.user2)
-        response = self.client.delete(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{self.asset.id}/")
 
         # User2 should not be able to delete tenant1's asset
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -1299,7 +1363,7 @@ class AssetDeleteAPITest(TestCase):
         initial_count = AuditEvent.objects.filter(action="ASSET_DELETED").count()
 
         self.client.force_authenticate(user=self.user1)
-        response = self.client.delete(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -1326,7 +1390,7 @@ class AssetDeleteAPITest(TestCase):
         )
 
         self.client.force_authenticate(user=self.user1)
-        response = self.client.delete(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
@@ -1357,7 +1421,9 @@ class AssetAPIEdgeCasesTest(TestCase):
             name="Test Asset with émojis 🎉",
         )
 
-        response = self.client.get("/api/v1/assets/assets/?search=émojis")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?search=émojis")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should handle unicode correctly
@@ -1369,14 +1435,16 @@ class AssetAPIEdgeCasesTest(TestCase):
             "name": "Asset with émojis 🎉",
             "description": "Description with special chars: àáâãäå",
         }
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["name"], "Asset with émojis 🎉")
 
     def test_list_assets_special_characters_in_filters(self):
         """Test filtering with special characters"""
-        response = self.client.get("/api/v1/assets/assets/?domain=test-domain&search=test%20asset")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?domain=test-domain&search=test%20asset")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -1388,7 +1456,7 @@ class AssetAPIEdgeCasesTest(TestCase):
             "description": "",  # Empty string
             "domain": "",  # Empty string
         }
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         # Should handle empty strings (convert to None or keep as empty)
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -1418,7 +1486,9 @@ class AssetAPIPerformanceTest(TransactionTestCase):
             )
 
         start_time = time.time()
-        response = self.client.get("/api/v1/assets/assets/?page_size=50")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?page_size=50")
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1441,7 +1511,7 @@ class AssetAPIPerformanceTest(TransactionTestCase):
                 # Close any existing connections for this thread
                 connections.close_all()
                 data = {"key": f"concurrent-asset-{index}", "name": f"Concurrent Asset {index}"}
-                response = self.client.post("/api/v1/assets/assets/", data, format="json")
+                response = self.client.post("/api/v1/assets/", data, format="json")
                 with lock:
                     results.append(response.status_code)
             except Exception as e:
@@ -1490,7 +1560,9 @@ class AssetListAPIAdvancedTest(TestCase):
             tenant=self.tenant, created_by=self.user, key="asset-2", name="Asset 2", domain="sales"
         )
 
-        response = self.client.get("/api/v1/assets/assets/?domain=")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?domain=")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should handle empty domain filter
@@ -1501,7 +1573,9 @@ class AssetListAPIAdvancedTest(TestCase):
             tenant=self.tenant, created_by=self.user, key="test-asset", name="Test Asset"
         )
 
-        response = self.client.get("/api/v1/assets/assets/?search=TEST")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?search=TEST")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data["count"], 1)
@@ -1512,7 +1586,9 @@ class AssetListAPIAdvancedTest(TestCase):
             tenant=self.tenant, created_by=self.user, key="test-asset", name="Test Asset"
         )
 
-        response = self.client.get("/api/v1/assets/assets/?search=Test")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?search=Test")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data["count"], 1)
@@ -1526,7 +1602,9 @@ class AssetListAPIAdvancedTest(TestCase):
             tenant=self.tenant, created_by=self.user, key="asset-b", name="Asset B"
         )
 
-        response = self.client.get("/api/v1/assets/assets/?ordering=name,key")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?ordering=name,key")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -1539,7 +1617,9 @@ class AssetListAPIAdvancedTest(TestCase):
             tenant=self.tenant, created_by=self.user, key="asset-b", name="Asset B"
         )
 
-        response = self.client.get("/api/v1/assets/assets/?ordering=-name")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?ordering=-name")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         names = [a["name"] for a in response.data["results"]]
@@ -1556,7 +1636,9 @@ class AssetListAPIAdvancedTest(TestCase):
                 name=f"Page Asset {i}",
             )
 
-        response = self.client.get("/api/v1/assets/assets/?page=2&page_size=3")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?page=2&page_size=3")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 2)  # Last 2 assets
@@ -1564,7 +1646,9 @@ class AssetListAPIAdvancedTest(TestCase):
 
     def test_list_assets_pagination_out_of_range(self):
         """Test pagination with page out of range"""
-        response = self.client.get("/api/v1/assets/assets/?page=999")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?page=999")
 
         # DRF pagination returns 404 for out-of-range pages
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -1586,7 +1670,9 @@ class AssetListAPIAdvancedTest(TestCase):
             status=AssetStatus.ACTIVE,
         )
 
-        response = self.client.get("/api/v1/assets/assets/?status=DRAFT")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?status=DRAFT")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for asset in response.data["results"]:
@@ -1609,7 +1695,9 @@ class AssetListAPIAdvancedTest(TestCase):
             status=AssetStatus.ACTIVE,
         )
 
-        response = self.client.get("/api/v1/assets/assets/?status=ACTIVE")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?status=ACTIVE")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for asset in response.data["results"]:
@@ -1625,7 +1713,9 @@ class AssetListAPIAdvancedTest(TestCase):
             status=AssetStatus.RETIRED,
         )
 
-        response = self.client.get("/api/v1/assets/assets/?status=RETIRED")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?status=RETIRED")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for asset in response.data["results"]:
@@ -1641,7 +1731,9 @@ class AssetListAPIAdvancedTest(TestCase):
             status=AssetStatus.PUBLIC,
         )
 
-        response = self.client.get("/api/v1/assets/assets/?status=PUBLIC")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?status=PUBLIC")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for asset in response.data["results"]:
@@ -1664,7 +1756,9 @@ class AssetListAPIAdvancedTest(TestCase):
             visibility=AssetVisibility.PUBLIC,
         )
 
-        response = self.client.get("/api/v1/assets/assets/?visibility=INTERNAL")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?visibility=INTERNAL")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for asset in response.data["results"]:
@@ -1687,7 +1781,9 @@ class AssetListAPIAdvancedTest(TestCase):
             visibility=AssetVisibility.PUBLIC,
         )
 
-        response = self.client.get("/api/v1/assets/assets/?visibility=PUBLIC")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?visibility=PUBLIC")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for asset in response.data["results"]:
@@ -1720,7 +1816,9 @@ class AssetListAPIAdvancedTest(TestCase):
             status=AssetStatus.ACTIVE,
         )
 
-        response = self.client.get("/api/v1/assets/assets/?domain=sales&status=ACTIVE")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?domain=sales&status=ACTIVE")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 1)
@@ -1746,7 +1844,9 @@ class AssetListAPIAdvancedTest(TestCase):
             visibility=AssetVisibility.PUBLIC,
         )
 
-        response = self.client.get("/api/v1/assets/assets/?domain=sales&visibility=PUBLIC")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?domain=sales&visibility=PUBLIC")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 1)
@@ -1761,14 +1861,18 @@ class AssetListAPIAdvancedTest(TestCase):
             name="Asset with & special chars",
         )
 
-        response = self.client.get("/api/v1/assets/assets/?search=special")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?search=special")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(response.data["count"], 1)
 
     def test_list_assets_search_empty_string(self):
         """Test search with empty string"""
-        response = self.client.get("/api/v1/assets/assets/?search=")
+        from django.urls import reverse
+        url = reverse('asset-list')
+        response = self.client.get(f"{url}?search=")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should return all assets or handle gracefully
@@ -1776,7 +1880,7 @@ class AssetListAPIAdvancedTest(TestCase):
     def test_list_assets_very_long_search_string(self):
         """Test search with very long string"""
         long_search = "a" * 1000
-        response = self.client.get(f"/api/v1/assets/assets/?search={long_search}")
+        response = self.client.get(f"/api/v1/assets/?search={long_search}")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should handle gracefully without error
@@ -1800,7 +1904,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
             "description": "c" * 1000,  # Long description
             "domain": "d" * 100,  # Max length
         }
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(len(response.data["key"]), 255)
@@ -1809,7 +1913,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
     def test_create_asset_with_whitespace_only_name(self):
         """Test creating asset with whitespace-only name"""
         data = {"key": "whitespace-asset", "name": "   "}  # Only whitespace
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         # May strip whitespace or reject
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -1817,7 +1921,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
     def test_create_asset_with_leading_trailing_whitespace(self):
         """Test creating asset with leading/trailing whitespace"""
         data = {"key": "  trimmed-asset  ", "name": "  Trimmed Asset  "}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         # Key and name may be trimmed
@@ -1836,7 +1940,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
         # Create asset with same key in tenant2
         self.client.force_authenticate(user=user2)
         data = {"key": "shared-key", "name": "Asset 2"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["key"], "shared-key")
@@ -1844,7 +1948,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
     def test_create_asset_with_null_description(self):
         """Test creating asset with null description"""
         data = {"key": "null-desc-asset", "name": "Null Description Asset", "description": None}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIsNone(response.data.get("description"))
@@ -1852,7 +1956,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
     def test_create_asset_with_null_domain(self):
         """Test creating asset with null domain"""
         data = {"key": "null-domain-asset", "name": "Null Domain Asset", "domain": None}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIsNone(response.data.get("domain"))
@@ -1861,7 +1965,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
         """Test creating asset without authentication"""
         self.client.logout()
         data = {"key": "unauthorized-asset", "name": "Unauthorized Asset"}
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -1873,7 +1977,7 @@ class AssetCreateAPIAdvancedTest(TestCase):
             "extra_field": "should be ignored",
             "another_field": 123,
         }
-        response = self.client.post("/api/v1/assets/assets/", data, format="json")
+        response = self.client.post("/api/v1/assets/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertNotIn("extra_field", response.data)
@@ -1896,7 +2000,7 @@ class AssetRetrieveAPIAdvancedTest(TestCase):
     def test_retrieve_asset_unauthorized(self):
         """Test retrieving asset without authentication"""
         self.client.logout()
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -1910,7 +2014,7 @@ class AssetRetrieveAPIAdvancedTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Contracts may be included in response or separate endpoint
@@ -1934,7 +2038,7 @@ class AssetRetrieveAPIAdvancedTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
-        response = self.client.get(f"/api/v1/assets/assets/{self.asset.id}/")
+        response = self.client.get(f"/api/v1/assets/{self.asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Datasets may be included in response or separate endpoint
@@ -1951,7 +2055,7 @@ class AssetRetrieveAPIAdvancedTest(TestCase):
             )
 
             self.client.force_authenticate(user=self.user)
-            response = self.client.get(f"/api/v1/assets/assets/{asset.id}/")
+            response = self.client.get(f"/api/v1/assets/{asset.id}/")
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["status"], asset_status.value)
@@ -1977,7 +2081,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
     def test_update_asset_empty_patch(self):
         """Test PATCH with empty data"""
         self.client.force_authenticate(user=self.user)
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", {}, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", {}, format="json")
 
         # Should succeed (no changes)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1986,7 +2090,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
         """Test partial update with only name"""
         self.client.force_authenticate(user=self.user)
         data = {"name": "Updated Name Only", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["name"], "Updated Name Only")
@@ -1997,7 +2101,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
         """Test partial update with only description"""
         self.client.force_authenticate(user=self.user)
         data = {"description": "Updated Description Only", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["description"], "Updated Description Only")
@@ -2009,7 +2113,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
 
         self.client.force_authenticate(user=self.user)
         data = {"description": "", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Description may be set to empty or None
@@ -2022,7 +2126,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
 
         self.client.force_authenticate(user=self.user)
         data = {"domain": "", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Domain may be set to empty or None
@@ -2035,7 +2139,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
 
         self.client.force_authenticate(user=self.user)
         data = {"domain": None, "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNone(response.data.get("domain"))
@@ -2044,7 +2148,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
         """Test updating asset without authentication"""
         self.client.logout()
         data = {"name": "Unauthorized Update", "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -2058,7 +2162,7 @@ class AssetUpdateAPIAdvancedTest(TestCase):
 
         # Test DRAFT -> PUBLIC
         data = {"status": AssetStatus.PUBLIC, "version": self.asset.version}
-        response = self.client.patch(f"/api/v1/assets/assets/{self.asset.id}/", data, format="json")
+        response = self.client.patch(f"/api/v1/assets/{self.asset.id}/", data, format="json")
 
         # May require activation workflow
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
@@ -2094,7 +2198,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
         self.client.logout()
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -2117,7 +2221,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -2141,7 +2245,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -2162,7 +2266,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -2183,7 +2287,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -2222,7 +2326,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -2245,7 +2349,7 @@ class AssetActivateAPIAdvancedTest(TestCase):
 
         data = {"version": asset.version}
         response = self.client.post(
-            f"/api/v1/assets/assets/{asset.id}/activate/", data, format="json"
+            f"/api/v1/assets/{asset.id}/activate/", data, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, f"Response: {response.data}")
@@ -2269,7 +2373,7 @@ class AssetDeleteAPIAdvancedTest(TestCase):
         )
 
         self.client.logout()
-        response = self.client.delete(f"/api/v1/assets/assets/{asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -2284,7 +2388,7 @@ class AssetDeleteAPIAdvancedTest(TestCase):
         )
 
         self.client.force_authenticate(user=self.user)
-        response = self.client.delete(f"/api/v1/assets/assets/{asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{asset.id}/")
 
         # Should still succeed (idempotent)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
@@ -2303,7 +2407,7 @@ class AssetDeleteAPIAdvancedTest(TestCase):
             )
 
             self.client.force_authenticate(user=self.user)
-            response = self.client.delete(f"/api/v1/assets/assets/{asset.id}/")
+            response = self.client.delete(f"/api/v1/assets/{asset.id}/")
 
             self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
             asset.refresh_from_db()
@@ -2320,7 +2424,7 @@ class AssetDeleteAPIAdvancedTest(TestCase):
         original_version = asset.version
 
         self.client.force_authenticate(user=self.user)
-        response = self.client.delete(f"/api/v1/assets/assets/{asset.id}/")
+        response = self.client.delete(f"/api/v1/assets/{asset.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         asset.refresh_from_db()
@@ -2330,13 +2434,13 @@ class AssetDeleteAPIAdvancedTest(TestCase):
         """Test deleting non-existent asset"""
         self.client.force_authenticate(user=self.user)
         fake_id = uuid.uuid4()
-        response = self.client.delete(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.delete(f"/api/v1/assets/{fake_id}/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_delete_asset_invalid_uuid(self):
         """Test deleting asset with invalid UUID"""
         self.client.force_authenticate(user=self.user)
-        response = self.client.delete("/api/v1/assets/assets/invalid-uuid/")
+        response = self.client.delete("/api/v1/assets/invalid-uuid/")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

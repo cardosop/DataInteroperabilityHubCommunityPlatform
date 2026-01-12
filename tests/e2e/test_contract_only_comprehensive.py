@@ -145,7 +145,7 @@ class ContractOnlyFlowFailureTests(E2ETestBase):
         from hub.apps.assets.models import Asset
         asset = Asset.objects.get(id=asset_id)
         activate_response = self.client.post(
-            f'/api/v1/assets/assets/{asset_id}/activate/',
+            f'/api/v1/assets/{asset_id}/activate/',
             {'version': asset.version},
             format='json'
         )
@@ -174,7 +174,7 @@ class ContractOnlyFlowFailureTests(E2ETestBase):
             from hub.apps.assets.models import Asset
             asset = Asset.objects.get(id=asset_id)
             activate_response = self.client.post(
-                f'/api/v1/assets/assets/{asset_id}/activate/',
+                f'/api/v1/assets/{asset_id}/activate/',
                 {'version': asset.version},
                 format='json'
             )
@@ -198,7 +198,7 @@ class ContractOnlyFlowFailureTests(E2ETestBase):
         from hub.apps.assets.models import Asset
         asset = Asset.objects.get(id=asset_id)
         activate_response = self.client.post(
-            f'/api/v1/assets/assets/{asset_id}/activate/',
+            f'/api/v1/assets/{asset_id}/activate/',
             {'version': asset.version},
             format='json'
         )

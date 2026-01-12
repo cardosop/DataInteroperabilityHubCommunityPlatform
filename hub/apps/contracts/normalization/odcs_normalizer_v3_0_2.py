@@ -42,6 +42,10 @@ class ODCSNormalizerV3_0_2(ODCSNormalizerBase):
         Returns:
             True if this normalizer supports the version, False otherwise
         """
+        # Handle None case gracefully
+        if spec_version is None:
+            return False
+
         # Support exact version 3.0.2
         if spec_version == "3.0.2":
             return True
@@ -51,7 +55,7 @@ class ODCSNormalizerV3_0_2(ODCSNormalizerBase):
             return True
 
         # Support patch versions starting with "3.0.2" (e.g., "3.0.2.1", "3.0.2.5")
-        if spec_version.startswith("3.0.2"):
+        if isinstance(spec_version, str) and spec_version.startswith("3.0.2"):
             return True
 
         return False
@@ -78,7 +82,7 @@ class ODCSNormalizerV3_0_2(ODCSNormalizerBase):
             spec_version: ODCS spec version (should be "3.0.2" or "3.0.2+" for this normalizer)
         """
         # Verify version is 3.0.2 or 3.0.2+
-        if not (spec_version == "3.0.2" or spec_version == "3.0.2+" or spec_version.startswith("3.0.2")):
+        if not (spec_version and (spec_version == "3.0.2" or spec_version == "3.0.2+" or (isinstance(spec_version, str) and spec_version.startswith("3.0.2")))):
             logger.warning(
                 "odcs_v3_0_2_unexpected_version",
                 expected_version="3.0.2 or 3.0.2+",

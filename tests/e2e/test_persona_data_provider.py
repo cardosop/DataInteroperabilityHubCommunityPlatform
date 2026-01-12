@@ -89,7 +89,7 @@ class DataProviderPersonaTest(E2ETestBase):
         request = Mock()
         request.tenant_id = str(self.tenant.id)
         request.user = self.provider_user
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         request.api_key_obj = None
         
@@ -107,7 +107,7 @@ class DataProviderPersonaTest(E2ETestBase):
     
     def test_data_provider_rate_limit_headers(self):
         """Test rate limit headers are present for DATA_PROVIDER"""
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         
         # Rate limit headers should be present (if rate limiting is active)
         # Headers may vary, so we check if response is successful
@@ -115,7 +115,7 @@ class DataProviderPersonaTest(E2ETestBase):
     
     def test_data_provider_can_access_contracts(self):
         """Test DATA_PROVIDER can access contracts (subject to rate limits)"""
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         
         # Should be able to access (may be rate limited)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS])
@@ -127,7 +127,7 @@ class DataProviderPersonaTest(E2ETestBase):
         contract_data = ContractFactoryEnhanced.create_hub_contract_json()
         
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             contract_data,
             format="json"
         )
@@ -144,7 +144,7 @@ class DataProviderPersonaTest(E2ETestBase):
         # Make rapid requests to test burst limit
         responses = []
         for i in range(5):
-            response = self.client.get("/api/v1/contracts/contracts/")
+            response = self.client.get("/api/v1/contracts/")
             responses.append(response.status_code)
         
         # At least some requests should succeed
@@ -161,7 +161,7 @@ class DataProviderPersonaTest(E2ETestBase):
         
         responses = []
         for i in range(3):
-            response = self.client.get("/api/v1/contracts/contracts/")
+            response = self.client.get("/api/v1/contracts/")
             responses.append(response.status_code)
             time.sleep(0.1)  # Small delay
         
@@ -204,7 +204,7 @@ class DataProviderPersonaTest(E2ETestBase):
         request = Mock()
         request.tenant_id = str(self.tenant.id)
         request.user = None
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         request.api_key_obj = api_key
         
@@ -225,7 +225,7 @@ class DataProviderPersonaTest(E2ETestBase):
         # Test by making API calls that CLI would make
         
         # List contracts
-        response = self.client.get("/api/v1/contracts/contracts/")
+        response = self.client.get("/api/v1/contracts/")
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_429_TOO_MANY_REQUESTS])
     
     def test_data_provider_cli_contract_creation(self):
@@ -235,7 +235,7 @@ class DataProviderPersonaTest(E2ETestBase):
         contract_data = ContractFactoryEnhanced.create_hub_contract_json()
         
         response = self.client.post(
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             contract_data,
             format="json"
         )
@@ -251,7 +251,7 @@ class DataProviderPersonaTest(E2ETestBase):
         """Test rate limits are enforced per endpoint category"""
         # Different endpoints may have different rate limits
         endpoints = [
-            "/api/v1/contracts/contracts/",
+            "/api/v1/contracts/",
             "/api/v1/dq/runs/",
             "/api/v1/compliance/runs/"
         ]
@@ -286,7 +286,7 @@ class DataProviderPersonaTest(E2ETestBase):
         request = Mock()
         request.tenant_id = str(self.tenant.id)
         request.user = self.provider_user
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         request.api_key_obj = None
         
@@ -311,7 +311,7 @@ class DataProviderPersonaTest(E2ETestBase):
         request = Mock()
         request.tenant_id = str(self.tenant.id)
         request.user = self.provider_user
-        request.path = "/api/v1/contracts/contracts/"
+        request.path = "/api/v1/contracts/"
         request.method = "GET"
         request.api_key_obj = None
         
@@ -355,7 +355,7 @@ class DataProviderPersonaTest(E2ETestBase):
         # Make requests until rate limited
         response = None
         for i in range(20):  # Try to trigger rate limit
-            response = self.client.get("/api/v1/contracts/contracts/")
+            response = self.client.get("/api/v1/contracts/")
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 break
         
@@ -368,7 +368,7 @@ class DataProviderPersonaTest(E2ETestBase):
         # Make requests until rate limited
         response = None
         for i in range(20):
-            response = self.client.get("/api/v1/contracts/contracts/")
+            response = self.client.get("/api/v1/contracts/")
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
                 break
         
@@ -396,14 +396,14 @@ class DataProviderPersonaTest(E2ETestBase):
         request1 = Mock()
         request1.tenant_id = str(self.tenant.id)
         request1.user = self.provider_user
-        request1.path = "/api/v1/contracts/contracts/"
+        request1.path = "/api/v1/contracts/"
         request1.method = "GET"
         request1.api_key_obj = None
         
         request2 = Mock()
         request2.tenant_id = str(self.tenant.id)
         request2.user = other_provider
-        request2.path = "/api/v1/contracts/contracts/"
+        request2.path = "/api/v1/contracts/"
         request2.method = "GET"
         request2.api_key_obj = None
         

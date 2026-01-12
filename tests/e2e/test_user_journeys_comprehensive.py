@@ -2232,7 +2232,7 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
     
     def _view_asset_details(self, asset_id):
         """View asset details."""
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/')
         # May return 404 if asset is in different tenant (expected for marketplace scenario)
         assert response.status_code in [200, 404]
         return response.data if response.status_code == 200 else {}
@@ -2240,7 +2240,7 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
     def _view_asset_details_via_listing(self, asset_id):
         """View asset details via marketplace listing."""
         # Try to get asset details - may fail due to tenant isolation
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/')
         # In marketplace scenario, consumer may not have direct access
         # This is expected behavior - they access via marketplace
         return response.data if response.status_code == 200 else {"accessible_via_marketplace": True}
@@ -2280,7 +2280,7 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
     
     def _find_asset(self, asset_id):
         """Find asset."""
-        response = self.client.get(f'/api/v1/assets/assets/{asset_id}/')
+        response = self.client.get(f'/api/v1/assets/{asset_id}/')
         assert response.status_code in [200, 404]  # May not have access
         return asset_id
     
@@ -2363,11 +2363,11 @@ class Persona4DataConsumerJourneys(UserJourneyTestBase):
     
     def _generate_download_link(self, file_id):
         """Generate download link."""
-        return {"download_url": f"/api/v1/files/files/{file_id}/download/"}
+        return {"download_url": f"/api/v1/files/{file_id}/download/"}
     
     def _get_lineage_data(self, contract_id):
         """Get lineage data."""
-        response = self.client.get(f'/api/v1/contracts/contracts/{contract_id}/lineage/')
+        response = self.client.get(f'/api/v1/contracts/{contract_id}/lineage/')
         if response.status_code == 200:
             return response.data
         return {}
@@ -3254,7 +3254,7 @@ class Persona7ExternalDeveloperJourneys(UserJourneyTestBase):
     def _test_api_calls(self):
         """Test API calls."""
         # Test a simple API call
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         assert response.status_code in [200, 401]  # May require auth
         return {"test_passed": True}
     

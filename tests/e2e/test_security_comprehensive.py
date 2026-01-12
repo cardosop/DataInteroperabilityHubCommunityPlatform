@@ -56,7 +56,7 @@ class InputValidationE2ETest(E2ETestBase):
 
         for malicious_input in malicious_inputs:
             # Try to use malicious input in filter
-            response = self.client.get("/api/v1/assets/assets/", {"key": malicious_input})
+            response = self.client.get("/api/v1/assets/", {"key": malicious_input})
 
             # Should not cause SQL injection
             # Response should be 200 (empty results) or 400 (validation error)
@@ -81,7 +81,7 @@ class InputValidationE2ETest(E2ETestBase):
 
         for malicious_input in malicious_inputs:
             # Try to use malicious input in path
-            response = self.client.get(f"/api/v1/assets/assets/{malicious_input}/")
+            response = self.client.get(f"/api/v1/assets/{malicious_input}/")
 
             # Should return 404 (not found) or 400 (bad request), not execute SQL
             self.assertIn(
@@ -102,7 +102,7 @@ class InputValidationE2ETest(E2ETestBase):
         for malicious_input in malicious_inputs:
             # Try to create asset with malicious input
             response = self.client.post(
-                "/api/v1/assets/assets/",
+                "/api/v1/assets/",
                 {"key": malicious_input, "name": "Test"},
                 format="json",
             )
@@ -146,7 +146,7 @@ class InputValidationE2ETest(E2ETestBase):
             asset_id = self.create_asset(key=f"xss-test-{uuid.uuid4().hex[:8]}", name=payload)
 
             # Retrieve asset
-            response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+            response = self.client.get(f"/api/v1/assets/{asset_id}/")
 
             if response.status_code == status.HTTP_200_OK:
                 # Check that response is JSON (not HTML)
@@ -170,7 +170,7 @@ class InputValidationE2ETest(E2ETestBase):
         asset_id = self.create_asset(key=f"xss-json-{uuid.uuid4().hex[:8]}", name=xss_payload)
 
         # Get asset
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
 
         if response.status_code == status.HTTP_200_OK:
             # Response should be JSON
@@ -223,7 +223,7 @@ class InputValidationE2ETest(E2ETestBase):
     def test_csrf_token_generation(self):
         """Test CSRF token generation"""
         # Get a response to generate CSRF token
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
 
         # CSRF token should be available in request
         if hasattr(response, "wsgi_request"):
@@ -281,7 +281,7 @@ class DataAccessControlsE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.other_user)
 
         # Try to access asset from other tenant (should fail with 404)
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
         self.assertEqual(
             response.status_code,
             status.HTTP_404_NOT_FOUND,
@@ -298,7 +298,7 @@ class DataAccessControlsE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.other_user)
 
         # Try to access contract from other tenant (should fail with 404)
-        response = self.client.get(f"/api/v1/contracts/contracts/{contract_id}/")
+        response = self.client.get(f"/api/v1/contracts/{contract_id}/")
         self.assertEqual(
             response.status_code,
             status.HTTP_404_NOT_FOUND,
@@ -315,7 +315,7 @@ class DataAccessControlsE2ETest(E2ETestBase):
         self.client.force_authenticate(user=self.other_user)
 
         # List assets (should only see other tenant's assets, which is none)
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Should not see current tenant's assets
@@ -364,7 +364,7 @@ class DataAccessControlsE2ETest(E2ETestBase):
         )
 
         # Get asset
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
 
         if response.status_code == status.HTTP_200_OK:
             data = response.data
@@ -382,7 +382,7 @@ class DataAccessControlsE2ETest(E2ETestBase):
         asset_id = self.create_asset(key="sensitive-test", name="Sensitive Test")
 
         # Get asset
-        response = self.client.get(f"/api/v1/assets/assets/{asset_id}/")
+        response = self.client.get(f"/api/v1/assets/{asset_id}/")
 
         if response.status_code == status.HTTP_200_OK:
             data = response.data
@@ -418,7 +418,7 @@ class DataAccessControlsE2ETest(E2ETestBase):
         """Test that PII is not exposed in error messages"""
         # Try to access non-existent resource
         fake_id = uuid.uuid4()
-        response = self.client.get(f"/api/v1/assets/assets/{fake_id}/")
+        response = self.client.get(f"/api/v1/assets/{fake_id}/")
 
         if "error" in response.data:
             error = response.data["error"]
@@ -444,7 +444,7 @@ class SecurityHeadersE2ETest(E2ETestBase):
 
     def test_x_frame_options_header(self):
         """Test X-Frame-Options header"""
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
 
         # X-Frame-Options should be set (clickjacking protection)
         # Django sets this via XFrameOptionsMiddleware
@@ -459,7 +459,7 @@ class SecurityHeadersE2ETest(E2ETestBase):
 
     def test_x_content_type_options_header(self):
         """Test X-Content-Type-Options header"""
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
 
         # X-Content-Type-Options should be set (MIME type sniffing protection)
         if "X-Content-Type-Options" in response:
@@ -472,7 +472,7 @@ class SecurityHeadersE2ETest(E2ETestBase):
 
     def test_referrer_policy_header(self):
         """Test Referrer-Policy header"""
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
 
         # Referrer-Policy should be set
         if "Referrer-Policy" in response:
@@ -496,7 +496,7 @@ class SecurityHeadersE2ETest(E2ETestBase):
 
     def test_security_headers_present(self):
         """Test that security headers are present"""
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
 
         # Check for common security headers
         security_headers = [
@@ -543,7 +543,7 @@ class SecurityHeadersE2ETest(E2ETestBase):
     def test_cors_preflight_request(self):
         """Test CORS preflight (OPTIONS) request"""
         # Make OPTIONS request (CORS preflight)
-        response = self.client.options("/api/v1/assets/assets/")
+        response = self.client.options("/api/v1/assets/")
 
         # Should return 200 or 204
         self.assertIn(
@@ -593,7 +593,7 @@ class SecurityHeadersE2ETest(E2ETestBase):
         # SecurityHeadersMiddleware may or may not be in middleware stack
         # Security headers are also set by SecurityMiddleware
         # This test verifies that security headers are present in responses
-        response = self.client.get("/api/v1/assets/assets/")
+        response = self.client.get("/api/v1/assets/")
 
         # Verify security headers are present (set by SecurityMiddleware or custom middleware)
         security_headers_present = []

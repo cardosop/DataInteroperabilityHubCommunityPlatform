@@ -5,27 +5,35 @@ Service layer for transformation pipeline operations.
 Provides business logic for pipeline management, execution coordination,
 and event publishing.
 """
-import logging
-from typing import Dict, Any, Optional, List
-from django.db import transaction, connection
-from django.utils import timezone
-from django.core.cache import cache
-from django.http import HttpRequest
 
-from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
-from hub.apps.core.services.base import PermissionError
+import logging
+from typing import Any, Dict, List, Optional
+
+from django.core.cache import cache
+from django.db import connection, transaction
+from django.http import HttpRequest
+from django.utils import timezone
+
+from hub.apps.assets.models import Asset
+from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.events.service_publishers import TransformationEventPublisher
-from hub.apps.transformation.models import TransformationPipeline, TransformationNode, PipelineStatus
+from hub.apps.core.services.base import BaseService, NotFoundError, PermissionError, ValidationError
+from hub.apps.governance.abac import ABACEngine
+from hub.apps.jobs.utils import check_tenant_job_limits
+from hub.apps.tenants.services import get_tenant_job_limits
 from hub.apps.transformation.exceptions import (
-    TransformationError,
-    TransformationValidationError,
-    TransformationExecutionError,
     AssetCompatibilityError,
     ResourceQuotaExceededError,
+    TransformationError,
+    TransformationExecutionError,
+    TransformationValidationError,
 )
-from hub.apps.governance.abac import ABACEngine
-from hub.apps.tenants.services import get_tenant_job_limits
-from hub.apps.jobs.utils import check_tenant_job_limits
+from hub.apps.transformation.models import (
+    PipelineStatus,
+    TransformationNode,
+    TransformationPipeline,
+)
+from hub.apps.transformation.pipeline_compatibility_validator import PipelineCompatibilityValidator
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +67,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         # Initialize event publisher
         TransformationEventPublisher.__init__(self)
 
-    def _validate_pipeline_schema(
-        self,
-        pipeline_definition: Dict[str, Any]
-    ) -> None:
+    def _validate_pipeline_schema(self, pipeline_definition: Dict[str, Any]) -> None:
         """
         Validate pipeline definition schema.
 
@@ -78,7 +83,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         if not isinstance(pipeline_definition, dict):
             raise ValidationError(
                 "Pipeline definition must be a JSON object",
-                details={"pipeline_definition": "Must be a dictionary"}
+                details={"pipeline_definition": "Must be a dictionary"},
             )
 
         # Validate required fields
@@ -88,10 +93,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 errors.append(f"Pipeline definition must contain '{field}' field")
 
         if errors:
-            raise ValidationError(
-                "Pipeline schema validation failed",
-                details={"errors": errors}
-            )
+            raise ValidationError("Pipeline schema validation failed", details={"errors": errors})
 
         # Validate version format
         version_str = pipeline_definition.get("version", "")
@@ -119,15 +121,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 errors.append(f"Step {i} must have a 'type' field")
 
         if errors:
-            raise ValidationError(
-                "Pipeline schema validation failed",
-                details={"errors": errors}
-            )
+            raise ValidationError("Pipeline schema validation failed", details={"errors": errors})
 
-    def _validate_node_compatibility(
-        self,
-        pipeline_definition: Dict[str, Any]
-    ) -> None:
+    def _validate_node_compatibility(self, pipeline_definition: Dict[str, Any]) -> None:
         """
         Validate node compatibility in pipeline definition.
 
@@ -190,9 +186,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 step = steps[pos]
                 node_config = step.get("node_config", {})
                 if not isinstance(node_config, dict):
-                    errors.append(
-                        f"Join node '{name}' must have node_config as a dictionary"
-                    )
+                    errors.append(f"Join node '{name}' must have node_config as a dictionary")
                 else:
                     # Join nodes typically need join keys or join type
                     if "join_type" not in node_config and "join_keys" not in node_config:
@@ -202,14 +196,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
         if errors:
             raise ValidationError(
-                "Node compatibility validation failed",
-                details={"errors": errors}
+                "Node compatibility validation failed", details={"errors": errors}
             )
 
     def _validate_asset_compatibility(
-        self,
-        tenant_id: str,
-        metadata: Optional[Dict[str, Any]]
+        self, tenant_id: str, metadata: Optional[Dict[str, Any]]
     ) -> None:
         """
         Validate asset compatibility if source/target assets are specified.
@@ -232,10 +223,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         if source_asset_id:
             try:
                 from hub.apps.assets.models import Asset
-                source_asset = Asset.objects.get(
-                    id=source_asset_id,
-                    tenant_id=tenant_id
-                )
+
+                source_asset = Asset.objects.get(id=source_asset_id, tenant_id=tenant_id)
 
                 # Check asset is active or at least draft
                 if source_asset.status not in ["DRAFT", "ACTIVE", "PUBLIC"]:
@@ -249,18 +238,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     f"Source asset {source_asset_id} not found or does not belong to tenant"
                 )
             except Exception as e:
-                errors.append(
-                    f"Error validating source asset {source_asset_id}: {str(e)}"
-                )
+                errors.append(f"Error validating source asset {source_asset_id}: {str(e)}")
 
         # Validate target asset if specified
         if target_asset_id:
             try:
                 from hub.apps.assets.models import Asset
-                target_asset = Asset.objects.get(
-                    id=target_asset_id,
-                    tenant_id=tenant_id
-                )
+
+                target_asset = Asset.objects.get(id=target_asset_id, tenant_id=tenant_id)
 
                 # Check asset is active or at least draft
                 if target_asset.status not in ["DRAFT", "ACTIVE", "PUBLIC"]:
@@ -274,21 +259,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     f"Target asset {target_asset_id} not found or does not belong to tenant"
                 )
             except Exception as e:
-                errors.append(
-                    f"Error validating target asset {target_asset_id}: {str(e)}"
-                )
+                errors.append(f"Error validating target asset {target_asset_id}: {str(e)}")
 
         if errors:
             raise ValidationError(
-                "Asset compatibility validation failed",
-                details={"errors": errors}
+                "Asset compatibility validation failed", details={"errors": errors}
             )
 
     def _check_user_permissions(
-        self,
-        user_id: str,
-        tenant_id: str,
-        request: Optional[HttpRequest] = None
+        self, user_id: str, tenant_id: str, request: Optional[HttpRequest] = None
     ) -> None:
         """
         Check user permissions for pipeline creation.
@@ -310,9 +289,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            raise PermissionError(
-                f"User {user_id} not found"
-            )
+            raise PermissionError(f"User {user_id} not found")
 
         # Platform admins have all permissions (can operate on any tenant)
         if user.is_platform_admin:
@@ -320,9 +297,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
         # For non-platform admins, verify tenant matches
         if str(user.tenant_id) != tenant_id:
-            raise PermissionError(
-                f"User {user_id} does not belong to tenant {tenant_id}"
-            )
+            raise PermissionError(f"User {user_id} does not belong to tenant {tenant_id}")
 
         # Check if user has required role (DATA_PROVIDER or TENANT_ADMIN)
         has_required_role = user.has_role("DATA_PROVIDER", "TENANT_ADMIN")
@@ -335,7 +310,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         # Priority: API key scopes > role-based assumption
         has_scope = False
 
-        if request and hasattr(request, 'api_key_scopes'):
+        if request and hasattr(request, "api_key_scopes"):
             # Check API key scopes if available
             required_scope = "transformation:write"
             has_scope = required_scope in request.api_key_scopes
@@ -354,11 +329,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             f"has_role={has_required_role}, has_scope={has_scope}"
         )
 
-    def _validate_resource_quota(
-        self,
-        tenant_id: str,
-        pipeline_definition: Dict[str, Any]
-    ) -> None:
+    def _validate_resource_quota(self, tenant_id: str, pipeline_definition: Dict[str, Any]) -> None:
         """
         Validate resource quota (compute, storage) for pipeline creation.
 
@@ -391,7 +362,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     quota_type="concurrent_executions",
                     limit=float(limits["max_job_concurrency"]),
                     current=float(running_count),
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
             elif queued_count >= limits["max_queued_jobs"]:
                 raise ResourceQuotaExceededError(
@@ -400,14 +371,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     quota_type="queued_jobs",
                     limit=float(limits["max_queued_jobs"]),
                     current=float(queued_count),
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
             else:
                 # Generic quota exceeded error
                 raise ResourceQuotaExceededError(
                     error_message or "Tenant resource quota exceeded",
                     error_code=ResourceQuotaExceededError.ERROR_CODE_QUOTA_EXCEEDED,
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
 
         # Check pipeline node count limit (if applicable)
@@ -418,9 +389,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         # Future: Check against tenant-specific node count limits
         # For now, we allow any number of nodes
 
-        logger.debug(
-            f"Resource quota validated: tenant_id={tenant_id}, node_count={node_count}"
-        )
+        logger.debug(f"Resource quota validated: tenant_id={tenant_id}, node_count={node_count}")
 
     def _check_abac_policies(
         self,
@@ -428,7 +397,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         tenant_id: str,
         resource_type: str = "TRANSFORMATION_PIPELINE",
         resource_id: Optional[str] = None,
-        access_type: str = "WRITE"
+        access_type: str = "WRITE",
     ) -> None:
         """
         Check ABAC policies for pipeline operations.
@@ -453,15 +422,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
             tenant_id=tenant_id,
             resource_type=resource_type,
             resource_id=effective_resource_id,
-            access_type=access_type
+            access_type=access_type,
         )
 
         if not result.allowed:
             # ABAC policy denied access
             policy_name = result.policy.name if result.policy else "Unknown"
             raise PermissionError(
-                f"ABAC policy denied access to {resource_type} operation. "
-                f"Policy: {policy_name}"
+                f"ABAC policy denied access to {resource_type} operation. " f"Policy: {policy_name}"
             )
 
         logger.debug(
@@ -480,7 +448,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         version: str = "1.0.0",
         status: PipelineStatus = PipelineStatus.DRAFT,
         metadata: Optional[Dict[str, Any]] = None,
-        request: Optional[HttpRequest] = None
+        request: Optional[HttpRequest] = None,
     ) -> TransformationPipeline:
         """
         Create a transformation pipeline with comprehensive validation.
@@ -522,7 +490,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Default pipeline definition for quota check if not provided
             effective_pipeline_definition = pipeline_definition or {
                 "version": version,
-                "steps": [{"name": "initial_step", "type": "task", "task": "noop", "input": {}}]
+                "steps": [{"name": "initial_step", "type": "task", "task": "noop", "input": {}}],
             }
             self._validate_resource_quota(tenant_id, effective_pipeline_definition)
 
@@ -551,7 +519,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 pipeline_definition=pipeline_definition,
                 version=version,
                 status=status,
-                metadata=effective_metadata
+                metadata=effective_metadata,
             )
 
             # Run model validation (clean method)
@@ -573,7 +541,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     version=pipeline.version,
                     status=status_str,
                     tenant_id=tenant_id,
-                    user_id=user_id
+                    user_id=user_id,
                 )
             except Exception as e:
                 # Log but don't fail pipeline creation if event publishing fails
@@ -582,16 +550,17 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "tenant_id": tenant_id,
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Create audit log
             try:
+                from django.contrib.auth import get_user_model
+
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
-                from django.contrib.auth import get_user_model
 
                 User = get_user_model()
                 tenant_obj = Tenant.objects.get(id=tenant_id)
@@ -615,7 +584,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 if pipeline_definition:
                     # Include step count instead of full definition to avoid large payloads
                     steps = pipeline_definition.get("steps", [])
-                    audit_details["step_count"] = len(steps)  # Keep as int, JSON will serialize correctly
+                    audit_details["step_count"] = len(
+                        steps
+                    )  # Keep as int, JSON will serialize correctly
 
                 create_audit_event(
                     resource_type="TRANSFORMATION_PIPELINE",
@@ -625,7 +596,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     resource_id=str(pipeline.id),
                     result="SUCCESS",
                     details=audit_details,
-                    request=request
+                    request=request,
                 )
             except Exception as e:
                 # Log but don't fail pipeline creation if audit logging fails
@@ -634,14 +605,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "tenant_id": tenant_id,
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Record metrics
             try:
                 from hub.apps.transformation.monitoring import record_pipeline_created
+
                 record_pipeline_created(tenant_id)
             except Exception as e:
                 logger.warning(f"Failed to record pipeline created metric: {e}")
@@ -652,8 +624,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "pipeline_id": str(pipeline.id),
                     "tenant_id": tenant_id,
                     "user_id": user_id,
-                    "pipeline_name": name
-                }
+                    "pipeline_name": name,
+                },
             )
 
             return pipeline
@@ -668,13 +640,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "tenant_id": tenant_id,
                     "user_id": user_id,
                     "pipeline_name": name,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             raise ValidationError(
-                f"Failed to create transformation pipeline: {str(e)}",
-                details={"error": str(e)}
+                f"Failed to create transformation pipeline: {str(e)}", details={"error": str(e)}
             )
 
     @transaction.atomic
@@ -689,7 +660,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         version: Optional[str] = None,
         status: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        request: Optional[HttpRequest] = None
+        request: Optional[HttpRequest] = None,
     ) -> TransformationPipeline:
         """
         Update a transformation pipeline.
@@ -717,9 +688,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         try:
             # Get pipeline
             pipeline = self.get_resource_or_raise(
-                TransformationPipeline,
-                pipeline_id,
-                tenant_id=effective_tenant_id
+                TransformationPipeline, pipeline_id, tenant_id=effective_tenant_id
             )
 
             # Track changes for audit logging BEFORE updating fields
@@ -757,7 +726,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         original_values["metadata"] = pipeline.metadata.copy()
                         changes["metadata"] = metadata
                 elif pipeline.metadata != metadata:
-                    original_values["metadata"] = pipeline.metadata.copy() if isinstance(pipeline.metadata, dict) else pipeline.metadata
+                    original_values["metadata"] = (
+                        pipeline.metadata.copy()
+                        if isinstance(pipeline.metadata, dict)
+                        else pipeline.metadata
+                    )
                     changes["metadata"] = metadata
 
             # Update fields
@@ -785,9 +758,10 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Create audit log
             effective_user_id = user_id or self.user_id
             try:
+                from django.contrib.auth import get_user_model
+
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
-                from django.contrib.auth import get_user_model
 
                 User = get_user_model()
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
@@ -814,7 +788,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     resource_id=str(pipeline.id),
                     result="SUCCESS",
                     details=audit_details,
-                    request=request
+                    request=request,
                 )
             except Exception as e:
                 # Log but don't fail pipeline update if audit logging fails
@@ -823,9 +797,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "tenant_id": effective_tenant_id,
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Publish pipeline updated event
@@ -844,7 +818,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     previous_status=str(previous_status_str) if previous_status_str else None,
                     new_status=str(new_status_str) if new_status_str else None,
                     tenant_id=effective_tenant_id,
-                    user_id=effective_user_id
+                    user_id=effective_user_id,
                 )
             except Exception as e:
                 # Log but don't fail pipeline update if event publishing fails
@@ -853,9 +827,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "tenant_id": effective_tenant_id,
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             logger.info(
@@ -863,8 +837,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={
                     "pipeline_id": str(pipeline.id),
                     "tenant_id": effective_tenant_id,
-                    "user_id": effective_user_id
-                }
+                    "user_id": effective_user_id,
+                },
             )
 
             return pipeline
@@ -877,13 +851,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={
                     "pipeline_id": pipeline_id,
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             raise ValidationError(
-                f"Failed to update transformation pipeline: {str(e)}",
-                details={"error": str(e)}
+                f"Failed to update transformation pipeline: {str(e)}", details={"error": str(e)}
             )
 
     @transaction.atomic
@@ -892,7 +865,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         pipeline_id: str,
         tenant_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        request: Optional[HttpRequest] = None
+        request: Optional[HttpRequest] = None,
     ) -> None:
         """
         Delete a transformation pipeline.
@@ -912,9 +885,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         try:
             # Get pipeline and capture details before deletion
             pipeline = self.get_resource_or_raise(
-                TransformationPipeline,
-                pipeline_id,
-                tenant_id=effective_tenant_id
+                TransformationPipeline, pipeline_id, tenant_id=effective_tenant_id
             )
 
             # Capture pipeline details for audit logging before deletion
@@ -922,7 +893,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
             pipeline_name = pipeline.name
             pipeline_version = pipeline.version
             pipeline_status = pipeline.status
-            step_count = len(pipeline.pipeline_definition.get("steps", [])) if isinstance(pipeline.pipeline_definition, dict) else 0  # Keep as int
+            step_count = (
+                len(pipeline.pipeline_definition.get("steps", []))
+                if isinstance(pipeline.pipeline_definition, dict)
+                else 0
+            )  # Keep as int
 
             # Delete pipeline (cascade will delete nodes)
             pipeline.delete()
@@ -933,7 +908,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     pipeline_id=pipeline_id_str,
                     reason=None,  # Could be enhanced to accept reason parameter
                     tenant_id=effective_tenant_id,
-                    user_id=effective_user_id
+                    user_id=effective_user_id,
                 )
             except Exception as e:
                 # Log but don't fail pipeline deletion if event publishing fails
@@ -942,16 +917,17 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": pipeline_id_str,
                         "tenant_id": effective_tenant_id,
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Create audit log
             try:
+                from django.contrib.auth import get_user_model
+
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
-                from django.contrib.auth import get_user_model
 
                 User = get_user_model()
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
@@ -976,7 +952,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     resource_id=pipeline_id_str,
                     result="SUCCESS",
                     details=audit_details,
-                    request=request
+                    request=request,
                 )
             except Exception as e:
                 # Log but don't fail pipeline deletion if audit logging fails
@@ -985,9 +961,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": pipeline_id_str,
                         "tenant_id": effective_tenant_id,
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             logger.info(
@@ -995,8 +971,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={
                     "pipeline_id": pipeline_id_str,
                     "tenant_id": effective_tenant_id,
-                    "user_id": effective_user_id
-                }
+                    "user_id": effective_user_id,
+                },
             )
 
         except NotFoundError:
@@ -1007,16 +983,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={
                     "pipeline_id": pipeline_id,
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             raise
 
     def get_pipeline(
-        self,
-        pipeline_id: str,
-        tenant_id: Optional[str] = None
+        self, pipeline_id: str, tenant_id: Optional[str] = None
     ) -> TransformationPipeline:
         """
         Get a transformation pipeline by ID.
@@ -1033,9 +1007,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         """
         effective_tenant_id = tenant_id or self.tenant_id
         return self.get_resource_or_raise(
-            TransformationPipeline,
-            pipeline_id,
-            tenant_id=effective_tenant_id
+            TransformationPipeline, pipeline_id, tenant_id=effective_tenant_id
         )
 
     @transaction.atomic
@@ -1047,7 +1019,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         position: Optional[Dict[str, Any]] = None,
         order: int = 1,
         tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> TransformationNode:
         """
         Create a transformation node.
@@ -1073,9 +1045,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         try:
             # Get pipeline
             pipeline = self.get_resource_or_raise(
-                TransformationPipeline,
-                pipeline_id,
-                tenant_id=effective_tenant_id
+                TransformationPipeline, pipeline_id, tenant_id=effective_tenant_id
             )
 
             # Create node
@@ -1084,7 +1054,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 node_type=node_type,
                 node_config=node_config or {},
                 position=position or {},
-                order=order
+                order=order,
             )
 
             logger.info(
@@ -1094,8 +1064,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "pipeline_id": pipeline_id,
                     "node_type": node_type,
                     "order": order,
-                    "tenant_id": effective_tenant_id
-                }
+                    "tenant_id": effective_tenant_id,
+                },
             )
 
             return node
@@ -1109,19 +1079,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "pipeline_id": pipeline_id,
                     "node_type": node_type,
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             raise ValidationError(
-                f"Failed to create transformation node: {str(e)}",
-                details={"error": str(e)}
+                f"Failed to create transformation node: {str(e)}", details={"error": str(e)}
             )
 
-    def _validate_pipeline_for_execution(
-        self,
-        pipeline: TransformationPipeline
-    ) -> None:
+    def _validate_pipeline_for_execution(self, pipeline: TransformationPipeline) -> None:
         """
         Validate pipeline is ready for execution.
 
@@ -1136,7 +1102,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 f"Pipeline {pipeline.id} cannot be executed. Status: {pipeline.status}",
                 error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE,
                 details={"pipeline_id": str(pipeline.id), "status": pipeline.status},
-                tenant_id=str(pipeline.tenant_id)
+                tenant_id=str(pipeline.tenant_id),
             )
 
         # Validate pipeline definition
@@ -1144,10 +1110,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         self._validate_node_compatibility(pipeline.pipeline_definition)
 
     def _check_asset_compatibility_for_execution(
-        self,
-        asset_id: str,
-        tenant_id: str,
-        pipeline: TransformationPipeline
+        self, asset_id: str, tenant_id: str, pipeline: TransformationPipeline
     ) -> None:
         """
         Check asset compatibility with pipeline for execution.
@@ -1176,18 +1139,18 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 error_code=AssetCompatibilityError.ERROR_CODE_SCHEMA_INCOMPATIBLE,
                 asset_id=str(asset_id),
                 pipeline_id=str(pipeline.id),
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
             )
 
         # Check if asset has datasets
-        latest_dataset = asset.datasets.order_by('-version').first()
+        latest_dataset = asset.datasets.order_by("-version").first()
         if not latest_dataset:
             raise AssetCompatibilityError(
                 f"Asset {asset_id} has no datasets to transform",
                 error_code=AssetCompatibilityError.ERROR_CODE_REQUIRED_FIELD_MISSING,
                 asset_id=str(asset_id),
                 pipeline_id=str(pipeline.id),
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
             )
 
         # Check if dataset has file
@@ -1197,14 +1160,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 error_code=AssetCompatibilityError.ERROR_CODE_REQUIRED_FIELD_MISSING,
                 asset_id=str(asset_id),
                 pipeline_id=str(pipeline.id),
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
             )
 
     def _select_execution_mode(
-        self,
-        asset_id: str,
-        tenant_id: str,
-        force_mode: Optional[str] = None
+        self, asset_id: str, tenant_id: str, force_mode: Optional[str] = None
     ) -> str:
         """
         Select execution mode (SYNC or ASYNC) based on dataset size.
@@ -1225,7 +1185,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
         try:
             asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
-            latest_dataset = asset.datasets.order_by('-version').first()
+            latest_dataset = asset.datasets.order_by("-version").first()
 
             if not latest_dataset:
                 # Default to ASYNC if no dataset info available
@@ -1248,10 +1208,54 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
         except Exception as e:
             logger.warning(
-                f"Error selecting execution mode, defaulting to ASYNC: {e}",
-                extra={"asset_id": asset_id, "tenant_id": tenant_id, "error": str(e)}
+                f"Error selecting execution mode for asset {asset_id}: {e}. Defaulting to ASYNC.",
+                exc_info=True,
             )
             return ExecutionMode.ASYNC
+
+    def validate_pipeline_compatibility(
+        self,
+        pipeline: TransformationPipeline,
+        input_schema: Optional[Dict[str, Any]] = None,
+        input_asset: Optional[Asset] = None,
+        use_cache: bool = True,
+    ) -> ValidationResult:
+        """
+        Comprehensive pipeline compatibility validation.
+
+        Validates:
+        - Schema compatibility (input schema vs pipeline input schema)
+        - Data type compatibility (field types match)
+        - Node compatibility (node types supported, node order valid)
+        - Pipeline definition validation (required fields, valid structure)
+
+        Args:
+            pipeline: TransformationPipeline instance to validate
+            input_schema: Optional input schema dictionary (if not provided, extracted from input_asset)
+            input_asset: Optional input asset (used to extract schema if input_schema not provided)
+            use_cache: Whether to use cached validation results
+
+        Returns:
+            ValidationResult with validation status, errors, warnings, and details
+
+        Example:
+            >>> service = TransformationService(tenant_id="...", user_id="...")
+            >>> pipeline = TransformationPipeline.objects.get(id="...")
+            >>> asset = Asset.objects.get(id="...")
+            >>> result = service.validate_pipeline_compatibility(pipeline, input_asset=asset)
+            >>> if result.is_valid:
+            ...     print("Pipeline is compatible!")
+            ... else:
+            ...     print(f"Validation errors: {result.errors}")
+        """
+        validator = PipelineCompatibilityValidator(tenant_id=self.tenant_id, user_id=self.user_id)
+
+        return validator.validate_pipeline_compatibility(
+            pipeline=pipeline,
+            input_schema=input_schema,
+            input_asset=input_asset,
+            use_cache=use_cache,
+        )
 
     def _execute_pipeline_sync(
         self,
@@ -1259,7 +1263,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         asset_id: str,
         execution: "PipelineExecution",
         tenant_id: str,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Execute pipeline synchronously (for small datasets).
@@ -1284,7 +1288,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         try:
             # Get asset and dataset
             asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
-            latest_dataset = asset.datasets.order_by('-version').first()
+            latest_dataset = asset.datasets.order_by("-version").first()
 
             if not latest_dataset or not latest_dataset.file:
                 raise TransformationExecutionError(
@@ -1292,13 +1296,13 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     error_code=TransformationExecutionError.ERROR_CODE_DATA_PROCESSING_FAILED,
                     pipeline_id=str(pipeline.id),
                     execution_id=str(execution.id),
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
 
             # Download file content
             storage_client = S3StorageClient()
             file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
-            file_format = latest_dataset.format or 'CSV'
+            file_format = latest_dataset.format or "CSV"
 
             # Execute transformation steps
             # For now, this is a placeholder - actual transformation logic would go here
@@ -1310,14 +1314,16 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # 5. Create result asset
 
             execution.add_log_entry("Starting synchronous pipeline execution", "INFO")
-            execution.add_log_entry(f"Processing {file_format} file with {len(file_content)} bytes", "INFO")
+            execution.add_log_entry(
+                f"Processing {file_format} file with {len(file_content)} bytes", "INFO"
+            )
 
             # Placeholder: In real implementation, execute pipeline steps here
             # For now, we'll create a simple result
             result_data = {
                 "rows_processed": latest_dataset.row_count or 0,
                 "execution_mode": "SYNC",
-                "file_format": file_format
+                "file_format": file_format,
             }
 
             execution.add_log_entry("Pipeline execution completed successfully", "INFO")
@@ -1333,7 +1339,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 pipeline_id=str(pipeline.id),
                 execution_id=str(execution.id),
                 tenant_id=tenant_id,
-                cause=e
+                cause=e,
             )
 
     @transaction.atomic
@@ -1345,7 +1351,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         user_id: Optional[str] = None,
         execution_mode: Optional[str] = None,
         request: Optional[HttpRequest] = None,
-        idempotency_key: Optional[str] = None
+        idempotency_key: Optional[str] = None,
     ) -> "PipelineExecution":
         """
         Execute a transformation pipeline.
@@ -1378,17 +1384,13 @@ class TransformationService(BaseService, TransformationEventPublisher):
             AssetCompatibilityError: If asset is incompatible
             TransformationExecutionError: If execution fails
         """
-        from hub.apps.transformation.models import (
-            PipelineExecution,
-            ExecutionMode,
-            ExecutionStatus
-        )
         from hub.apps.assets.models import Asset
+        from hub.apps.audit.utils import create_audit_event
         from hub.apps.jobs.models import JobType
         from hub.apps.jobs.utils import create_job
         from hub.apps.tenants.models import Tenant
+        from hub.apps.transformation.models import ExecutionMode, ExecutionStatus, PipelineExecution
         from hub.apps.users.models import User
-        from hub.apps.audit.utils import create_audit_event
 
         effective_tenant_id = tenant_id or self.tenant_id
         effective_user_id = user_id or self.user_id
@@ -1400,8 +1402,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         if idempotency_key:
             try:
                 existing_execution = PipelineExecution.objects.select_for_update().get(
-                    idempotency_key=idempotency_key,
-                    pipeline__tenant_id=effective_tenant_id
+                    idempotency_key=idempotency_key, pipeline__tenant_id=effective_tenant_id
                 )
                 # If execution exists and is in terminal state, return it
                 if existing_execution.is_terminal():
@@ -1410,8 +1411,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         extra={
                             "idempotency_key": idempotency_key,
                             "execution_id": str(existing_execution.id),
-                            "status": existing_execution.status
-                        }
+                            "status": existing_execution.status,
+                        },
                     )
                     return existing_execution
                 # If execution exists and is not terminal, raise error (duplicate execution)
@@ -1420,7 +1421,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_FAILED,
                     pipeline_id=pipeline_id,
                     execution_id=str(existing_execution.id),
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
             except PipelineExecution.DoesNotExist:
                 # No existing execution, proceed with new execution
@@ -1429,67 +1430,61 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 # Multiple executions with same key (should not happen due to unique constraint)
                 logger.error(
                     f"Multiple executions found with idempotency_key '{idempotency_key}'",
-                    extra={"idempotency_key": idempotency_key, "tenant_id": effective_tenant_id}
+                    extra={"idempotency_key": idempotency_key, "tenant_id": effective_tenant_id},
                 )
                 raise TransformationExecutionError(
                     f"Multiple executions found with idempotency_key '{idempotency_key}'",
                     error_code=TransformationExecutionError.ERROR_CODE_INTERNAL_ERROR,
                     pipeline_id=pipeline_id,
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
 
         try:
             # Get pipeline
             pipeline = self.get_resource_or_raise(
-                TransformationPipeline,
-                pipeline_id,
-                tenant_id=effective_tenant_id
+                TransformationPipeline, pipeline_id, tenant_id=effective_tenant_id
             )
 
             # Validate pipeline for execution
             self._validate_pipeline_for_execution(pipeline)
 
             # Check asset compatibility
-            self._check_asset_compatibility_for_execution(
-                asset_id,
-                effective_tenant_id,
-                pipeline
-            )
+            self._check_asset_compatibility_for_execution(asset_id, effective_tenant_id, pipeline)
 
             # Select execution mode
             selected_mode = execution_mode or self._select_execution_mode(
-                asset_id,
-                effective_tenant_id
+                asset_id, effective_tenant_id
             )
 
             # Run compliance check before execution (blocks if compliance fails)
             # Create a temporary execution record for compliance check
             # This allows us to run compliance check before workflow execution
-            from hub.apps.transformation.models import ExecutionStatus, ExecutionMode
+            from hub.apps.transformation.models import ExecutionMode, ExecutionStatus
+
             temp_execution = PipelineExecution(
                 pipeline=pipeline,
                 asset_id=asset_id,
                 status=ExecutionStatus.PENDING,
                 execution_mode=selected_mode if selected_mode else ExecutionMode.ASYNC,
-                execution_log=[]
+                execution_log=[],
             )
             temp_execution.save()
 
             # Run compliance check (will raise TransformationValidationError if compliance fails)
             try:
                 self._run_compliance_check(
-                    asset_id=asset_id,
-                    tenant_id=effective_tenant_id,
-                    execution=temp_execution
+                    asset_id=asset_id, tenant_id=effective_tenant_id, execution=temp_execution
                 )
             finally:
                 # Clean up temporary execution (workflow will create its own)
                 temp_execution.delete()
 
             # Use workflow for execution
-            from hub.apps.orchestration.workflows.transformation_pipeline import TransformationPipelineWorkflow
-            from hub.apps.orchestration.workflow_engine import WorkflowEngine
             from hub.apps.orchestration.registry import WorkflowRegistry
+            from hub.apps.orchestration.workflow_engine import WorkflowEngine
+            from hub.apps.orchestration.workflows.transformation_pipeline import (
+                TransformationPipelineWorkflow,
+            )
 
             # Create workflow engine and registry
             engine = WorkflowEngine()
@@ -1498,7 +1493,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
             TransformationPipelineWorkflow.register_workflow(registry)
 
             # Execute workflow
-            execution_mode_str = selected_mode.value if hasattr(selected_mode, 'value') else str(selected_mode)
+            execution_mode_str = (
+                selected_mode.value if hasattr(selected_mode, "value") else str(selected_mode)
+            )
             workflow_result = TransformationPipelineWorkflow.execute(
                 pipeline_id=pipeline_id,
                 asset_id=asset_id,
@@ -1506,7 +1503,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 user_id=effective_user_id,
                 execution_mode=execution_mode_str,
                 engine=engine,
-                registry=registry
+                registry=registry,
             )
 
             # Get execution from workflow result
@@ -1516,7 +1513,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "Workflow execution did not return execution_id",
                     error_code=TransformationExecutionError.ERROR_CODE_INTERNAL_ERROR,
                     pipeline_id=pipeline_id,
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
 
             # Get execution and link to workflow instance
@@ -1524,6 +1521,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             workflow_instance_id = workflow_result.get("workflow_instance_id")
             if workflow_instance_id:
                 from hub.apps.orchestration.models import WorkflowInstance
+
                 try:
                     workflow_instance = WorkflowInstance.objects.get(id=workflow_instance_id)
                     execution.set_workflow_instance(workflow_instance)
@@ -1532,17 +1530,17 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         f"Workflow instance {workflow_instance_id} not found for execution {execution_id}",
                         extra={
                             "execution_id": str(execution.id),
-                            "workflow_instance_id": workflow_instance_id
-                        }
+                            "workflow_instance_id": workflow_instance_id,
+                        },
                     )
 
             # Set idempotency key if provided
             if idempotency_key and not execution.idempotency_key:
                 execution.idempotency_key = idempotency_key
-                execution.save(update_fields=['idempotency_key', 'updated_at'])
+                execution.save(update_fields=["idempotency_key", "updated_at"])
             elif not execution.idempotency_key:
                 execution.idempotency_key = str(execution.id)
-                execution.save(update_fields=['idempotency_key', 'updated_at'])
+                execution.save(update_fields=["idempotency_key", "updated_at"])
 
             # Sync execution status from workflow
             execution.sync_status_from_workflow()
@@ -1555,7 +1553,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     asset_id=asset_id,
                     execution_mode=selected_mode,
                     tenant_id=effective_tenant_id,
-                    user_id=effective_user_id
+                    user_id=effective_user_id,
                 )
             except Exception as e:
                 logger.warning(
@@ -1563,9 +1561,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "execution_id": str(execution.id),
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Get tenant and user objects for audit logging (used in multiple places)
@@ -1585,11 +1583,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         "execution_id": str(execution.id),
                         "pipeline_id": str(pipeline.id),
                         "asset_id": asset_id,
-                        "execution_mode": selected_mode.value if hasattr(selected_mode, 'value') else str(selected_mode),
+                        "execution_mode": (
+                            selected_mode.value
+                            if hasattr(selected_mode, "value")
+                            else str(selected_mode)
+                        ),
                         "pipeline_name": pipeline.name,
-                        "workflow_instance_id": workflow_result.get("workflow_instance_id")
+                        "workflow_instance_id": workflow_result.get("workflow_instance_id"),
                     },
-                    request=request
+                    request=request,
                 )
             except Exception as e:
                 logger.warning(
@@ -1597,9 +1599,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "execution_id": str(execution.id),
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Workflow handles execution (both SYNC and ASYNC)
@@ -1617,7 +1619,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_FAILED,
                     pipeline_id=pipeline_id,
                     execution_id=str(execution.id),
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
 
             # Monitor execution with metrics and tracing
@@ -1631,18 +1633,26 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 execution.sync_status_from_workflow()
 
                 # Determine final status for monitoring
-                execution_status = execution.status.value if hasattr(execution.status, 'value') else str(execution.status)
+                execution_status = (
+                    execution.status.value
+                    if hasattr(execution.status, "value")
+                    else str(execution.status)
+                )
 
                 # Wrap SYNC execution with monitoring (status will be updated based on actual result)
                 with record_pipeline_execution(
                     tenant_id=effective_tenant_id,
                     pipeline_id=str(pipeline.id),
-                    status=execution_status
+                    status=execution_status,
                 ):
                     # If execution completed, publish events and create audit logs
                     if execution.status == ExecutionStatus.COMPLETED:
                         # Publish completion event
-                        duration_ms = int(execution.get_duration_seconds() * 1000) if execution.get_duration_seconds() else None
+                        duration_ms = (
+                            int(execution.get_duration_seconds() * 1000)
+                            if execution.get_duration_seconds()
+                            else None
+                        )
                         try:
                             workflow_state = execution.get_workflow_state() or {}
                             result_data = workflow_state.get("execution_results", {})
@@ -1655,7 +1665,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 records_processed=result_data.get("rows_processed"),
                                 quality_metrics=input_quality_metrics,
                                 tenant_id=effective_tenant_id,
-                                user_id=effective_user_id
+                                user_id=effective_user_id,
                             )
                         except Exception as e:
                             logger.warning(
@@ -1663,9 +1673,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 extra={
                                     "pipeline_id": str(pipeline.id),
                                     "execution_id": str(execution.id),
-                                    "error": str(e)
+                                    "error": str(e),
                                 },
-                                exc_info=True
+                                exc_info=True,
                             )
 
                         # Create audit log for completion
@@ -1680,20 +1690,28 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 "execution_id": str(execution.id),
                                 "pipeline_id": str(pipeline.id),
                                 "asset_id": asset_id,
-                                "execution_mode": selected_mode.value if hasattr(selected_mode, 'value') else str(selected_mode),
+                                "execution_mode": (
+                                    selected_mode.value
+                                    if hasattr(selected_mode, "value")
+                                    else str(selected_mode)
+                                ),
                                 "duration_seconds": duration_seconds,
                                 "duration_ms": duration_ms,
                                 "quality_metrics": input_quality_metrics,
-                                "workflow_instance_id": workflow_result.get("workflow_instance_id")
+                                "workflow_instance_id": workflow_result.get("workflow_instance_id"),
                             }
 
                             # Add result_asset_id if available
                             if execution.result_asset:
-                                completion_details["result_asset_id"] = str(execution.result_asset.id)
+                                completion_details["result_asset_id"] = str(
+                                    execution.result_asset.id
+                                )
 
                             # Add records_processed if available
                             if result_data and "rows_processed" in result_data:
-                                completion_details["records_processed"] = result_data["rows_processed"]
+                                completion_details["records_processed"] = result_data[
+                                    "rows_processed"
+                                ]
 
                             create_audit_event(
                                 resource_type="TRANSFORMATION_PIPELINE",
@@ -1703,7 +1721,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 resource_id=str(pipeline.id),
                                 result="SUCCESS",
                                 details=completion_details,
-                                request=request
+                                request=request,
                             )
                         except Exception as e:
                             logger.warning(
@@ -1711,14 +1729,17 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 extra={
                                     "pipeline_id": str(pipeline.id),
                                     "execution_id": str(execution.id),
-                                    "error": str(e)
+                                    "error": str(e),
                                 },
-                                exc_info=True
+                                exc_info=True,
                             )
 
                         # Send notification email for completion
                         try:
-                            from hub.apps.notifications.tasks import send_pipeline_execution_completion_email
+                            from hub.apps.notifications.tasks import (
+                                send_pipeline_execution_completion_email,
+                            )
+
                             send_pipeline_execution_completion_email.delay(str(execution.id))
                         except Exception as e:
                             logger.warning(
@@ -1726,14 +1747,22 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 extra={
                                     "pipeline_id": str(pipeline.id),
                                     "execution_id": str(execution.id),
-                                "error": str(e)
-                            },
-                            exc_info=True
-                        )
+                                    "error": str(e),
+                                },
+                                exc_info=True,
+                            )
                     elif execution.status == ExecutionStatus.FAILED:
                         # Workflow failed - publish failure event
-                        error_msg = execution.workflow_instance.error_message if execution.workflow_instance else "Workflow execution failed"
-                        duration_ms = int(execution.get_duration_seconds() * 1000) if execution.get_duration_seconds() else None
+                        error_msg = (
+                            execution.workflow_instance.error_message
+                            if execution.workflow_instance
+                            else "Workflow execution failed"
+                        )
+                        duration_ms = (
+                            int(execution.get_duration_seconds() * 1000)
+                            if execution.get_duration_seconds()
+                            else None
+                        )
 
                         try:
                             self.publish_pipeline_execution_failed(
@@ -1744,7 +1773,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 error_details=None,
                                 duration_ms=duration_ms,
                                 tenant_id=effective_tenant_id,
-                                user_id=effective_user_id
+                                user_id=effective_user_id,
                             )
                         except Exception as e2:
                             logger.warning(
@@ -1752,9 +1781,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 extra={
                                     "pipeline_id": str(pipeline.id),
                                     "execution_id": str(execution.id),
-                                    "error": str(e2)
+                                    "error": str(e2),
                                 },
-                                exc_info=True
+                                exc_info=True,
                             )
 
                         # Create audit log for failure
@@ -1766,11 +1795,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 "execution_id": str(execution.id),
                                 "pipeline_id": str(pipeline.id),
                                 "asset_id": asset_id,
-                                "execution_mode": selected_mode.value if hasattr(selected_mode, 'value') else str(selected_mode),
+                                "execution_mode": (
+                                    selected_mode.value
+                                    if hasattr(selected_mode, "value")
+                                    else str(selected_mode)
+                                ),
                                 "error_message": error_msg,
                                 "duration_seconds": duration_seconds,
                                 "duration_ms": duration_ms,
-                                "workflow_instance_id": workflow_result.get("workflow_instance_id")
+                                "workflow_instance_id": workflow_result.get("workflow_instance_id"),
                             }
 
                             create_audit_event(
@@ -1781,7 +1814,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 resource_id=str(pipeline.id),
                                 result="FAILURE",
                                 details=failure_details,
-                                request=request
+                                request=request,
                             )
                         except Exception as e2:
                             logger.warning(
@@ -1789,14 +1822,17 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 extra={
                                     "pipeline_id": str(pipeline.id),
                                     "execution_id": str(execution.id),
-                                    "error": str(e2)
+                                    "error": str(e2),
                                 },
-                                exc_info=True
+                                exc_info=True,
                             )
 
                         # Send notification email for failure
                         try:
-                            from hub.apps.notifications.tasks import send_pipeline_execution_failure_email
+                            from hub.apps.notifications.tasks import (
+                                send_pipeline_execution_failure_email,
+                            )
+
                             send_pipeline_execution_failure_email.delay(str(execution.id))
                         except Exception as e2:
                             logger.warning(
@@ -1804,9 +1840,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                                 extra={
                                     "pipeline_id": str(pipeline.id),
                                     "execution_id": str(execution.id),
-                                    "error": str(e2)
+                                    "error": str(e2),
                                 },
-                                exc_info=True
+                                exc_info=True,
                             )
 
                         raise TransformationExecutionError(
@@ -1814,7 +1850,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                             error_code=TransformationExecutionError.ERROR_CODE_EXECUTION_FAILED,
                             pipeline_id=pipeline_id,
                             execution_id=str(execution.id),
-                            tenant_id=effective_tenant_id
+                            tenant_id=effective_tenant_id,
                         )
             else:
                 # Asynchronous execution - workflow creates job for async execution
@@ -1832,7 +1868,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     # SYNC mode uses job_critical for high priority, ASYNC uses job_default
                     # Note: For async execution, we use job_default queue
                     # For sync execution (if forced), we would use job_critical
-                    queue_name = 'job_critical' if selected_mode == ExecutionMode.SYNC else 'job_default'
+                    queue_name = (
+                        "job_critical" if selected_mode == ExecutionMode.SYNC else "job_default"
+                    )
 
                     # Create job for async execution
                     job = create_job(
@@ -1844,18 +1882,21 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         details_json={
                             "pipeline_id": str(pipeline.id),
                             "asset_id": asset_id,
-                            "execution_mode": selected_mode.value if hasattr(selected_mode, 'value') else str(selected_mode)
+                            "execution_mode": (
+                                selected_mode.value
+                                if hasattr(selected_mode, "value")
+                                else str(selected_mode)
+                            ),
                         },
-                        queue_name=queue_name
+                        queue_name=queue_name,
                     )
 
                     # Link job to execution
                     execution.job = job
-                    execution.save(update_fields=['job', 'updated_at'])
+                    execution.save(update_fields=["job", "updated_at"])
 
                     execution.add_log_entry(
-                        f"Job {job.id} created for async execution (queue: {queue_name})",
-                        "INFO"
+                        f"Job {job.id} created for async execution (queue: {queue_name})", "INFO"
                     )
 
                 except Exception as e:
@@ -1864,28 +1905,31 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
                     # Execute compensation logic for async execution failure
                     try:
-                        from hub.apps.transformation.compensation import TransformationPipelineCompensation
+                        from hub.apps.transformation.compensation import (
+                            TransformationPipelineCompensation,
+                        )
+
                         compensation = TransformationPipelineCompensation(execution)
                         compensation_result = compensation.compensate(
                             rollback_execution=True,
                             cleanup_job=True,  # Cleanup job if it was created
                             cleanup_result_asset=False,  # No result asset yet
-                            publish_compensation_events=True
+                            publish_compensation_events=True,
                         )
                         logger.info(
                             f"Compensation completed for async execution {execution.id}",
                             extra={
                                 "execution_id": str(execution.id),
-                                "compensation_result": compensation_result
-                            }
+                                "compensation_result": compensation_result,
+                            },
                         )
                     except Exception as comp_error:
                         logger.exception(
                             f"Compensation failed for async execution {execution.id}: {comp_error}",
                             extra={
                                 "execution_id": str(execution.id),
-                                "compensation_error": str(comp_error)
-                            }
+                                "compensation_error": str(comp_error),
+                            },
                         )
                         # Still mark execution as failed even if compensation fails
                         execution.mark_failed(error_message=error_msg)
@@ -1896,7 +1940,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         pipeline_id=str(pipeline.id),
                         execution_id=str(execution.id),
                         tenant_id=effective_tenant_id,
-                        cause=e
+                        cause=e,
                     )
 
             logger.info(
@@ -1907,13 +1951,18 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "asset_id": asset_id,
                     "execution_mode": selected_mode,
                     "tenant_id": effective_tenant_id,
-                    "user_id": effective_user_id
-                }
+                    "user_id": effective_user_id,
+                },
             )
 
             return execution
 
-        except (NotFoundError, TransformationValidationError, AssetCompatibilityError, TransformationExecutionError):
+        except (
+            NotFoundError,
+            TransformationValidationError,
+            AssetCompatibilityError,
+            TransformationExecutionError,
+        ):
             raise
         except Exception as e:
             logger.error(
@@ -1922,23 +1971,20 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "pipeline_id": pipeline_id,
                     "asset_id": asset_id,
                     "tenant_id": effective_tenant_id,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             raise TransformationExecutionError(
                 f"Failed to execute pipeline: {str(e)}",
                 error_code=TransformationExecutionError.ERROR_CODE_INTERNAL_ERROR,
                 pipeline_id=pipeline_id,
                 tenant_id=effective_tenant_id,
-                cause=e
+                cause=e,
             )
 
     def _run_quality_check(
-        self,
-        asset_id: str,
-        tenant_id: str,
-        execution: "PipelineExecution"
+        self, asset_id: str, tenant_id: str, execution: "PipelineExecution"
     ) -> Optional[Dict[str, Any]]:
         """
         Run quality check on asset via QualityService.
@@ -1952,12 +1998,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
             Quality metrics dictionary or None if check fails
         """
         try:
-            from hub.apps.dq.service_client import DQServiceClient
             from hub.apps.assets.models import Asset
+            from hub.apps.dq.service_client import DQServiceClient
             from hub.apps.files.storage import S3StorageClient
 
             asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
-            latest_dataset = asset.datasets.order_by('-version').first()
+            latest_dataset = asset.datasets.order_by("-version").first()
 
             if not latest_dataset or not latest_dataset.file:
                 return None
@@ -1965,7 +2011,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Download file content
             storage_client = S3StorageClient()
             file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
-            file_format = latest_dataset.format or 'csv'
+            file_format = latest_dataset.format or "csv"
 
             # Initialize DQ client
             dq_client = DQServiceClient()
@@ -1980,7 +2026,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             dq_result = dq_client.run_dq(
                 file_content=file_content,
                 file_format=file_format.lower(),
-                profile_key=None  # Use default profile
+                profile_key=None,  # Use default profile
             )
 
             # Extract quality metrics
@@ -1988,13 +2034,13 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "quality_score": dq_result.get("quality_score", 0.0),
                 "overall_status": dq_result.get("overall_status", "UNKNOWN"),
                 "checks_passed": dq_result.get("checks_passed", 0),
-                "checks_failed": dq_result.get("checks_failed", 0)
+                "checks_failed": dq_result.get("checks_failed", 0),
             }
 
             execution.add_log_entry(
                 f"Quality check completed: score={quality_metrics['quality_score']:.2%}, "
                 f"status={quality_metrics['overall_status']}",
-                "INFO"
+                "INFO",
             )
 
             return quality_metrics
@@ -2002,21 +2048,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
         except Exception as e:
             logger.warning(
                 f"Quality check failed (non-critical): {e}",
-                extra={
-                    "asset_id": asset_id,
-                    "execution_id": str(execution.id),
-                    "error": str(e)
-                },
-                exc_info=True
+                extra={"asset_id": asset_id, "execution_id": str(execution.id), "error": str(e)},
+                exc_info=True,
             )
             execution.add_log_entry(f"Quality check failed: {str(e)}", "WARNING")
             return None
 
     def _run_compliance_check(
-        self,
-        asset_id: str,
-        tenant_id: str,
-        execution: "PipelineExecution"
+        self, asset_id: str, tenant_id: str, execution: "PipelineExecution"
     ) -> Optional[Dict[str, Any]]:
         """
         Run compliance check on asset via ComplianceService.
@@ -2030,13 +2069,13 @@ class TransformationService(BaseService, TransformationEventPublisher):
             Compliance status dictionary or None if check fails
         """
         try:
-            from hub.apps.compliance.service_client import ComplianceServiceClient
             from hub.apps.assets.models import Asset
-            from hub.apps.transformation.exceptions import TransformationValidationError
+            from hub.apps.compliance.service_client import ComplianceServiceClient
             from hub.apps.files.storage import S3StorageClient
+            from hub.apps.transformation.exceptions import TransformationValidationError
 
             asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
-            latest_dataset = asset.datasets.order_by('-version').first()
+            latest_dataset = asset.datasets.order_by("-version").first()
 
             if not latest_dataset or not latest_dataset.file:
                 return None
@@ -2044,7 +2083,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Download file content
             storage_client = S3StorageClient()
             file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
-            file_format = latest_dataset.format or 'csv'
+            file_format = latest_dataset.format or "csv"
 
             # Initialize compliance client
             compliance_client = ComplianceServiceClient()
@@ -2052,14 +2091,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Check compliance service health
             is_healthy, _ = compliance_client.health_check()
             if not is_healthy:
-                execution.add_log_entry("Compliance service unavailable, skipping compliance check", "WARNING")
+                execution.add_log_entry(
+                    "Compliance service unavailable, skipping compliance check", "WARNING"
+                )
                 return None
 
             # Run compliance scan
             compliance_result = compliance_client.scan_file(
-                file_content=file_content,
-                file_format=file_format.lower(),
-                scan_mode="internal"
+                file_content=file_content, file_format=file_format.lower(), scan_mode="internal"
             )
 
             # Extract comprehensive compliance status
@@ -2069,22 +2108,24 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "allowed_to_store": compliance_result.get("allowed_to_store", None),
                 "detected_categories": compliance_result.get("detected_categories", {}),
                 "column_findings": compliance_result.get("column_findings", []),
-                "regulation_mapping": compliance_result.get("regulation_mapping", {})
+                "regulation_mapping": compliance_result.get("regulation_mapping", {}),
             }
 
             # Store compliance status in execution_log
             if isinstance(execution.execution_log, list):
-                execution.execution_log.append({
-                    "timestamp": timezone.now().isoformat(),
-                    "level": "INFO",
-                    "message": "Compliance check completed",
-                    "data": {
-                        "asset_id": asset_id,
-                        "compliance_status": compliance_status,
-                        "check_type": "input_asset"
+                execution.execution_log.append(
+                    {
+                        "timestamp": timezone.now().isoformat(),
+                        "level": "INFO",
+                        "message": "Compliance check completed",
+                        "data": {
+                            "asset_id": asset_id,
+                            "compliance_status": compliance_status,
+                            "check_type": "input_asset",
+                        },
                     }
-                })
-                execution.save(update_fields=['execution_log', 'updated_at'])
+                )
+                execution.save(update_fields=["execution_log", "updated_at"])
 
             # Block execution if compliance violations detected
             if compliance_status["overall_status"] == "FAIL":
@@ -2100,25 +2141,21 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         "asset_id": asset_id,
                         "compliance_status": compliance_status,
                         "check_type": "input_asset",
-                        "violations": compliance_status.get("detected_categories", {})
+                        "violations": compliance_status.get("detected_categories", {}),
                     },
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
 
             # Validate transformation doesn't violate compliance rules
             # Check if transformation would introduce new compliance issues
             # Get pipeline from execution
             pipeline = execution.pipeline
-            self._validate_transformation_compliance(
-                compliance_status,
-                pipeline,
-                execution
-            )
+            self._validate_transformation_compliance(compliance_status, pipeline, execution)
 
             execution.add_log_entry(
                 f"Compliance check completed: status={compliance_status['overall_status']}, "
                 f"risk_level={compliance_status['risk_level']}",
-                "INFO"
+                "INFO",
             )
 
             return compliance_status
@@ -2128,12 +2165,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         except Exception as e:
             logger.warning(
                 f"Compliance check failed (non-critical): {e}",
-                extra={
-                    "asset_id": asset_id,
-                    "execution_id": str(execution.id),
-                    "error": str(e)
-                },
-                exc_info=True
+                extra={"asset_id": asset_id, "execution_id": str(execution.id), "error": str(e)},
+                exc_info=True,
             )
             execution.add_log_entry(f"Compliance check failed: {str(e)}", "WARNING")
             return None
@@ -2142,7 +2175,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         self,
         input_compliance_status: Dict[str, Any],
         pipeline: TransformationPipeline,
-        execution: "PipelineExecution"
+        execution: "PipelineExecution",
     ) -> None:
         """
         Validate that transformation doesn't violate compliance rules.
@@ -2167,7 +2200,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Log warning but allow execution
             execution.add_log_entry(
                 f"Input asset has compliance warnings. Transformation may propagate issues.",
-                "WARNING"
+                "WARNING",
             )
 
         # Check pipeline definition for compliance-sensitive operations
@@ -2184,27 +2217,26 @@ class TransformationService(BaseService, TransformationEventPublisher):
         execution.add_log_entry(
             f"Transformation compliance validation completed. "
             f"Input compliance status: {input_compliance_status.get('overall_status')}",
-            "INFO"
+            "INFO",
         )
 
         # Store validation result in execution_log
         if isinstance(execution.execution_log, list):
-            execution.execution_log.append({
-                "timestamp": timezone.now().isoformat(),
-                "level": "INFO",
-                "message": "Transformation compliance validation",
-                "data": {
-                    "input_compliance_status": input_compliance_status.get("overall_status"),
-                    "validation_passed": True
+            execution.execution_log.append(
+                {
+                    "timestamp": timezone.now().isoformat(),
+                    "level": "INFO",
+                    "message": "Transformation compliance validation",
+                    "data": {
+                        "input_compliance_status": input_compliance_status.get("overall_status"),
+                        "validation_passed": True,
+                    },
                 }
-            })
-            execution.save(update_fields=['execution_log', 'updated_at'])
+            )
+            execution.save(update_fields=["execution_log", "updated_at"])
 
     def _check_output_asset_compliance(
-        self,
-        result_asset_id: str,
-        tenant_id: str,
-        execution: "PipelineExecution"
+        self, result_asset_id: str, tenant_id: str, execution: "PipelineExecution"
     ) -> Optional[Dict[str, Any]]:
         """
         Check compliance status of output asset after transformation.
@@ -2218,25 +2250,24 @@ class TransformationService(BaseService, TransformationEventPublisher):
             Compliance status dictionary or None if check fails
         """
         try:
-            from hub.apps.compliance.service_client import ComplianceServiceClient
             from hub.apps.assets.models import Asset
-            from hub.apps.transformation.exceptions import TransformationValidationError
+            from hub.apps.compliance.service_client import ComplianceServiceClient
             from hub.apps.files.storage import S3StorageClient
+            from hub.apps.transformation.exceptions import TransformationValidationError
 
             asset = Asset.objects.get(id=result_asset_id, tenant_id=tenant_id)
-            latest_dataset = asset.datasets.order_by('-version').first()
+            latest_dataset = asset.datasets.order_by("-version").first()
 
             if not latest_dataset or not latest_dataset.file:
                 execution.add_log_entry(
-                    "Result asset has no dataset or file for compliance check",
-                    "WARNING"
+                    "Result asset has no dataset or file for compliance check", "WARNING"
                 )
                 return None
 
             # Download file content
             storage_client = S3StorageClient()
             file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
-            file_format = latest_dataset.format or 'csv'
+            file_format = latest_dataset.format or "csv"
 
             # Initialize compliance client
             compliance_client = ComplianceServiceClient()
@@ -2245,16 +2276,13 @@ class TransformationService(BaseService, TransformationEventPublisher):
             is_healthy, _ = compliance_client.health_check()
             if not is_healthy:
                 execution.add_log_entry(
-                    "Compliance service unavailable, skipping output compliance check",
-                    "WARNING"
+                    "Compliance service unavailable, skipping output compliance check", "WARNING"
                 )
                 return None
 
             # Run compliance scan on output
             compliance_result = compliance_client.scan_file(
-                file_content=file_content,
-                file_format=file_format.lower(),
-                scan_mode="internal"
+                file_content=file_content, file_format=file_format.lower(), scan_mode="internal"
             )
 
             # Extract comprehensive compliance status
@@ -2264,22 +2292,24 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "allowed_to_store": compliance_result.get("allowed_to_store", None),
                 "detected_categories": compliance_result.get("detected_categories", {}),
                 "column_findings": compliance_result.get("column_findings", []),
-                "regulation_mapping": compliance_result.get("regulation_mapping", {})
+                "regulation_mapping": compliance_result.get("regulation_mapping", {}),
             }
 
             # Store compliance status in execution_log
             if isinstance(execution.execution_log, list):
-                execution.execution_log.append({
-                    "timestamp": timezone.now().isoformat(),
-                    "level": "INFO",
-                    "message": "Output asset compliance check completed",
-                    "data": {
-                        "asset_id": result_asset_id,
-                        "compliance_status": compliance_status,
-                        "check_type": "output_asset"
+                execution.execution_log.append(
+                    {
+                        "timestamp": timezone.now().isoformat(),
+                        "level": "INFO",
+                        "message": "Output asset compliance check completed",
+                        "data": {
+                            "asset_id": result_asset_id,
+                            "compliance_status": compliance_status,
+                            "check_type": "output_asset",
+                        },
                     }
-                })
-                execution.save(update_fields=['execution_log', 'updated_at'])
+                )
+                execution.save(update_fields=["execution_log", "updated_at"])
 
             # Block if output has compliance violations
             if compliance_status["overall_status"] == "FAIL":
@@ -2295,15 +2325,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         "asset_id": result_asset_id,
                         "compliance_status": compliance_status,
                         "check_type": "output_asset",
-                        "violations": compliance_status.get("detected_categories", {})
+                        "violations": compliance_status.get("detected_categories", {}),
                     },
-                    tenant_id=tenant_id
+                    tenant_id=tenant_id,
                 )
 
             execution.add_log_entry(
                 f"Output compliance check completed: status={compliance_status['overall_status']}, "
                 f"risk_level={compliance_status['risk_level']}",
-                "INFO"
+                "INFO",
             )
 
             return compliance_status
@@ -2316,9 +2346,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={
                     "asset_id": result_asset_id,
                     "execution_id": str(execution.id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             execution.add_log_entry(f"Output compliance check failed: {str(e)}", "WARNING")
             return None
@@ -2330,7 +2360,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         sample_size: int = 100,
         sampling_method: str = "first_n",
         tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Preview transformation pipeline execution on sample data.
@@ -2367,18 +2397,19 @@ class TransformationService(BaseService, TransformationEventPublisher):
         import hashlib
         import json
         import random
+
         from hub.apps.assets.models import Asset
-        from hub.apps.files.storage import S3StorageClient
+        from hub.apps.datasets.schema_evolution import SchemaEvolutionTracker
         from hub.apps.datasets.schema_inference import (
             extract_sample_data,
             infer_schema_from_csv,
             infer_schema_from_json,
-            infer_schema_from_parquet
+            infer_schema_from_parquet,
         )
-        from hub.apps.datasets.schema_evolution import SchemaEvolutionTracker
-        from hub.apps.transformation.quality_integration import TransformationQualityIntegration
-        from hub.apps.transformation.models import PipelineExecution, ExecutionStatus
+        from hub.apps.files.storage import S3StorageClient
+        from hub.apps.transformation.models import ExecutionStatus, PipelineExecution
         from hub.apps.transformation.monitoring import record_preview_generation
+        from hub.apps.transformation.quality_integration import TransformationQualityIntegration
 
         effective_tenant_id = tenant_id or self.tenant_id
         effective_user_id = user_id or self.user_id
@@ -2391,8 +2422,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Validate pipeline exists
             try:
                 pipeline = TransformationPipeline.objects.get(
-                    id=pipeline_id,
-                    tenant_id=effective_tenant_id
+                    id=pipeline_id, tenant_id=effective_tenant_id
                 )
             except TransformationPipeline.DoesNotExist:
                 raise NotFoundError(f"Pipeline {pipeline_id} not found")
@@ -2409,7 +2439,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "asset_id": str(asset.id),
                 "sample_size": sample_size,
                 "sampling_method": sampling_method,
-                "pipeline_version": pipeline.version
+                "pipeline_version": pipeline.version,
             }
             cache_key_str = json.dumps(cache_key_data, sort_keys=True)
             cache_key_hash = hashlib.sha256(cache_key_str.encode()).hexdigest()
@@ -2425,29 +2455,32 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         "pipeline_id": str(pipeline.id),
                         "asset_id": str(asset.id),
                         "cache_key": cache_key,
-                        "quality_metrics_available": "quality_metrics" in cached_result or "quality_impact" in cached_result.get("analysis", {})
-                    }
+                        "quality_metrics_available": "quality_metrics" in cached_result
+                        or "quality_impact" in cached_result.get("analysis", {}),
+                    },
                 )
                 cached_result["cached"] = True
                 # Ensure quality_metrics is available at top level if not already present
                 if "quality_metrics" not in cached_result and "analysis" in cached_result:
-                    cached_result["quality_metrics"] = cached_result["analysis"].get("quality_impact", {})
+                    cached_result["quality_metrics"] = cached_result["analysis"].get(
+                        "quality_impact", {}
+                    )
                 return cached_result
 
             # Get asset dataset and file
-            latest_dataset = asset.datasets.order_by('-version').first()
+            latest_dataset = asset.datasets.order_by("-version").first()
             if not latest_dataset or not latest_dataset.file:
                 raise TransformationExecutionError(
                     "Asset has no dataset or file to transform",
                     error_code=TransformationExecutionError.ERROR_CODE_DATA_PROCESSING_FAILED,
                     pipeline_id=str(pipeline.id),
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
 
             # Download file content
             storage_client = S3StorageClient()
             file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
-            file_format = latest_dataset.format or 'CSV'
+            file_format = latest_dataset.format or "CSV"
 
             # Generate sample data
             logger.info(
@@ -2456,15 +2489,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "pipeline_id": str(pipeline.id),
                     "asset_id": str(asset.id),
                     "sampling_method": sampling_method,
-                    "sample_size": sample_size
-                }
+                    "sample_size": sample_size,
+                },
             )
 
             input_sample = self._generate_sample_data(
                 file_content=file_content,
                 file_format=file_format,
                 sample_size=sample_size,
-                sampling_method=sampling_method
+                sampling_method=sampling_method,
             )
 
             if not input_sample:
@@ -2472,7 +2505,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "Failed to generate sample data",
                     error_code=TransformationExecutionError.ERROR_CODE_DATA_PROCESSING_FAILED,
                     pipeline_id=str(pipeline.id),
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
 
             # Infer input schema
@@ -2484,18 +2517,18 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={
                     "pipeline_id": str(pipeline.id),
                     "asset_id": str(asset.id),
-                    "sample_rows": len(input_sample)
-                }
+                    "sample_rows": len(input_sample),
+                },
             )
 
             output_sample = self._execute_pipeline_on_sample(
-                pipeline=pipeline,
-                input_sample=input_sample,
-                file_format=file_format
+                pipeline=pipeline, input_sample=input_sample, file_format=file_format
             )
 
             # Infer output schema
-            output_schema = self._infer_schema_from_data(output_sample, file_format) if output_sample else None
+            output_schema = (
+                self._infer_schema_from_data(output_sample, file_format) if output_sample else None
+            )
 
             # Analyze results
             analysis = self._analyze_preview_results(
@@ -2504,7 +2537,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 input_schema=input_schema,
                 output_schema=output_schema,
                 asset_id=asset_id,
-                tenant_id=effective_tenant_id
+                tenant_id=effective_tenant_id,
             )
 
             # Extract quality metrics from analysis for easy access
@@ -2527,7 +2560,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "cached": False,
                 "generated_at": timezone.now().isoformat(),
                 "sample_size": sample_size,
-                "sampling_method": sampling_method
+                "sampling_method": sampling_method,
             }
 
             # Cache result (TTL: 1 hour = 3600 seconds)
@@ -2538,8 +2571,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "asset_id": str(asset.id),
-                        "cache_key": cache_key
-                    }
+                        "cache_key": cache_key,
+                    },
                 )
             except Exception as e:
                 logger.warning(
@@ -2547,39 +2580,40 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "asset_id": str(asset.id),
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Store preview result in database for retrieval by preview_id
             try:
-                from hub.apps.transformation.models import PreviewResult
                 from datetime import timedelta
+
+                from hub.apps.transformation.models import PreviewResult
 
                 expires_at = timezone.now() + timedelta(hours=1)
 
                 PreviewResult.objects.update_or_create(
                     preview_id=preview_id,
                     defaults={
-                        'tenant': pipeline.tenant,
-                        'created_by_id': effective_user_id,
-                        'pipeline': pipeline,
-                        'asset': asset,
-                        'preview_data': preview_result,
-                        'cache_key': cache_key,
-                        'sample_size': sample_size,
-                        'sampling_method': sampling_method,
-                        'expires_at': expires_at,
-                    }
+                        "tenant": pipeline.tenant,
+                        "created_by_id": effective_user_id,
+                        "pipeline": pipeline,
+                        "asset": asset,
+                        "preview_data": preview_result,
+                        "cache_key": cache_key,
+                        "sample_size": sample_size,
+                        "sampling_method": sampling_method,
+                        "expires_at": expires_at,
+                    },
                 )
                 logger.info(
                     f"Preview result stored in database: preview_id={preview_id}",
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "asset_id": str(asset.id),
-                        "preview_id": preview_id
-                    }
+                        "preview_id": preview_id,
+                    },
                 )
             except Exception as e:
                 logger.warning(
@@ -2588,9 +2622,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                         "pipeline_id": str(pipeline.id),
                         "asset_id": str(asset.id),
                         "preview_id": preview_id,
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Publish preview.generated event
@@ -2601,7 +2635,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     preview_id=preview_id,
                     analysis=analysis,
                     tenant_id=effective_tenant_id,
-                    user_id=effective_user_id
+                    user_id=effective_user_id,
                 )
             except Exception as e:
                 logger.warning(
@@ -2609,9 +2643,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     extra={
                         "pipeline_id": str(pipeline.id),
                         "asset_id": str(asset.id),
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             logger.info(
@@ -2621,8 +2655,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "asset_id": str(asset.id),
                     "preview_id": preview_id,
                     "input_rows": len(input_sample),
-                    "output_rows": len(output_sample) if output_sample else 0
-                }
+                    "output_rows": len(output_sample) if output_sample else 0,
+                },
             )
 
             return preview_result
@@ -2632,7 +2666,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         file_content: bytes,
         file_format: str,
         sample_size: int,
-        sampling_method: str = "first_n"
+        sampling_method: str = "first_n",
     ) -> List[Dict[str, Any]]:
         """
         Generate sample data from file content.
@@ -2646,8 +2680,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
         Returns:
             List of dictionaries representing sample rows
         """
-        from hub.apps.datasets.schema_inference import extract_sample_data
         import random
+
+        from hub.apps.datasets.schema_inference import extract_sample_data
 
         if sampling_method == "first_n":
             # Use existing extract_sample_data for first N rows
@@ -2655,17 +2690,19 @@ class TransformationService(BaseService, TransformationEventPublisher):
         elif sampling_method == "random":
             # For random sampling, we need to read all data first, then sample
             # This is less efficient but provides true random sampling
-            all_data = extract_sample_data(file_content, file_format, sample_size * 10)  # Get more data for sampling
+            all_data = extract_sample_data(
+                file_content, file_format, sample_size * 10
+            )  # Get more data for sampling
             if len(all_data) <= sample_size:
                 return all_data
             return random.sample(all_data, sample_size)
         else:
-            raise ValueError(f"Unsupported sampling method: {sampling_method}. Use 'first_n' or 'random'")
+            raise ValueError(
+                f"Unsupported sampling method: {sampling_method}. Use 'first_n' or 'random'"
+            )
 
     def _infer_schema_from_data(
-        self,
-        data: List[Dict[str, Any]],
-        file_format: str
+        self, data: List[Dict[str, Any]], file_format: str
     ) -> Dict[str, Any]:
         """
         Infer schema from sample data.
@@ -2700,15 +2737,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "name": key,
                 "data_type": data_type,
                 "nullable": any(v is None for v in values),
-                "sample_values": values[:5]  # Store first 5 sample values
+                "sample_values": values[:5],  # Store first 5 sample values
             }
             fields.append(field)
 
-        return {
-            "fields": fields,
-            "field_count": len(fields),
-            "row_count": len(data)
-        }
+        return {"fields": fields, "field_count": len(fields), "row_count": len(data)}
 
     def _infer_field_type(self, values: List[Any]) -> str:
         """
@@ -2720,8 +2753,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         Returns:
             Data type string (string, integer, float, boolean, date, datetime)
         """
-        from datetime import datetime
         import re
+        from datetime import datetime
 
         # Filter out None values
         non_null_values = [v for v in values if v is not None]
@@ -2766,9 +2799,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
         # Check for datetime
         datetime_count = 0
         date_patterns = [
-            r'\d{4}-\d{2}-\d{2}',  # YYYY-MM-DD
-            r'\d{2}/\d{2}/\d{4}',  # MM/DD/YYYY
-            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}',  # ISO datetime
+            r"\d{4}-\d{2}-\d{2}",  # YYYY-MM-DD
+            r"\d{2}/\d{2}/\d{4}",  # MM/DD/YYYY
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}",  # ISO datetime
         ]
 
         for v in non_null_values:
@@ -2787,10 +2820,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return "string"
 
     def _execute_pipeline_on_sample(
-        self,
-        pipeline: TransformationPipeline,
-        input_sample: List[Dict[str, Any]],
-        file_format: str
+        self, pipeline: TransformationPipeline, input_sample: List[Dict[str, Any]], file_format: str
     ) -> List[Dict[str, Any]]:
         """
         Execute pipeline transformation on sample data.
@@ -2816,8 +2846,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
             "Pipeline execution on sample is using placeholder implementation",
             extra={
                 "pipeline_id": str(pipeline.id),
-                "note": "Actual pipeline transformation logic needs to be implemented"
-            }
+                "note": "Actual pipeline transformation logic needs to be implemented",
+            },
         )
 
         # For now, return input sample unchanged
@@ -2831,7 +2861,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         input_schema: Dict[str, Any],
         output_schema: Optional[Dict[str, Any]],
         asset_id: str,
-        tenant_id: str
+        tenant_id: str,
     ) -> Dict[str, Any]:
         """
         Analyze preview results: row count changes, schema changes, quality impact.
@@ -2850,17 +2880,15 @@ class TransformationService(BaseService, TransformationEventPublisher):
             - schema_changes: Schema differences
             - quality_impact: Quality metrics comparison
         """
-        analysis = {
-            "row_count_changes": {},
-            "schema_changes": {},
-            "quality_impact": {}
-        }
+        analysis = {"row_count_changes": {}, "schema_changes": {}, "quality_impact": {}}
 
         # Row count analysis
         input_row_count = len(input_sample)
         output_row_count = len(output_sample) if output_sample else 0
         row_count_delta = output_row_count - input_row_count
-        row_count_delta_percent = (row_count_delta / input_row_count * 100) if input_row_count > 0 else 0.0
+        row_count_delta_percent = (
+            (row_count_delta / input_row_count * 100) if input_row_count > 0 else 0.0
+        )
 
         analysis["row_count_changes"] = {
             "input_rows": input_row_count,
@@ -2868,47 +2896,50 @@ class TransformationService(BaseService, TransformationEventPublisher):
             "delta": row_count_delta,
             "delta_percent": row_count_delta_percent,
             "rows_added": max(0, row_count_delta),
-            "rows_removed": max(0, -row_count_delta)
+            "rows_removed": max(0, -row_count_delta),
         }
 
         # Schema changes analysis
         if output_schema:
             try:
                 from hub.apps.datasets.schema_evolution import SchemaEvolutionTracker
+
                 schema_diff = SchemaEvolutionTracker.calculate_schema_diff(
-                    old_schema=input_schema,
-                    new_schema=output_schema
+                    old_schema=input_schema, new_schema=output_schema
                 )
 
                 analysis["schema_changes"] = {
                     "has_changes": len(schema_diff.changes) > 0,
-                    "compatibility_level": schema_diff.compatibility_level.value if hasattr(schema_diff.compatibility_level, 'value') else str(schema_diff.compatibility_level),
+                    "compatibility_level": (
+                        schema_diff.compatibility_level.value
+                        if hasattr(schema_diff.compatibility_level, "value")
+                        else str(schema_diff.compatibility_level)
+                    ),
                     "changes_count": len(schema_diff.changes),
                     "summary": schema_diff.summary,
                     "changes": [
                         {
-                            "type": change.change_type.value if hasattr(change.change_type, 'value') else str(change.change_type),
+                            "type": (
+                                change.change_type.value
+                                if hasattr(change.change_type, "value")
+                                else str(change.change_type)
+                            ),
                             "field_name": change.field_name,
                             "description": change.description,
-                            "breaking": change.breaking
+                            "breaking": change.breaking,
                         }
                         for change in schema_diff.changes
-                    ]
+                    ],
                 }
             except Exception as e:
                 logger.warning(
-                    f"Failed to calculate schema diff: {e}",
-                    extra={"error": str(e)},
-                    exc_info=True
+                    f"Failed to calculate schema diff: {e}", extra={"error": str(e)}, exc_info=True
                 )
-                analysis["schema_changes"] = {
-                    "has_changes": False,
-                    "error": str(e)
-                }
+                analysis["schema_changes"] = {"has_changes": False, "error": str(e)}
         else:
             analysis["schema_changes"] = {
                 "has_changes": False,
-                "error": "Output schema not available"
+                "error": "Output schema not available",
             }
 
         # Quality impact analysis
@@ -2917,19 +2948,14 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 asset_id=asset_id,
                 tenant_id=tenant_id,
                 input_sample=input_sample,
-                output_sample=output_sample
+                output_sample=output_sample,
             )
             analysis["quality_impact"] = quality_impact
         except Exception as e:
             logger.warning(
-                f"Failed to analyze quality impact: {e}",
-                extra={"error": str(e)},
-                exc_info=True
+                f"Failed to analyze quality impact: {e}", extra={"error": str(e)}, exc_info=True
             )
-            analysis["quality_impact"] = {
-                "error": str(e),
-                "available": False
-            }
+            analysis["quality_impact"] = {"error": str(e), "available": False}
 
         return analysis
 
@@ -2938,7 +2964,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         asset_id: str,
         tenant_id: str,
         input_sample: List[Dict[str, Any]],
-        output_sample: Optional[List[Dict[str, Any]]]
+        output_sample: Optional[List[Dict[str, Any]]],
     ) -> Dict[str, Any]:
         """
         Analyze quality impact by running quality checks on input and output samples.
@@ -2952,10 +2978,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
         Returns:
             Quality impact dictionary
         """
-        from hub.apps.dq.service_client import DQServiceClient
-        import io
         import csv
+        import io
         import json
+
+        from hub.apps.dq.service_client import DQServiceClient
 
         try:
             dq_client = DQServiceClient()
@@ -2963,18 +2990,13 @@ class TransformationService(BaseService, TransformationEventPublisher):
             # Check DQ service health
             is_healthy, _ = dq_client.health_check()
             if not is_healthy:
-                return {
-                    "available": False,
-                    "error": "DQ service unavailable"
-                }
+                return {"available": False, "error": "DQ service unavailable"}
 
             # Convert samples to file-like objects for DQ service
             # For input
             input_file_content = self._convert_sample_to_file_content(input_sample, "csv")
             input_quality = dq_client.run_dq(
-                file_content=input_file_content,
-                file_format="csv",
-                profile_key="intake_basic_gx"
+                file_content=input_file_content, file_format="csv", profile_key="intake_basic_gx"
             )
 
             # For output (if available)
@@ -2984,7 +3006,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 output_quality = dq_client.run_dq(
                     file_content=output_file_content,
                     file_format="csv",
-                    profile_key="intake_basic_gx"
+                    profile_key="intake_basic_gx",
                 )
 
             # Extract comprehensive quality metrics
@@ -2993,14 +3015,22 @@ class TransformationService(BaseService, TransformationEventPublisher):
 
             # Get input quality details
             input_checks = input_quality.get("checks", [])
-            input_passed_checks = len([c for c in input_checks if c.get("status") == "PASS"]) if input_checks else 0
-            input_failed_checks = len([c for c in input_checks if c.get("status") == "FAIL"]) if input_checks else 0
+            input_passed_checks = (
+                len([c for c in input_checks if c.get("status") == "PASS"]) if input_checks else 0
+            )
+            input_failed_checks = (
+                len([c for c in input_checks if c.get("status") == "FAIL"]) if input_checks else 0
+            )
             input_total_checks = len(input_checks) if input_checks else 0
 
             # Get output quality details
             output_checks = output_quality.get("checks", []) if output_quality else []
-            output_passed_checks = len([c for c in output_checks if c.get("status") == "PASS"]) if output_checks else 0
-            output_failed_checks = len([c for c in output_checks if c.get("status") == "FAIL"]) if output_checks else 0
+            output_passed_checks = (
+                len([c for c in output_checks if c.get("status") == "PASS"]) if output_checks else 0
+            )
+            output_failed_checks = (
+                len([c for c in output_checks if c.get("status") == "FAIL"]) if output_checks else 0
+            )
             output_total_checks = len(output_checks) if output_checks else 0
 
             # Compare quality metrics
@@ -3009,7 +3039,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
             checks_delta = None
             if output_score is not None:
                 quality_delta = output_score - input_score
-                quality_delta_percent = (quality_delta / input_score * 100) if input_score > 0 else 0.0
+                quality_delta_percent = (
+                    (quality_delta / input_score * 100) if input_score > 0 else 0.0
+                )
                 checks_delta = output_passed_checks - input_passed_checks
 
             # Build comprehensive quality impact metrics
@@ -3023,29 +3055,47 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "checks_total": input_total_checks,
                     "engine_type": input_quality.get("engine_type"),
                     "engine_version": input_quality.get("engine_version"),
-                    "profile_key": "intake_basic_gx"
+                    "profile_key": "intake_basic_gx",
                 },
-                "output_quality_metrics": {
-                    "quality_score": output_score,
-                    "overall_status": output_quality.get("overall_status") if output_quality else None,
-                    "checks_passed": output_passed_checks,
-                    "checks_failed": output_failed_checks,
-                    "checks_total": output_total_checks,
-                    "engine_type": output_quality.get("engine_type") if output_quality else None,
-                    "engine_version": output_quality.get("engine_version") if output_quality else None,
-                    "profile_key": "intake_basic_gx"
-                } if output_quality else None,
-                "quality_comparison": {
-                    "quality_delta": quality_delta,
-                    "quality_delta_percent": quality_delta_percent,
-                    "checks_delta": checks_delta,
-                    "improvement_detected": quality_delta > 0 if quality_delta is not None else False,
-                    "degradation_detected": quality_delta < 0 if quality_delta is not None else False,
-                    "status_change": self._determine_status_change(
-                        input_quality.get("overall_status"),
-                        output_quality.get("overall_status") if output_quality else None
-                    )
-                } if output_score is not None else None
+                "output_quality_metrics": (
+                    {
+                        "quality_score": output_score,
+                        "overall_status": (
+                            output_quality.get("overall_status") if output_quality else None
+                        ),
+                        "checks_passed": output_passed_checks,
+                        "checks_failed": output_failed_checks,
+                        "checks_total": output_total_checks,
+                        "engine_type": (
+                            output_quality.get("engine_type") if output_quality else None
+                        ),
+                        "engine_version": (
+                            output_quality.get("engine_version") if output_quality else None
+                        ),
+                        "profile_key": "intake_basic_gx",
+                    }
+                    if output_quality
+                    else None
+                ),
+                "quality_comparison": (
+                    {
+                        "quality_delta": quality_delta,
+                        "quality_delta_percent": quality_delta_percent,
+                        "checks_delta": checks_delta,
+                        "improvement_detected": (
+                            quality_delta > 0 if quality_delta is not None else False
+                        ),
+                        "degradation_detected": (
+                            quality_delta < 0 if quality_delta is not None else False
+                        ),
+                        "status_change": self._determine_status_change(
+                            input_quality.get("overall_status"),
+                            output_quality.get("overall_status") if output_quality else None,
+                        ),
+                    }
+                    if output_score is not None
+                    else None
+                ),
             }
 
             logger.info(
@@ -3055,30 +3105,26 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     "input_score": input_score,
                     "output_score": output_score,
                     "quality_delta": quality_delta,
-                    "quality_delta_percent": quality_delta_percent
-                }
+                    "quality_delta_percent": quality_delta_percent,
+                },
             )
 
             return quality_impact
 
         except Exception as e:
             logger.warning(
-                f"Quality impact analysis failed: {e}",
-                extra={"error": str(e)},
-                exc_info=True
+                f"Quality impact analysis failed: {e}", extra={"error": str(e)}, exc_info=True
             )
             return {
                 "available": False,
                 "error": str(e),
                 "input_quality_metrics": None,
                 "output_quality_metrics": None,
-                "quality_comparison": None
+                "quality_comparison": None,
             }
 
     def _determine_status_change(
-        self,
-        input_status: Optional[str],
-        output_status: Optional[str]
+        self, input_status: Optional[str], output_status: Optional[str]
     ) -> Optional[str]:
         """
         Determine status change between input and output quality statuses.
@@ -3105,9 +3151,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             return "MAINTAINED"
 
     def _convert_sample_to_file_content(
-        self,
-        sample: List[Dict[str, Any]],
-        format: str = "csv"
+        self, sample: List[Dict[str, Any]], format: str = "csv"
     ) -> bytes:
         """
         Convert sample data to file content bytes.
@@ -3119,8 +3163,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
         Returns:
             File content as bytes
         """
-        import io
         import csv
+        import io
         import json
 
         if format.lower() == "csv":
@@ -3136,9 +3180,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
             writer = csv.DictWriter(output, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(sample)
-            return output.getvalue().encode('utf-8')
+            return output.getvalue().encode("utf-8")
         elif format.lower() == "json":
-            return json.dumps(sample, default=str).encode('utf-8')
+            return json.dumps(sample, default=str).encode("utf-8")
         else:
             raise ValueError(f"Unsupported format: {format}")
 
@@ -3149,7 +3193,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         preview_id: str,
         analysis: Dict[str, Any],
         tenant_id: str,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> None:
         """
         Publish transformation.preview.generated event.
@@ -3170,14 +3214,16 @@ class TransformationService(BaseService, TransformationEventPublisher):
             row_count_changes=analysis.get("row_count_changes"),
             schema_changes={
                 "has_changes": analysis.get("schema_changes", {}).get("has_changes", False),
-                "changes_count": analysis.get("schema_changes", {}).get("changes_count", 0)
+                "changes_count": analysis.get("schema_changes", {}).get("changes_count", 0),
             },
             quality_impact={
                 "available": analysis.get("quality_impact", {}).get("available", False),
-                "quality_delta": analysis.get("quality_impact", {}).get("quality_comparison", {}).get("quality_delta")
+                "quality_delta": analysis.get("quality_impact", {})
+                .get("quality_comparison", {})
+                .get("quality_delta"),
             },
             tenant_id=tenant_id,
-            user_id=user_id
+            user_id=user_id,
         )
 
     @transaction.atomic
@@ -3188,7 +3234,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         session_id: Optional[str] = None,
         tenant_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        request: Optional[HttpRequest] = None
+        request: Optional[HttpRequest] = None,
     ) -> Dict[str, Any]:
         """
         Perform data wrangling operation on an asset.
@@ -3227,16 +3273,16 @@ class TransformationService(BaseService, TransformationEventPublisher):
             TransformationExecutionError: If operation execution fails
         """
         from hub.apps.assets.models import Asset
-        from hub.apps.transformation.models import (
-            WranglingSession,
-            WranglingOperation,
-            WranglingOperationType
-        )
-        from hub.apps.files.storage import S3StorageClient
         from hub.apps.datasets.schema_inference import (
             extract_sample_data,
             infer_schema_from_csv,
-            infer_schema_from_json
+            infer_schema_from_json,
+        )
+        from hub.apps.files.storage import S3StorageClient
+        from hub.apps.transformation.models import (
+            WranglingOperation,
+            WranglingOperationType,
+            WranglingSession,
         )
 
         effective_tenant_id = tenant_id or self.tenant_id
@@ -3254,10 +3300,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         # Get or create wrangling session
         if session_id:
             try:
-                session = WranglingSession.objects.get(
-                    id=session_id,
-                    tenant_id=effective_tenant_id
-                )
+                session = WranglingSession.objects.get(id=session_id, tenant_id=effective_tenant_id)
             except WranglingSession.DoesNotExist:
                 raise NotFoundError(f"Wrangling session {session_id} not found")
         else:
@@ -3267,7 +3310,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 created_by_id=effective_user_id,
                 asset=asset,
                 name=f"Wrangling Session for {asset.name}",
-                description=f"Interactive data wrangling session for asset {asset.name}"
+                description=f"Interactive data wrangling session for asset {asset.name}",
             )
 
         # Validate operation
@@ -3279,45 +3322,42 @@ class TransformationService(BaseService, TransformationEventPublisher):
         # Execute operation
         # Execute wrangling operation with monitoring
         from hub.apps.transformation.monitoring import record_wrangling_operation
+
         operation_type = operation.get("type", "UNKNOWN")
 
         try:
             operation_result = self._execute_wrangling_operation(
-                operation=operation,
-                data=current_data,
-                asset=asset
+                operation=operation, data=current_data, asset=asset
             )
             # Record successful operation
             record_wrangling_operation(
-                tenant_id=str(session.tenant_id),
-                operation_type=operation_type,
-                status="SUCCESS"
+                tenant_id=str(session.tenant_id), operation_type=operation_type, status="SUCCESS"
             )
         except Exception as e:
             # Record failed operation
             record_wrangling_operation(
-                tenant_id=str(session.tenant_id),
-                operation_type=operation_type,
-                status="FAILED"
+                tenant_id=str(session.tenant_id), operation_type=operation_type, status="FAILED"
             )
             raise
 
         # Add operation to history
-        operation_index = session.add_operation({
-            "type": operation.get("type"),
-            "parameters": operation.get("parameters", {}),
-            "result_metadata": {
-                "rows_before": operation_result.get("rows_before", 0),
-                "rows_after": operation_result.get("rows_after", 0),
-                "columns_before": operation_result.get("columns_before", []),
-                "columns_after": operation_result.get("columns_after", [])
+        operation_index = session.add_operation(
+            {
+                "type": operation.get("type"),
+                "parameters": operation.get("parameters", {}),
+                "result_metadata": {
+                    "rows_before": operation_result.get("rows_before", 0),
+                    "rows_after": operation_result.get("rows_after", 0),
+                    "columns_before": operation_result.get("columns_before", []),
+                    "columns_after": operation_result.get("columns_after", []),
+                },
             }
-        })
+        )
 
         # Update session current state
         session.current_state = operation_result.get("data_state")
         session.wrangling_script = session.generate_script("python")
-        session.save(update_fields=['current_state', 'wrangling_script', 'updated_at'])
+        session.save(update_fields=["current_state", "wrangling_script", "updated_at"])
 
         # Create operation record
         wrangling_op = WranglingOperation.objects.create(
@@ -3327,8 +3367,8 @@ class TransformationService(BaseService, TransformationEventPublisher):
             result_snapshot=operation_result.get("sample_data"),
             metadata={
                 "rows_before": operation_result.get("rows_before", 0),
-                "rows_after": operation_result.get("rows_after", 0)
-            }
+                "rows_after": operation_result.get("rows_after", 0),
+            },
         )
 
         # Publish wrangling operation applied event
@@ -3347,10 +3387,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     asset_id=str(asset.id),
                     operation_type=operation_type,
                     operation_parameters=operation.get("parameters", {}),
-                    rows_affected=operation_result.get("rows_after", 0) - operation_result.get("rows_before", 0),
+                    rows_affected=operation_result.get("rows_after", 0)
+                    - operation_result.get("rows_before", 0),
                     execution_time_ms=execution_time_ms,
                     tenant_id=effective_tenant_id,
-                    user_id=effective_user_id
+                    user_id=effective_user_id,
                 )
         except Exception as e:
             logger.warning(
@@ -3358,9 +3399,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={
                     "session_id": str(session.id),
                     "operation_id": str(wrangling_op.id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # Publish wrangling completed event
@@ -3374,7 +3415,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
                     operation_type=operation_type,
                     rows_processed=operation_result.get("rows_after", 0),
                     tenant_id=effective_tenant_id,
-                    user_id=effective_user_id
+                    user_id=effective_user_id,
                 )
         except Exception as e:
             logger.warning(
@@ -3382,9 +3423,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 extra={
                     "session_id": str(session.id),
                     "operation_id": str(wrangling_op.id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         return {
@@ -3394,12 +3435,12 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 "sample_data": operation_result.get("sample_data", []),
                 "rows_before": operation_result.get("rows_before", 0),
                 "rows_after": operation_result.get("rows_after", 0),
-                "columns": operation_result.get("columns_after", [])
+                "columns": operation_result.get("columns_after", []),
             },
             "can_undo": session.can_undo(),
             "can_redo": session.can_redo(),
             "applied_operations_count": len(session.get_applied_operations()),
-            "wrangling_script": session.wrangling_script
+            "wrangling_script": session.wrangling_script,
         }
 
     def _validate_wrangling_operation(self, operation: Dict[str, Any]) -> None:
@@ -3417,21 +3458,21 @@ class TransformationService(BaseService, TransformationEventPublisher):
         if not isinstance(operation, dict):
             raise TransformationValidationError(
                 "Operation must be a dictionary",
-                error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE
+                error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE,
             )
 
         # Validate required fields
         if "type" not in operation:
             raise TransformationValidationError(
                 "Operation must have 'type' field",
-                error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD
+                error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
             )
 
         operation_type = operation.get("type")
         if operation_type not in [op[0] for op in WranglingOperationType.choices]:
             raise TransformationValidationError(
                 f"Invalid operation type: {operation_type}",
-                error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE
+                error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE,
             )
 
         # Validate parameters based on operation type
@@ -3439,7 +3480,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         if not isinstance(parameters, dict):
             raise TransformationValidationError(
                 "Operation parameters must be a dictionary",
-                error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE
+                error_code=TransformationValidationError.ERROR_CODE_INVALID_FIELD_VALUE,
             )
 
         # Type-specific validation
@@ -3447,37 +3488,35 @@ class TransformationService(BaseService, TransformationEventPublisher):
             if "condition" not in parameters:
                 raise TransformationValidationError(
                     "FILTER operation requires 'condition' parameter",
-                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD
+                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                 )
         elif operation_type == "SORT":
             if "columns" not in parameters:
                 raise TransformationValidationError(
                     "SORT operation requires 'columns' parameter",
-                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD
+                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                 )
         elif operation_type == "TRANSFORM":
             if "column" not in parameters or "expression" not in parameters:
                 raise TransformationValidationError(
                     "TRANSFORM operation requires 'column' and 'expression' parameters",
-                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD
+                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                 )
         elif operation_type == "RENAME_COLUMN":
             if "old_name" not in parameters or "new_name" not in parameters:
                 raise TransformationValidationError(
                     "RENAME_COLUMN operation requires 'old_name' and 'new_name' parameters",
-                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD
+                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                 )
         elif operation_type == "DROP_COLUMN":
             if "columns" not in parameters:
                 raise TransformationValidationError(
                     "DROP_COLUMN operation requires 'columns' parameter",
-                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD
+                    error_code=TransformationValidationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
                 )
 
     def _get_current_data_state(
-        self,
-        session: "WranglingSession",
-        asset: "Asset"
+        self, session: "WranglingSession", asset: "Asset"
     ) -> List[Dict[str, Any]]:
         """
         Get current data state for the session.
@@ -3498,43 +3537,44 @@ class TransformationService(BaseService, TransformationEventPublisher):
             return session.current_state
 
         # Otherwise, load from asset
-        latest_dataset = asset.datasets.order_by('-version').first()
+        latest_dataset = asset.datasets.order_by("-version").first()
         if not latest_dataset or not latest_dataset.file:
             raise TransformationExecutionError(
                 "Asset has no dataset or file",
                 error_code=TransformationExecutionError.ERROR_CODE_DATA_PROCESSING_FAILED,
-                tenant_id=str(asset.tenant_id)
+                tenant_id=str(asset.tenant_id),
             )
 
         # Download and parse file
         storage_client = S3StorageClient()
         file_content = storage_client.get_file_content(latest_dataset.file.storage_path)
-        file_format = latest_dataset.format or 'CSV'
+        file_format = latest_dataset.format or "CSV"
 
         # Parse data based on format
-        if file_format.upper() == 'CSV':
+        if file_format.upper() == "CSV":
             import csv
             import io
-            text_content = file_content.decode('utf-8') if isinstance(file_content, bytes) else file_content
+
+            text_content = (
+                file_content.decode("utf-8") if isinstance(file_content, bytes) else file_content
+            )
             reader = csv.DictReader(io.StringIO(text_content))
             return list(reader)
-        elif file_format.upper() == 'JSON':
+        elif file_format.upper() == "JSON":
             import json
+
             if isinstance(file_content, bytes):
-                return json.loads(file_content.decode('utf-8'))
+                return json.loads(file_content.decode("utf-8"))
             return json.loads(file_content)
         else:
             raise TransformationExecutionError(
                 f"Unsupported file format: {file_format}",
                 error_code=TransformationExecutionError.ERROR_CODE_DATA_PROCESSING_FAILED,
-                tenant_id=str(asset.tenant_id)
+                tenant_id=str(asset.tenant_id),
             )
 
     def _execute_wrangling_operation(
-        self,
-        operation: Dict[str, Any],
-        data: List[Dict[str, Any]],
-        asset: "Asset"
+        self, operation: Dict[str, Any], data: List[Dict[str, Any]], asset: "Asset"
     ) -> Dict[str, Any]:
         """
         Execute a wrangling operation on data.
@@ -3580,7 +3620,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
             raise TransformationExecutionError(
                 f"Operation type {operation_type} not yet implemented",
                 error_code=TransformationExecutionError.ERROR_CODE_DATA_PROCESSING_FAILED,
-                tenant_id=str(asset.tenant_id)
+                tenant_id=str(asset.tenant_id),
             )
 
         rows_after = len(result_data)
@@ -3595,13 +3635,11 @@ class TransformationService(BaseService, TransformationEventPublisher):
             "rows_before": rows_before,
             "rows_after": rows_after,
             "columns_before": columns_before,
-            "columns_after": columns_after
+            "columns_after": columns_after,
         }
 
     def _execute_filter(
-        self,
-        data: List[Dict[str, Any]],
-        parameters: Dict[str, Any]
+        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Execute FILTER operation"""
         condition = parameters.get("condition", "")
@@ -3639,9 +3677,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return [row for row in data if evaluate_condition(row, condition)]
 
     def _execute_sort(
-        self,
-        data: List[Dict[str, Any]],
-        parameters: Dict[str, Any]
+        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Execute SORT operation"""
         columns = parameters.get("columns", [])
@@ -3664,9 +3700,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return sorted(data, key=sort_key, reverse=not ascending)
 
     def _execute_transform(
-        self,
-        data: List[Dict[str, Any]],
-        parameters: Dict[str, Any]
+        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Execute TRANSFORM operation"""
         column = parameters.get("column", "")
@@ -3690,7 +3724,9 @@ class TransformationService(BaseService, TransformationEventPublisher):
                 try:
                     # Only allow safe operations
                     if "import" not in expression and "__" not in expression:
-                        new_row[column] = eval(expression, {"value": value, "str": str, "int": int, "float": float})
+                        new_row[column] = eval(
+                            expression, {"value": value, "str": str, "int": int, "float": float}
+                        )
                     else:
                         raise ValueError("Unsafe expression")
                 except Exception:
@@ -3701,9 +3737,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_rename_column(
-        self,
-        data: List[Dict[str, Any]],
-        parameters: Dict[str, Any]
+        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Execute RENAME_COLUMN operation"""
         old_name = parameters.get("old_name", "")
@@ -3722,9 +3756,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_drop_column(
-        self,
-        data: List[Dict[str, Any]],
-        parameters: Dict[str, Any]
+        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Execute DROP_COLUMN operation"""
         columns_to_drop = parameters.get("columns", [])
@@ -3739,9 +3771,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_deduplicate(
-        self,
-        data: List[Dict[str, Any]],
-        parameters: Dict[str, Any]
+        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Execute DEDUPLICATE operation"""
         columns = parameters.get("columns", [])  # If empty, deduplicate on all columns
@@ -3762,9 +3792,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_fill_nulls(
-        self,
-        data: List[Dict[str, Any]],
-        parameters: Dict[str, Any]
+        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Execute FILL_NULLS operation"""
         column = parameters.get("column", "")
@@ -3780,9 +3808,7 @@ class TransformationService(BaseService, TransformationEventPublisher):
         return result_data
 
     def _execute_remove_nulls(
-        self,
-        data: List[Dict[str, Any]],
-        parameters: Dict[str, Any]
+        self, data: List[Dict[str, Any]], parameters: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """Execute REMOVE_NULLS operation"""
         column = parameters.get("column", "")  # If empty, remove rows with any null
@@ -3838,4 +3864,3 @@ class TransformationService(BaseService, TransformationEventPublisher):
         )
 
         return event_id
-

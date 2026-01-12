@@ -77,20 +77,20 @@ class TenantDataIsolationTest(TenantIsolationRegressionTest):
         
         # User 1 should only see tenant 1 assets
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify user 1 cannot access tenant 2 asset
-        response = self.client.get(f'/api/v1/assets/assets/{asset2.id}/')
+        response = self.client.get(f'/api/v1/assets/{asset2.id}/')
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
         
         # User 2 should only see tenant 2 assets
         self.client.force_authenticate(user=self.user2)
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify user 2 cannot access tenant 1 asset
-        response = self.client.get(f'/api/v1/assets/assets/{asset1.id}/')
+        response = self.client.get(f'/api/v1/assets/{asset1.id}/')
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
     
     def test_contract_isolation(self):
@@ -132,11 +132,11 @@ class TenantDataIsolationTest(TenantIsolationRegressionTest):
         
         # User 1 should only see tenant 1 contracts
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify user 1 cannot access tenant 2 contract
-        response = self.client.get(f'/api/v1/contracts/contracts/{contract2.id}/')
+        response = self.client.get(f'/api/v1/contracts/{contract2.id}/')
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
     
     def test_file_isolation(self):
@@ -157,11 +157,11 @@ class TenantDataIsolationTest(TenantIsolationRegressionTest):
         
         # User 1 should only see tenant 1 files
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get('/api/v1/files/files/')
+        response = self.client.get('/api/v1/files/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify user 1 cannot access tenant 2 file
-        response = self.client.get(f'/api/v1/files/files/{file2.id}/')
+        response = self.client.get(f'/api/v1/files/{file2.id}/')
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
     
     def test_job_isolation(self):
@@ -197,11 +197,11 @@ class TenantDataIsolationTest(TenantIsolationRegressionTest):
         
         # User 1 should only see tenant 1 jobs
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get('/api/v1/jobs/jobs/')
+        response = self.client.get('/api/v1/jobs/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify user 1 cannot access tenant 2 job
-        response = self.client.get(f'/api/v1/jobs/jobs/{job2.id}/')
+        response = self.client.get(f'/api/v1/jobs/{job2.id}/')
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
 
 
@@ -260,7 +260,7 @@ class CrossTenantAccessPreventionTest(TenantIsolationRegressionTest):
         
         # User 1 tries to access tenant 2 asset
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get(f'/api/v1/assets/assets/{asset.id}/')
+        response = self.client.get(f'/api/v1/assets/{asset.id}/')
         
         # Should be forbidden
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
@@ -287,7 +287,7 @@ class CrossTenantAccessPreventionTest(TenantIsolationRegressionTest):
         
         # User 1 tries to access tenant 2 contract
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get(f'/api/v1/contracts/contracts/{contract.id}/')
+        response = self.client.get(f'/api/v1/contracts/{contract.id}/')
         
         # Should be forbidden
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
@@ -303,7 +303,7 @@ class CrossTenantAccessPreventionTest(TenantIsolationRegressionTest):
         
         # User 1 tries to access tenant 2 file
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get(f'/api/v1/files/files/{file.id}/')
+        response = self.client.get(f'/api/v1/files/{file.id}/')
         
         # Should be forbidden
         self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
@@ -321,7 +321,7 @@ class TenantScopedQueriesTest(TenantIsolationRegressionTest):
         
         # User 1 should only see tenant 1 assets
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get('/api/v1/assets/assets/')
+        response = self.client.get('/api/v1/assets/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify only tenant 1 assets are returned
@@ -372,7 +372,7 @@ class TenantScopedQueriesTest(TenantIsolationRegressionTest):
         
         # User 1 should only see tenant 1 contracts
         self.client.force_authenticate(user=self.user1)
-        response = self.client.get('/api/v1/contracts/contracts/')
+        response = self.client.get('/api/v1/contracts/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify only tenant 1 contracts are returned

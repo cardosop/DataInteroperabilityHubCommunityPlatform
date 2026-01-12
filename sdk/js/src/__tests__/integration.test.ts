@@ -1,12 +1,13 @@
 /**
  * Integration Tests
- * 
+ *
  * Tests for complete workflows, real API server, and mock server scenarios.
  */
 
 import { DataHubClient } from '../client';
 import { ContractsAPI } from '../contracts';
 import { LineageAPI } from '../lineage';
+import { ComplianceAPI } from '../compliance';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -27,12 +28,12 @@ describe('Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (axios.create as jest.Mock).mockReturnValue(mockAxiosInstance);
-    
+
     client = new DataHubClient({
       baseUrl: 'https://api.example.com/api/v1',
       apiToken: 'test-token',
     });
-    
+
     contractsAPI = new ContractsAPI(client);
     lineageAPI = new LineageAPI(client);
   });
@@ -41,11 +42,13 @@ describe('Integration Tests', () => {
     it('should initialize client with all API modules', () => {
       expect(client.contracts).toBeDefined();
       expect(client.lineage).toBeDefined();
+      expect(client.compliance).toBeDefined();
     });
 
     it('should allow access to APIs through client', () => {
       expect(client.contracts).toBeInstanceOf(ContractsAPI);
       expect(client.lineage).toBeInstanceOf(LineageAPI);
+      expect(client.compliance).toBeInstanceOf(ComplianceAPI);
     });
   });
 
@@ -162,7 +165,7 @@ describe('Integration Tests', () => {
       const details = await contractsAPI.get('contract-1');
 
       expect(details.id).toBe('contract-1');
-      
+
       // Use helper method to get contact
       const contacts = contractsAPI.getContact(details);
       expect(contacts).toEqual([{ name: 'John Doe', email: 'john@example.com' }]);
@@ -203,17 +206,17 @@ describe('Integration Tests', () => {
       });
 
       jest.useFakeTimers();
-      
+
       const promise = contractsAPI.get('contract-123');
-      
+
       // Fast-forward through retry delay using runAllTimersAsync for async code
       await jest.runAllTimersAsync();
-      
+
       const result = await promise;
-      
+
       expect(result.id).toBe('contract-123');
       expect(mockAxiosInstance.request).toHaveBeenCalledTimes(2);
-      
+
       jest.useRealTimers();
     });
 
@@ -240,7 +243,7 @@ describe('Integration Tests', () => {
 
       // Get the response interceptor
       const responseInterceptor = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
-      
+
       // Test the interceptor directly
       try {
         await responseInterceptor(errorResponse);
