@@ -75,13 +75,9 @@ class JourneyCPO001ReviewComplianceTests(E2ETestBase):
         # Compliance run may remain PENDING if service is unavailable
         # In that case, we can still test the review functionality
         if compliance_run.status == ComplianceRunStatus.PENDING:
-            # Check if compliance service is available
-            is_available = self.check_service_available(
-                'compliance-service',
-                self.compliance_service_url,
-                health_path='/health',
-                timeout=5
-            )
+            # Check if compliance service is available using standalone function
+            from tests.e2e.conftest import check_service_health
+            is_available = check_service_health(self.compliance_service_url, timeout=5)
             if not is_available:
                 # Service unavailable, skip the status check but continue with review test
                 pytest.skip("Compliance service unavailable, cannot complete compliance run")

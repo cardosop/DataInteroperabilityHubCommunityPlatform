@@ -520,23 +520,8 @@ class ContractsAPI:
         Raises:
             ValueError: If both extract_odcs and link_odcs_id are provided, or if neither is provided
         """
-        # Validate parameters
-        try:
-            self._validate_odps_content(original_raw, "original_raw")
-            if link_odcs_id:
-                self._validate_contract_id(link_odcs_id, "link_odcs_id")
-            if odps_version:
-                self._validate_odps_version(odps_version, "odps_version")
-        except ODPSValidationError:
-            raise
-        except Exception as e:
-            raise ODPSValidationError(
-                f"Parameter validation failed: {str(e)}",
-                error_code="VALIDATION_ERROR",
-                details={"context": {"operation": "create_odps", "original_error": str(e)}},
-            ) from e
-
-        # Validate mutually exclusive options
+        # Validate mutually exclusive options FIRST (before format validation)
+        # This ensures we catch logical errors before format errors
         if extract_odcs and link_odcs_id:
             raise ODPSValidationError(
                 "Cannot use both extract_odcs and link_odcs_id. Choose one flow.",
@@ -554,6 +539,22 @@ class ContractsAPI:
                 expected="either extract_odcs=True OR link_odcs_id provided",
                 actual="neither extract_odcs nor link_odcs_id provided",
             )
+
+        # Validate parameters (after mutual exclusivity check)
+        try:
+            self._validate_odps_content(original_raw, "original_raw")
+            if link_odcs_id:
+                self._validate_contract_id(link_odcs_id, "link_odcs_id")
+            if odps_version:
+                self._validate_odps_version(odps_version, "odps_version")
+        except ODPSValidationError:
+            raise
+        except Exception as e:
+            raise ODPSValidationError(
+                f"Parameter validation failed: {str(e)}",
+                error_code="VALIDATION_ERROR",
+                details={"context": {"operation": "create_odps", "original_error": str(e)}},
+            ) from e
 
         # Auto-detect format if not provided
         if not original_format:

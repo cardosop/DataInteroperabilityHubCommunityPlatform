@@ -55,15 +55,26 @@ class S3StorageClient:
                         os.getenv('ENVIRONMENT') == 'test'
                     )
 
-                    if is_in_docker and is_test_env:
-                        # In Docker test environment, try localhost with test port
-                        self.endpoint_url = 'http://localhost:9010'  # Test port from docker-compose.test.yml
-                    elif is_in_docker:
-                        # In Docker, try localhost with default port
-                        self.endpoint_url = 'http://localhost:9000'
-                    else:
-                        # Outside Docker
-                        self.endpoint_url = 'http://localhost:9000'
+                if is_in_docker:
+                    # In Docker, use service name first (works within Docker network)
+                    # Try service name first, then fallback to localhost
+                    try:
+                        import socket
+                        socket.gethostbyname('minio')
+                        # Service name resolves, use it
+                        if is_test_env:
+                            self.endpoint_url = 'http://minio:9000'  # Use service name in Docker
+                        else:
+                            self.endpoint_url = 'http://minio:9000'  # Use service name in Docker
+                    except (socket.gaierror, Exception):
+                        # Service name doesn't resolve, use localhost
+                        if is_test_env:
+                            self.endpoint_url = 'http://localhost:9010'  # Test port
+                        else:
+                            self.endpoint_url = 'http://localhost:9000'  # Dev port
+                else:
+                    # Outside Docker, use localhost
+                    self.endpoint_url = 'http://localhost:9000'
             else:
                 # No endpoint set, use defaults
                 is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
@@ -74,11 +85,21 @@ class S3StorageClient:
                     'test' in sys.argv
                 )
 
-                if is_in_docker and is_test_env:
-                    self.endpoint_url = 'http://localhost:9010'
-                elif is_in_docker:
-                    self.endpoint_url = 'http://localhost:9000'
+                if is_in_docker:
+                    # In Docker, use service name first (works within Docker network)
+                    try:
+                        import socket
+                        socket.gethostbyname('minio')
+                        # Service name resolves, use it
+                        self.endpoint_url = 'http://minio:9000'  # Use service name in Docker
+                    except (socket.gaierror, Exception):
+                        # Service name doesn't resolve, use localhost
+                        if is_test_env:
+                            self.endpoint_url = 'http://localhost:9010'  # Test port
+                        else:
+                            self.endpoint_url = 'http://localhost:9000'  # Dev port
                 else:
+                    # Outside Docker, use localhost
                     self.endpoint_url = 'http://localhost:9000'
 
         self.use_ssl = getattr(settings, 'AWS_S3_USE_SSL', True)
@@ -131,14 +152,14 @@ class S3StorageClient:
                 )
 
                 if is_in_docker:
-                    # Try alternative endpoints in order: localhost:9000 (dev), localhost:9010 (test)
+                    # Try alternative endpoints in order: service name first, then localhost
                     alternative_endpoints = []
                     if is_test_env:
-                        # In test environment, try test port first, then dev port
-                        alternative_endpoints = ['http://localhost:9010', 'http://localhost:9000']
+                        # In test environment, try service name, then test port, then dev port
+                        alternative_endpoints = ['http://minio:9000', 'http://localhost:9010', 'http://localhost:9000']
                     else:
-                        # In dev environment, try dev port first
-                        alternative_endpoints = ['http://localhost:9000']
+                        # In dev environment, try service name first, then localhost
+                        alternative_endpoints = ['http://minio:9000', 'http://localhost:9000']
 
                     for alt_endpoint in alternative_endpoints:
                         if self.endpoint_url == alt_endpoint:

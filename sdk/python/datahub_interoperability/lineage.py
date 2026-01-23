@@ -38,7 +38,7 @@ class LineageAPI:
         Returns:
             Contract-level lineage data
         """
-        return await self.client.get(f"contracts/contracts/{contract_id}/lineage/contracts/")
+        return await self.client.get(f"contracts/{contract_id}/lineage/contracts/")
 
     async def get_model_lineage(
         self,
@@ -56,7 +56,7 @@ class LineageAPI:
             Model-level lineage data
         """
         return await self.client.get(
-            f"contracts/contracts/{contract_id}/models/{model_name}/lineage/"
+            f"contracts/{contract_id}/models/{model_name}/lineage/"
         )
 
     async def get_field_lineage(
@@ -77,7 +77,7 @@ class LineageAPI:
             Field-level lineage data
         """
         return await self.client.get(
-            f"contracts/contracts/{contract_id}/fields/{field_name}/lineage/"
+            f"contracts/{contract_id}/fields/{field_name}/lineage/"
         )
 
     async def get_full_lineage(
@@ -105,7 +105,7 @@ class LineageAPI:
             "max_field_depth": max_field_depth,
         }
         return await self.client.get(
-            f"contracts/contracts/{contract_id}/lineage/full/", params=params
+            f"contracts/{contract_id}/lineage/full/", params=params
         )
 
     async def get_visualization(
@@ -125,7 +125,7 @@ class LineageAPI:
         """
         params = {"format": format}
         response = await self.client.request(
-            "GET", f"contracts/contracts/{contract_id}/lineage/visualization/", params=params
+            "GET", f"contracts/{contract_id}/lineage/visualization/", params=params
         )
 
         # For text formats (dot, mermaid), return as text
@@ -157,7 +157,7 @@ class LineageAPI:
             "include_fields": include_fields,
         }
         return await self.client.get(
-            f"contracts/contracts/{contract_id}/impact-analysis/", params=params
+            f"contracts/{contract_id}/impact-analysis/", params=params
         )
 
     # Convenience methods with shorter names (matching expected API)

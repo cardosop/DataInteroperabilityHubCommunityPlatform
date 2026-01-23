@@ -32,11 +32,11 @@ pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
 class JourneyPA001OnboardNewTenantTests(E2ETestBase):
     """JOURNEY-PA-001: Onboard New Tenant"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         # Create platform admin user (no tenant, is_platform_admin=True)
         self.platform_admin = User.objects.create_user(
             email="platform@admin.com",
@@ -45,17 +45,17 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             status=UserStatus.ACTIVE,
             is_platform_admin=True
         )
-        
+
         # Authenticate as platform admin
         self.client.force_authenticate(user=self.platform_admin)
-    
+
     def test_onboard_new_tenant_with_admin_user(self):
         """
         Test happy path: Create tenant → Create admin user → Assign TENANT_ADMIN role
         """
         # Step 1: Create new tenant
         response = self.client.post(
-            '/api/v1/tenants/tenants/',
+            '/api/v1/tenants/',
             {
                 'name': 'New Enterprise Tenant',
                 'slug': 'new-enterprise-tenant',
@@ -66,13 +66,13 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         tenant_data = response.data
         tenant_id = tenant_data['id']
-        
+
         # Verify tenant was created with ACTIVE status and UNVERIFIED KYC
         self.assertEqual(tenant_data['status'], TenantStatus.ACTIVE.value)
         self.assertEqual(tenant_data['kyc_status'], KYCStatus.UNVERIFIED.value)
         self.assertEqual(tenant_data['name'], 'New Enterprise Tenant')
         self.assertEqual(tenant_data['slug'], 'new-enterprise-tenant')
-        
+
         # Step 2: Create initial admin user for the tenant
         tenant = Tenant.objects.get(id=tenant_id)
         admin_user = User.objects.create_user(
@@ -81,7 +81,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             tenant=tenant,
             status=UserStatus.ACTIVE
         )
-        
+
         # Step 3: Assign TENANT_ADMIN role
         tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=tenant,
@@ -89,16 +89,16 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             defaults={'description': 'Tenant Administrator'}
         )
         UserRole.objects.create(user=admin_user, role=tenant_admin_role)
-        
+
         # Verify admin user was created
         self.assertEqual(str(admin_user.tenant.id), str(tenant_id))
         self.assertEqual(admin_user.status, UserStatus.ACTIVE)
-        
+
         # Verify role was assigned
         user_roles = UserRole.objects.filter(user=admin_user)
         role_names = [ur.role.name for ur in user_roles]
         self.assertIn('TENANT_ADMIN', role_names)
-        
+
         # Step 4: Verify audit log
         self.verify_audit_log(
             resource_type='TENANT',
@@ -106,13 +106,13 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             resource_id=tenant_id,
             actor_user=self.platform_admin
         )
-    
+
     def test_onboard_tenant_with_verified_kyc(self):
         """
         Test creating tenant with VERIFIED KYC status
         """
         response = self.client.post(
-            '/api/v1/tenants/tenants/',
+            '/api/v1/tenants/',
             {
                 'name': 'Verified Enterprise Tenant',
                 'slug': 'verified-enterprise-tenant',
@@ -122,10 +122,10 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         tenant_id = response.data['id']
-        
+
         # Update KYC status to VERIFIED
         response = self.client.patch(
-            f'/api/v1/tenants/tenants/{tenant_id}/',
+            f'/api/v1/tenants/{tenant_id}/',
             {
                 'kyc_status': KYCStatus.VERIFIED.value
             },
@@ -133,7 +133,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['kyc_status'], KYCStatus.VERIFIED.value)
-        
+
         # Verify audit log
         self.verify_audit_log(
             resource_type='TENANT',
@@ -141,7 +141,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             resource_id=tenant_id,
             actor_user=self.platform_admin
         )
-    
+
     def test_list_all_tenants(self):
         """
         Test listing all tenants (platform admin can see all)
@@ -149,17 +149,17 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         # Create multiple tenants
         Tenant.objects.create(name='Tenant 1', slug='tenant-1', kyc_status=KYCStatus.VERIFIED)
         Tenant.objects.create(name='Tenant 2', slug='tenant-2', kyc_status=KYCStatus.UNVERIFIED)
-        
+
         # List all tenants
-        response = self.client.get('/api/v1/tenants/tenants/')
+        response = self.client.get('/api/v1/tenants/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         tenants = response.data.get('results', [])
-        
+
         # Should see all tenants (at least the ones we created)
         tenant_names = [t['name'] for t in tenants]
         self.assertIn('Tenant 1', tenant_names)
         self.assertIn('Tenant 2', tenant_names)
-    
+
     def test_suspend_tenant(self):
         """
         Test suspending a tenant
@@ -169,9 +169,9 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             slug='suspendable-tenant',
             kyc_status=KYCStatus.VERIFIED
         )
-        
+
         response = self.client.post(
-            f'/api/v1/tenants/tenants/{tenant.id}/suspend/',
+            f'/api/v1/tenants/{tenant.id}/suspend/',
             {
                 'reason': 'Policy violation'
             },
@@ -179,7 +179,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['status'], TenantStatus.SUSPENDED.value)
-        
+
         # Verify audit log
         self.verify_audit_log(
             resource_type='TENANT',
@@ -187,7 +187,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             resource_id=str(tenant.id),
             actor_user=self.platform_admin
         )
-    
+
     def test_reactivate_tenant(self):
         """
         Test reactivating a suspended tenant
@@ -198,15 +198,15 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             kyc_status=KYCStatus.VERIFIED
         )
         tenant.suspend()
-        
+
         response = self.client.post(
-            f'/api/v1/tenants/tenants/{tenant.id}/reactivate/',
+            f'/api/v1/tenants/{tenant.id}/reactivate/',
             {},
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['status'], TenantStatus.ACTIVE.value)
-        
+
         # Verify audit log
         self.verify_audit_log(
             resource_type='TENANT',
@@ -214,15 +214,15 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             resource_id=str(tenant.id),
             actor_user=self.platform_admin
         )
-    
+
     def test_error_duplicate_slug(self):
         """
         Test error scenario: Creating tenant with duplicate slug
         """
         Tenant.objects.create(name='Existing Tenant', slug='existing-tenant')
-        
+
         response = self.client.post(
-            '/api/v1/tenants/tenants/',
+            '/api/v1/tenants/',
             {
                 'name': 'Another Tenant',
                 'slug': 'existing-tenant'  # Duplicate slug
@@ -230,7 +230,7 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-    
+
     def test_error_non_platform_admin_access(self):
         """
         Test error scenario: Non-platform admin trying to create tenant
@@ -243,13 +243,13 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
             status=UserStatus.ACTIVE,
             is_platform_admin=False
         )
-        
+
         # Authenticate as regular user
         self.client.force_authenticate(user=regular_user)
-        
+
         # Try to create tenant
         response = self.client.post(
-            '/api/v1/tenants/tenants/',
+            '/api/v1/tenants/',
             {
                 'name': 'Unauthorized Tenant',
                 'slug': 'unauthorized-tenant'
@@ -261,11 +261,11 @@ class JourneyPA001OnboardNewTenantTests(E2ETestBase):
 
 class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
     """JOURNEY-MPA-001: Manage Marketplace Listings"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
             email="platform@admin.com",
@@ -274,7 +274,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             status=UserStatus.ACTIVE,
             is_platform_admin=True
         )
-        
+
         # Create provider tenant and user
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
@@ -287,7 +287,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             tenant=self.provider_tenant,
             status=UserStatus.ACTIVE
         )
-        
+
         # Create asset
         self.asset = Asset.objects.create(
             tenant=self.provider_tenant,
@@ -296,10 +296,10 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             created_by=self.provider_user,
             status=AssetStatus.ACTIVE
         )
-        
+
         # Authenticate as platform admin
         self.client.force_authenticate(user=self.platform_admin)
-    
+
     def test_list_all_marketplace_listings(self):
         """
         Test platform admin can view all marketplace listings across tenants
@@ -312,7 +312,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             pricing_model=PricingModel.FREE,
             metadata_json={'title': 'Listing 1', 'short_description': 'Test listing 1'}
         )
-        
+
         # Create another tenant and listing
         tenant2 = Tenant.objects.create(
             name="Provider Tenant 2",
@@ -332,17 +332,17 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             pricing_model=PricingModel.FREE,
             metadata_json={'title': 'Listing 2', 'short_description': 'Test listing 2'}
         )
-        
+
         # Platform admin should see all listings
         response = self.client.get('/api/v1/marketplace/listings/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         listings = response.data.get('results', [])
-        
+
         # Should see listings from both tenants
         listing_ids = [l['id'] for l in listings]
         self.assertIn(str(listing1.id), listing_ids)
         self.assertIn(str(listing2.id), listing_ids)
-    
+
     def test_view_listing_details(self):
         """
         Test platform admin can view details of any listing
@@ -354,12 +354,12 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             pricing_model=PricingModel.FREE,
             metadata_json={'title': 'Test Listing', 'short_description': 'Test description'}
         )
-        
+
         response = self.client.get(f'/api/v1/marketplace/listings/{listing.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(listing.id))
         self.assertEqual(response.data['status'], ListingStatus.PUBLISHED.value)
-    
+
     def test_filter_listings_by_status(self):
         """
         Test platform admin can view listings with different statuses
@@ -392,7 +392,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             pricing_model=PricingModel.FREE,
             metadata_json={'title': 'Draft Listing'}
         )
-        
+
         # List all listings (platform admin can see all)
         response = self.client.get('/api/v1/marketplace/listings/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -401,18 +401,18 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             listings = response.data
         else:
             listings = response.data.get('results', [])
-        
+
         # Verify we can see both listings
         listing_ids = [l['id'] for l in listings]
         self.assertIn(str(listing1.id), listing_ids)
         self.assertIn(str(listing2.id), listing_ids)
-        
+
         # Verify statuses are correct
         listing1_data = next(l for l in listings if l['id'] == str(listing1.id))
         listing2_data = next(l for l in listings if l['id'] == str(listing2.id))
         self.assertEqual(listing1_data['status'], ListingStatus.PUBLISHED.value)
         self.assertEqual(listing2_data['status'], ListingStatus.DRAFT.value)
-    
+
     def test_update_listing_status(self):
         """
         Test platform admin can update listing status (e.g., unpublish)
@@ -424,7 +424,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
             pricing_model=PricingModel.FREE,
             metadata_json={'title': 'Test Listing'}
         )
-        
+
         # Unpublish listing
         response = self.client.patch(
             f'/api/v1/marketplace/listings/{listing.id}/',
@@ -435,7 +435,7 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['status'], ListingStatus.UNLISTED.value)
-        
+
         # Verify in database
         listing.refresh_from_db()
         self.assertEqual(listing.status, ListingStatus.UNLISTED)
@@ -443,11 +443,11 @@ class JourneyMPA001ManageMarketplaceListingsTests(E2ETestBase):
 
 class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
     """JOURNEY-MPA-002: Process Marketplace Orders"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
             email="platform@admin.com",
@@ -456,7 +456,7 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             status=UserStatus.ACTIVE,
             is_platform_admin=True
         )
-        
+
         # Create provider and consumer tenants
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
@@ -468,7 +468,7 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             slug="consumer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+
         # Create assets and listings
         self.asset = Asset.objects.create(
             tenant=self.provider_tenant,
@@ -483,10 +483,10 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             pricing_model=PricingModel.REQUEST_APPROVAL,
             metadata_json={'title': 'Test Listing', 'short_description': 'Test', 'price_amount': 100.0, 'currency': 'USD'}
         )
-        
+
         # Authenticate as platform admin
         self.client.force_authenticate(user=self.platform_admin)
-    
+
     def test_list_all_marketplace_orders(self):
         """
         Test platform admin can view all marketplace orders across tenants
@@ -497,7 +497,7 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             listing=self.listing,
             status=OrderStatus.REQUESTED
         )
-        
+
         # Create another listing and order
         asset2 = Asset.objects.create(
             tenant=self.provider_tenant,
@@ -517,7 +517,7 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             listing=listing2,
             status=OrderStatus.REQUESTED
         )
-        
+
         # Platform admin should see all orders
         response = self.client.get('/api/v1/marketplace/orders/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -526,12 +526,12 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             orders = response.data
         else:
             orders = response.data.get('results', [])
-        
+
         # Should see orders from both listings
         order_ids = [o['id'] for o in orders]
         self.assertIn(str(order1.id), order_ids)
         self.assertIn(str(order2.id), order_ids)
-    
+
     def test_view_order_details(self):
         """
         Test platform admin can view details of any order
@@ -541,12 +541,12 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             listing=self.listing,
             status=OrderStatus.REQUESTED
         )
-        
+
         response = self.client.get(f'/api/v1/marketplace/orders/{order.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(order.id))
         self.assertEqual(response.data['status'], OrderStatus.REQUESTED.value)
-    
+
     def test_filter_orders_by_status(self):
         """
         Test platform admin can filter orders by status
@@ -562,7 +562,7 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             listing=self.listing,
             status=OrderStatus.APPROVED
         )
-        
+
         # Filter by REQUESTED
         response = self.client.get('/api/v1/marketplace/orders/?status=REQUESTED')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -573,7 +573,7 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             orders = response.data.get('results', [])
         for order in orders:
             self.assertEqual(order['status'], OrderStatus.REQUESTED.value)
-        
+
         # Filter by APPROVED
         response = self.client.get('/api/v1/marketplace/orders/?status=APPROVED')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -584,7 +584,7 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             orders = response.data.get('results', [])
         for order in orders:
             self.assertEqual(order['status'], OrderStatus.APPROVED.value)
-    
+
     def test_view_order_for_approval(self):
         """
         Test platform admin can view order details for monitoring/approval oversight
@@ -595,13 +595,13 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             listing=self.listing,
             status=OrderStatus.REQUESTED
         )
-        
+
         # Platform admin can view order details
         response = self.client.get(f'/api/v1/marketplace/orders/{order.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(order.id))
         self.assertEqual(response.data['status'], OrderStatus.REQUESTED.value)
-        
+
         # Platform admin cannot approve (only provider can)
         # This is by design - platform admin monitors, provider approves
         response = self.client.post(
@@ -611,7 +611,7 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
         )
         # Should return 403 as platform admin is not the provider
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-    
+
     def test_view_order_for_rejection_oversight(self):
         """
         Test platform admin can view order details for rejection oversight
@@ -622,11 +622,11 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
             listing=self.listing,
             status=OrderStatus.REQUESTED
         )
-        
+
         # Platform admin can view order details
         response = self.client.get(f'/api/v1/marketplace/orders/{order.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Platform admin cannot reject (only provider can)
         # This is by design - platform admin monitors, provider rejects
         response = self.client.post(
@@ -642,11 +642,11 @@ class JourneyMPA002ProcessMarketplaceOrdersTests(E2ETestBase):
 
 class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
     """JOURNEY-MPA-003: Monitor Platform Health"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
             email="platform@admin.com",
@@ -655,10 +655,10 @@ class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
             status=UserStatus.ACTIVE,
             is_platform_admin=True
         )
-        
+
         # Authenticate as platform admin
         self.client.force_authenticate(user=self.platform_admin)
-    
+
     def test_access_metrics_endpoint(self):
         """
         Test platform admin can access metrics endpoint
@@ -668,30 +668,31 @@ class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
         # Metrics endpoint may return 200 or 503 if not available
         # We just verify it's accessible (not 404 or 403)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE])
-    
+
     def test_view_platform_health_via_health_endpoint(self):
         """
         Test platform admin can view platform health via health endpoint
         """
         # Health endpoint should be accessible
         response = self.client.get('/health/')
-        # Health endpoint may redirect or return 200
+        # Health endpoint may redirect, return 200, or 503 if services are unavailable
         self.assertIn(response.status_code, [
             status.HTTP_200_OK,
             status.HTTP_301_MOVED_PERMANENTLY,
-            status.HTTP_302_FOUND
+            status.HTTP_302_FOUND,
+            status.HTTP_503_SERVICE_UNAVAILABLE  # Acceptable when Redis or other services are unavailable
         ])
-    
+
     def test_monitor_tenant_usage_metrics(self):
         """
         Test platform admin can monitor tenant usage via API analytics
         """
         # Create some usage metrics
         from hub.apps.api.analytics.models import APIUsageMetric
-        
+
         tenant1 = Tenant.objects.create(name='Tenant 1', slug='tenant-1')
         tenant2 = Tenant.objects.create(name='Tenant 2', slug='tenant-2')
-        
+
         APIUsageMetric.objects.create(
             tenant=tenant1,
             endpoint_path='/api/v1/assets/',
@@ -706,14 +707,14 @@ class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
             status_code=201,
             latency_ms=120.5
         )
-        
+
         # Verify metrics were created (platform admin can query these)
         metrics = APIUsageMetric.objects.all()
         self.assertGreaterEqual(metrics.count(), 2)
-        
+
         # Platform admin should be able to access analytics data
         # (Note: If analytics API endpoint exists, we would test it here)
-    
+
     def test_view_all_tenants_for_monitoring(self):
         """
         Test platform admin can view all tenants for monitoring purposes
@@ -721,23 +722,23 @@ class JourneyMPA003MonitorPlatformHealthTests(E2ETestBase):
         # Create multiple tenants
         Tenant.objects.create(name='Monitor Tenant 1', slug='monitor-tenant-1')
         Tenant.objects.create(name='Monitor Tenant 2', slug='monitor-tenant-2')
-        
+
         # List all tenants
-        response = self.client.get('/api/v1/tenants/tenants/')
+        response = self.client.get('/api/v1/tenants/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         tenants = response.data.get('results', [])
-        
+
         # Should see all tenants
         self.assertGreaterEqual(len(tenants), 2)
 
 
 class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
     """JOURNEY-MPA-004: Configure Platform Settings"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
             email="platform@admin.com",
@@ -746,7 +747,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
             status=UserStatus.ACTIVE,
             is_platform_admin=True
         )
-        
+
         # Create test tenants
         self.tenant1 = Tenant.objects.create(
             name="Test Tenant 1",
@@ -758,10 +759,10 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
             slug="test-tenant-2",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+
         # Authenticate as platform admin
         self.client.force_authenticate(user=self.platform_admin)
-    
+
     def test_configure_tenant_settings_as_platform_defaults(self):
         """
         Test platform admin can configure tenant settings that serve as platform defaults
@@ -778,7 +779,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['default_dq_profile'], 'intake_basic_soda')
         self.assertEqual(response.data['data_retention_days'], 1825)
-        
+
         # Configure tenant 2 with different settings
         response = self.client.patch(
             f'/api/v1/tenants/tenants/{self.tenant2.id}/config/',
@@ -791,7 +792,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['default_dq_profile'], 'intake_basic_gx')
         self.assertEqual(response.data['data_retention_days'], 2555)
-    
+
     def test_cross_tenant_configuration_access(self):
         """
         Test platform admin can access and configure any tenant's settings
@@ -799,11 +800,11 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
         # Get tenant 1 config
         response = self.client.get(f'/api/v1/tenants/tenants/{self.tenant1.id}/config/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Get tenant 2 config
         response = self.client.get(f'/api/v1/tenants/tenants/{self.tenant2.id}/config/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Update tenant 1 config
         response = self.client.patch(
             f'/api/v1/tenants/tenants/{self.tenant1.id}/config/',
@@ -813,7 +814,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Update tenant 2 config
         response = self.client.patch(
             f'/api/v1/tenants/tenants/{self.tenant2.id}/config/',
@@ -823,7 +824,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-    
+
     def test_configure_rate_limits_across_tenants(self):
         """
         Test platform admin can configure rate limits for different tenants
@@ -835,7 +836,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
                 'daily_cap': 15000
             }
         }
-        
+
         rate_limits_tenant2 = {
             'dq_runs': {
                 'burst_per_10s': 50,
@@ -843,7 +844,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
                 'daily_cap': 20000
             }
         }
-        
+
         # Configure tenant 1
         response = self.client.patch(
             f'/api/v1/tenants/tenants/{self.tenant1.id}/config/',
@@ -851,7 +852,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Configure tenant 2
         response = self.client.patch(
             f'/api/v1/tenants/tenants/{self.tenant2.id}/config/',
@@ -859,7 +860,7 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Verify configurations
         config1 = TenantConfig.objects.get(tenant=self.tenant1)
         config2 = TenantConfig.objects.get(tenant=self.tenant2)
@@ -869,11 +870,11 @@ class JourneyMPA004ConfigurePlatformSettingsTests(E2ETestBase):
 
 class PlatformAdminUseCasesTests(E2ETestBase):
     """Test use cases: Manage marketplace listings, process orders, monitor platform health, configure platform"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
             email="platform@admin.com",
@@ -882,7 +883,7 @@ class PlatformAdminUseCasesTests(E2ETestBase):
             status=UserStatus.ACTIVE,
             is_platform_admin=True
         )
-        
+
         # Create test tenants
         self.provider_tenant = Tenant.objects.create(
             name="Provider Tenant",
@@ -894,7 +895,7 @@ class PlatformAdminUseCasesTests(E2ETestBase):
             slug="consumer-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+
         # Create asset and listing
         self.asset = Asset.objects.create(
             tenant=self.provider_tenant,
@@ -909,10 +910,10 @@ class PlatformAdminUseCasesTests(E2ETestBase):
             pricing_model=PricingModel.REQUEST_APPROVAL,
             metadata_json={'title': 'Test Listing', 'short_description': 'Test', 'price_amount': 100.0, 'currency': 'USD'}
         )
-        
+
         # Authenticate as platform admin
         self.client.force_authenticate(user=self.platform_admin)
-    
+
     def test_complete_marketplace_management_workflow(self):
         """
         Test complete marketplace management workflow: View listings → View orders → Process order
@@ -922,14 +923,14 @@ class PlatformAdminUseCasesTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         listings = response.data.get('results', [])
         self.assertGreater(len(listings), 0)
-        
+
         # Step 2: Create an order
         order = Order.objects.create(
             tenant=self.consumer_tenant,
             listing=self.listing,
             status=OrderStatus.REQUESTED
         )
-        
+
         # Step 3: View all orders
         response = self.client.get('/api/v1/marketplace/orders/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -940,20 +941,20 @@ class PlatformAdminUseCasesTests(E2ETestBase):
             orders = response.data.get('results', [])
         order_ids = [o['id'] for o in orders]
         self.assertIn(str(order.id), order_ids)
-        
+
         # Step 4: View order details (platform admin can monitor but not approve)
         response = self.client.get(f'/api/v1/marketplace/orders/{order.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], str(order.id))
         # Note: Approval is done by provider, platform admin monitors
-    
+
     def test_complete_tenant_management_workflow(self):
         """
         Test complete tenant management workflow: Create tenant → Configure → Monitor
         """
         # Step 1: Create tenant
         response = self.client.post(
-            '/api/v1/tenants/tenants/',
+            '/api/v1/tenants/',
             {
                 'name': 'Workflow Tenant',
                 'slug': 'workflow-tenant',
@@ -963,7 +964,7 @@ class PlatformAdminUseCasesTests(E2ETestBase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         tenant_id = response.data['id']
-        
+
         # Step 2: Configure tenant
         response = self.client.patch(
             f'/api/v1/tenants/tenants/{tenant_id}/config/',
@@ -974,9 +975,9 @@ class PlatformAdminUseCasesTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Step 3: Monitor tenant (list tenants)
-        response = self.client.get('/api/v1/tenants/tenants/')
+        response = self.client.get('/api/v1/tenants/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         tenants = response.data.get('results', [])
         tenant_ids = [t['id'] for t in tenants]
@@ -985,11 +986,11 @@ class PlatformAdminUseCasesTests(E2ETestBase):
 
 class PlatformAdminErrorScenariosTests(E2ETestBase):
     """Test error scenarios: Marketplace operation failure, platform configuration failure"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        
+
         # Create platform admin user
         self.platform_admin = User.objects.create_user(
             email="platform@admin.com",
@@ -998,10 +999,10 @@ class PlatformAdminErrorScenariosTests(E2ETestBase):
             status=UserStatus.ACTIVE,
             is_platform_admin=True
         )
-        
+
         # Authenticate as platform admin
         self.client.force_authenticate(user=self.platform_admin)
-    
+
     def test_error_access_nonexistent_listing(self):
         """
         Test error scenario: Accessing non-existent listing
@@ -1009,7 +1010,7 @@ class PlatformAdminErrorScenariosTests(E2ETestBase):
         fake_listing_id = str(uuid.uuid4())
         response = self.client.get(f'/api/v1/marketplace/listings/{fake_listing_id}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-    
+
     def test_error_access_nonexistent_order(self):
         """
         Test error scenario: Accessing non-existent order
@@ -1017,15 +1018,15 @@ class PlatformAdminErrorScenariosTests(E2ETestBase):
         fake_order_id = str(uuid.uuid4())
         response = self.client.get(f'/api/v1/marketplace/orders/{fake_order_id}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-    
+
     def test_error_access_nonexistent_tenant(self):
         """
         Test error scenario: Accessing non-existent tenant
         """
         fake_tenant_id = str(uuid.uuid4())
-        response = self.client.get(f'/api/v1/tenants/tenants/{fake_tenant_id}/')
+        response = self.client.get(f'/api/v1/tenants/{fake_tenant_id}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-    
+
     def test_error_invalid_tenant_config(self):
         """
         Test error scenario: Invalid tenant configuration
@@ -1035,7 +1036,7 @@ class PlatformAdminErrorScenariosTests(E2ETestBase):
             slug="test-tenant",
             kyc_status=KYCStatus.VERIFIED
         )
-        
+
         # Invalid DQ profile
         response = self.client.patch(
             f'/api/v1/tenants/tenants/{tenant.id}/config/',
@@ -1045,7 +1046,7 @@ class PlatformAdminErrorScenariosTests(E2ETestBase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        
+
         # Invalid retention days
         response = self.client.patch(
             f'/api/v1/tenants/tenants/{tenant.id}/config/',

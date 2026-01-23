@@ -572,7 +572,7 @@ class GovernanceBusinessRules(BusinessRules):
                     f"got {type(resource_type_value).__name__}"
                 )
             else:
-                valid_resource_types = {'ASSET', 'DATASET', 'FILE', 'TRANSFORMATION_PIPELINE',
+                valid_resource_types = {'ASSET', 'DATASET', 'FILE',
                                       'DATA_MESH_DOMAIN', 'VIRTUAL_DATASET'}
                 if resource_type_value not in valid_resource_types:
                     warnings.append(

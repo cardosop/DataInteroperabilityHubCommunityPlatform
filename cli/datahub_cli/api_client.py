@@ -29,10 +29,15 @@ class APIClient:
         params: Optional[Dict[str, Any]] = None,
         json_data: Optional[Dict[str, Any]] = None,
         files: Optional[Dict[str, Any]] = None,
-        stream: bool = False
+        stream: bool = False,
+        timeout: Optional[int] = None
     ) -> requests.Response:
         """
         Make an API request.
+
+        Args:
+            timeout: Request timeout in seconds. Defaults to 30 for regular requests,
+                    120 for workflow operations (contracts/products/, contracts/{id}/link-odps/)
 
         Returns Response object. Raises click.ClickException on error.
         """
@@ -49,58 +54,87 @@ class APIClient:
         url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
         headers = self.auth_manager.get_auth_headers()
 
-        try:
-            response = requests.request(
-                method=method,
-                url=url,
-                params=params,
-                json=json_data,
-                files=files,
-                headers=headers,
-                timeout=30,
-                stream=stream
-            )
+        # Determine timeout: use provided timeout, or detect workflow endpoints for longer timeout
+        if timeout is None:
+            # Workflow endpoints that may take longer
+            workflow_endpoints = ['contracts/products/', 'contracts/', '/link-odps']
+            is_workflow = any(we in endpoint for we in workflow_endpoints)
+            timeout = 120 if is_workflow else 30
 
-            # Handle 401 Unauthorized - try to refresh token (only for JWT, not API keys)
-            if response.status_code == 401:
-                # Check if we're using API key authentication
-                api_key = self.auth_manager.config.get_api_key()
-                if api_key and api_key.strip():
-                    # Using API key - don't try to refresh, just return the error response
-                    # The _handle_response will process the error properly
-                    return response
+        # Retry logic for connection errors
+        max_retries = 3
+        retry_delay = 1
+        response = None
 
-                # Using JWT - try to refresh token
-                if self.auth_manager.refresh_access_token():
-                    # Retry request with new token
-                    headers = self.auth_manager.get_auth_headers()
-                    response = requests.request(
-                        method=method,
-                        url=url,
-                        params=params,
-                        json=json_data,
-                        files=files,
-                        headers=headers,
-                        timeout=30,
-                        stream=stream
-                    )
+        for attempt in range(max_retries):
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json_data,
+                    files=files,
+                    headers=headers,
+                    timeout=timeout,
+                    stream=stream
+                )
+                # Success - break out of retry loop
+                break
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, ConnectionResetError, OSError) as e:
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                    continue
                 else:
-                    raise click.ClickException(
-                        "Authentication failed. Please run 'datahub login' again."
-                    )
+                    # Last attempt failed - raise exception
+                    raise click.ClickException(f"API request failed after {max_retries} attempts: {e}")
 
-            return response
-        except requests.exceptions.RequestException as e:
-            raise click.ClickException(f"API request failed: {e}")
+        if response is None:
+            raise click.ClickException("API request failed: No response received")
+
+        # Handle 401 Unauthorized - try to refresh token (only for JWT, not API keys)
+        if response.status_code == 401:
+            # Check if we're using API key authentication
+            api_key = self.auth_manager.config.get_api_key()
+            if api_key and api_key.strip():
+                # Using API key - don't try to refresh, just return the error response
+                # The _handle_response will process the error properly
+                return response
+
+            # Using JWT - try to refresh token
+            if self.auth_manager.refresh_access_token():
+                # Retry request with new token
+                headers = self.auth_manager.get_auth_headers()
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json_data,
+                    files=files,
+                    headers=headers,
+                    timeout=timeout,
+                    stream=stream
+                )
+            else:
+                raise click.ClickException(
+                    "Authentication failed. Please run 'datahub login' again."
+                )
+
+        return response
 
     def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """GET request"""
         response = self._request('GET', endpoint, params=params)
         return self._handle_response(response)
 
-    def post(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None, files: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """POST request"""
-        response = self._request('POST', endpoint, json_data=json_data, files=files)
+    def post(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None, files: Optional[Dict[str, Any]] = None, timeout: Optional[int] = None) -> Dict[str, Any]:
+        """POST request
+
+        Args:
+            timeout: Request timeout in seconds. Defaults to 30 for regular requests,
+                    120 for workflow operations
+        """
+        response = self._request('POST', endpoint, json_data=json_data, files=files, timeout=timeout)
         return self._handle_response(response)
 
     def patch(self, endpoint: str, json_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -117,9 +151,9 @@ class APIClient:
         """GET request with streaming"""
         return self._request('GET', endpoint, params=params, stream=True)
 
-    def request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
+    def request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, json_data: Optional[Dict[str, Any]] = None, timeout: Optional[int] = None) -> requests.Response:
         """Make a raw request and return Response object"""
-        return self._request(method, endpoint, params=params)
+        return self._request(method, endpoint, params=params, json_data=json_data, timeout=timeout)
 
     def _handle_response(self, response: requests.Response) -> Dict[str, Any]:
         """Handle API response"""

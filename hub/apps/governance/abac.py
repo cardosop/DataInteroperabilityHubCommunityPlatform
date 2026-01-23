@@ -3,22 +3,26 @@ Attribute-Based Access Control (ABAC)
 
 Policy evaluation engine for fine-grained access control.
 """
-from typing import Dict, List, Any, Optional, Tuple
+
+from typing import Any, Dict, List, Optional, Tuple
+
 from django.core.cache import cache
 from django.utils import timezone
 
+from hub.apps.governance.models import ClassificationCategory, DataClassification
+
 from .models import AccessPolicy, FieldAccessPolicy
-from hub.apps.governance.models import DataClassification, ClassificationCategory
 
 
 class PolicyEvaluationResult:
     """Result of policy evaluation"""
+
     def __init__(
         self,
         allowed: bool,
         policy: Optional[AccessPolicy] = None,
         field_policies: Optional[List[FieldAccessPolicy]] = None,
-        masking_required: bool = False
+        masking_required: bool = False,
     ):
         self.allowed = allowed
         self.policy = policy
@@ -47,7 +51,7 @@ class ABACEngine:
         access_type: str = "READ",
         field_name: Optional[str] = None,
         user_attributes: Optional[Dict[str, Any]] = None,
-        environment_attributes: Optional[Dict[str, Any]] = None
+        environment_attributes: Optional[Dict[str, Any]] = None,
     ) -> PolicyEvaluationResult:
         """
         Evaluate access for a user to a resource.
@@ -79,9 +83,7 @@ class ABACEngine:
             environment_attributes = ABACEngine._get_environment_attributes()
 
         # Get applicable policies
-        policies = ABACEngine._get_applicable_policies(
-            tenant_id, resource_type, resource_id
-        )
+        policies = ABACEngine._get_applicable_policies(tenant_id, resource_type, resource_id)
 
         # Evaluate policies in priority order
         for policy in policies:
@@ -90,19 +92,13 @@ class ABACEngine:
 
             # Evaluate policy conditions
             matches = ABACEngine._evaluate_conditions(
-                policy.conditions,
-                user_attributes,
-                resource_attributes,
-                environment_attributes
+                policy.conditions, user_attributes, resource_attributes, environment_attributes
             )
 
             if matches:
                 # Policy matched, apply effect
                 if policy.effect == "DENY":
-                    return PolicyEvaluationResult(
-                        allowed=False,
-                        policy=policy
-                    )
+                    return PolicyEvaluationResult(allowed=False, policy=policy)
                 elif policy.effect == "ALLOW":
                     # Check field-level policies if field specified
                     field_policies = []
@@ -117,7 +113,7 @@ class ABACEngine:
                         allowed=True,
                         policy=policy,
                         field_policies=field_policies,
-                        masking_required=masking_required
+                        masking_required=masking_required,
                     )
 
         # Default deny if no policy matches
@@ -136,125 +132,113 @@ class ABACEngine:
                 user_roles = [ur.role.name for ur in user.user_roles.all()]
 
             return {
-                'user_id': str(user.id),
-                'email': user.email,
-                'tenant_id': str(user.tenant_id) if user.tenant_id else None,
-                'status': user.status.value if hasattr(user.status, 'value') else str(user.status),
-                'user_roles': user_roles,
+                "user_id": str(user.id),
+                "email": user.email,
+                "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+                "status": user.status.value if hasattr(user.status, "value") else str(user.status),
+                "user_roles": user_roles,
                 # Add more attributes as needed
             }
         except User.DoesNotExist:
-            return {'user_id': user_id, 'user_roles': []}
+            return {"user_id": user_id, "user_roles": []}
 
     @staticmethod
     def _get_resource_attributes(
-        resource_type: str,
-        resource_id: str,
-        tenant_id: str
+        resource_type: str, resource_id: str, tenant_id: str
     ) -> Dict[str, Any]:
         """Get resource attributes"""
         attributes = {
-            'resource_type': resource_type,
-            'resource_id': str(resource_id),
-            'tenant_id': tenant_id
+            "resource_type": resource_type,
+            "resource_id": str(resource_id),
+            "tenant_id": tenant_id,
         }
 
         # Get classification
         if resource_type == "DATASET":
             from hub.apps.datasets.models import Dataset
+
             try:
                 dataset = Dataset.objects.get(id=resource_id, tenant_id=tenant_id)
                 classifications = DataClassification.objects.filter(
-                    tenant_id=tenant_id,
-                    dataset=dataset
+                    tenant_id=tenant_id, dataset=dataset
                 )
 
                 # Get highest classification
                 if classifications.exists():
                     highest_class = max(
                         classifications,
-                        key=lambda c: ABACEngine._get_classification_priority(c.category)
+                        key=lambda c: ABACEngine._get_classification_priority(c.category),
                     )
-                    attributes['classification'] = highest_class.category
-                    attributes['classification_confidence'] = highest_class.confidence_score
+                    attributes["classification"] = highest_class.category
+                    attributes["classification_confidence"] = highest_class.confidence_score
             except Dataset.DoesNotExist:
                 pass
         elif resource_type == "ASSET":
             from hub.apps.assets.models import Asset
+
             try:
                 asset = Asset.objects.get(id=resource_id, tenant_id=tenant_id)
-                attributes['asset_key'] = asset.key
-                attributes['asset_status'] = asset.status.value if hasattr(asset.status, 'value') else str(asset.status)
+                attributes["asset_key"] = asset.key
+                attributes["asset_status"] = (
+                    asset.status.value if hasattr(asset.status, "value") else str(asset.status)
+                )
             except Asset.DoesNotExist:
                 pass
-        elif resource_type == "TRANSFORMATION_PIPELINE":
-            from hub.apps.transformation.models import TransformationPipeline
-            # Check if resource_id is a valid UUID (not a placeholder like "tenant:...:pipeline:new")
-            import uuid
-            try:
-                # Try to parse as UUID
-                uuid.UUID(resource_id)
-                # If successful, try to get the pipeline
-                try:
-                    pipeline = TransformationPipeline.objects.get(id=resource_id, tenant_id=tenant_id)
-                    attributes['pipeline_name'] = pipeline.name
-                    attributes['pipeline_status'] = pipeline.status.value if hasattr(pipeline.status, 'value') else str(pipeline.status)
-                    attributes['pipeline_version'] = pipeline.version
-                    if pipeline.created_by:
-                        attributes['pipeline_owner_id'] = str(pipeline.created_by.id)
-                except TransformationPipeline.DoesNotExist:
-                    pass
-            except (ValueError, TypeError):
-                # Not a valid UUID, likely a placeholder for new resource creation
-                # Set basic attributes for policy evaluation
-                attributes['pipeline_name'] = 'new_pipeline'
-                attributes['pipeline_status'] = 'DRAFT'
-                pass
         elif resource_type == "VIRTUAL_DATASET":
-            from hub.apps.virtualization.models import VirtualDataset
             # Check if resource_id is a valid UUID (not a placeholder like "tenant:...:virtual_dataset:new")
             import uuid
+
+            from hub.apps.virtualization.models import VirtualDataset
+
             try:
                 # Try to parse as UUID
                 uuid.UUID(resource_id)
                 # If successful, try to get the virtual dataset
                 try:
-                    virtual_dataset = VirtualDataset.objects.get(id=resource_id, tenant_id=tenant_id)
-                    attributes['virtual_dataset_name'] = virtual_dataset.name
-                    attributes['virtual_dataset_status'] = virtual_dataset.status.value if hasattr(virtual_dataset.status, 'value') else str(virtual_dataset.status)
-                    attributes['virtual_dataset_version'] = virtual_dataset.version
+                    virtual_dataset = VirtualDataset.objects.get(
+                        id=resource_id, tenant_id=tenant_id
+                    )
+                    attributes["virtual_dataset_name"] = virtual_dataset.name
+                    attributes["virtual_dataset_status"] = (
+                        virtual_dataset.status.value
+                        if hasattr(virtual_dataset.status, "value")
+                        else str(virtual_dataset.status)
+                    )
+                    attributes["virtual_dataset_version"] = virtual_dataset.version
                     if virtual_dataset.created_by:
-                        attributes['virtual_dataset_owner_id'] = str(virtual_dataset.created_by.id)
+                        attributes["virtual_dataset_owner_id"] = str(virtual_dataset.created_by.id)
                 except VirtualDataset.DoesNotExist:
                     pass
             except (ValueError, TypeError):
                 # Not a valid UUID, likely a placeholder for new resource creation
                 # Set basic attributes for policy evaluation
-                attributes['virtual_dataset_name'] = 'new_virtual_dataset'
-                attributes['virtual_dataset_status'] = 'DRAFT'
+                attributes["virtual_dataset_name"] = "new_virtual_dataset"
+                attributes["virtual_dataset_status"] = "DRAFT"
                 pass
         elif resource_type == "FILE":
-            from hub.apps.files.models import File
             import uuid
+
+            from hub.apps.files.models import File
+
             try:
                 # Try to parse as UUID
                 uuid.UUID(resource_id)
                 # If successful, try to get the file
                 try:
                     file_obj = File.objects.get(id=resource_id, tenant_id=tenant_id)
-                    attributes['file_name'] = file_obj.name
-                    attributes['file_status'] = file_obj.status
-                    attributes['file_size'] = file_obj.size
-                    attributes['file_content_type'] = file_obj.content_type
+                    attributes["file_name"] = file_obj.name
+                    attributes["file_status"] = file_obj.status
+                    attributes["file_size"] = file_obj.size
+                    attributes["file_content_type"] = file_obj.content_type
                     if file_obj.created_by:
-                        attributes['file_owner_id'] = str(file_obj.created_by.id)
+                        attributes["file_owner_id"] = str(file_obj.created_by.id)
                 except File.DoesNotExist:
                     pass
             except (ValueError, TypeError):
                 # Not a valid UUID, likely a placeholder for new resource creation
                 # Set basic attributes for policy evaluation
-                attributes['file_name'] = 'new_file'
-                attributes['file_status'] = 'PENDING'
+                attributes["file_name"] = "new_file"
+                attributes["file_status"] = "PENDING"
                 pass
 
         return attributes
@@ -263,9 +247,9 @@ class ABACEngine:
     def _get_environment_attributes() -> Dict[str, Any]:
         """Get environment attributes"""
         return {
-            'timestamp': timezone.now().isoformat(),
-            'time_of_day': timezone.now().hour,
-            'day_of_week': timezone.now().weekday(),
+            "timestamp": timezone.now().isoformat(),
+            "time_of_day": timezone.now().hour,
+            "day_of_week": timezone.now().weekday(),
             # Add more environment attributes as needed
         }
 
@@ -287,66 +271,56 @@ class ABACEngine:
 
     @staticmethod
     def _get_applicable_policies(
-        tenant_id: str,
-        resource_type: str,
-        resource_id: str
+        tenant_id: str, resource_type: str, resource_id: str
     ) -> List[AccessPolicy]:
         """Get applicable policies for a resource with caching"""
         cache_key = ABACEngine._get_cache_key(tenant_id, resource_type, resource_id)
-        cached = cache.get(cache_key)
+
+        # Try to get from cache, but handle cache failures gracefully
+        try:
+            cached = cache.get(cache_key)
+        except Exception:
+            # If cache fails (e.g., Redis unavailable), proceed without cache
+            cached = None
 
         if cached is not None:
             # Return cached policy IDs, then fetch policies
             policy_ids = cached
-            policies = list(AccessPolicy.objects.filter(id__in=policy_ids).order_by('priority'))
+            policies = list(AccessPolicy.objects.filter(id__in=policy_ids).order_by("priority"))
         else:
             # Build query
             from django.db.models import Q
 
-            queryset = AccessPolicy.objects.filter(
-                tenant_id=tenant_id,
-                enabled=True
-            )
+            queryset = AccessPolicy.objects.filter(tenant_id=tenant_id, enabled=True)
 
             # Filter by resource
             if resource_type == "ASSET":
-                queryset = queryset.filter(
-                    Q(asset_id=resource_id) | Q(asset__isnull=True)
-                )
+                queryset = queryset.filter(Q(asset_id=resource_id) | Q(asset__isnull=True))
             elif resource_type == "DATASET":
-                queryset = queryset.filter(
-                    Q(dataset_id=resource_id) | Q(dataset__isnull=True)
-                )
-            elif resource_type == "TRANSFORMATION_PIPELINE":
-                # For transformation pipelines, check tenant-wide policies
-                # (no specific pipeline field in AccessPolicy model yet)
-                queryset = queryset.filter(
-                    Q(asset__isnull=True) & Q(dataset__isnull=True)
-                )
+                queryset = queryset.filter(Q(dataset_id=resource_id) | Q(dataset__isnull=True))
             elif resource_type == "DATA_MESH_DOMAIN":
                 # For data mesh domains, check tenant-wide policies
                 # (no specific domain field in AccessPolicy model yet)
-                queryset = queryset.filter(
-                    Q(asset__isnull=True) & Q(dataset__isnull=True)
-                )
+                queryset = queryset.filter(Q(asset__isnull=True) & Q(dataset__isnull=True))
             elif resource_type == "VIRTUAL_DATASET":
                 # For virtual datasets, check tenant-wide policies
                 # (no specific virtual dataset field in AccessPolicy model yet)
-                queryset = queryset.filter(
-                    Q(asset__isnull=True) & Q(dataset__isnull=True)
-                )
+                queryset = queryset.filter(Q(asset__isnull=True) & Q(dataset__isnull=True))
             elif resource_type == "FILE":
                 # For files, check tenant-wide policies
                 # (no specific file field in AccessPolicy model yet)
-                queryset = queryset.filter(
-                    Q(asset__isnull=True) & Q(dataset__isnull=True)
-                )
+                queryset = queryset.filter(Q(asset__isnull=True) & Q(dataset__isnull=True))
 
-            policies = list(queryset.order_by('priority'))
+            # Use select_related/prefetch_related to optimize query
+            policies = list(queryset.select_related("tenant", "created_by").order_by("priority"))
 
-            # Cache policy IDs with TTL
-            policy_ids = [str(p.id) for p in policies]
-            cache.set(cache_key, policy_ids, ABACEngine.CACHE_TTL)
+            # Cache policy IDs with TTL (handle cache failures gracefully)
+            try:
+                policy_ids = [str(p.id) for p in policies]
+                cache.set(cache_key, policy_ids, ABACEngine.CACHE_TTL)
+            except Exception:
+                # If cache fails, continue without caching
+                pass
 
         return policies
 
@@ -355,7 +329,7 @@ class ABACEngine:
         conditions: Dict[str, Any],
         user_attributes: Dict[str, Any],
         resource_attributes: Dict[str, Any],
-        environment_attributes: Dict[str, Any]
+        environment_attributes: Dict[str, Any],
     ) -> bool:
         """
         Evaluate policy conditions.
@@ -428,7 +402,7 @@ class ABACEngine:
         dataset_id: str,
         field_name: str,
         access_policy: AccessPolicy,
-        access_type: str
+        access_type: str,
     ) -> Tuple[List[FieldAccessPolicy], bool]:
         """Get field-level policies and check if masking is required"""
         field_policies = list(
@@ -437,7 +411,7 @@ class ABACEngine:
                 dataset_id=dataset_id,
                 field_name=field_name,
                 access_policy=access_policy,
-                enabled=True
+                enabled=True,
             )
         )
 
@@ -459,9 +433,7 @@ class ABACEngine:
 
     @staticmethod
     def invalidate_policy_cache(
-        tenant_id: str,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None
+        tenant_id: str, resource_type: Optional[str] = None, resource_id: Optional[str] = None
     ):
         """Invalidate policy cache"""
         if resource_type and resource_id:
@@ -480,4 +452,3 @@ class ABACEngine:
         version_key = f"abac_cache_version_{tenant_id}"
         version = cache.get(version_key, 0)
         return f"abac_policies_{tenant_id}_{resource_type}_{resource_id}_v{version}"
-

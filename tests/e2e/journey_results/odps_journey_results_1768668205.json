@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-002-da9b978e",
+      "journey_name": "ODPS Linking Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768668195.7436528,
+      "end_time": 1768668205.2474394,
+      "duration": 9.503786563873291,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'JourneyODPS002ODPSLinkingTest' object has no attribute '_verify_bidirectional_linking'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768668195.7436633,
+          "end_time": 1768668195.7602391,
+          "duration": 0.01657581329345703,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODCS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768668195.7602518,
+          "end_time": 1768668196.9969862,
+          "duration": 1.236734390258789,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Document",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768668196.9970002,
+          "end_time": 1768668196.9970536,
+          "duration": 5.340576171875e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Link ODPS to ODCS",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768668196.997056,
+          "end_time": 1768668205.2474258,
+          "duration": 8.250369787216187,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T16:43:25.247552"
+}

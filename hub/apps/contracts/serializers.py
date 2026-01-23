@@ -67,6 +67,9 @@ class CompliancePolicySerializer(serializers.Serializer):
     Compliance policy defines data privacy and regulatory compliance requirements.
     """
     contains_personal_data = serializers.BooleanField(
+        required=False,
+        allow_null=True,
+        default=False,
         help_text="Whether the contract contains personal data (PII)"
     )
     personal_data_categories = serializers.ListField(
@@ -464,7 +467,29 @@ class ContractSerializer(serializers.ModelSerializer):
         hub_contract = obj.hub_contract_json or {}
         info = hub_contract.get('info', {})
         owners = info.get('owners', [])
-        return [OwnerSerializer(owner).data for owner in owners] if owners else []
+        if not owners:
+            return []
+        result = []
+        for owner in owners:
+            try:
+                # OwnerSerializer requires 'name' field, handle missing gracefully
+                if isinstance(owner, dict) and owner.get('name'):
+                    result.append(OwnerSerializer(owner).data)
+                elif isinstance(owner, dict):
+                    # If owner dict doesn't have name, create minimal representation
+                    result.append({'name': owner.get('name', 'Unknown'), 'email': owner.get('email')})
+                else:
+                    # If owner is not a dict, skip it
+                    continue
+            except Exception as e:
+                # Log but don't fail serialization if individual owner fails
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to serialize owner {owner}: {e}")
+                # Add minimal representation
+                if isinstance(owner, dict):
+                    result.append({'name': owner.get('name', 'Unknown'), 'email': owner.get('email')})
+        return result
 
     def get_tags(self, obj: Contract) -> List[str]:
         """Extract tags from hub_contract_json (GAP-9.2.1)"""
@@ -485,7 +510,17 @@ class ContractSerializer(serializers.ModelSerializer):
         compliance = hub_contract.get('privacy_compliance', {})
         if not compliance:
             return None
-        return CompliancePolicySerializer(compliance).data
+        # Ensure contains_personal_data has a default if missing
+        if 'contains_personal_data' not in compliance:
+            compliance = {**compliance, 'contains_personal_data': False}
+        try:
+            return CompliancePolicySerializer(compliance).data
+        except Exception as e:
+            # If serialization fails, return None to prevent breaking the contract view
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to serialize compliance policy: {e}", exc_info=True)
+            return None
 
     def get_lifecycle_policy(self, obj: Contract) -> Optional[Dict[str, Any]]:
         """Extract lifecycle policy from hub_contract_json (GAP-9.2.1)"""

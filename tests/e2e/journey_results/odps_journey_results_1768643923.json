@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-002-EXISTING-d9a1b102",
+      "journey_name": "ODPS Linking - Existing ODPS",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768643923.4523034,
+      "end_time": 1768643923.4799647,
+      "duration": 0.02766132354736328,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create contract: 400 - {'error': 'Contract normalization failed', 'code': 'VALIDATION_ERROR', 'details': {'code': 'NORMALIZATION_FAILED', 'errors': [\"Contract must have a 'name' field\", 'info -> name: Value error, info.name must be provided']}}",
+      "error_type": "Exception",
+      "steps": [],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T09:58:43.480038"
+}

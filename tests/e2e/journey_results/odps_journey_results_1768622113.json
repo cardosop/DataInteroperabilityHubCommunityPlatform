@@ -1,0 +1,135 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-392716c0",
+      "journey_name": "Product-First Flow Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768622066.334397,
+      "end_time": 1768622113.0960648,
+      "duration": 46.76166772842407,
+      "completion_rate": 87.5,
+      "success_rate": 87.5,
+      "error_message": "'DRAFT' != ContractStatus.ACTIVE",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768622066.3344128,
+          "end_time": 1768622066.6519713,
+          "duration": 0.31755852699279785,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Document",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768622066.6519918,
+          "end_time": 1768622066.6520605,
+          "duration": 6.866455078125e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Product (Product-First Flow)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768622066.652063,
+          "end_time": 1768622113.09157,
+          "duration": 46.43950700759888,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify ODPS Contract Created",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768622113.0915847,
+          "end_time": 1768622113.0922616,
+          "duration": 0.0006768703460693359,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Contract"
+          }
+        },
+        {
+          "step_name": "Verify ODCS Contract Created",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768622113.092268,
+          "end_time": 1768622113.0928283,
+          "duration": 0.0005602836608886719,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Contract"
+          }
+        },
+        {
+          "step_name": "Verify Bidirectional Linking",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768622113.0928326,
+          "end_time": 1768622113.0939498,
+          "duration": 0.0011172294616699219,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Wait for Workflow Completion",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768622113.0939531,
+          "end_time": 1768622113.094858,
+          "duration": 0.0009047985076904297,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "WorkflowInstance"
+          }
+        },
+        {
+          "step_name": "Verify Success Criteria",
+          "status": "StepStatus.FAILED",
+          "start_time": 1768622113.0948615,
+          "end_time": 1768622113.0960608,
+          "duration": 0.0011992454528808594,
+          "error_message": "'DRAFT' != ContractStatus.ACTIVE",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('6e00c168-85e8-4d09-ae17-5902b39f2ad5', '13304d45-ac64-475c-b537-bc860852e1f0')",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T03:55:13.096220"
+}

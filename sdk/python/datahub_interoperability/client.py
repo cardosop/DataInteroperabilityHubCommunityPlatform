@@ -62,7 +62,7 @@ class DataHubClient:
 
     Provides authenticated HTTP client with retry logic and error handling.
     Includes high-level APIs for contracts, lineage, scheduled ingestion, versioning,
-    governance, mesh, search, observability, transformation, virtualization, and webhooks.
+    governance, mesh, search, observability, virtualization, and webhooks.
     """
 
     def __init__(self, config: DataHubClientConfig):
@@ -96,7 +96,6 @@ class DataHubClient:
         from .observability import ObservabilityAPI
         from .scheduled_ingestion import ScheduledIngestionAPI
         from .search import SearchAPI
-        from .transformation import TransformationAPI
         from .versioning import VersioningAPI
         from .virtualization import VirtualizationAPI
         from .webhooks import WebhooksAPI
@@ -113,7 +112,6 @@ class DataHubClient:
         self.mesh = MeshAPI(self)
         self.search = SearchAPI(self)
         self.observability = ObservabilityAPI(self)
-        self.transformation = TransformationAPI(self)
         self.virtualization = VirtualizationAPI(self)
         self.webhooks = WebhooksAPI(self)
         self.marketplace = MarketplaceIntegrationAPI(self)

@@ -504,6 +504,15 @@ class VirtualizationWorkflow:
                     query=query_to_execute,
                     timeout_seconds=timeout_seconds or 300
                 )
+            elif virtual_dataset.query_type == QueryType.FEDERATED:
+                # For federated queries, execute against each source and aggregate
+                result_data = VirtualizationWorkflow._execute_federated_query(
+                    service=service,
+                    virtual_dataset=virtual_dataset,
+                    query=query_to_execute,
+                    parameters=parameters,
+                    timeout_seconds=timeout_seconds or 300
+                )
             else:
                 # For other query types, use standard execution
                 # This is a simplified execution - in production, this would call
@@ -693,6 +702,99 @@ class VirtualizationWorkflow:
                 f"Query execution failed: {str(e)}",
                 code="QUERY_EXECUTION_FAILED"
             ) from e
+
+    @staticmethod
+    def _execute_federated_query(
+        service: VirtualizationService,
+        virtual_dataset: VirtualDataset,
+        query: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: int
+    ) -> Dict[str, Any]:
+        """
+        Execute federated query across multiple sources.
+
+        For federated queries, we execute the query against each source individually
+        (using the source's type, not FEDERATED), then aggregate results.
+
+        Args:
+            service: VirtualizationService instance
+            virtual_dataset: VirtualDataset instance
+            query: Query string
+            parameters: Query parameters
+            timeout_seconds: Query timeout in seconds
+
+        Returns:
+            Aggregated query result data dictionary
+        """
+        if not virtual_dataset.sources:
+            raise ValidationError(
+                "Federated queries require at least one source",
+                code="MISSING_SOURCES"
+            )
+
+        all_results = []
+        all_columns = []
+        total_rows = 0
+
+        # Execute query against each source
+        for source_index, source in enumerate(virtual_dataset.sources):
+            source_type = source.get("type", "").lower()
+            
+            # Determine query type based on source type
+            if source_type in ["postgresql", "mysql", "sqlserver", "mssql"]:
+                source_query_type = QueryType.SQL
+            elif source_type == "sparql":
+                source_query_type = QueryType.SPARQL
+            elif source_type in ["rest", "http", "https"]:
+                source_query_type = QueryType.REST
+            elif source_type == "graphql":
+                source_query_type = QueryType.GRAPHQL
+            else:
+                # For other source types, try to execute with SQL
+                source_query_type = QueryType.SQL
+
+            try:
+                # Execute query against this source using source's query type
+                result = service._execute_query_against_source(
+                    query=query,
+                    query_type=source_query_type,  # Use source type, not FEDERATED
+                    source=source,
+                    parameters=parameters,
+                    timeout_seconds=timeout_seconds,
+                    source_index=source_index
+                )
+
+                source_data = result.get("data", [])
+                source_columns = result.get("columns", [])
+                source_rows = result.get("row_count", len(source_data) if isinstance(source_data, list) else 0)
+
+                if source_data:
+                    all_results.extend(source_data)
+                    # Use columns from first source, or merge if different
+                    if not all_columns:
+                        all_columns = source_columns
+                    total_rows += source_rows
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to execute query against source {source_index}: {e}",
+                    extra={
+                        "source_index": source_index,
+                        "source_type": source_type,
+                        "error": str(e)
+                    }
+                )
+                # Continue with other sources even if one fails
+                continue
+
+        return {
+            "data": all_results,
+            "columns": all_columns,
+            "row_count": total_rows,
+            "source_count": len(virtual_dataset.sources),
+            "query_type": "FEDERATED"
+        }
 
     @staticmethod
     def _aggregate_results_task(input_data: Dict[str, Any], instance: WorkflowInstance, step) -> Dict[str, Any]:

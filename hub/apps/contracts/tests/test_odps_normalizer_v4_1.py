@@ -177,13 +177,13 @@ class ODPSNormalizerV4_1ProductStrategyTest(TestCase):
                             "type": "string"
                         }
                     ]
+                },
+                "productStrategy": {
+                    "objectives": [
+                        "Increase data accessibility",
+                        "Improve data quality"
+                    ]
                 }
-            },
-            "productStrategy": {
-                "objectives": [
-                    "Increase data accessibility",
-                    "Improve data quality"
-                ]
             }
         }
 
@@ -217,15 +217,15 @@ class ODPSNormalizerV4_1ProductStrategyTest(TestCase):
                             "type": "string"
                         }
                     ]
+                },
+                "productStrategy": {
+                    "strategicAlignment": [
+                        {
+                            "goal": "Digital transformation",
+                            "priority": "high"
+                        }
+                    ]
                 }
-            },
-            "productStrategy": {
-                "strategicAlignment": [
-                    {
-                        "goal": "Digital transformation",
-                        "priority": "high"
-                    }
-                ]
             }
         }
 
@@ -258,16 +258,16 @@ class ODPSNormalizerV4_1ProductStrategyTest(TestCase):
                             "type": "string"
                         }
                     ]
+                },
+                "productStrategy": {
+                    "productKPIs": [
+                        {
+                            "name": "User adoption",
+                            "target": 1000,
+                            "unit": "users"
+                        }
+                    ]
                 }
-            },
-            "productStrategy": {
-                "productKPIs": [
-                    {
-                        "name": "User adoption",
-                        "target": 1000,
-                        "unit": "users"
-                    }
-                ]
             }
         }
 
@@ -300,23 +300,23 @@ class ODPSNormalizerV4_1ProductStrategyTest(TestCase):
                             "type": "string"
                         }
                     ]
+                },
+                "productStrategy": {
+                    "objectives": [
+                        "Increase data accessibility"
+                    ],
+                    "strategicAlignment": [
+                        {
+                            "goal": "Digital transformation"
+                        }
+                    ],
+                    "productKPIs": [
+                        {
+                            "name": "User adoption",
+                            "target": 1000
+                        }
+                    ]
                 }
-            },
-            "productStrategy": {
-                "objectives": [
-                    "Increase data accessibility"
-                ],
-                "strategicAlignment": [
-                    {
-                        "goal": "Digital transformation"
-                    }
-                ],
-                "productKPIs": [
-                    {
-                        "name": "User adoption",
-                        "target": 1000
-                    }
-                ]
             }
         }
 
@@ -499,17 +499,17 @@ class ODPSNormalizerV4_1IntegrationTest(TestCase):
                             "type": "string"
                         }
                     ]
+                },
+                "productStrategy": {
+                    "objectives": ["Increase accessibility"],
+                    "strategicAlignment": [{"goal": "Digital transformation"}],
+                    "productKPIs": [{"name": "User adoption", "target": 1000}]
                 }
             },
             "license": {
                 "en": {
                     "definition": "MIT License"
                 }
-            },
-            "productStrategy": {
-                "objectives": ["Increase accessibility"],
-                "strategicAlignment": [{"goal": "Digital transformation"}],
-                "productKPIs": [{"name": "User adoption", "target": 1000}]
             }
         }
 

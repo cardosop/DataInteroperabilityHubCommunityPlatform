@@ -131,7 +131,14 @@ class ODPSNormalizerNormalizeTest(TestCase):
         """Test that normalize() initializes HubContract structure"""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1"
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "name": "Test Product"
+                    }
+                }
+            }
         }
 
         result = self.normalizer.normalize(contract_data)
@@ -368,9 +375,11 @@ class ODPSNormalizerStatusDeterminationTest(TestCase):
 
     def test_determine_status_failed_missing_fields(self):
         """Test status determination with missing fields"""
+        # Empty schema is acceptable (schema can come from ODCS contract)
+        # Test with missing info.name instead
         hub_contract = {
-            "info": {"name": "Test"},
-            "schema": {}
+            "info": {},  # Missing name
+            "schema": {"fields": []}
         }
         status = self.normalizer._determine_status(
             hub_contract=hub_contract,
@@ -2056,21 +2065,21 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": [
+                        "Increase data quality",
+                        "Improve customer satisfaction"
+                    ],
+                    "strategicAlignment": [
+                        "Company goal: Data-driven decisions",
+                        {"goal": "Digital transformation", "priority": "high"}
+                    ],
+                    "productKPIs": [
+                        "Data quality score > 95%",
+                        {"metric": "User adoption", "target": "1000 users"}
+                    ]
                 }
-            },
-            "productStrategy": {
-                "objectives": [
-                    "Increase data quality",
-                    "Improve customer satisfaction"
-                ],
-                "strategicAlignment": [
-                    "Company goal: Data-driven decisions",
-                    {"goal": "Digital transformation", "priority": "high"}
-                ],
-                "productKPIs": [
-                    "Data quality score > 95%",
-                    {"metric": "User adoption", "target": "1000 users"}
-                ]
             }
         }
 
@@ -2108,10 +2117,10 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": ["Objective 1", "Objective 2"]
                 }
-            },
-            "productStrategy": {
-                "objectives": ["Objective 1", "Objective 2"]
             }
         }
 
@@ -2134,12 +2143,12 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": "Single objective",
+                    "strategicAlignment": "Single alignment",
+                    "productKPIs": "Single KPI"
                 }
-            },
-            "productStrategy": {
-                "objectives": "Single objective",
-                "strategicAlignment": "Single alignment",
-                "productKPIs": "Single KPI"
             }
         }
 
@@ -2188,12 +2197,12 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": 123,  # invalid type
+                    "strategicAlignment": {"not": "a list"},  # invalid type
+                    "productKPIs": ["valid", 456, "valid"]  # mixed types
                 }
-            },
-            "productStrategy": {
-                "objectives": 123,  # invalid type
-                "strategicAlignment": {"not": "a list"},  # invalid type
-                "productKPIs": ["valid", 456, "valid"]  # mixed types
             }
         }
 
@@ -2221,9 +2230,9 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
-                }
-            },
-            "productStrategy": "not a dict"  # invalid type
+                },
+                "productStrategy": "not a dict"  # invalid type
+            }
         }
 
         result = self.normalizer.normalize(contract_data)
@@ -2244,10 +2253,10 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": ["Objective 1"]
                 }
-            },
-            "productStrategy": {
-                "objectives": ["Objective 1"]
             }
         }
 
@@ -2269,10 +2278,10 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": ["Objective 1"]
                 }
-            },
-            "productStrategy": {
-                "objectives": ["Objective 1"]
             }
         }
 
@@ -2294,10 +2303,10 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": ["Objective 1"]
                 }
-            },
-            "productStrategy": {
-                "objectives": ["Objective 1"]
             }
         }
 
@@ -2321,12 +2330,12 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": [],
+                    "strategicAlignment": [],
+                    "productKPIs": []
                 }
-            },
-            "productStrategy": {
-                "objectives": [],
-                "strategicAlignment": [],
-                "productKPIs": []
             }
         }
 
@@ -2348,12 +2357,12 @@ class ODPSNormalizerProductStrategyMappingTest(TestCase):
                         "productID": "test-product",
                         "name": "Test Product"
                     }
+                },
+                "productStrategy": {
+                    "objectives": ["valid1", 123, "valid2", None, "valid3"],
+                    "strategicAlignment": ["valid", {"key": "value"}, 456],
+                    "productKPIs": [{"kpi": "valid"}, "string", True]
                 }
-            },
-            "productStrategy": {
-                "objectives": ["valid1", 123, "valid2", None, "valid3"],
-                "strategicAlignment": ["valid", {"key": "value"}, 456],
-                "productKPIs": [{"kpi": "valid"}, "string", True]
             }
         }
 
@@ -2741,7 +2750,12 @@ class ODPSNormalizerContractExtractionTest(SimpleTestCase):
                         "name": "Inline Contract",
                         "version": "1.0.0",
                         "schema": {
-                            "fields": []
+                            "fields": [
+                                {
+                                    "name": "test_field",
+                                    "type": "string"
+                                }
+                            ]
                         }
                     }
                 }

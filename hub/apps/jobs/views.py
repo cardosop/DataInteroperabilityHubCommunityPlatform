@@ -182,26 +182,6 @@ class JobViewSet(viewsets.ModelViewSet):
             from hub.apps.jobs.utils import decrement_tenant_job_counter
             decrement_tenant_job_counter(str(job.tenant.id), "running")
 
-        # Sync execution status if this is a transformation pipeline execution job
-        if job.type == JobType.TRANSFORMATION_PIPELINE_EXECUTION:
-            try:
-                from hub.apps.transformation.models import PipelineExecution
-                execution = PipelineExecution.objects.filter(job=job).first()
-                if execution:
-                    execution.sync_status_from_job()
-            except Exception as e:
-                # Log but don't fail job cancellation if execution sync fails
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"Failed to sync execution status after job cancellation: {e}",
-                    extra={
-                        "job_id": str(job.id),
-                        "error": str(e)
-                    },
-                    exc_info=True
-                )
-
         # Sync execution status if this is a virtual query execution job
         if job.type == JobType.VIRTUAL_QUERY_EXECUTION:
             try:

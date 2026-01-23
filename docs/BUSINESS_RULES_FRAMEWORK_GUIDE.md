@@ -426,29 +426,6 @@ The framework includes **23 business rules classes** across all services:
 - `calculate_relationships(domains)`
 - `calculate_health_metrics(domain)`
 
-### Transformation Business Rules
-
-#### 9. `TransformationBusinessRules`
-**Location**: `hub/apps/transformation/business_rules.py`
-**Rule Name**: `transformation_pipeline_validation`
-**Tags**: `["transformation", "pipeline", "validation"]`
-
-**Purpose**: Validates transformation pipelines
-
-**Validation Capabilities**:
-- Pipeline structure validation
-- Node compatibility validation
-- Schema alignment validation
-- Asset compatibility validation
-- Cross-tenant operation validation
-- Pipeline execution permission validation
-
-**Key Methods**:
-- `validate_pipeline_structure(pipeline)`
-- `validate_node_compatibility(pipeline)`
-- `validate_schema_alignment(pipeline, source_asset, target_asset)`
-- `validate_asset_compatibility(pipeline, source_asset, target_asset)`
-
 ### Virtualization Business Rules
 
 #### 10. `VirtualizationBusinessRules`

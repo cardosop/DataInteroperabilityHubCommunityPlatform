@@ -73,7 +73,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         """
         # Step 1: Create new user with invitation
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'email': 'newuser@test-tenant.com',
                 'display_name': 'New User',
@@ -112,14 +112,14 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         )
         
         # Step 3: List users to verify new user appears
-        response = self.client.get('/api/v1/users/users/')
+        response = self.client.get('/api/v1/users/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         users = response.data.get('results', [])
         user_emails = [u['email'] for u in users]
         self.assertIn('newuser@test-tenant.com', user_emails)
         
         # Step 4: Get user details
-        response = self.client.get(f'/api/v1/users/users/{user_id}/')
+        response = self.client.get(f'/api/v1/users/{user_id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['email'], 'newuser@test-tenant.com')
         self.assertEqual(response.data['status'], UserStatus.INVITED.value)
@@ -130,7 +130,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         """
         # Create user without invitation
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'email': 'directuser@test-tenant.com',
                 'display_name': 'Direct User',
@@ -162,7 +162,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         Test using the dedicated invite endpoint
         """
         response = self.client.post(
-            '/api/v1/users/users/invite/',
+            '/api/v1/users/invite/',
             {
                 'email': 'invited@test-tenant.com',
                 'display_name': 'Invited User',
@@ -202,7 +202,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         
         # Assign role
         response = self.client.post(
-            f'/api/v1/users/users/{user.id}/roles/',
+            f'/api/v1/users/{user.id}/roles/',
             {
                 'role_id': str(self.data_provider_role.id),
                 'action': 'assign'
@@ -239,7 +239,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         
         # Remove role
         response = self.client.post(
-            f'/api/v1/users/users/{user.id}/roles/',
+            f'/api/v1/users/{user.id}/roles/',
             {
                 'role_id': str(self.data_provider_role.id),
                 'action': 'remove'
@@ -266,7 +266,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         
         # Update user
         response = self.client.patch(
-            f'/api/v1/users/users/{user.id}/',
+            f'/api/v1/users/{user.id}/',
             {
                 'display_name': 'Updated Name'
             },
@@ -304,7 +304,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         )
         
         # Delete user (should soft delete)
-        response = self.client.delete(f'/api/v1/users/users/{user.id}/')
+        response = self.client.delete(f'/api/v1/users/{user.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify user was disabled
@@ -336,7 +336,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         )
         
         # Filter by ACTIVE status
-        response = self.client.get('/api/v1/users/users/?status=ACTIVE')
+        response = self.client.get('/api/v1/users/?status=ACTIVE')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         users = response.data.get('results', [])
         user_emails = [u['email'] for u in users]
@@ -344,7 +344,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         self.assertNotIn('invited@test-tenant.com', user_emails)
         
         # Filter by INVITED status
-        response = self.client.get('/api/v1/users/users/?status=INVITED')
+        response = self.client.get('/api/v1/users/?status=INVITED')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         users = response.data.get('results', [])
         user_emails = [u['email'] for u in users]
@@ -364,7 +364,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         
         # Try to create duplicate
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'email': 'duplicate@test-tenant.com',
                 'display_name': 'Duplicate User'
@@ -386,7 +386,7 @@ class JourneyTA001OnboardNewUserTests(E2ETestBase):
         
         # Try to invite existing user
         response = self.client.post(
-            '/api/v1/users/users/invite/',
+            '/api/v1/users/invite/',
             {
                 'email': 'existing@test-tenant.com',
                 'display_name': 'Existing User'
@@ -754,7 +754,7 @@ class JourneyTA003MonitorTenantUsageTests(E2ETestBase):
             )
         
         # List users to get count
-        response = self.client.get('/api/v1/users/users/')
+        response = self.client.get('/api/v1/users/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         users = response.data.get('results', [])
         
@@ -866,7 +866,7 @@ class TenantAdminUseCasesTests(E2ETestBase):
         """
         # Create user
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'email': 'workflow@test-tenant.com',
                 'display_name': 'Workflow User',
@@ -881,7 +881,7 @@ class TenantAdminUseCasesTests(E2ETestBase):
         
         # Update user
         response = self.client.patch(
-            f'/api/v1/users/users/{user_id}/',
+            f'/api/v1/users/{user_id}/',
             {
                 'display_name': 'Updated Workflow User'
             },
@@ -891,7 +891,7 @@ class TenantAdminUseCasesTests(E2ETestBase):
         
         # Assign additional role
         response = self.client.post(
-            f'/api/v1/users/users/{user_id}/roles/',
+            f'/api/v1/users/{user_id}/roles/',
             {
                 'role_id': str(self.data_consumer_role.id),
                 'action': 'assign'
@@ -901,7 +901,7 @@ class TenantAdminUseCasesTests(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         # Verify user has both roles
-        response = self.client.get(f'/api/v1/users/users/{user_id}/')
+        response = self.client.get(f'/api/v1/users/{user_id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         role_names = [r['name'] for r in response.data.get('roles', [])]
         self.assertIn('DATA_PROVIDER', role_names)
@@ -976,7 +976,7 @@ class TenantAdminErrorScenariosTests(E2ETestBase):
         Test error scenario: Creating user without email
         """
         response = self.client.post(
-            '/api/v1/users/users/',
+            '/api/v1/users/',
             {
                 'display_name': 'No Email User'
             },
@@ -996,7 +996,7 @@ class TenantAdminErrorScenariosTests(E2ETestBase):
         
         fake_role_id = str(uuid.uuid4())
         response = self.client.post(
-            f'/api/v1/users/users/{user.id}/roles/',
+            f'/api/v1/users/{user.id}/roles/',
             {
                 'role_id': fake_role_id,
                 'action': 'assign'
@@ -1048,7 +1048,7 @@ class TenantAdminErrorScenariosTests(E2ETestBase):
         """
         Test error scenario: User trying to delete themselves
         """
-        response = self.client.delete(f'/api/v1/users/users/{self.tenant_admin.id}/')
+        response = self.client.delete(f'/api/v1/users/{self.tenant_admin.id}/')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('cannot delete themselves', response.data.get('error', '').lower())
 

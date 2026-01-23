@@ -554,6 +554,9 @@ class ODCSNormalizerBase(ABC):
         """Normalize ODCS info section to HubContract info format."""
         info = odcs_contract.get('info', {})
         if isinstance(info, dict):
+            # Extract info.name if present (some ODCS contracts have name in info section)
+            if 'name' in info and not hub_contract.get('info', {}).get('name'):
+                hub_contract['info']['name'] = info['name']
             if 'owners' in info:
                 owners = info['owners']
                 # Normalize owners: convert strings to HubContractOwner format

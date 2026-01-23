@@ -237,9 +237,10 @@ class DatasetService(BaseService, DatasetEventPublisher):
         
         # Log audit event
         from hub.apps.users.models import User
+        from hub.apps.tenants.models import Tenant
         try:
             actor_user = User.objects.get(id=user_id)
-            tenant = self.get_tenant_or_raise(tenant_id)
+            tenant = Tenant.objects.get(id=tenant_id)
             create_audit_event(
                 resource_type="DATASET",
                 action="DATASET_CREATED",

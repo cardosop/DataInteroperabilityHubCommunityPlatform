@@ -891,6 +891,10 @@ def pytest_configure(config):
     Configure pytest - ensure patches are applied early.
     This hook runs before Django is initialized, so we can apply patches here.
     """
+    # Set TESTING environment variable early to help apps detect test mode
+    import os
+    os.environ['TESTING'] = '1'
+
     _patch_logger.info("=" * 80)
     _patch_logger.info("pytest_configure: Applying Django patches...")
     _patch_logger.info("=" * 80)
@@ -1506,6 +1510,27 @@ def compliance_service():
         pytest.skip(f"Compliance service not available at {service_url}")
 
     return service_url
+
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_semantic_service_in_tests():
+    """
+    Automatically disable semantic service calls in all tests to prevent timeouts.
+    This fixture patches semantic mapping functions to return immediately.
+    """
+    from unittest.mock import patch
+
+    # Patch semantic mapping functions to prevent timeouts
+    semantic_patcher = patch('hub.apps.semantic.utils.map_contract_to_semantic', return_value=None)
+    asset_semantic_patcher = patch('hub.apps.semantic.utils.map_asset_to_semantic', return_value=None)
+
+    semantic_patcher.start()
+    asset_semantic_patcher.start()
+
+    yield
+
+    semantic_patcher.stop()
+    asset_semantic_patcher.stop()
 
 
 @pytest.fixture(scope="session")

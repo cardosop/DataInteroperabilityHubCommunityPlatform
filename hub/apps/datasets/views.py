@@ -592,6 +592,79 @@ class DatasetViewSet(viewsets.ModelViewSet):
             'change_log': change_log
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='schema-evolution')
+    def schema_evolution(self, request, id=None):
+        """
+        Get schema evolution between dataset versions.
+
+        GET /api/v1/datasets/{id}/schema-evolution/?from_version_id={uuid}&to_version_id={uuid}
+        If from_version_id/to_version_id not provided, compares parent version with current version.
+        """
+        dataset = self.get_object()
+
+        from_version_id = request.query_params.get('from_version_id')
+        to_version_id = request.query_params.get('to_version_id')
+
+        # Get versions
+        if from_version_id:
+            try:
+                from_version = Dataset.objects.get(id=from_version_id, tenant=dataset.tenant)
+            except Dataset.DoesNotExist:
+                return Response(
+                    {'error': f'Version {from_version_id} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Default to parent version
+            from_version = dataset.parent_version
+            if not from_version:
+                return Response(
+                    {'error': 'No parent version found. Please specify from_version_id.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if to_version_id:
+            try:
+                to_version = Dataset.objects.get(id=to_version_id, tenant=dataset.tenant)
+            except Dataset.DoesNotExist:
+                return Response(
+                    {'error': f'Version {to_version_id} not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Default to current version
+            to_version = dataset
+
+        # Calculate schema evolution
+        from .schema_evolution import SchemaEvolutionTracker
+
+        schema_diff = SchemaEvolutionTracker.calculate_schema_diff(
+            from_version.schema_json or {},
+            to_version.schema_json or {}
+        )
+
+        # Generate change log
+        change_log = SchemaEvolutionTracker.generate_change_log(from_version, to_version)
+
+        return Response({
+            'from_version_id': str(from_version.id),
+            'to_version_id': str(to_version.id),
+            'compatibility_level': schema_diff.compatibility_level.value,
+            'summary': schema_diff.summary,
+            'changes': [
+                {
+                    'type': change.change_type.value,
+                    'field_name': change.field_name,
+                    'description': change.description,
+                    'breaking': change.breaking,
+                    'old_value': change.old_value,
+                    'new_value': change.new_value
+                }
+                for change in schema_diff.changes
+            ],
+            'change_log': change_log
+        }, status=status.HTTP_200_OK)
+
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         """

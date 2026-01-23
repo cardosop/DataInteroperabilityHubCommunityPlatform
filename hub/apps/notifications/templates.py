@@ -132,34 +132,6 @@ def build_contract_url(contract_id: str) -> str:
     return f"{base_url}/api/v1/contracts/{contract_id}"
 
 
-def build_pipeline_url(pipeline_id: str) -> str:
-    """
-    Build pipeline detail URL.
-
-    Args:
-        pipeline_id: Pipeline UUID
-
-    Returns:
-        Full pipeline URL
-    """
-    base_url = get_base_url()
-    return f"{base_url}/api/v1/transformation/pipelines/{pipeline_id}"
-
-
-def build_pipeline_execution_url(execution_id: str) -> str:
-    """
-    Build pipeline execution detail URL.
-
-    Args:
-        execution_id: Execution UUID
-
-    Returns:
-        Full pipeline execution URL
-    """
-    base_url = get_base_url()
-    return f"{base_url}/api/v1/transformation/executions/{execution_id}"
-
-
 def build_marketplace_sync_job_url(sync_job_id: str) -> str:
     """
     Build marketplace sync job detail URL.

@@ -1657,10 +1657,11 @@ class ODPSNormalizer:
         warnings: List[str]
     ) -> None:
         """
-        Minimal schema normalization - populate schema fields from product.dataSchema if available.
+        Minimal schema normalization - populate schema fields from product.dataSchema or product.contract.spec.schema if available.
 
-        This is a minimal implementation to support tests. Full schema normalization
-        will be implemented in a separate task.
+        This extracts schema fields from:
+        1. product.dataSchema.fields (if present)
+        2. product.contract.spec.schema.fields (if present, for ODCS contracts embedded in ODPS)
 
         Args:
             contract_data: Raw ODPS contract data
@@ -1672,18 +1673,55 @@ class ODPSNormalizer:
             if not isinstance(product, dict):
                 return
 
+            # Ensure schema section exists
+            if "schema" not in hub_contract:
+                hub_contract["schema"] = {}
+
+            # Try product.dataSchema first
             data_schema = product.get("dataSchema")
             if isinstance(data_schema, dict):
                 fields = data_schema.get("fields")
                 if isinstance(fields, list) and fields:
-                    # Ensure schema section exists
-                    if "schema" not in hub_contract:
-                        hub_contract["schema"] = {}
                     # Copy fields to hub_contract schema
                     hub_contract["schema"]["fields"] = fields
+                    return  # Found fields, done
+
+            # Try product.contract.spec.schema (ODCS contract embedded in ODPS)
+            contract_section = product.get("contract", {})
+            if isinstance(contract_section, dict):
+                contract_spec = contract_section.get("spec", {})
+                if isinstance(contract_spec, dict):
+                    contract_schema = contract_spec.get("schema", {})
+                    if isinstance(contract_schema, dict):
+                        fields = contract_schema.get("fields")
+                        if isinstance(fields, list) and fields:
+                            # Convert ODCS field format (type) to HubContract format (data_type)
+                            # This is a minimal conversion - full normalization happens in _extract_contract
+                            converted_fields = []
+                            for field in fields:
+                                if isinstance(field, dict):
+                                    hub_field = {
+                                        "name": field.get("name", ""),
+                                        "data_type": field.get("type", "string"),
+                                        "nullable": field.get("nullable", True),
+                                    }
+                                    # Copy other properties if present
+                                    for prop in ["description", "format", "pattern", "enum", "default"]:
+                                        if prop in field:
+                                            hub_field[prop] = field[prop]
+                                    # Handle minLength/maxLength -> min_length/max_length
+                                    if "minLength" in field:
+                                        hub_field["min_length"] = field["minLength"]
+                                    if "maxLength" in field:
+                                        hub_field["max_length"] = field["maxLength"]
+                                    converted_fields.append(hub_field)
+                            if converted_fields:
+                                hub_contract["schema"]["fields"] = converted_fields
+                                return  # Found fields, done
+
         except Exception as e:
             # Don't fail normalization if schema extraction fails
-            warnings.append(f"Failed to extract schema from product.dataSchema: {str(e)}")
+            warnings.append(f"Failed to extract schema: {str(e)}")
 
     def _normalize_product_strategy(
         self,

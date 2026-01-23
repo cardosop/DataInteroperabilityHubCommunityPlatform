@@ -24,7 +24,7 @@ class FreshnessSLA(models.TextChoices):
 class DataObservabilityMetric(models.Model):
     """
     Data observability metrics for datasets and assets.
-    
+
     Tracks freshness, volume, and schema information over time.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -111,7 +111,7 @@ class DataObservabilityMetric(models.Model):
         db_index=True,
         help_text="When this metric was recorded"
     )
-    
+
     class Meta:
         db_table = "data_observability_metrics"
         ordering = ["-recorded_at"]
@@ -121,7 +121,7 @@ class DataObservabilityMetric(models.Model):
             models.Index(fields=["tenant", "is_stale", "recorded_at"]),
             models.Index(fields=["recorded_at"]),
         ]
-    
+
     def __str__(self):
         resource = f"Dataset {self.dataset_id}" if self.dataset else f"Asset {self.asset_id}"
         return f"{resource} - {self.recorded_at}"
@@ -224,7 +224,7 @@ class VolumeTrend(models.Model):
         help_text="Anomaly score (0.0 to 1.0)"
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         db_table = "volume_trends"
         ordering = ["-period_start"]
@@ -245,7 +245,7 @@ class VolumeTrend(models.Model):
                 name="unique_volume_trend_asset"
             ),
         ]
-    
+
     def __str__(self):
         resource = f"Dataset {self.dataset_id}" if self.dataset else f"Asset {self.asset_id}"
         return f"{resource} - {self.period_type} - {self.period_start}"
@@ -254,7 +254,7 @@ class VolumeTrend(models.Model):
 class SchemaDrift(models.Model):
     """
     Schema drift detection records.
-    
+
     Tracks schema changes over time including new fields, removed fields, and type changes.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -356,7 +356,7 @@ class SchemaDrift(models.Model):
         db_index=True,
         help_text="When this drift was detected"
     )
-    
+
     class Meta:
         db_table = "schema_drifts"
         ordering = ["-detected_at"]
@@ -366,7 +366,7 @@ class SchemaDrift(models.Model):
             models.Index(fields=["tenant", "drift_severity", "detected_at"]),
             models.Index(fields=["tenant", "is_within_tolerance", "detected_at"]),
         ]
-    
+
     def __str__(self):
         resource = f"Dataset {self.dataset_id}" if self.dataset else f"Asset {self.asset_id}"
         return f"{resource} - {self.drift_severity} - {self.detected_at}"
@@ -374,8 +374,8 @@ class SchemaDrift(models.Model):
 
 class PipelineExecution(models.Model):
     """
-    Pipeline execution tracking for ingestion and transformation pipelines.
-    
+    Pipeline execution tracking for ingestion pipelines.
+
     Tracks execution times, success rates, error rates, latency, and throughput.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -394,7 +394,6 @@ class PipelineExecution(models.Model):
             ("COMPLIANCE_RUN", "Compliance Run"),
             ("CONTRACT_VALIDATION", "Contract Validation"),
             ("SEMANTIC_MAPPING", "Semantic Mapping"),
-            ("TRANSFORMATION", "Transformation"),
         ],
         db_index=True,
         help_text="Type of pipeline"
@@ -492,7 +491,7 @@ class PipelineExecution(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "pipeline_executions"
         ordering = ["-created_at"]
@@ -503,7 +502,7 @@ class PipelineExecution(models.Model):
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["resource_type", "resource_id"]),
         ]
-    
+
     def __str__(self):
         return f"{self.pipeline_type} - {self.status} - {self.created_at}"
 
@@ -511,7 +510,7 @@ class PipelineExecution(models.Model):
 class DataSLA(models.Model):
     """
     Data SLA definitions for availability, freshness, and quality.
-    
+
     Defines SLAs per asset/dataset and tracks compliance.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -615,7 +614,7 @@ class DataSLA(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "data_slas"
         ordering = ["-created_at"]
@@ -635,7 +634,7 @@ class DataSLA(models.Model):
                 name="sla_has_appropriate_target"
             ),
         ]
-    
+
     def __str__(self):
         resource = f"Dataset {self.dataset_id}" if self.dataset else f"Asset {self.asset_id}"
         return f"{resource} - {self.sla_type} - {self.name}"
@@ -644,7 +643,7 @@ class DataSLA(models.Model):
 class DataIncident(models.Model):
     """
     Data incident management for tracking and resolving data issues.
-    
+
     Tracks incidents through lifecycle: DETECTED → TRIAGED → IN_PROGRESS → RESOLVED
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -784,7 +783,7 @@ class DataIncident(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "data_incidents"
         ordering = ["-detected_at"]
@@ -795,7 +794,7 @@ class DataIncident(models.Model):
             models.Index(fields=["status", "detected_at"]),
             models.Index(fields=["resource_type", "resource_id"]),
         ]
-    
+
     def __str__(self):
         return f"{self.title} - {self.status} - {self.detected_at}"
 

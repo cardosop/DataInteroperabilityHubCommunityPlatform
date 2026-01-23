@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 15.706181526184082
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-008-9e5d2fcf",
+      "journey_name": "Rate and Review Asset",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1768901547.5972548,
+      "end_time": 1768901563.3034363,
+      "duration": 15.706181526184082,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Navigate to Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768901547.5972607,
+          "end_time": 1768901563.2875772,
+          "duration": 15.690316438674927,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Rate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768901563.2875857,
+          "end_time": 1768901563.2988262,
+          "duration": 0.011240482330322266,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Write Review",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768901563.2988343,
+          "end_time": 1768901563.303434,
+          "duration": 0.004599571228027344,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "df02142c-4da7-4ef3-a42c-da08d389558e"
+      }
+    }
+  ],
+  "exported_at": "2026-01-20T09:32:43.303503"
+}

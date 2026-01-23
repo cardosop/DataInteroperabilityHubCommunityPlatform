@@ -131,7 +131,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
         Raises:
             NotFoundError: If either dataset not found
         """
-        from hub.apps.datasets.version_comparison import VersionComparator
+        from hub.apps.datasets.version_comparison import VersionComparisonService
 
         dataset1 = self.get_resource_or_raise(
             Dataset,
@@ -145,8 +145,17 @@ class VersioningService(BaseService, VersioningEventPublisher):
             tenant_id=tenant_id
         )
 
-        comparator = VersionComparator()
-        return comparator.compare(dataset1, dataset2)
+        comparison = VersionComparisonService.compare_versions(
+            old_version=dataset1,
+            new_version=dataset2,
+            include_data_diff=True
+        )
+        
+        # Convert VersionComparison dataclass to dict for API compatibility
+        return VersionComparisonService.visualize_version_diff(
+            comparison,
+            format="json"
+        )
 
     def update_version(
         self,
@@ -344,8 +353,23 @@ class VersioningService(BaseService, VersioningEventPublisher):
             tenant_id=tenant_id
         )
 
-        return VersionHistoryManager.get_version_history(
-            dataset=dataset,
-            include_snapshots=include_snapshots
-        )
+        # Get version tree (all versions in the history)
+        versions = VersionHistoryManager.get_version_tree(dataset)
+        
+        # Convert to list of dictionaries if snapshots are requested, otherwise return Dataset objects
+        if include_snapshots:
+            return [
+                {
+                    "id": str(v.id),
+                    "version": v.version,
+                    "semantic_version": v.semantic_version,
+                    "is_current": v.is_current,
+                    "created_at": v.created_at.isoformat() if v.created_at else None,
+                    "snapshot_metadata": v.snapshot_metadata,
+                }
+                for v in versions
+            ]
+        else:
+            # Return list of Dataset objects (which can be serialized as needed)
+            return list(versions)
 

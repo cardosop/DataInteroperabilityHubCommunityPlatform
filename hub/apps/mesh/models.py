@@ -194,7 +194,10 @@ class DataMeshDomain(models.Model):
             Usage percentage (0-100) or 0.0 if quota not set
         """
         quota = self.resource_quota.get(resource_type)
+        # Check for both resource_type and resource_type + "_used" in usage
         usage = self.resource_usage.get(resource_type, 0)
+        if usage == 0:
+            usage = self.resource_usage.get(f"{resource_type}_used", 0)
 
         if quota is None or quota == 0:
             return 0.0
@@ -213,7 +216,10 @@ class DataMeshDomain(models.Model):
             True if quota is exceeded, False otherwise
         """
         quota = self.resource_quota.get(resource_type)
+        # Check for both resource_type and resource_type + "_used" in usage
         usage = self.resource_usage.get(resource_type, 0)
+        if usage == 0:
+            usage = self.resource_usage.get(f"{resource_type}_used", 0)
 
         if quota is None:
             return False

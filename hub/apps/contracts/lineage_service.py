@@ -333,7 +333,15 @@ class LineageService(BaseService, LineageEventPublisher):
                 return cached_lineage
 
         # Use LineageTraverser to get full lineage
-        traverser = LineageTraverser(
+        # Root cause fix: Create separate traversers for upstream and downstream
+        # to avoid cycle detection false positives (visited_contracts is shared)
+        upstream_traverser = LineageTraverser(
+            contract,
+            max_contract_depth=max_contract_depth,
+            max_model_depth=max_model_depth,
+            max_field_depth=max_field_depth,
+        )
+        downstream_traverser = LineageTraverser(
             contract,
             max_contract_depth=max_contract_depth,
             max_model_depth=max_model_depth,
@@ -341,9 +349,9 @@ class LineageService(BaseService, LineageEventPublisher):
         )
         # Based on traverse_bidirectional: upstream = bottom_up, downstream = top_down
         # upstream: what depends on this contract (dependents)
-        upstream = traverser.traverse_bottom_up()
+        upstream = upstream_traverser.traverse_bottom_up()
         # downstream: what this contract depends on (sources)
-        downstream = traverser.traverse_top_down()
+        downstream = downstream_traverser.traverse_top_down()
 
         result = {"upstream": upstream, "downstream": downstream}
 

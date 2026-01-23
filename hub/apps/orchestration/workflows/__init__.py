@@ -10,7 +10,6 @@ from .dataset_creation import DatasetCreationWorkflow
 from .version_creation import VersionCreationWorkflow
 from .marketplace_publication import MarketplacePublicationWorkflow
 from .product_creation import ProductCreationWorkflow
-from .transformation_pipeline import TransformationPipelineWorkflow
 from .data_mesh import DataMeshWorkflow
 from .virtualization import VirtualizationWorkflow
 from .marketplace_sync import MarketplaceSyncWorkflow
@@ -29,7 +28,6 @@ __all__ = [
     'VersionCreationWorkflow',
     'MarketplacePublicationWorkflow',
     'ProductCreationWorkflow',
-    'TransformationPipelineWorkflow',
     'DataMeshWorkflow',
     'VirtualizationWorkflow',
     'MarketplaceSyncWorkflow',

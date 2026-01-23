@@ -1,6 +1,6 @@
 # Use Cases
 
-**Last Updated**: 2025-12-13  
+**Last Updated**: 2025-12-13
 **Version**: 2.0.0
 
 ---
@@ -28,8 +28,7 @@ This document provides a comprehensive catalog of use cases for the Data Interop
 5. [Compliance Use Cases](#compliance-use-cases)
 6. [Marketplace Use Cases](#marketplace-use-cases)
 7. [AI/ML Use Cases](#aiml-use-cases) **NEW**
-8. [Transformation Use Cases](#transformation-use-cases) **NEW**
-9. [Social Feature Use Cases](#social-feature-use-cases) **NEW**
+8. [Social Feature Use Cases](#social-feature-use-cases) **NEW**
 10. [Data Mesh Use Cases](#data-mesh-use-cases) **NEW**
 11. [Virtualization Use Cases](#virtualization-use-cases) **NEW**
 12. [Advanced Marketplace Use Cases](#advanced-marketplace-use-cases) **NEW**
@@ -61,10 +60,7 @@ Use cases related to publishing, discovering, and purchasing data assets.
 ### Category 6: AI/ML **NEW**
 Use cases related to AI/ML-powered features (natural language search, schema matching, recommendations, auto-classification).
 
-### Category 7: Transformation **NEW**
-Use cases related to data transformation pipelines, data wrangling, and ETL.
-
-### Category 8: Social Features **NEW**
+### Category 7: Social Features **NEW**
 Use cases related to ratings, reviews, communities, and collaboration.
 
 ### Category 9: Data Mesh **NEW**
@@ -94,13 +90,13 @@ Use cases related to plugins, SDKs, CLI, and developer portal.
 
 ### UC-AM-001: Create Asset via Data-First Flow
 
-**ID**: UC-AM-001  
-**Title**: Create Asset via Data-First Flow  
-**Persona**: Data Product Owner, Data Engineer  
-**Priority**: High  
+**ID**: UC-AM-001
+**Title**: Create Asset via Data-First Flow
+**Persona**: Data Product Owner, Data Engineer
+**Priority**: High
 **Status**: MVP
 
-**Description**:  
+**Description**:
 User uploads a data file first, system infers schema and runs quality/compliance checks, then user creates and validates a contract.
 
 **Preconditions**:
@@ -147,13 +143,13 @@ User uploads a data file first, system infers schema and runs quality/compliance
 
 ### UC-AI-001: Natural Language Search
 
-**ID**: UC-AI-001  
-**Title**: Natural Language Search  
-**Persona**: Data Consumer, Data Scientist  
-**Priority**: High  
+**ID**: UC-AI-001
+**Title**: Natural Language Search
+**Persona**: Data Consumer, Data Scientist
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User searches for data using natural language queries instead of SQL or keyword search.
 
 **Preconditions**:
@@ -190,13 +186,13 @@ User searches for data using natural language queries instead of SQL or keyword 
 
 ### UC-AI-002: AI Schema Matching
 
-**ID**: UC-AI-002  
-**Title**: AI Schema Matching  
-**Persona**: Data Product Owner, Data Engineer, Data Scientist  
-**Priority**: High  
+**ID**: UC-AI-002
+**Title**: AI Schema Matching
+**Persona**: Data Product Owner, Data Engineer, Data Scientist
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 System uses AI to automatically suggest field mappings between different schemas.
 
 **Preconditions**:
@@ -231,13 +227,13 @@ System uses AI to automatically suggest field mappings between different schemas
 
 ### UC-AI-003: ML-Based Anomaly Detection
 
-**ID**: UC-AI-003  
-**Title**: ML-Based Anomaly Detection  
-**Persona**: Data Product Owner, Data Scientist  
-**Priority**: High  
+**ID**: UC-AI-003
+**Title**: ML-Based Anomaly Detection
+**Persona**: Data Product Owner, Data Scientist
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 System uses ML models to detect data quality anomalies beyond rule-based checks.
 
 **Preconditions**:
@@ -272,13 +268,13 @@ System uses ML models to detect data quality anomalies beyond rule-based checks.
 
 ### UC-AI-004: Smart Recommendations
 
-**ID**: UC-AI-004  
-**Title**: Smart Recommendations  
-**Persona**: Data Consumer, Data Product Owner  
-**Priority**: Medium  
+**ID**: UC-AI-004
+**Title**: Smart Recommendations
+**Persona**: Data Consumer, Data Product Owner
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 System provides intelligent recommendations for data assets based on user behavior and patterns.
 
 **Preconditions**:
@@ -312,13 +308,13 @@ System provides intelligent recommendations for data assets based on user behavi
 
 ### UC-AI-005: Auto-Classification
 
-**ID**: UC-AI-005  
-**Title**: Auto-Classification  
-**Persona**: Data Product Owner, Compliance Officer, Data Scientist  
-**Priority**: High  
+**ID**: UC-AI-005
+**Title**: Auto-Classification
+**Persona**: Data Product Owner, Compliance Officer, Data Scientist
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 System automatically classifies data using ML models (PII detection, data categorization).
 
 **Preconditions**:
@@ -353,13 +349,13 @@ System automatically classifies data using ML models (PII detection, data catego
 
 ### UC-AI-006: Predictive Quality Forecasting
 
-**ID**: UC-AI-006  
-**Title**: Predictive Quality Forecasting  
-**Persona**: Data Product Owner, Data Scientist  
-**Priority**: Medium  
+**ID**: UC-AI-006
+**Title**: Predictive Quality Forecasting
+**Persona**: Data Product Owner, Data Scientist
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 System predicts future data quality trends using ML models.
 
 **Preconditions**:
@@ -393,13 +389,13 @@ System predicts future data quality trends using ML models.
 
 ### UC-AI-007: Auto-Generated Quality Rules
 
-**ID**: UC-AI-007  
-**Title**: Auto-Generated Quality Rules  
-**Persona**: Data Product Owner, Data Scientist  
-**Priority**: Medium  
+**ID**: UC-AI-007
+**Title**: Auto-Generated Quality Rules
+**Persona**: Data Product Owner, Data Scientist
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 System automatically generates data quality rules from patterns in data.
 
 **Preconditions**:
@@ -433,13 +429,13 @@ System automatically generates data quality rules from patterns in data.
 
 ### UC-AI-008: Query-to-SQL Translation
 
-**ID**: UC-AI-008  
-**Title**: Query-to-SQL Translation  
-**Persona**: Data Consumer, Data Scientist  
-**Priority**: High  
+**ID**: UC-AI-008
+**Title**: Query-to-SQL Translation
+**Persona**: Data Consumer, Data Scientist
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 System translates natural language queries to SQL for execution.
 
 **Preconditions**:
@@ -473,13 +469,13 @@ System translates natural language queries to SQL for execution.
 
 ### UC-AI-009: ML Model Training
 
-**ID**: UC-AI-009  
-**Title**: ML Model Training  
-**Persona**: Data Scientist  
-**Priority**: Medium  
+**ID**: UC-AI-009
+**Title**: ML Model Training
+**Persona**: Data Scientist
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User trains ML models for anomaly detection, classification, or recommendations.
 
 **Preconditions**:
@@ -513,13 +509,13 @@ User trains ML models for anomaly detection, classification, or recommendations.
 
 ### UC-AI-010: Recommendation Feedback Loop
 
-**ID**: UC-AI-010  
-**Title**: Recommendation Feedback Loop  
-**Persona**: Data Consumer, Data Scientist  
-**Priority**: Medium  
+**ID**: UC-AI-010
+**Title**: Recommendation Feedback Loop
+**Persona**: Data Consumer, Data Scientist
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 System improves recommendations based on user feedback.
 
 **Preconditions**:
@@ -550,346 +546,17 @@ System improves recommendations based on user feedback.
 
 ---
 
-## Transformation Use Cases **NEW**
-
-### UC-TRANS-001: Create Transformation Pipeline
-
-**ID**: UC-TRANS-001  
-**Title**: Create Transformation Pipeline  
-**Persona**: Data Product Owner, Data Engineer, Data Analyst  
-**Priority**: High  
-**Status**: New
-
-**Description**:  
-User creates a transformation pipeline using visual builder or code.
-
-**Preconditions**:
-- User authenticated with `DATA_PROVIDER` or `DATA_CONSUMER` role
-- Source data available
-- Transformation service available
-
-**Main Flow**:
-1. User navigates to transformation section
-2. User creates new pipeline
-3. User designs pipeline (visual builder or code):
-   - Adds transformation nodes (filter, join, aggregate, transform, output)
-   - Configures node parameters
-   - Connects nodes
-4. User validates pipeline
-5. User previews transformation results
-6. User saves pipeline
-7. Pipeline versioned
-
-**Alternate Flows**:
-- **A1**: Pipeline validation fails → user fixes errors
-- **A2**: Preview fails → user adjusts pipeline
-- **A3**: Save fails → user retries
-
-**Postconditions**:
-- Pipeline created
-- Pipeline validated
-- Pipeline saved
-- Pipeline versioned
-
-**Related Use Cases**: UC-TRANS-002, UC-TRANS-003, UC-AM-001
-
----
-
-### UC-TRANS-002: Execute Transformation Pipeline
-
-**ID**: UC-TRANS-002  
-**Title**: Execute Transformation Pipeline  
-**Persona**: Data Product Owner, Data Engineer, Data Analyst  
-**Priority**: High  
-**Status**: New
-
-**Description**:  
-User executes a transformation pipeline and monitors execution.
-
-**Preconditions**:
-- User authenticated
-- Pipeline created and validated
-- Source data available
-- Transformation service available
-
-**Main Flow**:
-1. User selects pipeline
-2. User configures execution parameters
-3. User triggers execution
-4. System orchestrates execution through workflow engine
-5. System executes transformation nodes
-6. System monitors execution progress
-7. User views real-time progress
-8. System completes execution
-9. System stores results
-10. System syncs results with assets (if applicable)
-11. User reviews results
-
-**Alternate Flows**:
-- **A1**: Execution fails → system triggers compensation
-- **A2**: Partial execution → system rolls back
-- **A3**: Timeout → user retries or adjusts pipeline
-
-**Postconditions**:
-- Pipeline executed
-- Results stored
-- Results synced with assets
-- Execution logged
-
-**Related Use Cases**: UC-TRANS-001, UC-TRANS-003, UC-TRANS-005
-
----
-
-### UC-TRANS-003: Monitor Pipeline Execution
-
-**ID**: UC-TRANS-003  
-**Title**: Monitor Pipeline Execution  
-**Persona**: Data Product Owner, Data Engineer, Data Analyst  
-**Priority**: High  
-**Status**: New
-
-**Description**:  
-User monitors transformation pipeline execution in real-time.
-
-**Preconditions**:
-- User authenticated
-- Pipeline execution in progress
-- WebSocket connection available
-
-**Main Flow**:
-1. User navigates to pipeline execution view
-2. System displays execution progress
-3. System shows current step
-4. System shows execution metrics
-5. User views real-time updates via WebSocket
-6. User can cancel execution (if needed)
-7. System displays completion status
-8. User reviews execution logs
-
-**Alternate Flows**:
-- **A1**: Execution fails → user views error details
-- **A2**: WebSocket disconnected → system falls back to polling
-
-**Postconditions**:
-- Execution monitored
-- Progress tracked
-- Status displayed
-- Logs available
-
-**Related Use Cases**: UC-TRANS-002, UC-TRANS-004
-
----
-
-### UC-TRANS-004: Data Wrangling
-
-**ID**: UC-TRANS-004  
-**Title**: Data Wrangling  
-**Persona**: Data Analyst, Data Product Owner  
-**Priority**: High  
-**Status**: New
-
-**Description**:  
-User interactively cleans and transforms data.
-
-**Preconditions**:
-- User authenticated
-- Data asset available
-- Data wrangling service available
-
-**Main Flow**:
-1. User selects data asset
-2. User navigates to data wrangling
-3. User performs column operations:
-   - Split columns
-   - Merge columns
-   - Rename columns
-   - Convert data types
-4. User performs row operations:
-   - Filter rows
-   - Sort rows
-   - Deduplicate rows
-5. User previews wrangling results
-6. User saves wrangling history
-7. User applies wrangling to data
-8. System creates transformed dataset
-
-**Alternate Flows**:
-- **A1**: Wrangling fails → user adjusts operations
-- **A2**: Preview unavailable → user proceeds with caution
-
-**Postconditions**:
-- Data wrangled
-- History saved
-- Transformed dataset created
-- Original data preserved
-
-**Related Use Cases**: UC-TRANS-001, UC-DA-002
-
----
-
-### UC-TRANS-005: Pipeline Versioning
-
-**ID**: UC-TRANS-005  
-**Title**: Pipeline Versioning  
-**Persona**: Data Product Owner, Data Engineer  
-**Priority**: Medium  
-**Status**: New
-
-**Description**:  
-User manages versions of transformation pipelines.
-
-**Preconditions**:
-- User authenticated
-- Pipeline exists
-- Versioning enabled
-
-**Main Flow**:
-1. User modifies pipeline
-2. System creates new version
-3. User saves new version
-4. System maintains version history
-5. User can view version differences
-6. User can rollback to previous version
-7. User can compare versions
-
-**Alternate Flows**:
-- **A1**: Version creation fails → user retries
-- **A2**: Rollback fails → user contacts support
-
-**Postconditions**:
-- New version created
-- Version history maintained
-- Rollback available
-- Versions comparable
-
-**Related Use Cases**: UC-TRANS-001, UC-TRANS-006
-
----
-
-### UC-TRANS-006: Pipeline Rollback
-
-**ID**: UC-TRANS-006  
-**Title**: Pipeline Rollback  
-**Persona**: Data Product Owner, Data Engineer  
-**Priority**: Medium  
-**Status**: New
-
-**Description**:  
-User rolls back pipeline to previous version.
-
-**Preconditions**:
-- User authenticated
-- Pipeline has multiple versions
-- Previous version available
-
-**Main Flow**:
-1. User navigates to pipeline versions
-2. User selects previous version
-3. User initiates rollback
-4. System validates rollback
-5. System rolls back pipeline
-6. System updates pipeline to previous version
-7. User verifies rollback
-
-**Alternate Flows**:
-- **A1**: Rollback validation fails → rollback prevented
-- **A2**: Rollback fails → system restores current version
-
-**Postconditions**:
-- Pipeline rolled back
-- Previous version active
-- Rollback logged
-
-**Related Use Cases**: UC-TRANS-005
-
----
-
-### UC-TRANS-007: Transformation Templates
-
-**ID**: UC-TRANS-007  
-**Title**: Transformation Templates  
-**Persona**: Data Product Owner, Data Engineer, Data Analyst  
-**Priority**: Medium  
-**Status**: New
-
-**Description**:  
-User uses or creates transformation templates for common patterns.
-
-**Preconditions**:
-- User authenticated
-- Templates available (or user can create)
-
-**Main Flow**:
-1. User navigates to templates
-2. User browses templates
-3. User selects template
-4. User customizes template
-5. User applies template to create pipeline
-6. User saves customized pipeline
-
-**Alternate Flows**:
-- **A1**: Template not suitable → user creates custom pipeline
-- **A2**: Template customization fails → user adjusts
-
-**Postconditions**:
-- Template applied
-- Pipeline created
-- Pipeline customized
-- Pipeline saved
-
-**Related Use Cases**: UC-TRANS-001
-
----
-
-### UC-TRANS-008: Custom Transformation Functions
-
-**ID**: UC-TRANS-008  
-**Title**: Custom Transformation Functions  
-**Persona**: Data Engineer, Data Analyst  
-**Priority**: Medium  
-**Status**: New
-
-**Description**:  
-User creates custom transformation functions (Python/JavaScript).
-
-**Preconditions**:
-- User authenticated with `DATA_PROVIDER` role
-- Custom function support enabled
-
-**Main Flow**:
-1. User navigates to custom functions
-2. User creates new function
-3. User writes function code (Python/JavaScript)
-4. User tests function
-5. User validates function
-6. User saves function
-7. User uses function in pipeline
-
-**Alternate Flows**:
-- **A1**: Function test fails → user fixes code
-- **A2**: Function validation fails → user adjusts
-
-**Postconditions**:
-- Function created
-- Function tested
-- Function validated
-- Function available for use
-
-**Related Use Cases**: UC-TRANS-001
-
----
-
 ## Social Feature Use Cases **NEW**
 
 ### UC-SOCIAL-001: Rate Asset
 
-**ID**: UC-SOCIAL-001  
-**Title**: Rate Asset  
-**Persona**: Data Consumer, Data Product Owner  
-**Priority**: Medium  
+**ID**: UC-SOCIAL-001
+**Title**: Rate Asset
+**Persona**: Data Consumer, Data Product Owner
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User rates a data asset (1-5 stars).
 
 **Preconditions**:
@@ -923,13 +590,13 @@ User rates a data asset (1-5 stars).
 
 ### UC-SOCIAL-002: Review Asset
 
-**ID**: UC-SOCIAL-002  
-**Title**: Review Asset  
-**Persona**: Data Consumer, Data Product Owner  
-**Priority**: Medium  
+**ID**: UC-SOCIAL-002
+**Title**: Review Asset
+**Persona**: Data Consumer, Data Product Owner
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User writes a review for a data asset.
 
 **Preconditions**:
@@ -967,13 +634,13 @@ User writes a review for a data asset.
 
 ### UC-SOCIAL-003: Comment on Asset
 
-**ID**: UC-SOCIAL-003  
-**Title**: Comment on Asset  
-**Persona**: Data Consumer, Data Product Owner  
-**Priority**: Low  
+**ID**: UC-SOCIAL-003
+**Title**: Comment on Asset
+**Persona**: Data Consumer, Data Product Owner
+**Priority**: Low
 **Status**: New
 
-**Description**:  
+**Description**:
 User adds a comment to an asset discussion.
 
 **Preconditions**:
@@ -1007,13 +674,13 @@ User adds a comment to an asset discussion.
 
 ### UC-SOCIAL-004: Join Data Community
 
-**ID**: UC-SOCIAL-004  
-**Title**: Join Data Community  
-**Persona**: Data Consumer, Data Product Owner, Community Manager  
-**Priority**: Low  
+**ID**: UC-SOCIAL-004
+**Title**: Join Data Community
+**Persona**: Data Consumer, Data Product Owner, Community Manager
+**Priority**: Low
 **Status**: New
 
-**Description**:  
+**Description**:
 User joins a data community for collaboration.
 
 **Preconditions**:
@@ -1046,13 +713,13 @@ User joins a data community for collaboration.
 
 ### UC-SOCIAL-005: Manage Activity Feed
 
-**ID**: UC-SOCIAL-005  
-**Title**: Manage Activity Feed  
-**Persona**: Data Consumer, Data Product Owner, Community Manager  
-**Priority**: Low  
+**ID**: UC-SOCIAL-005
+**Title**: Manage Activity Feed
+**Persona**: Data Consumer, Data Product Owner, Community Manager
+**Priority**: Low
 **Status**: New
 
-**Description**:  
+**Description**:
 User views and manages activity feed.
 
 **Preconditions**:
@@ -1083,13 +750,13 @@ User views and manages activity feed.
 
 ### UC-SOCIAL-006: Assign Data Steward
 
-**ID**: UC-SOCIAL-006  
-**Title**: Assign Data Steward  
-**Persona**: Data Product Owner, Community Manager  
-**Priority**: Medium  
+**ID**: UC-SOCIAL-006
+**Title**: Assign Data Steward
+**Persona**: Data Product Owner, Community Manager
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User assigns data stewards to manage assets.
 
 **Preconditions**:
@@ -1124,13 +791,13 @@ User assigns data stewards to manage assets.
 
 ### UC-MESH-001: Create Data Mesh Domain
 
-**ID**: UC-MESH-001  
-**Title**: Create Data Mesh Domain  
-**Persona**: Data Mesh Domain Owner, Tenant Admin  
-**Priority**: High  
+**ID**: UC-MESH-001
+**Title**: Create Data Mesh Domain
+**Persona**: Data Mesh Domain Owner, Tenant Admin
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User creates a data mesh domain with boundaries and ownership.
 
 **Preconditions**:
@@ -1166,13 +833,13 @@ User creates a data mesh domain with boundaries and ownership.
 
 ### UC-MESH-002: Configure Federated Governance
 
-**ID**: UC-MESH-002  
-**Title**: Configure Federated Governance  
-**Persona**: Data Mesh Domain Owner, Compliance Officer  
-**Priority**: High  
+**ID**: UC-MESH-002
+**Title**: Configure Federated Governance
+**Persona**: Data Mesh Domain Owner, Compliance Officer
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User configures federated governance policies for domains.
 
 **Preconditions**:
@@ -1207,13 +874,13 @@ User configures federated governance policies for domains.
 
 ### UC-MESH-003: Manage Domain Topology
 
-**ID**: UC-MESH-003  
-**Title**: Manage Domain Topology  
-**Persona**: Data Mesh Domain Owner, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-MESH-003
+**Title**: Manage Domain Topology
+**Persona**: Data Mesh Domain Owner, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User manages data mesh topology and domain relationships.
 
 **Preconditions**:
@@ -1246,13 +913,13 @@ User manages data mesh topology and domain relationships.
 
 ### UC-MESH-004: Assign Domain Ownership
 
-**ID**: UC-MESH-004  
-**Title**: Assign Domain Ownership  
-**Persona**: Data Mesh Domain Owner, Tenant Admin  
-**Priority**: Medium  
+**ID**: UC-MESH-004
+**Title**: Assign Domain Ownership
+**Persona**: Data Mesh Domain Owner, Tenant Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User assigns ownership of domains to users or teams.
 
 **Preconditions**:
@@ -1285,13 +952,13 @@ User assigns ownership of domains to users or teams.
 
 ### UC-MESH-005: Monitor Mesh Health
 
-**ID**: UC-MESH-005  
-**Title**: Monitor Mesh Health  
-**Persona**: Data Mesh Domain Owner, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-MESH-005
+**Title**: Monitor Mesh Health
+**Persona**: Data Mesh Domain Owner, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User monitors data mesh health and performance.
 
 **Preconditions**:
@@ -1327,13 +994,13 @@ User monitors data mesh health and performance.
 
 ### UC-VIRT-001: Create Virtual Dataset
 
-**ID**: UC-VIRT-001  
-**Title**: Create Virtual Dataset  
-**Persona**: Data Engineer, Data Analyst  
-**Priority**: High  
+**ID**: UC-VIRT-001
+**Title**: Create Virtual Dataset
+**Persona**: Data Engineer, Data Analyst
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User creates a virtual dataset that queries across multiple sources.
 
 **Preconditions**:
@@ -1367,13 +1034,13 @@ User creates a virtual dataset that queries across multiple sources.
 
 ### UC-VIRT-002: Execute Federated Query
 
-**ID**: UC-VIRT-002  
-**Title**: Execute Federated Query  
-**Persona**: Data Analyst, Data Engineer  
-**Priority**: High  
+**ID**: UC-VIRT-002
+**Title**: Execute Federated Query
+**Persona**: Data Analyst, Data Engineer
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User executes a query across multiple data sources.
 
 **Preconditions**:
@@ -1408,13 +1075,13 @@ User executes a query across multiple data sources.
 
 ### UC-VIRT-003: Manage Federation Topology
 
-**ID**: UC-VIRT-003  
-**Title**: Manage Federation Topology  
-**Persona**: Data Engineer, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-VIRT-003
+**Title**: Manage Federation Topology
+**Persona**: Data Engineer, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User manages federation topology and source relationships.
 
 **Preconditions**:
@@ -1447,13 +1114,13 @@ User manages federation topology and source relationships.
 
 ### UC-VIRT-004: Monitor Virtualization Performance
 
-**ID**: UC-VIRT-004  
-**Title**: Monitor Virtualization Performance  
-**Persona**: Data Engineer, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-VIRT-004
+**Title**: Monitor Virtualization Performance
+**Persona**: Data Engineer, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User monitors virtualization query performance.
 
 **Preconditions**:
@@ -1488,13 +1155,13 @@ User monitors virtualization query performance.
 
 ### UC-MKT-ADV-001: Configure Usage-Based Pricing
 
-**ID**: UC-MKT-ADV-001  
-**Title**: Configure Usage-Based Pricing  
-**Persona**: Data Product Owner, Platform Admin  
-**Priority**: High  
+**ID**: UC-MKT-ADV-001
+**Title**: Configure Usage-Based Pricing
+**Persona**: Data Product Owner, Platform Admin
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User configures usage-based pricing for marketplace assets.
 
 **Preconditions**:
@@ -1528,13 +1195,13 @@ User configures usage-based pricing for marketplace assets.
 
 ### UC-MKT-ADV-002: Preview Data Before Purchase
 
-**ID**: UC-MKT-ADV-002  
-**Title**: Preview Data Before Purchase  
-**Persona**: Data Consumer  
-**Priority**: High  
+**ID**: UC-MKT-ADV-002
+**Title**: Preview Data Before Purchase
+**Persona**: Data Consumer
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User previews data before purchasing from marketplace.
 
 **Preconditions**:
@@ -1568,13 +1235,13 @@ User previews data before purchasing from marketplace.
 
 ### UC-MKT-ADV-003: Manage Trust Signals
 
-**ID**: UC-MKT-ADV-003  
-**Title**: Manage Trust Signals  
-**Persona**: Data Product Owner, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-MKT-ADV-003
+**Title**: Manage Trust Signals
+**Persona**: Data Product Owner, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User configures trust signals for marketplace listings (quality SLAs, badges).
 
 **Preconditions**:
@@ -1606,13 +1273,13 @@ User configures trust signals for marketplace listings (quality SLAs, badges).
 
 ### UC-MKT-ADV-004: Track Revenue Analytics
 
-**ID**: UC-MKT-ADV-004  
-**Title**: Track Revenue Analytics  
-**Persona**: Data Product Owner, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-MKT-ADV-004
+**Title**: Track Revenue Analytics
+**Persona**: Data Product Owner, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User tracks revenue and analytics for marketplace assets.
 
 **Preconditions**:
@@ -1645,13 +1312,13 @@ User tracks revenue and analytics for marketplace assets.
 
 ### UC-MKT-ADV-005: Configure Data Quality SLAs
 
-**ID**: UC-MKT-ADV-005  
-**Title**: Configure Data Quality SLAs  
-**Persona**: Data Product Owner, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-MKT-ADV-005
+**Title**: Configure Data Quality SLAs
+**Persona**: Data Product Owner, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User configures data quality SLAs for marketplace assets.
 
 **Preconditions**:
@@ -1686,13 +1353,13 @@ User configures data quality SLAs for marketplace assets.
 
 ### UC-GOV-ADV-001: Configure Automated Compliance
 
-**ID**: UC-GOV-ADV-001  
-**Title**: Configure Automated Compliance  
-**Persona**: Compliance Officer, Tenant Admin  
-**Priority**: High  
+**ID**: UC-GOV-ADV-001
+**Title**: Configure Automated Compliance
+**Persona**: Compliance Officer, Tenant Admin
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User configures automated compliance detection and enforcement.
 
 **Preconditions**:
@@ -1726,13 +1393,13 @@ User configures automated compliance detection and enforcement.
 
 ### UC-GOV-ADV-002: Set Up GDPR Right to be Forgotten
 
-**ID**: UC-GOV-ADV-002  
-**Title**: Set Up GDPR Right to be Forgotten  
-**Persona**: Compliance Officer  
-**Priority**: High  
+**ID**: UC-GOV-ADV-002
+**Title**: Set Up GDPR Right to be Forgotten
+**Persona**: Compliance Officer
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User configures GDPR deletion workflows.
 
 **Preconditions**:
@@ -1765,13 +1432,13 @@ User configures GDPR deletion workflows.
 
 ### UC-GOV-ADV-003: Manage Consent Tracking
 
-**ID**: UC-GOV-ADV-003  
-**Title**: Manage Consent Tracking  
-**Persona**: Compliance Officer  
-**Priority**: High  
+**ID**: UC-GOV-ADV-003
+**Title**: Manage Consent Tracking
+**Persona**: Compliance Officer
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User tracks and manages data consent.
 
 **Preconditions**:
@@ -1803,13 +1470,13 @@ User tracks and manages data consent.
 
 ### UC-GOV-ADV-004: Configure Automated Retention
 
-**ID**: UC-GOV-ADV-004  
-**Title**: Configure Automated Retention  
-**Persona**: Compliance Officer  
-**Priority**: Medium  
+**ID**: UC-GOV-ADV-004
+**Title**: Configure Automated Retention
+**Persona**: Compliance Officer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User configures automated data retention policies.
 
 **Preconditions**:
@@ -1845,13 +1512,13 @@ User configures automated data retention policies.
 
 ### UC-OBS-ADV-001: Monitor Reliability Scores
 
-**ID**: UC-OBS-ADV-001  
-**Title**: Monitor Reliability Scores  
-**Persona**: Data Product Owner, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-OBS-ADV-001
+**Title**: Monitor Reliability Scores
+**Persona**: Data Product Owner, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User monitors data reliability scores for assets.
 
 **Preconditions**:
@@ -1884,13 +1551,13 @@ User monitors data reliability scores for assets.
 
 ### UC-OBS-ADV-002: Track Data Costs
 
-**ID**: UC-OBS-ADV-002  
-**Title**: Track Data Costs  
-**Persona**: Tenant Admin, Platform Admin  
-**Priority**: Medium  
+**ID**: UC-OBS-ADV-002
+**Title**: Track Data Costs
+**Persona**: Tenant Admin, Platform Admin
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User tracks data storage and compute costs.
 
 **Preconditions**:
@@ -1924,13 +1591,13 @@ User tracks data storage and compute costs.
 
 ### UC-OBS-ADV-003: Set Up Predictive Alerts
 
-**ID**: UC-OBS-ADV-003  
-**Title**: Set Up Predictive Alerts  
-**Persona**: Platform Admin, Data Product Owner  
-**Priority**: Medium  
+**ID**: UC-OBS-ADV-003
+**Title**: Set Up Predictive Alerts
+**Persona**: Platform Admin, Data Product Owner
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User configures ML-based predictive alerts.
 
 **Preconditions**:
@@ -1965,13 +1632,13 @@ User configures ML-based predictive alerts.
 
 ### UC-OBS-ADV-004: Monitor Performance Regressions
 
-**ID**: UC-OBS-ADV-004  
-**Title**: Monitor Performance Regressions  
-**Persona**: Platform Admin, Data Engineer  
-**Priority**: Medium  
+**ID**: UC-OBS-ADV-004
+**Title**: Monitor Performance Regressions
+**Persona**: Platform Admin, Data Engineer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User monitors API and query performance for regressions.
 
 **Preconditions**:
@@ -2006,13 +1673,13 @@ User monitors API and query performance for regressions.
 
 ### UC-INT-001: Install Pre-built Connector
 
-**ID**: UC-INT-001  
-**Title**: Install Pre-built Connector  
-**Persona**: Data Engineer, Tenant Admin  
-**Priority**: High  
+**ID**: UC-INT-001
+**Title**: Install Pre-built Connector
+**Persona**: Data Engineer, Tenant Admin
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User installs a pre-built connector from marketplace.
 
 **Preconditions**:
@@ -2048,13 +1715,13 @@ User installs a pre-built connector from marketplace.
 
 ### UC-INT-002: Create Custom Connector
 
-**ID**: UC-INT-002  
-**Title**: Create Custom Connector  
-**Persona**: Data Engineer, External Developer  
-**Priority**: Medium  
+**ID**: UC-INT-002
+**Title**: Create Custom Connector
+**Persona**: Data Engineer, External Developer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User creates a custom connector for a data source.
 
 **Preconditions**:
@@ -2087,13 +1754,13 @@ User creates a custom connector for a data source.
 
 ### UC-INT-003: Integrate BI Tool
 
-**ID**: UC-INT-003  
-**Title**: Integrate BI Tool  
-**Persona**: Data Engineer, Tenant Admin  
-**Priority**: High  
+**ID**: UC-INT-003
+**Title**: Integrate BI Tool
+**Persona**: Data Engineer, Tenant Admin
+**Priority**: High
 **Status**: New
 
-**Description**:  
+**Description**:
 User integrates BI tool (Tableau, Power BI, Looker) with hub.
 
 **Preconditions**:
@@ -2126,13 +1793,13 @@ User integrates BI tool (Tableau, Power BI, Looker) with hub.
 
 ### UC-INT-004: Set Up Reverse ETL
 
-**ID**: UC-INT-004  
-**Title**: Set Up Reverse ETL  
-**Persona**: Data Engineer  
-**Priority**: Medium  
+**ID**: UC-INT-004
+**Title**: Set Up Reverse ETL
+**Persona**: Data Engineer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User sets up reverse ETL to push data to operational systems.
 
 **Preconditions**:
@@ -2168,13 +1835,13 @@ User sets up reverse ETL to push data to operational systems.
 
 ### UC-INT-005: Integrate CI/CD Pipeline
 
-**ID**: UC-INT-005  
-**Title**: Integrate CI/CD Pipeline  
-**Persona**: Data Engineer, External Developer  
-**Priority**: Medium  
+**ID**: UC-INT-005
+**Title**: Integrate CI/CD Pipeline
+**Persona**: Data Engineer, External Developer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User integrates contract validation into CI/CD pipeline.
 
 **Preconditions**:
@@ -2211,13 +1878,13 @@ User integrates contract validation into CI/CD pipeline.
 
 ### UC-DEV-001: Install Plugin
 
-**ID**: UC-DEV-001  
-**Title**: Install Plugin  
-**Persona**: External Developer, Data Engineer  
-**Priority**: Medium  
+**ID**: UC-DEV-001
+**Title**: Install Plugin
+**Persona**: External Developer, Data Engineer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User installs a plugin from marketplace.
 
 **Preconditions**:
@@ -2250,13 +1917,13 @@ User installs a plugin from marketplace.
 
 ### UC-DEV-002: Create Custom Plugin
 
-**ID**: UC-DEV-002  
-**Title**: Create Custom Plugin  
-**Persona**: External Developer, Data Engineer  
-**Priority**: Medium  
+**ID**: UC-DEV-002
+**Title**: Create Custom Plugin
+**Persona**: External Developer, Data Engineer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User creates a custom plugin for platform extension.
 
 **Preconditions**:
@@ -2289,13 +1956,13 @@ User creates a custom plugin for platform extension.
 
 ### UC-DEV-003: Use CLI Tool
 
-**ID**: UC-DEV-003  
-**Title**: Use CLI Tool  
-**Persona**: External Developer, Data Engineer  
-**Priority**: Medium  
+**ID**: UC-DEV-003
+**Title**: Use CLI Tool
+**Persona**: External Developer, Data Engineer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User uses CLI tool for platform operations.
 
 **Preconditions**:
@@ -2330,13 +1997,13 @@ User uses CLI tool for platform operations.
 
 ### UC-DEV-004: Access Developer Portal
 
-**ID**: UC-DEV-004  
-**Title**: Access Developer Portal  
-**Persona**: External Developer  
-**Priority**: Medium  
+**ID**: UC-DEV-004
+**Title**: Access Developer Portal
+**Persona**: External Developer
+**Priority**: Medium
 **Status**: New
 
-**Description**:  
+**Description**:
 User accesses developer portal for documentation and resources.
 
 **Preconditions**:
@@ -2380,14 +2047,6 @@ User accesses developer portal for documentation and resources.
 | UC-AI-008 | Query-to-SQL Translation | Data Consumer, Data Scientist | High | New | AI/ML | **NEW** |
 | UC-AI-009 | ML Model Training | Data Scientist | Medium | New | AI/ML | **NEW** |
 | UC-AI-010 | Recommendation Feedback Loop | Data Consumer, Data Scientist | Medium | New | AI/ML | **NEW** |
-| UC-TRANS-001 | Create Transformation Pipeline | Data Product Owner, Data Engineer, Data Analyst | High | New | Transformation | **NEW** |
-| UC-TRANS-002 | Execute Transformation Pipeline | Data Product Owner, Data Engineer, Data Analyst | High | New | Transformation | **NEW** |
-| UC-TRANS-003 | Monitor Pipeline Execution | Data Product Owner, Data Engineer, Data Analyst | High | New | Transformation | **NEW** |
-| UC-TRANS-004 | Data Wrangling | Data Analyst, Data Product Owner | High | New | Transformation | **NEW** |
-| UC-TRANS-005 | Pipeline Versioning | Data Product Owner, Data Engineer | Medium | New | Transformation | **NEW** |
-| UC-TRANS-006 | Pipeline Rollback | Data Product Owner, Data Engineer | Medium | New | Transformation | **NEW** |
-| UC-TRANS-007 | Transformation Templates | Data Product Owner, Data Engineer, Data Analyst | Medium | New | Transformation | **NEW** |
-| UC-TRANS-008 | Custom Transformation Functions | Data Engineer, Data Analyst | Medium | New | Transformation | **NEW** |
 | UC-SOCIAL-001 | Rate Asset | Data Consumer, Data Product Owner | Medium | New | Social | **NEW** |
 | UC-SOCIAL-002 | Review Asset | Data Consumer, Data Product Owner | Medium | New | Social | **NEW** |
 | UC-SOCIAL-003 | Comment on Asset | Data Consumer, Data Product Owner | Low | New | Social | **NEW** |
@@ -2430,6 +2089,6 @@ User accesses developer portal for documentation and resources.
 
 ---
 
-**Last Updated**: 2025-12-13  
+**Last Updated**: 2025-12-13
 **Version**: 2.0.0 (Added ~55 new use cases for all new features)
 

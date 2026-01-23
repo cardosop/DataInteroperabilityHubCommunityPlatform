@@ -47,7 +47,7 @@ def list_contracts(status: Optional[str], asset_id: Optional[str], limit: int, o
 
     try:
         # API endpoint structure: /api/v1/contracts/contracts/ (contracts/ from api/urls.py + contracts from router)
-        data = api_client.get('contracts/contracts/', params=params)
+        data = api_client.get('contracts/', params=params)
         # Handle both paginated response (dict with 'results') and direct list response
         if isinstance(data, dict):
             results = data.get('results', [])
@@ -88,8 +88,8 @@ def list_contracts(status: Optional[str], asset_id: Optional[str], limit: int, o
 def get_contract(contract_id: str, output_format: str, show_odps: bool):
     """Get contract details"""
     try:
-        # API endpoint structure: /api/v1/contracts/contracts/{id}/ (contracts/ from api/urls.py + contracts from router)
-        data = api_client.get(f'contracts/contracts/{contract_id}/')
+        # API endpoint: GET /api/v1/contracts/{id}/
+        data = api_client.get(f'contracts/{contract_id}/')
 
         if output_format == 'json':
             click.echo(json.dumps(data, indent=2))
@@ -221,8 +221,8 @@ def create_contract(file_path: str, asset_id: Optional[str], spec_type_override:
         data['asset_id'] = asset_id
 
     try:
-        # API endpoint structure: /api/v1/contracts/contracts/ (contracts/ from api/urls.py + contracts from router)
-        result = api_client.post('contracts/contracts/', json_data=data)
+        # API endpoint: POST /api/v1/contracts/
+        result = api_client.post('contracts/', json_data=data)
 
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -248,7 +248,7 @@ def validate_contract(contract_id: str, output_format: str):
     """Validate a contract"""
     try:
         # API endpoint structure: /api/v1/contracts/contracts/{id}/validate/ (contracts/ from api/urls.py + contracts from router)
-        result = api_client.post(f'contracts/contracts/{contract_id}/validate/')
+        result = api_client.post(f'contracts/{contract_id}/validate/')
 
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -288,7 +288,7 @@ def lint_contract(contract_id: str, output_format: str):
     """Lint a contract"""
     try:
         # API endpoint structure: /api/v1/contracts/contracts/{id}/lint/ (contracts/ from api/urls.py + contracts from router)
-        result = api_client.post(f'contracts/contracts/{contract_id}/lint/')
+        result = api_client.post(f'contracts/{contract_id}/lint/')
 
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -391,7 +391,22 @@ def create_odps(
                 data['odps_version'] = odps_version
 
             try:
-                result = api_client.post('contracts/products/', json_data=data)
+                # Use request() to get raw Response object so we can check status code
+                response_obj = api_client.request('POST', 'contracts/products/', json_data=data, timeout=30)
+
+                # Check status code
+                if response_obj.status_code == 202:
+                    # Async workflow - get workflow_instance_id from response
+                    result = api_client._handle_response(response_obj)
+                    workflow_instance_id = result.get('workflow_instance_id')
+                elif response_obj.status_code == 201:
+                    # Synchronous response (legacy compatibility)
+                    result = api_client._handle_response(response_obj)
+                    workflow_instance_id = None
+                else:
+                    # Error response
+                    result = api_client._handle_response(response_obj)
+                    workflow_instance_id = None
             except click.ClickException as e:
                 # Try to parse as ODPS error
                 error_msg = str(e)
@@ -399,6 +414,63 @@ def create_odps(
                     # Extract error code and message
                     raise handle_api_error(error_msg, 400, 'contracts/products/')
                 raise
+
+            # Check if async workflow (202 Accepted)
+            if workflow_instance_id:
+                # Async workflow - poll for completion
+                if not workflow_instance_id:
+                    raise ODPSExportError(
+                        message="Workflow started but no workflow_instance_id returned",
+                        error_code="MISSING_WORKFLOW_ID",
+                        context={'response': response.json()}
+                    )
+
+                if output_format == 'table':
+                    click.echo(f"Product creation workflow started (async)")
+                    click.echo(f"Workflow Instance ID: {workflow_instance_id}")
+                    click.echo("Polling for completion...")
+
+                # Poll for completion
+                import time
+                max_poll_time = 300  # 5 minutes max
+                poll_interval = 2  # Poll every 2 seconds
+                start_time = time.time()
+
+                while time.time() - start_time < max_poll_time:
+                    try:
+                        status_result = api_client.get(f'contracts/products/{workflow_instance_id}/status/')
+                        status = status_result.get('status')
+
+                        if status == 'COMPLETED':
+                            # Workflow completed - get results
+                            result = status_result
+                            break
+                        elif status in ['FAILED', 'CANCELLED', 'ROLLED_BACK']:
+                            error_msg = status_result.get('message') or f"Workflow {status.lower()}"
+                            raise ODPSExportError(
+                                message=f"Product creation workflow {status.lower()}: {error_msg}",
+                                error_code="WORKFLOW_FAILED",
+                                context={'workflow_instance_id': workflow_instance_id, 'status': status}
+                            )
+                        # Still running - continue polling
+                        time.sleep(poll_interval)
+                    except click.ClickException as e:
+                        # If 404, workflow might not be ready yet
+                        if '404' in str(e) or 'not found' in str(e).lower():
+                            time.sleep(poll_interval)
+                            continue
+                        raise
+                else:
+                    # Timeout
+                    raise ODPSExportError(
+                        message=f"Workflow did not complete within {max_poll_time} seconds",
+                        error_code="WORKFLOW_TIMEOUT",
+                        context={'workflow_instance_id': workflow_instance_id},
+                        suggestion=f"Check workflow status manually: contracts/products/{workflow_instance_id}/status/"
+                    )
+            else:
+                # Synchronous response (shouldn't happen with new async API, but handle for compatibility)
+                result = api_client._handle_response(response)
 
             if output_format == 'json':
                 click.echo(json.dumps(result, indent=2))
@@ -442,13 +514,13 @@ def create_odps(
                 data['odps_version'] = odps_version
 
             try:
-                result = api_client.post(f'contracts/contracts/{link_odcs_id}/link-odps/', json_data=data)
+                result = api_client.post(f'contracts/{link_odcs_id}/link-odps/', json_data=data)
             except click.ClickException as e:
                 # Try to parse as ODPS error
                 error_msg = str(e)
                 if 'API error' in error_msg:
                     # Extract error code and message
-                    raise handle_api_error(error_msg, 400, f'contracts/contracts/{link_odcs_id}/link-odps/')
+                    raise handle_api_error(error_msg, 400, f'contracts/{link_odcs_id}/link-odps/')
                 raise
 
             if output_format == 'json':
@@ -649,7 +721,7 @@ def get_pricing(contract_id: str, output_format: str):
     """Get pricing information for a contract (ODPS pricing plans)"""
     try:
         # API endpoint structure: /api/v1/contracts/contracts/{id}/
-        data = api_client.get(f'contracts/contracts/{contract_id}/')
+        data = api_client.get(f'contracts/{contract_id}/')
 
         # Extract ODPS pricing plans
         hub_contract = data.get('hub_contract_json', {})
@@ -701,7 +773,7 @@ def get_access_methods(contract_id: str, output_format: str):
     """Get access methods for a contract (ODPS access methods)"""
     try:
         # API endpoint structure: /api/v1/contracts/contracts/{id}/
-        data = api_client.get(f'contracts/contracts/{contract_id}/')
+        data = api_client.get(f'contracts/{contract_id}/')
 
         # Extract ODPS access methods
         hub_contract = data.get('hub_contract_json', {})
@@ -831,9 +903,9 @@ def download_contract(contract_id: str, format_type: str, output_format: str, od
             params['version'] = odps_version
 
         # Call download endpoint
-        # API endpoint: /api/v1/contracts/contracts/{id}/download/
+        # API endpoint: /api/v1/contracts/{id}/download/
         # Use request method to get raw response
-        response = api_client.request('GET', f'contracts/contracts/{contract_id}/download/', params=params)
+        response = api_client.request('GET', f'contracts/{contract_id}/download/', params=params)
 
         # Handle response
         if response.status_code >= 400:
@@ -922,7 +994,7 @@ def link_odps(odcs_id: str, odps_id: str, output_format: str):
         # API endpoint: POST /api/v1/contracts/{odcs_id}/link-odps/
         # Body: {"odps_contract_id": odps_id}
         result = api_client.post(
-            f'contracts/contracts/{odcs_id}/link-odps/',
+            f'contracts/{odcs_id}/link-odps/',
             json_data={'odps_contract_id': odps_id}
         )
 
@@ -961,7 +1033,7 @@ def unlink_odps(odcs_id: str, output_format: str):
     """
     try:
         # API endpoint: POST /api/v1/contracts/{odcs_id}/unlink-odps/
-        result = api_client.post(f'contracts/contracts/{odcs_id}/unlink-odps/')
+        result = api_client.post(f'contracts/{odcs_id}/unlink-odps/')
 
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))
@@ -995,7 +1067,7 @@ def list_links(contract_id: str, output_format: str):
     """
     try:
         # API endpoint: GET /api/v1/contracts/{contract_id}/links/
-        result = api_client.get(f'contracts/contracts/{contract_id}/links/')
+        result = api_client.get(f'contracts/{contract_id}/links/')
 
         if output_format == 'json':
             click.echo(json.dumps(result, indent=2))

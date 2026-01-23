@@ -23,7 +23,6 @@ from .odps_webhook_errors import (
     ODPSWebhookPayloadError,
 )
 from .odps_webhook_validators import validate_odps_webhook_payload
-from .transformation_webhook_validators import validate_transformation_webhook_payload
 from hub.apps.contracts.odps_errors import RecoveryStrategy
 
 logger = structlog.get_logger(__name__)
@@ -159,25 +158,6 @@ class WebhookDeliveryService:
                 )
                 raise
 
-        # Validate payload for transformation events
-        if WebhookEventType.is_transformation_event_type(event_type):
-            try:
-                validate_transformation_webhook_payload(
-                    payload=payload,
-                    event_type=event_type,
-                    tenant_id=str(webhook.tenant_id),
-                    webhook_id=str(webhook.id),
-                )
-            except ODPSWebhookPayloadError as e:
-                # Log validation error
-                logger.error(
-                    "transformation_webhook_payload_validation_failed",
-                    webhook_id=str(webhook.id),
-                    event_type=event_type,
-                    error_code=e.error_code,
-                    error_message=e.message,
-                )
-                raise
 
         # Validate payload for virtualization events
         # Note: Virtualization events use the same payload structure as other events
@@ -698,79 +678,5 @@ class WebhookDeliveryService:
                     status=WebhookStatus.ACTIVE
                 )
             )
-        )
-
-    @staticmethod
-    def trigger_transformation_webhook(
-        tenant_id: str,
-        event_type: str,
-        resource_type: str,
-        resource_id: str,
-        event_data: Dict[str, Any]
-    ) -> int:
-        """
-        Trigger webhook delivery for transformation events with validation and error handling.
-
-        This is a convenience method that validates the event type is a transformation event
-        and validates the payload before triggering webhook delivery.
-
-        Args:
-            tenant_id: Tenant UUID
-            event_type: Transformation event type (e.g., "pipeline.created" or WebhookEventType enum value)
-            resource_type: Resource type (e.g., "PIPELINE", "EXECUTION")
-            resource_id: Resource UUID
-            event_data: Event data payload
-
-        Returns:
-            Number of webhooks triggered
-
-        Raises:
-            ODPSWebhookValidationError: If event_type is not a transformation event type
-            ODPSWebhookPayloadError: If payload validation fails
-        """
-        # Extract string value if event_type is a tuple (enum value)
-        if isinstance(event_type, (tuple, list)) and len(event_type) > 0:
-            event_type = event_type[0]
-
-        if not WebhookEventType.is_transformation_event_type(event_type):
-            raise ODPSWebhookValidationError(
-                message=f"Event type '{event_type}' is not a transformation event type",
-                error_code=ODPSWebhookValidationError.ERROR_CODE_INVALID_EVENT_TYPE,
-                user_message=f"Invalid event type: '{event_type}' is not a valid transformation event type",
-                tenant_id=tenant_id,
-                event_type=event_type,
-            )
-
-        # Validate payload before triggering
-        payload = {
-            "event_type": event_type,
-            "resource_type": resource_type,
-            "resource_id": resource_id,
-            "timestamp": timezone.now().isoformat(),
-            "data": event_data
-        }
-
-        try:
-            validate_transformation_webhook_payload(
-                payload=payload,
-                event_type=event_type,
-                tenant_id=tenant_id,
-            )
-        except ODPSWebhookPayloadError as e:
-            logger.error(
-                "transformation_webhook_payload_validation_failed",
-                tenant_id=tenant_id,
-                event_type=event_type,
-                error_code=e.error_code,
-                error_message=e.message,
-            )
-            raise
-
-        return WebhookDeliveryService.trigger_webhook(
-            tenant_id=tenant_id,
-            event_type=event_type,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            event_data=event_data
         )
 

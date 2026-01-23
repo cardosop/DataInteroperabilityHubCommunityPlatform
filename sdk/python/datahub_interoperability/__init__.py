@@ -4,7 +4,7 @@ DataHub Interoperability Python SDK
 Python client library for the Interoperable Data Hub API.
 Generated from OpenAPI spec with custom authentication and error handling.
 Includes high-level APIs for contracts, lineage, scheduled ingestion, versioning,
-governance, mesh, search, observability, transformation, virtualization, and webhooks.
+governance, mesh, search, observability, virtualization, and webhooks.
 """
 
 from .client import DataHubClient
@@ -43,7 +43,6 @@ from .governance import GovernanceAPI
 from .mesh import MeshAPI
 from .search import SearchAPI
 from .observability import ObservabilityAPI
-from .transformation import TransformationAPI
 from .virtualization import VirtualizationAPI
 from .webhooks import WebhooksAPI
 from .marketplace import MarketplaceIntegrationAPI
@@ -87,7 +86,6 @@ __all__ = [
     "MeshAPI",
     "SearchAPI",
     "ObservabilityAPI",
-    "TransformationAPI",
     "VirtualizationAPI",
     "WebhooksAPI",
     "MarketplaceIntegrationAPI",

@@ -236,7 +236,6 @@ class EventConsumer(AsyncWebsocketConsumer):
         # Replay missed events on subscription (if replay is enabled)
         if self.replay_enabled:
             await self._replay_missed_odps_events()
-            await self._replay_missed_transformation_events()
             await self._replay_missed_mesh_events()
             await self._replay_missed_virtualization_events()
 
@@ -545,192 +544,6 @@ class EventConsumer(AsyncWebsocketConsumer):
             # Log error but don't fail subscription if replay fails
             logger.error(
                 "websocket_odps_event_replay_failed",
-                error=str(e),
-                exc_info=True
-            )
-
-    async def _replay_missed_transformation_events(self):
-        """
-        Replay missed transformation events on reconnection.
-
-        Queries the database for transformation events that occurred since the last connection
-        and replays them to the client. This ensures clients don't miss events during
-        disconnections.
-        """
-        try:
-            # Get tenant for filtering
-            tenant = self.scope.get("tenant")
-            if not tenant:
-                return  # Can't replay without tenant context
-
-            # Get subscribed transformation event types
-            transformation_event_types = [
-                event_type for event_type in self.subscribed_event_types
-                if event_type.startswith("transformation.") or event_type == "transformation.*"
-            ]
-
-            if not transformation_event_types:
-                return  # No transformation events subscribed
-
-            # Calculate replay window
-            replay_start_time = None
-            if self.last_event_timestamps:
-                # Use the most recent timestamp across all transformation event types
-                transformation_timestamps = [
-                    ts for event_type, ts in self.last_event_timestamps.items()
-                    if event_type.startswith("transformation.")
-                ]
-                if transformation_timestamps:
-                    replay_start_time = max(transformation_timestamps)
-            else:
-                # No previous events - use replay window
-                replay_start_time = datetime.utcnow() - timedelta(seconds=self.replay_window_seconds)
-
-            # Replay events for each subscribed transformation event type
-            event_bus = self._get_event_bus()
-            replayed_count = 0
-
-            for event_type_pattern in transformation_event_types:
-                # Determine actual event types to query
-                if event_type_pattern == "transformation.*":
-                    # Query all transformation events
-                    event_types_to_query = None  # None means all transformation events
-                elif event_type_pattern.endswith(".*"):
-                    # Pattern like "transformation.pipeline.*" - query events matching the prefix
-                    prefix = event_type_pattern[:-2]  # Remove '.*'
-                    # Query events that start with this prefix
-                    event_types_to_query = None  # We'll filter in the query
-                else:
-                    # Exact event type
-                    event_types_to_query = [event_type_pattern]
-
-                # Query events from database
-                try:
-                    # Use event bus replay_events method
-                    from hub.apps.core.events.models import Event as EventModel
-                    from asgiref.sync import sync_to_async
-
-                    if event_type_pattern == "transformation.*":
-                        # Query all transformation events
-                        def _query_transformation_events():
-                            return list(EventModel.objects.filter(
-                                event_type__startswith="transformation.",
-                                tenant_id=tenant.id,
-                                timestamp__gte=replay_start_time
-                            ).order_by('timestamp')[:1000])
-
-                        transformation_events_list = await sync_to_async(_query_transformation_events)()
-
-                        # Convert to event dictionaries
-                        events_to_replay = []
-                        for event_obj in transformation_events_list:
-                            event_dict = {
-                                "event_id": str(event_obj.event_id),
-                                "event_type": event_obj.event_type,
-                                "event_version": event_obj.event_version,
-                                "timestamp": event_obj.timestamp.isoformat() + "Z",
-                                "source": {
-                                    "service": event_obj.source_service,
-                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
-                                },
-                                "data": event_obj.data,
-                                "metadata": event_obj.metadata or {}
-                            }
-                            if event_obj.user_id:
-                                event_dict["source"]["user_id"] = str(event_obj.user_id)
-                            if event_obj.request_id:
-                                event_dict["source"]["request_id"] = event_obj.request_id
-                            events_to_replay.append(event_dict)
-                    elif event_type_pattern.endswith(".*"):
-                        # Pattern like "transformation.pipeline.*" - query events matching the prefix
-                        prefix = event_type_pattern[:-2]  # Remove '.*'
-
-                        def _query_pattern_events():
-                            return list(EventModel.objects.filter(
-                                event_type__startswith=prefix + ".",
-                                tenant_id=tenant.id,
-                                timestamp__gte=replay_start_time
-                            ).order_by('timestamp')[:1000])
-
-                        pattern_events_list = await sync_to_async(_query_pattern_events)()
-
-                        # Convert to event dictionaries
-                        events_to_replay = []
-                        for event_obj in pattern_events_list:
-                            event_dict = {
-                                "event_id": str(event_obj.event_id),
-                                "event_type": event_obj.event_type,
-                                "event_version": event_obj.event_version,
-                                "timestamp": event_obj.timestamp.isoformat() + "Z",
-                                "source": {
-                                    "service": event_obj.source_service,
-                                    "tenant_id": str(event_obj.tenant_id) if event_obj.tenant_id else None,
-                                },
-                                "data": event_obj.data,
-                                "metadata": event_obj.metadata or {}
-                            }
-                            if event_obj.user_id:
-                                event_dict["source"]["user_id"] = str(event_obj.user_id)
-                            if event_obj.request_id:
-                                event_dict["source"]["request_id"] = event_obj.request_id
-                            events_to_replay.append(event_dict)
-                    else:
-                        # Exact event type - use sync_to_async for replay_events
-                        events_to_replay = await sync_to_async(event_bus.replay_events)(
-                            event_type=event_type_pattern,
-                            tenant_id=str(tenant.id),
-                            start_time=replay_start_time,
-                            limit=1000
-                        )
-
-                    # Apply filters and send events
-                    for event in events_to_replay:
-                        event_source = event.get("source", {})
-                        # Apply the same filtering logic as real-time events
-                        if self._should_send_event(event, event_source):
-                            # Check deduplication before replaying
-                            event_id = event.get("event_id")
-                            event_type = event.get("event_type", "unknown")
-                            event_data = event.get("data", {})
-
-                            if event_id and event_type != "unknown":
-                                redis_client = self._get_deduplication_redis_client()
-                                if redis_client:
-                                    deduplication_key = generate_deduplication_key(event_type, event_data)
-                                    is_duplicate, _ = check_event_duplicate(
-                                        deduplication_key,
-                                        redis_client=redis_client
-                                    )
-                                    if is_duplicate:
-                                        # Skip duplicate events during replay
-                                        continue
-
-                            # Send replayed event
-                            await self.send_event(event)
-                            replayed_count += 1
-
-                except Exception as replay_error:
-                    logger.warning(
-                        "websocket_transformation_event_replay_error",
-                        event_type_pattern=event_type_pattern,
-                        error=str(replay_error),
-                        exc_info=True
-                    )
-                    # Continue with other event types even if one fails
-
-            if replayed_count > 0:
-                logger.info(
-                    "websocket_transformation_events_replayed",
-                    count=replayed_count,
-                    event_types=list(transformation_event_types),
-                    tenant_id=str(tenant.id),
-                    replay_start_time=replay_start_time.isoformat() if replay_start_time else None
-                )
-
-        except Exception as e:
-            # Log error but don't fail subscription if replay fails
-            logger.error(
-                "websocket_transformation_event_replay_failed",
                 error=str(e),
                 exc_info=True
             )
@@ -1178,7 +991,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                         redis_client=redis_client
                     )
 
-                # Track last event timestamp for replay (ODPS events, transformation events, and all events)
+                # Track last event timestamp for replay (ODPS events, mesh events, virtualization events, and all events)
                 # Update last timestamp for this event type
                 try:
                     event_timestamp_str = event.get("timestamp")
@@ -1213,19 +1026,6 @@ class EventConsumer(AsyncWebsocketConsumer):
                                 # Track for nested patterns (e.g., 'odps.workflow.*')
                                 if event_type.startswith("odps.workflow."):
                                     self.last_event_timestamps["odps.workflow.*"] = event_timestamp
-
-                            # Track for transformation event patterns
-                            if event_type.startswith("transformation."):
-                                self.last_event_timestamps["transformation.*"] = event_timestamp
-                                # Track for nested patterns
-                                if event_type.startswith("transformation.pipeline."):
-                                    self.last_event_timestamps["transformation.pipeline.*"] = event_timestamp
-                                    if event_type.startswith("transformation.pipeline.execution."):
-                                        self.last_event_timestamps["transformation.pipeline.execution.*"] = event_timestamp
-                                elif event_type.startswith("transformation.preview."):
-                                    self.last_event_timestamps["transformation.preview.*"] = event_timestamp
-                                elif event_type.startswith("transformation.wrangling."):
-                                    self.last_event_timestamps["transformation.wrangling.*"] = event_timestamp
 
                             # Track for virtualization event patterns
                             if event_type.startswith("virtualization."):
@@ -1298,32 +1098,6 @@ class EventConsumer(AsyncWebsocketConsumer):
                         # Simple 'odps.*' pattern - matches all ODPS events
                         if subscribed_type == 'odps.*' and event_type.startswith('odps.'):
                             return True
-
-            # Transformation-specific pattern matching
-            # Support patterns like 'transformation.*' matching all transformation events
-            # Support patterns like 'transformation.pipeline.*' matching pipeline events
-            if subscribed_type.startswith('transformation.'):
-                if event_type.startswith('transformation.'):
-                    # Only apply wildcard matching if subscribed_type ends with '.*'
-                    if subscribed_type.endswith('.*'):
-                        # Check if it's a nested pattern (e.g., 'transformation.pipeline.*')
-                        if '.' in subscribed_type[15:-2]:  # After 'transformation.' and before '.*'
-                            # Nested pattern: 'transformation.pipeline.*'
-                            pattern_parts = subscribed_type[:-2].split('.')  # Remove '.*' before splitting
-                            event_parts = event_type.split('.')
-                            if len(pattern_parts) <= len(event_parts):
-                                # Check if all pattern parts match
-                                match = True
-                                for i, pattern_part in enumerate(pattern_parts):
-                                    if i < len(event_parts) and pattern_part != event_parts[i]:
-                                        match = False
-                                        break
-                                if match:
-                                    return True
-                        else:
-                            # Simple 'transformation.*' pattern - matches all transformation events
-                            if subscribed_type == 'transformation.*' and event_type.startswith('transformation.'):
-                                return True
 
             # Virtualization-specific pattern matching
             # Support patterns like 'virtualization.*' matching all virtualization events
@@ -1442,17 +1216,7 @@ class EventConsumer(AsyncWebsocketConsumer):
                     if filter_resource_id not in possible_resource_ids:
                         return False
 
-        # Filter by pipeline_id (for transformation events)
-        if "pipeline_id" in self.filters:
-            filter_pipeline_id = str(self.filters["pipeline_id"])
-            event_data = event.get("data", {})
-            event_pipeline_id = str(event_data.get("pipeline_id", ""))
-
-            if filter_pipeline_id:
-                if not event_pipeline_id or event_pipeline_id != filter_pipeline_id:
-                    return False
-
-        # Filter by execution_id (for transformation and virtualization events)
+        # Filter by execution_id (for virtualization events)
         if "execution_id" in self.filters:
             filter_execution_id = str(self.filters["execution_id"])
             event_data = event.get("data", {})

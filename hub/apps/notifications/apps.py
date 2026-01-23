@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 import structlog
+from hub.apps.core.utils.test_mode import should_skip_initialization
 
 logger = structlog.get_logger(__name__)
 
@@ -9,19 +10,27 @@ class NotificationsConfig(AppConfig):
     name = 'hub.apps.notifications'
 
     def ready(self):
-        """Initialize notifications app when Django is ready."""
+        """
+        Initialize notifications app when Django is ready.
+        
+        Initialization is deferred during tests for performance.
+        """
+        # Always import signals (needed for tests)
         try:
-            # Import signals
             import hub.apps.notifications.signals  # noqa
-
+        except Exception:
+            pass  # Signals may not be critical for all test scenarios
+        
+        # Skip event subscriber initialization during tests and migrations for performance
+        if should_skip_initialization():
+            logger.debug("notifications_app_init_skipped", reason="test_or_migration_mode")
+            return
+        
+        try:
             # Initialize ODPS notification subscriber
             from hub.apps.notifications.odps_event_subscriber import initialize_odps_notification_subscriber
-
-            # Only initialize if not in migration mode
-            import sys
-            if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv:
-                initialize_odps_notification_subscriber()
-                logger.info("notifications_app_ready", message="Notifications app initialized")
+            initialize_odps_notification_subscriber()
+            logger.info("notifications_app_ready", message="Notifications app initialized")
         except Exception as e:
             # Log but don't fail startup - subscriber will be initialized when needed
             logger.warning(

@@ -137,23 +137,12 @@ def detect_spec_type(contract_data: Dict[str, Any]) -> Tuple[str, str]:
 
     # Check for ODCS - has 'apiVersion' and 'kind' fields
     if 'apiVersion' in contract_data and 'kind' in contract_data:
-        # Extract version from apiVersion (e.g., "odcs.io/v3.0.2" -> "3.0.2")
-        api_version = contract_data.get('apiVersion', '')
-        if isinstance(api_version, str):
-            # Extract version from apiVersion string
-            if '/' in api_version:
-                version_part = api_version.split('/')[-1]
-                # Remove 'v' prefix if present
-                if version_part.startswith('v'):
-                    version_part = version_part[1:]
-                spec_version = version_part
-            else:
-                spec_version = api_version
-        else:
-            spec_version = str(api_version)
+        # Use detect_odcs_version to properly extract version (handles -preview suffix)
+        from .odcs_version_detection import detect_odcs_version
+        spec_version = detect_odcs_version(contract_data)
 
-        # Default to 3.0.2 if version not found
-        if not spec_version or spec_version == api_version:
+        # Default to 3.0.2 if version detection failed
+        if not spec_version or spec_version == "unknown":
             spec_version = "3.0.2"
 
         return OriginalSpecType.ODCS, spec_version

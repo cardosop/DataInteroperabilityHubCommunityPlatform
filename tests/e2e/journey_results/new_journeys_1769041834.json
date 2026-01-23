@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 20.17169427871704
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-a3fdde45",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1769041814.354837,
+      "end_time": 1769041834.5265312,
+      "duration": 20.17169427871704,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769041814.3548508,
+          "end_time": 1769041834.4999268,
+          "duration": 20.145076036453247,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769041834.5050776,
+          "end_time": 1769041834.521107,
+          "duration": 0.01602935791015625,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769041834.5211225,
+          "end_time": 1769041834.5265262,
+          "duration": 0.005403757095336914,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "e33dd109-11de-44fc-99d9-b6d9a543c645"
+      }
+    }
+  ],
+  "exported_at": "2026-01-22T00:30:34.526610"
+}

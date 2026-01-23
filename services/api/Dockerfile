@@ -12,11 +12,16 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements
 COPY requirements.txt requirements-dev.txt ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies (production + development for testing)
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements-dev.txt
 
 # Copy application code
 COPY . .
+
+# Install CLI and SDK packages for comprehensive testing
+RUN cd /app/cli && pip install --no-cache-dir -e . && \
+    cd /app/sdk/python && pip install --no-cache-dir -e .
 
 # Expose port
 EXPOSE 8000

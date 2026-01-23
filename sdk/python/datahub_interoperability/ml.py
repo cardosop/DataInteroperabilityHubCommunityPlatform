@@ -271,7 +271,7 @@ class ODHIntegrationAPI:
             data["contract_id"] = contract_id
 
         try:
-            response = await self.client.post("/ml/models/", json=data)
+            response = await self.client.post("/ml/models/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -328,7 +328,7 @@ class ODHIntegrationAPI:
             raise ValidationError("At least one field (asset_id, contract_id, status) must be provided for update")
 
         try:
-            response = await self.client.patch(f"/ml/models/{model_id}/", json=data)
+            response = await self.client.patch(f"/ml/models/{model_id}/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -415,7 +415,7 @@ class ODHIntegrationAPI:
         self._validate_uuid(asset_id, "asset_id")
 
         try:
-            response = await self.client.post(f"/ml/models/{model_id}/link-asset/", json={"asset_id": asset_id})
+            response = await self.client.post(f"/ml/models/{model_id}/link-asset/", data={"asset_id": asset_id})
             if isinstance(response, dict):
                 return response
             else:
@@ -456,7 +456,7 @@ class ODHIntegrationAPI:
 
         try:
             response = await self.client.post(
-                f"/ml/models/{model_id}/link-dataset/", json={"dataset_id": dataset_id, "role": role.upper()}
+                f"/ml/models/{model_id}/link-dataset/", data={"dataset_id": dataset_id, "role": role.upper()}
             )
             if isinstance(response, dict):
                 return response
@@ -524,7 +524,7 @@ class TrainingAPI:
         data = {"model_id": model_id, "dataset_id": dataset_id, "config": config}
 
         try:
-            response = await self.client.post("/ml/training/jobs/", json=data)
+            response = await self.client.post("/ml/training/jobs/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -731,7 +731,7 @@ class InferenceAPI:
             data["config"] = config
 
         try:
-            response = await self.client.post("/ml/inference/deployments/", json=data)
+            response = await self.client.post("/ml/inference/deployments/", data=data)
             if isinstance(response, dict):
                 return response
             else:
@@ -768,7 +768,7 @@ class InferenceAPI:
         data = {"deployment_id": deployment_id, "input": input_data}
 
         try:
-            response = await self.client.post("/ml/inference/deployments/predict/", json=data)
+            response = await self.client.post("/ml/inference/deployments/predict/", data=data)
             if isinstance(response, dict):
                 return response
             else:

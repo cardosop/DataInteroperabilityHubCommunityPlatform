@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.012521743774414062
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-002-1ae12fc5",
+      "journey_name": "Moderate Reviews and Ratings",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1769095780.9297812,
+      "end_time": 1769095780.942303,
+      "duration": 0.012521743774414062,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Pending Reviews Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769095780.9346,
+          "end_time": 1769095780.9346051,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Review Approval Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769095780.9384496,
+          "end_time": 1769095780.938454,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Review Rejection Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769095780.9422984,
+          "end_time": 1769095780.942302,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-22T15:29:40.942365"
+}

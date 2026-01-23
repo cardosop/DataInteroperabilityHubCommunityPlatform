@@ -1,0 +1,138 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 92.53935408592224
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-f95d5e75",
+      "journey_name": "Product-First Flow Journey",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1768653531.9403608,
+      "end_time": 1768653624.4797149,
+      "duration": 92.53935408592224,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653531.9403725,
+          "end_time": 1768653532.1071267,
+          "duration": 0.16675424575805664,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Document",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653532.107143,
+          "end_time": 1768653532.1072106,
+          "duration": 6.771087646484375e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Product (Product-First Flow)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653532.1072135,
+          "end_time": 1768653577.928432,
+          "duration": 45.821218490600586,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify ODPS Contract Created",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653577.928446,
+          "end_time": 1768653577.9291582,
+          "duration": 0.0007121562957763672,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Contract"
+          }
+        },
+        {
+          "step_name": "Verify ODCS Contract Created",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653577.9291656,
+          "end_time": 1768653577.9298224,
+          "duration": 0.0006568431854248047,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Contract"
+          }
+        },
+        {
+          "step_name": "Verify Bidirectional Linking",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653577.9298294,
+          "end_time": 1768653577.9315464,
+          "duration": 0.0017170906066894531,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Activate Contracts",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653577.9326549,
+          "end_time": 1768653624.4751635,
+          "duration": 46.542508602142334,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Verify Success Criteria",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653624.4751716,
+          "end_time": 1768653624.4797099,
+          "duration": 0.004538297653198242,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "odps_contract_id": "244666a1-dcfb-47a1-8932-b0c5de8f513d",
+        "odcs_contract_id": "fa368b89-0cee-44b2-a56f-858e2cf9b0f0",
+        "asset_id": "08152e91-c2a8-48bb-8715-7b0566d4ddde"
+      }
+    }
+  ],
+  "exported_at": "2026-01-17T12:40:24.479971"
+}

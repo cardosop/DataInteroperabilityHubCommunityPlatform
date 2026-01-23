@@ -250,7 +250,7 @@ class ModelServingAPI:
 
         try:
             # Deploy via inference API endpoint
-            response = await self.client.post("/ml/inference/deployments/", json=data)
+            response = await self.client.post("/ml/inference/deployments/", data=data)
             if isinstance(response, dict):
                 # Map response to serving details format
                 return {
@@ -321,7 +321,7 @@ class ModelServingAPI:
 
             # Run prediction
             prediction_data = {"deployment_id": serving_id, "input": input_data}
-            response = await self.client.post("/ml/inference/deployments/predict/", json=prediction_data)
+            response = await self.client.post("/ml/inference/deployments/predict/", data=prediction_data)
 
             if isinstance(response, dict):
                 # Map response to prediction results format
@@ -611,7 +611,7 @@ class ModelServingAPI:
         try:
             # Note: A/B testing endpoint may not exist yet - this is a placeholder
             # In a real implementation, this would call /ml/inference/ab-tests/ or similar
-            response = await self.client.post("/ml/inference/ab-tests/", json=data)
+            response = await self.client.post("/ml/inference/ab-tests/", data=data)
             if isinstance(response, dict):
                 return {
                     "ab_test_id": response.get("ab_test_id", response.get("id", "")),

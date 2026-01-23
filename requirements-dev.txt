@@ -28,6 +28,7 @@ freezegun>=1.4.0
 locust>=2.17.0
 moto>=5.0.0  # AWS service mocking (S3, SQS, SES, etc.)
 responses>=0.24.0  # HTTP/HTTPS request mocking
+jsonschema>=4.20.0  # JSON Schema validation for API contract testing
 
 # Development Server
 django-debug-toolbar>=4.4.0

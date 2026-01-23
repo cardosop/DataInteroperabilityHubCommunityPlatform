@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-002-ce7d2459",
+      "journey_name": "ODPS Linking Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768653960.6505146,
+      "end_time": 1768653964.2282562,
+      "duration": 3.5777416229248047,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "Link ODPS failed with status 400: ODPS product.contract.id (contract-linking-product-e8ead137) does not match ODCS contract.id (test-odcs)",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653960.6505265,
+          "end_time": 1768653960.6702106,
+          "duration": 0.0196840763092041,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODCS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653960.6702194,
+          "end_time": 1768653964.204589,
+          "duration": 3.534369468688965,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Document",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653964.204606,
+          "end_time": 1768653964.2046642,
+          "duration": 5.817413330078125e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Link ODPS to ODCS",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768653964.2046669,
+          "end_time": 1768653964.2282484,
+          "duration": 0.023581504821777344,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T12:46:04.228399"
+}

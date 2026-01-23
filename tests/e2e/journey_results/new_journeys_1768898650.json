@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-010-7dde2b07",
+      "journey_name": "Query Virtual Dataset",
+      "persona": "Data Consumer",
+      "status": "failed",
+      "start_time": 1768898650.4638538,
+      "end_time": 1768898650.947064,
+      "duration": 0.48321008682250977,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "list index out of range",
+      "error_type": "IndexError",
+      "steps": [
+        {
+          "step_name": "Select Virtual Dataset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768898650.4638608,
+          "end_time": 1768898650.9470575,
+          "duration": 0.4831967353820801,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-20T08:44:10.947172"
+}

@@ -100,9 +100,9 @@ class VirtualizationBusinessRules(BusinessRules):
     QUERY_TYPE_SOURCE_COMPATIBILITY = {
         QueryType.SQL: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'federated_asset', 'external_resource'],
         QueryType.SPARQL: ['sparql', 'federated_asset'],
-        QueryType.REST: ['rest', 'federated_asset', 'external_resource'],
+        QueryType.REST: ['rest', 'federated_asset', 'external_resource', 'odps_contract'],
         QueryType.GRAPHQL: ['graphql', 'federated_asset'],
-        QueryType.FEDERATED: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'sparql', 'rest', 'graphql', 'federated_asset', 'external_resource']
+        QueryType.FEDERATED: ['postgresql', 'mysql', 'sqlserver', 'mssql', 'sparql', 'rest', 'graphql', 'federated_asset', 'external_resource', 'odps_contract']
     }
 
     def get_rule_name(self) -> str:

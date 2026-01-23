@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-007-764ffdf3",
+      "journey_name": "Use AI Schema Matching for Asset Creation",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768846007.777507,
+      "end_time": 1768846018.753502,
+      "duration": 10.97599482536316,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'mappings' not found in {'matches': [], 'confidence': 0.0, 'suggestions': [], 'execution_time_ms': 103}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Upload Data File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768846007.7775238,
+          "end_time": 1768846008.240426,
+          "duration": 0.462902307510376,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Complete File Upload",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768846008.2404375,
+          "end_time": 1768846018.4227588,
+          "duration": 10.182321310043335,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768846018.422775,
+          "end_time": 1768846018.600714,
+          "duration": 0.17793893814086914,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Dataset (Schema Inference)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768846018.6007247,
+          "end_time": 1768846018.635683,
+          "duration": 0.0349583625793457,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "AI Schema Matching Analysis",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768846018.6356933,
+          "end_time": 1768846018.753487,
+          "duration": 0.11779379844665527,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-19T18:06:58.753658"
+}

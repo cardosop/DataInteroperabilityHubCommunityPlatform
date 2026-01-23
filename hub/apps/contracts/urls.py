@@ -184,6 +184,10 @@ def export_contract_custom(request, id=None, *args, **kwargs):
     # Solution: Manually instantiate and initialize the viewset with proper action context
     viewset = ContractViewSet()
 
+    # CRITICAL: Disable format_kwarg BEFORE initialize_request to prevent content negotiation issues
+    # This prevents DRF from trying to interpret ?format=odps as a format suffix
+    viewset.format_kwarg = None
+
     # CRITICAL: Set action_map before calling initialize_request
     # DRF's initialize_request expects action_map to be set for proper action dispatch
     # For detail=True actions, we need to map 'get' to the action name
@@ -236,10 +240,12 @@ def export_contract_custom(request, id=None, *args, **kwargs):
     # 5. viewset.format_kwarg is set to None (prevents format suffix conflicts)
     # ROOT CAUSE FIX: Set request FIRST, then set other attributes
     # This ensures get_queryset() has access to tenant_id when it's called
+    # CRITICAL: Set action and format_kwarg BEFORE setting request to ensure
+    # perform_content_negotiation override can detect the action
+    viewset.action = "export_contract"  # Set action for proper dispatch
+    viewset.format_kwarg = None  # CRITICAL: Disable format suffix handling
     viewset.request = drf_request
     viewset.kwargs = kwargs
-    viewset.format_kwarg = None  # CRITICAL: Disable format suffix handling
-    viewset.action = "export_contract"  # Set action for proper dispatch
     viewset.lookup_url_kwarg = "id"  # Match lookup_field='id'
     viewset.lookup_field = "id"  # CRITICAL: Also set lookup_field explicitly
 
@@ -360,6 +366,10 @@ def download_contract_custom(request, id=None, *args, **kwargs):
     # Solution: Manually instantiate and initialize the viewset with proper action context
     viewset = ContractViewSet()
 
+    # CRITICAL: Disable format_kwarg BEFORE initialize_request to prevent content negotiation issues
+    # This prevents DRF from trying to interpret ?format=odps as a format suffix
+    viewset.format_kwarg = None
+
     # CRITICAL: Set action_map before calling initialize_request
     # DRF's initialize_request expects action_map to be set for proper action dispatch
     # For detail=True actions, we need to map 'get' to the action name
@@ -404,10 +414,12 @@ def download_contract_custom(request, id=None, *args, **kwargs):
     # 3. viewset.lookup_url_kwarg is set to 'id' (matches lookup_field='id')
     # 4. viewset.action is set (for proper viewset initialization)
     # 5. viewset.format_kwarg is set to None (prevents format suffix conflicts)
+    # CRITICAL: Set action and format_kwarg BEFORE setting request to ensure
+    # perform_content_negotiation override can detect the action
+    viewset.action = "download_contract"  # Set action for proper dispatch
+    viewset.format_kwarg = None  # CRITICAL: Disable format suffix handling
     viewset.request = drf_request
     viewset.kwargs = kwargs
-    viewset.format_kwarg = None  # CRITICAL: Disable format suffix handling
-    viewset.action = "download_contract"  # Set action for proper dispatch
     viewset.lookup_url_kwarg = "id"  # Match lookup_field='id'
     viewset.lookup_field = "id"  # CRITICAL: Also set lookup_field explicitly
 
@@ -486,19 +498,23 @@ urlpatterns = [
     ),
     # Custom export endpoint without format suffix patterns
     # This must come BEFORE the router URLs to take precedence
-    # ROOT CAUSE FIX: Pattern must include 'contracts/' because router adds it via basename="contract"
-    # The router URLs are at /api/v1/contracts/contracts/{id}/... so custom pattern must match
+    # ROOT CAUSE FIX: Pattern does NOT include 'contracts/' prefix because parent URL
+    # (hub/apps/api/urls.py line 20) already includes 'contracts/' prefix.
+    # Including 'contracts/' here would cause duplication: /api/v1/contracts/contracts/{id}/...
+    # The correct pattern is: /api/v1/contracts/{id}/export/
     re_path(
-        r"^contracts/(?P<id>[^/.]+)/export/$",
+        r"^(?P<id>[^/.]+)/export/$",
         export_contract_custom,
         name="contract-export-custom",
     ),
     # Custom download endpoint without format suffix patterns
     # This must come BEFORE the router URLs to take precedence
-    # ROOT CAUSE FIX: Pattern must include 'contracts/' because router adds it via basename="contract"
-    # The router URLs are at /api/v1/contracts/contracts/{id}/... so custom pattern must match
+    # ROOT CAUSE FIX: Pattern does NOT include 'contracts/' prefix because parent URL
+    # (hub/apps/api/urls.py line 20) already includes 'contracts/' prefix.
+    # Including 'contracts/' here would cause duplication: /api/v1/contracts/contracts/{id}/...
+    # The correct pattern is: /api/v1/contracts/{id}/download/
     re_path(
-        r"^contracts/(?P<id>[^/.]+)/download/$",
+        r"^(?P<id>[^/.]+)/download/$",
         download_contract_custom,
         name="contract-download-custom",
     ),

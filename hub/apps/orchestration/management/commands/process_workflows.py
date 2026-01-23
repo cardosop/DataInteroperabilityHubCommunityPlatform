@@ -72,7 +72,6 @@ class Command(BaseCommand):
                 VersionCreationWorkflow,
                 MarketplacePublicationWorkflow,
                 ProductCreationWorkflow,
-                TransformationPipelineWorkflow,
                 MarketplaceSyncWorkflow,
             )
 
@@ -87,7 +86,6 @@ class Command(BaseCommand):
                 VersionCreationWorkflow,
                 MarketplacePublicationWorkflow,
                 ProductCreationWorkflow,
-                TransformationPipelineWorkflow,
                 MarketplaceSyncWorkflow,
             ]
 

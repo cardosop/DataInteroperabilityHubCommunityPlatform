@@ -585,8 +585,13 @@ class LineageTraverser:
             return {"error": "Contract model not available"}
 
         # Find contracts that reference this contract
-        # This requires querying all contracts (can be optimized with indexes)
-        all_contracts = Contract.objects.exclude(id=contract_id)
+        # Filter by tenant_id for performance (root cause fix)
+        # This significantly improves performance when there are many contracts
+        tenant_id = contract.tenant_id if hasattr(contract, 'tenant_id') else None
+        queryset = Contract.objects.exclude(id=contract_id)
+        if tenant_id:
+            queryset = queryset.filter(tenant_id=tenant_id)
+        all_contracts = queryset
         for other_contract in all_contracts:
             other_hub_contract = other_contract.hub_contract_json
             if not isinstance(other_hub_contract, dict):

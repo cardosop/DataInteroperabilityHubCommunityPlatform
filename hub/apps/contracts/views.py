@@ -618,7 +618,28 @@ class ContractViewSet(viewsets.ModelViewSet):
                 remove_external_refs=remove_external_refs,
             )
 
-            return Response(ContractSerializer(contract).data, status=status.HTTP_201_CREATED)
+            # Refresh contract from DB to ensure all fields are loaded
+            contract.refresh_from_db()
+
+            # Serialize contract with error handling
+            try:
+                serializer = ContractSerializer(contract)
+                serializer_data = serializer.data
+            except Exception as serialization_error:
+                # Log the error but return the contract with minimal data
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to serialize contract {contract.id}: {serialization_error}", exc_info=True)
+                # Return minimal contract data if serialization fails
+                serializer_data = {
+                    "id": str(contract.id),
+                    "status": contract.status,
+                    "original_spec_type": contract.original_spec_type,
+                    "error": "Serialization failed",
+                    "details": str(serialization_error)
+                }
+
+            return Response(serializer_data, status=status.HTTP_201_CREATED)
         except ValidationError as e:
             return Response(
                 {"error": e.message, "code": e.code, "details": e.details}, status=e.http_status
@@ -721,9 +742,9 @@ class ContractViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Execute ProductCreationWorkflow
+        # Execute ProductCreationWorkflow asynchronously
         try:
-            result = ProductCreationWorkflow.execute(
+            result = ProductCreationWorkflow.execute_start(
                 original_raw=original_raw,
                 original_format=original_format,
                 tenant_id=str(tenant.id),
@@ -732,17 +753,15 @@ class ContractViewSet(viewsets.ModelViewSet):
                 resolve_external_refs=resolve_external_refs
             )
 
-            # Serialize contracts
-            odps_contract_serializer = ContractSerializer(result["odps_contract"])
-            odcs_contract_serializer = ContractSerializer(result["odcs_contract"])
-
+            # Return immediately with workflow instance ID
+            # Client should poll /api/v1/workflows/{workflow_instance_id}/status/ for completion
             return Response(
                 {
-                    "odps_contract": odps_contract_serializer.data,
-                    "odcs_contract": odcs_contract_serializer.data,
-                    "workflow_instance_id": result["workflow_instance_id"]
+                    "workflow_instance_id": result["workflow_instance_id"],
+                    "status": "RUNNING",
+                    "message": "Product creation workflow started. Poll /api/v1/workflows/{workflow_instance_id}/status/ for completion."
                 },
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_202_ACCEPTED
             )
         except ValueError as e:
             return Response(
@@ -757,6 +776,85 @@ class ContractViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     "error": "Product creation failed",
+                    "code": "INTERNAL_ERROR",
+                    "details": {"error": str(e)},
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @extend_schema(
+        summary="Get product creation workflow status",
+        description="""
+        Get status and results of a product creation workflow.
+
+        GET /api/v1/contracts/products/{workflow_instance_id}/status/
+
+        Returns workflow status and contracts if completed.
+        """,
+        responses={
+            200: inline_serializer(
+                name='WorkflowStatusResponse',
+                fields={
+                    'workflow_instance_id': serializers.UUIDField(),
+                    'status': serializers.CharField(),
+                    'odps_contract': ContractSerializer(required=False, allow_null=True),
+                    'odcs_contract': ContractSerializer(required=False, allow_null=True),
+                    'message': serializers.CharField(required=False),
+                }
+            ),
+            404: OpenApiResponse(description="Workflow instance not found"),
+        },
+        tags=["Contracts", "Products"],
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="products/(?P<workflow_instance_id>[^/.]+)/status",
+        url_name="product-workflow-status"
+    )
+    def get_product_workflow_status(self, request, workflow_instance_id=None):
+        """
+        Get status and results of a product creation workflow.
+
+        GET /api/v1/contracts/products/{workflow_instance_id}/status/
+        """
+        self.check_auditor_permissions(request, "view")
+
+        if not workflow_instance_id:
+            return Response(
+                {"error": "workflow_instance_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            result = ProductCreationWorkflow.execute_get_result(str(workflow_instance_id))
+
+            response_data = {
+                "workflow_instance_id": result["workflow_instance_id"],
+                "status": result["status"]
+            }
+
+            if result["status"] == "COMPLETED":
+                odps_contract_serializer = ContractSerializer(result["odps_contract"])
+                odcs_contract_serializer = ContractSerializer(result["odcs_contract"])
+                response_data["odps_contract"] = odps_contract_serializer.data
+                response_data["odcs_contract"] = odcs_contract_serializer.data
+            else:
+                response_data["message"] = result.get("message", "Workflow is still running")
+
+            return Response(response_data, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response(
+                {
+                    "error": str(e),
+                    "code": "WORKFLOW_NOT_FOUND" if "not found" in str(e).lower() else "WORKFLOW_ERROR"
+                },
+                status=status.HTTP_404_NOT_FOUND if "not found" in str(e).lower() else status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {
+                    "error": "Failed to get workflow status",
                     "code": "INTERNAL_ERROR",
                     "details": {"error": str(e)},
                 },
@@ -1333,6 +1431,12 @@ class ContractViewSet(viewsets.ModelViewSet):
                     Q(hub_contract_json__extensions__isnull=True) |
                     Q(hub_contract_json__isnull=True)
                 )
+
+        # Filter by status (Contract lifecycle status: DRAFT, ACTIVE, RETIRED)
+        status_filter = query_params.get("status")
+        if status_filter:
+            # Status is a direct field on Contract model, so we can filter directly
+            queryset = queryset.filter(status=status_filter.upper())
 
         return queryset
 

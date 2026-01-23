@@ -6,6 +6,7 @@ Django app configuration for webhooks app.
 
 from django.apps import AppConfig
 import structlog
+from hub.apps.core.utils.test_mode import should_skip_initialization
 
 logger = structlog.get_logger(__name__)
 
@@ -24,7 +25,14 @@ class WebhooksConfig(AppConfig):
         This method is called when Django starts up and is used to:
         - Initialize the ODPS event subscriber
         - Register event handlers
+        
+        Initialization is deferred during tests for performance.
         """
+        # Skip initialization during tests and migrations for performance
+        if should_skip_initialization():
+            logger.debug("webhooks_app_init_skipped", reason="test_or_migration_mode")
+            return
+        
         try:
             # Initialize ODPS event subscriber
             from hub.apps.webhooks.odps_event_subscriber import initialize_odps_event_subscriber
@@ -33,13 +41,10 @@ class WebhooksConfig(AppConfig):
             # Initialize virtualization event subscriber
             from hub.apps.webhooks.virtualization_event_subscriber import initialize_virtualization_event_subscriber
 
-            # Only initialize if not in migration mode
-            import sys
-            if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv:
-                initialize_odps_event_subscriber()
-                initialize_mesh_event_subscriber()
-                initialize_virtualization_event_subscriber()
-                logger.info("webhooks_app_ready", message="Webhooks app initialized")
+            initialize_odps_event_subscriber()
+            initialize_mesh_event_subscriber()
+            initialize_virtualization_event_subscriber()
+            logger.info("webhooks_app_ready", message="Webhooks app initialized")
         except Exception as e:
             # Log but don't fail startup - subscriber will be initialized when needed
             logger.warning(

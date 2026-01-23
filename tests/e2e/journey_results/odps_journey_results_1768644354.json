@@ -1,0 +1,83 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-005-5c38f922",
+      "journey_name": "ODPS Product Strategy Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768644244.8082156,
+      "end_time": 1768644354.2050388,
+      "duration": 109.3968231678009,
+      "completion_rate": 75.0,
+      "success_rate": 75.0,
+      "error_message": "unexpectedly None",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768644244.8082266,
+          "end_time": 1768644244.8325021,
+          "duration": 0.024275541305541992,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS with Product Strategy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768644244.8325195,
+          "end_time": 1768644244.8325882,
+          "duration": 6.866455078125e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768644244.8325913,
+          "end_time": 1768644354.204287,
+          "duration": 109.37169575691223,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify Product Details",
+          "status": "StepStatus.FAILED",
+          "start_time": 1768644354.2042985,
+          "end_time": 1768644354.2050345,
+          "duration": 0.0007359981536865234,
+          "error_message": "unexpectedly None",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('5035eab6-f59d-489c-8846-dddef8c554a1',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T10:05:54.205161"
+}

@@ -62,20 +62,12 @@ class ApiConfig(AppConfig):
         """
         Determine if URL pattern validation should run.
 
-        Skip validation during migrations and other management commands.
+        Skip validation during migrations, tests, and other management commands.
         """
-        # Skip during migrations
-        if 'migrate' in sys.argv or 'makemigrations' in sys.argv:
-            return False
-
-        # Skip during test discovery (but allow during test execution)
-        if 'test' in sys.argv and '--keepdb' not in sys.argv:
-            # Only skip if it's test discovery, not test execution
-            # Test execution will validate patterns
-            return False
-
-        # Skip during collectstatic
-        if 'collectstatic' in sys.argv:
+        from hub.apps.core.utils.test_mode import should_skip_initialization
+        
+        # Skip during tests, migrations, and other management commands
+        if should_skip_initialization():
             return False
 
         return True

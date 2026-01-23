@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
             name='PipelineExecution',
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('pipeline_type', models.CharField(choices=[('SCHEDULED_INGESTION', 'Scheduled Ingestion'), ('DQ_RUN', 'Data Quality Run'), ('COMPLIANCE_RUN', 'Compliance Run'), ('CONTRACT_VALIDATION', 'Contract Validation'), ('SEMANTIC_MAPPING', 'Semantic Mapping'), ('TRANSFORMATION', 'Transformation')], db_index=True, help_text='Type of pipeline', max_length=50)),
+                ('pipeline_type', models.CharField(choices=[('SCHEDULED_INGESTION', 'Scheduled Ingestion'), ('DQ_RUN', 'Data Quality Run'), ('COMPLIANCE_RUN', 'Compliance Run'), ('CONTRACT_VALIDATION', 'Contract Validation'), ('SEMANTIC_MAPPING', 'Semantic Mapping')], db_index=True, help_text='Type of pipeline', max_length=50)),
                 ('pipeline_id', models.UUIDField(db_index=True, help_text='ID of the pipeline (scheduled_ingestion_id, job_id, etc.)')),
                 ('pipeline_name', models.CharField(blank=True, help_text='Name of the pipeline', max_length=255, null=True)),
                 ('status', models.CharField(choices=[('PENDING', 'Pending'), ('RUNNING', 'Running'), ('COMPLETED', 'Completed'), ('FAILED', 'Failed'), ('CANCELLED', 'Cancelled')], db_index=True, help_text='Execution status', max_length=20)),

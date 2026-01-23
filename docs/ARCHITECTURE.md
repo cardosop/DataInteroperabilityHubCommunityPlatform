@@ -1,6 +1,6 @@
 # System Architecture
 
-**Last Updated**: 2025-01-15  
+**Last Updated**: 2025-01-15
 **Version**: 1.0.0
 
 ---
@@ -183,7 +183,7 @@ The Data Interoperability Hub is a microservices-based platform for managing dat
 #### Redis
 - **Version**: 7-alpine
 - **Port**: 6379
-- **Purpose**: 
+- **Purpose**:
   - Job queue (django-rq)
   - Event bus (pub/sub)
   - Caching
@@ -271,10 +271,9 @@ User → API Service → DQ Service
 
 The platform uses a service layer pattern to coordinate business logic across features:
 
-- **TransformationService**: Coordinates transformation pipelines with asset lifecycle
 - **AIService**: Coordinates ML operations with workflows
 - **SocialService**: Coordinates social features with asset operations
-- **MarketplaceService**: Coordinates marketplace operations with transformation/quality
+- **MarketplaceService**: Coordinates marketplace operations with quality
 - **DataMeshService**: Coordinates domain operations with asset ownership
 
 All service classes extend `BaseService` and provide:
@@ -289,7 +288,6 @@ All service classes extend `BaseService` and provide:
 All multi-step operations are orchestrated through the workflow engine:
 
 - **AssetCreationWorkflow**: Extended with AI schema matching and auto-classification
-- **TransformationPipelineWorkflow**: Orchestrates pipeline execution
 - **MarketplacePublishingWorkflow**: Orchestrates marketplace publishing with validation
 - **SocialFeatureWorkflow**: Orchestrates review moderation and asset updates
 - **DataMeshWorkflow**: Orchestrates domain operations
@@ -305,7 +303,6 @@ Workflows provide:
 
 Features coordinate asynchronously through the event bus:
 
-- **Transformation Events**: `pipeline_started`, `pipeline_completed`, `pipeline_failed`
 - **AI/ML Events**: `schema_matching_completed`, `classification_completed`, `recommendation_updated`
 - **Social Events**: `review_created`, `rating_updated`, `comment_created`
 - **Marketplace Events**: `purchase_completed`, `pricing_changed`, `listing_updated`
@@ -317,7 +314,6 @@ Event handlers subscribe to events and trigger workflows or update state.
 
 Centralized business rules framework (`hub/apps/core/business_rules/`) enforces:
 
-- **TransformationBusinessRules**: Pipeline compatibility, schema validation
 - **AIBusinessRules**: ML result validation, schema alignment
 - **MarketplaceBusinessRules**: Publishing validation, pricing validation
 - **SocialBusinessRules**: Review moderation, rating validation
@@ -327,10 +323,8 @@ Centralized business rules framework (`hub/apps/core/business_rules/`) enforces:
 
 Event-driven data consistency maintains consistency across features:
 
-- **Transformation → Asset**: Pipeline results automatically synced
 - **AI → Asset**: Recommendations updated when assets change
 - **Social → Asset**: Ratings reflected in quality scores
-- **Marketplace → Transformation**: Listings updated when pipelines change
 - **Data Mesh → Asset**: Topology updated when assets move domains
 
 Consistency is maintained through:

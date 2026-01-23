@@ -303,13 +303,14 @@ class WorkflowEngine(WorkflowEventPublisher):
             for i in range(instance.current_step_index, len(steps)):
                 step_def = steps[i]
                 step = instance.steps.get(step_index=i)
+                step_name = step_def.get("name", "unknown")
 
                 # Publish ODPS creation progress event if this is an ODPS workflow (Task 7.3.2)
                 if self._is_odps_workflow(instance.workflow_name):
                     self._publish_odps_creation_progress_if_applicable(
                         instance=instance,
                         step_index=i,
-                        step_name=step_def.get("name", "unknown"),
+                        step_name=step_name,
                         total_steps=len(steps)
                     )
 

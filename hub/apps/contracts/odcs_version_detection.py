@@ -84,12 +84,12 @@ def _extract_version_from_api_version(api_version: str) -> str:
     # Pattern 3: Generic /v{version} pattern as fallback
 
     patterns = [
-        # odcs.io/v{version} or datacontract.io/v{version}
-        r'(?:odcs|datacontract)\.io/v([\d.]+)',
-        # odcs/v{version}
-        r'odcs/v([\d.]+)',
-        # Generic /v{version} pattern as fallback
-        r'/v([\d.]+)',
+        # odcs.io/v{version} or datacontract.io/v{version} (supports -preview suffix)
+        r'(?:odcs|datacontract)\.io/v([\d.]+(?:-[a-zA-Z0-9-]+)?)',
+        # odcs/v{version} (supports -preview suffix)
+        r'odcs/v([\d.]+(?:-[a-zA-Z0-9-]+)?)',
+        # Generic /v{version} pattern as fallback (supports -preview suffix)
+        r'/v([\d.]+(?:-[a-zA-Z0-9-]+)?)',
     ]
 
     for pattern in patterns:
@@ -141,6 +141,7 @@ def _normalize_version_string(version_str: str) -> str:
     - "3.0.2" -> "3.0.2"
     - "3.0.1" -> "3.0.1"
     - "3.0.0" -> "3.0.0"
+    - "3.0.0-preview" -> "3.0.0-preview" (preserves suffix)
     - "3.0" -> "3.0.0"
     - "3" -> "3.0.0"
     - Invalid formats -> "unknown"
@@ -160,6 +161,13 @@ def _normalize_version_string(version_str: str) -> str:
     if version_str.startswith('v') or version_str.startswith('V'):
         version_str = version_str[1:]
 
+    # Check for suffix (e.g., "-preview")
+    suffix = ""
+    if '-' in version_str:
+        parts_with_suffix = version_str.split('-', 1)
+        version_str = parts_with_suffix[0]
+        suffix = '-' + parts_with_suffix[1] if len(parts_with_suffix) > 1 else ""
+
     # Parse version components
     parts = version_str.split('.')
 
@@ -168,18 +176,18 @@ def _normalize_version_string(version_str: str) -> str:
         if len(parts) == 1:
             # Single number (e.g., "3" -> "3.0.0")
             major = int(parts[0])
-            return f"{major}.0.0"
+            return f"{major}.0.0{suffix}"
         elif len(parts) == 2:
             # Major.minor (e.g., "3.0" -> "3.0.0")
             major = int(parts[0])
             minor = int(parts[1])
-            return f"{major}.{minor}.0"
+            return f"{major}.{minor}.0{suffix}"
         elif len(parts) >= 3:
             # Major.minor.patch (e.g., "3.0.2")
             major = int(parts[0])
             minor = int(parts[1])
             patch = int(parts[2])
-            return f"{major}.{minor}.{patch}"
+            return f"{major}.{minor}.{patch}{suffix}"
         else:
             return "unknown"
     except (ValueError, IndexError):

@@ -29,8 +29,9 @@ def get_tenant_config(tenant: Tenant) -> Dict[str, Any]:
     platform_defaults = get_platform_defaults()
 
     try:
-        config = tenant.config
-    except ObjectDoesNotExist:
+        # Get config directly from database to avoid caching issues
+        config = TenantConfig.objects.get(tenant=tenant)
+    except TenantConfig.DoesNotExist:
         # No tenant config exists, return platform defaults
         return {
             **platform_defaults,
@@ -44,11 +45,16 @@ def get_tenant_config(tenant: Tenant) -> Dict[str, Any]:
     merged_rate_limits = platform_defaults["rate_limits"].copy()
     merged_rate_limits.update(tenant_rate_limits)
 
+    # Return actual saved values from config. For fields that can be None, use platform defaults if None.
+    # For JSONField lists (which have default=default_empty_list), they're never None, so return the actual value.
+    # The key insight: if a config exists and has been updated, return its actual values.
+    # Only use platform defaults when the field is explicitly None (for nullable fields) or when config doesn't exist.
     result = {
         "tenant_id": str(tenant.id),
-        "default_dq_profile": config.default_dq_profile or platform_defaults["default_dq_profile"],
-        "allowed_compliance_regimes": config.allowed_compliance_regimes or platform_defaults["allowed_compliance_regimes"],
-        "default_compliance_regimes": config.default_compliance_regimes or platform_defaults["default_compliance_regimes"],
+        "default_dq_profile": config.default_dq_profile if config.default_dq_profile else platform_defaults["default_dq_profile"],
+        # For JSONField lists, they're never None (have default=default_empty_list), so return the actual saved value
+        "allowed_compliance_regimes": config.allowed_compliance_regimes,
+        "default_compliance_regimes": config.default_compliance_regimes,
         "data_retention_days": config.data_retention_days if config.data_retention_days is not None else platform_defaults["data_retention_days"],
         "rate_limits": merged_rate_limits,
         "max_file_size_bytes": config.max_file_size_bytes if config.max_file_size_bytes is not None else platform_defaults["max_file_size_bytes"],
@@ -479,8 +485,8 @@ class TenantService(BaseService, TenantEventPublisher):
         def _update_config():
             tenant = self.get_resource_or_raise(Tenant, tenant_id)
 
-            # Get or create tenant config
-            config, created = TenantConfig.objects.get_or_create(tenant=tenant)
+            # Get or create tenant config - use select_for_update to prevent race conditions
+            config, created = TenantConfig.objects.select_for_update().get_or_create(tenant=tenant)
 
             # Track quota changes
             quota_fields = {
@@ -493,12 +499,24 @@ class TenantService(BaseService, TenantEventPublisher):
                 "max_queued_jobs": ("job_concurrency", max_queued_jobs),
             }
 
+            # Track which fields are being updated
+            updated_fields = []
+
             # Update fields and track changes
             for field_name, (quota_type, new_value) in quota_fields.items():
                 if new_value is not None:
                     old_value = getattr(config, field_name, None)
-                    if old_value != new_value:
+                    # For list fields, compare as sets to handle order differences
+                    if isinstance(old_value, list) and isinstance(new_value, list):
+                        values_differ = set(old_value) != set(new_value)
+                    else:
+                        values_differ = old_value != new_value
+
+                    if values_differ:
+                        # For JSONField, we need to assign the value directly
+                        # Django's JSONField handles serialization automatically
                         setattr(config, field_name, new_value)
+                        updated_fields.append(field_name)
 
                         # Publish quota changed event
                         self.publish_tenant_quota_changed(
@@ -510,11 +528,17 @@ class TenantService(BaseService, TenantEventPublisher):
                             **kwargs
                         )
 
-            # Handle rate_limits separately (it's a JSONField)
+                        # Force Django to mark the field as changed for JSONField
+                        # This ensures the field is included in the save
+                        if hasattr(config, '_state'):
+                            config._state.adding = False
+
+            # Track rate_limits update
             if rate_limits is not None:
                 old_rate_limits = config.rate_limits or {}
                 if old_rate_limits != rate_limits:
                     config.rate_limits = rate_limits
+                    updated_fields.append('rate_limits')
 
                     # Publish quota changed event for rate limits
                     self.publish_tenant_quota_changed(
@@ -526,8 +550,12 @@ class TenantService(BaseService, TenantEventPublisher):
                         **kwargs
                     )
 
-            # Save config
+            # Save config - always save all fields to ensure JSONField changes are persisted
+            # Using update_fields can sometimes cause issues with JSONField, so we save all fields
             config.save()
+
+            # Refresh from database to ensure we have the latest values
+            config.refresh_from_db()
 
             return config
 

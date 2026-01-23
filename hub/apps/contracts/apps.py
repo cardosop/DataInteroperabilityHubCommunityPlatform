@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 import structlog
+from hub.apps.core.utils.test_mode import should_skip_initialization
 
 logger = structlog.get_logger(__name__)
 
@@ -13,16 +14,18 @@ class ContractsConfig(AppConfig):
         Initialize contracts app when Django is ready.
 
         This method is called when Django starts up and is used to:
-        - Initialize cache warming on startup
+        - Initialize cache warming on startup (deferred during tests)
         """
+        # Skip initialization during tests and migrations for performance
+        if should_skip_initialization():
+            logger.debug("contracts_app_init_skipped", reason="test_or_migration_mode")
+            return
+        
         try:
-            # Only initialize if not in migration mode
-            import sys
-            if 'migrate' not in sys.argv and 'makemigrations' not in sys.argv:
-                # Initialize startup cache warming
-                from hub.apps.contracts.ref_warming import warm_cache_on_startup
-                warm_cache_on_startup()
-                logger.info("contracts_app_ready", message="Contracts app initialized with cache warming")
+            # Initialize startup cache warming
+            from hub.apps.contracts.ref_warming import warm_cache_on_startup
+            warm_cache_on_startup()
+            logger.info("contracts_app_ready", message="Contracts app initialized with cache warming")
         except Exception as e:
             # Log but don't fail startup - cache warming is optional
             logger.warning(

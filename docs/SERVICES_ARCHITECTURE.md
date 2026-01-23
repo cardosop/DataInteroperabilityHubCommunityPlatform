@@ -69,7 +69,6 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 
 | Service | Implementation Status | Phase | Notes |
 |---------|----------------------|-------|-------|
-| **TransformationService** | ✅ Implemented | Phase 9.5.1 | Pipeline execution coordination |
 | **DataMeshService** | ✅ Implemented | Phase 9.5.2 | Domain operations coordination |
 | **VirtualizationService** | ✅ Implemented | Phase 9.5.3 | Virtual dataset coordination |
 | **ContractService** | ✅ Implemented | MVP | Contract management |
@@ -610,7 +609,6 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 - Contract created → Semantic mapping
 - Asset updated → Search index update
 - Compliance scan completed → Notifications
-- Transformation pipeline executed → Asset updates
 - Data mesh domain updated → Topology updates
 - Virtual dataset created → Query optimization
 
@@ -686,24 +684,6 @@ Data Consumer (UI)
 
 All business logic is coordinated through service layer classes that extend `BaseService`. This pattern ensures consistent error handling, metrics collection, tenant scoping, and resource management across all services.
 
-#### TransformationService ✅ (Implemented - Phase 9.5.1)
-- **Location**: `hub/apps/transformation/services.py`
-- **Status**: ✅ Implemented
-- **Responsibilities**:
-  - Coordinate pipeline execution with asset lifecycle
-  - Manage pipeline-to-asset relationships
-  - Handle pipeline result synchronization
-  - Validate pipeline compatibility with assets
-  - Publish transformation events (pipeline.created, pipeline.executed, etc.)
-- **Integration**:
-  - Extends `BaseService` and `TransformationEventPublisher`
-  - Integrates with AssetCreationWorkflow, TransformationPipelineWorkflow
-  - Uses Event Bus for asynchronous coordination
-- **Key Methods**:
-  - `create_pipeline()` - Create and validate transformation pipeline
-  - `execute_pipeline()` - Execute pipeline with asset coordination
-  - `validate_pipeline_compatibility()` - Validate pipeline against assets
-
 #### DataMeshService ✅ (Implemented - Phase 9.5.2)
 - **Location**: `hub/apps/mesh/services.py`
 - **Status**: ✅ Implemented
@@ -764,7 +744,7 @@ All business logic is coordinated through service layer classes that extend `Bas
 - **Location**: `hub/apps/marketplace/services.py`
 - **Status**: ✅ Implemented
 - **Responsibilities**:
-  - Coordinate publishing with transformation/quality
+  - Coordinate publishing with quality
   - Manage purchase workflows
   - Handle pricing model validation
   - Coordinate marketplace events with asset updates
@@ -800,11 +780,6 @@ Services communicate through:
 ### Service Dependencies
 
 ```
-TransformationService
-  ├── AssetService (for asset updates)
-  ├── WorkflowEngine (for pipeline orchestration)
-  └── EventBus (for event publishing)
-
 AIService
   ├── ContractService (for schema matching)
   ├── AssetService (for asset updates)
@@ -817,7 +792,6 @@ SocialService
   └── EventBus (for event publishing)
 
 MarketplaceService
-  ├── TransformationService (for pipeline validation)
   ├── AssetService (for asset updates)
   ├── WorkflowEngine (for publishing orchestration)
   └── EventBus (for event publishing)
@@ -932,7 +906,7 @@ The Event Bus provides event-driven communication infrastructure for the Data In
 3. **Event Publishers** (`hub/apps/core/events/publisher.py`)
    - Convenience classes for publishing events
    - Decorator support for automatic event publishing
-   - Service-specific publishers (TransformationEventPublisher, DataMeshEventPublisher, etc.)
+   - Service-specific publishers (DataMeshEventPublisher, VirtualizationEventPublisher, etc.)
 
 4. **Event Subscribers** (`hub/apps/core/events/subscriber.py`)
    - Subscription management
@@ -972,7 +946,7 @@ Events follow a standardized schema:
 }
 ```
 
-**Event Type Format**: `domain.entity.action` (e.g., `contract.created`, `asset.activated`, `transformation.pipeline.executed`)
+**Event Type Format**: `domain.entity.action` (e.g., `contract.created`, `asset.activated`, `mesh.domain.created`)
 
 ### Performance Characteristics
 
@@ -984,7 +958,6 @@ Events follow a standardized schema:
 
 ### Integration Points
 
-- **TransformationService**: Publishes `transformation.pipeline.*` events
 - **DataMeshService**: Publishes `mesh.domain.*` events
 - **VirtualizationService**: Publishes `virtualization.dataset.*` and `virtualization.query.*` events
 - **ContractService**: Publishes `contract.*` events
@@ -1126,12 +1099,6 @@ The Business Rules Framework provides a standardized approach to validation and 
 - **ODPSLinkingRules** - Link validation, circular reference detection
 - **ODPSExportRules** - Export format validation, fidelity validation
 
-#### Transformation Business Rules
-- **TransformationBusinessRules** (`hub/apps/transformation/business_rules.py`)
-  - Pipeline structure validation
-  - Node compatibility validation
-  - Schema alignment validation
-  - Asset compatibility validation
   - Cross-tenant operation validation
 
 #### Data Mesh Business Rules

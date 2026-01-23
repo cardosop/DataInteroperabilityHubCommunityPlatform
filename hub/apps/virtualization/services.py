@@ -1496,7 +1496,7 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
                 extra={
                     "tenant_id": effective_tenant_id,
                     "user_id": effective_user_id,
-                    "name": name,
+                    "dataset_name": name,  # Use dataset_name instead of name (name is reserved in LogRecord)
                     "query_type": query_type
                 },
                 exc_info=True

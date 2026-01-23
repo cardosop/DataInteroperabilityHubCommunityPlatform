@@ -644,6 +644,8 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             domain.capabilities = capabilities
 
         if resource_quota is not None:
+            # Validate resource quota before updating
+            self._validate_resource_quota(resource_quota)
             changes["resource_quota"] = {"old": domain.resource_quota, "new": resource_quota}
             domain.resource_quota = resource_quota
 
@@ -944,21 +946,22 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         # 3. Validate and get policy
         from hub.apps.governance.models import AccessPolicy
         try:
-            policy = AccessPolicy.objects.get(id=policy_id, tenant_id=effective_tenant_id)
+            # First get policy without tenant filter to check tenant compatibility
+            policy = AccessPolicy.objects.get(id=policy_id)
         except AccessPolicy.DoesNotExist:
             raise NotFoundError(f"Policy with id '{policy_id}' not found")
 
-        # 4. Validate policy is enabled
-        if not policy.enabled:
-            raise ValidationError(
-                f"Policy '{policy.name}' is disabled and cannot be applied"
-            )
-
-        # 5. Validate domain and policy belong to same tenant
+        # 4. Validate domain and policy belong to same tenant (check before other validations)
         if policy.tenant_id != domain.tenant_id:
             raise ValidationError(
                 f"Policy must belong to the same tenant as the domain. "
                 f"Policy tenant: {policy.tenant_id}, Domain tenant: {domain.tenant_id}"
+            )
+
+        # 5. Validate policy is enabled
+        if not policy.enabled:
+            raise ValidationError(
+                f"Policy '{policy.name}' is disabled and cannot be applied"
             )
 
         # 6. Validate overrides structure
@@ -1615,6 +1618,13 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         effective_tenant_id = tenant_id or self.tenant_id
         if not effective_tenant_id:
             raise ValidationError("tenant_id is required")
+
+        # Validate tenant exists
+        from hub.apps.tenants.models import Tenant
+        try:
+            Tenant.objects.get(id=effective_tenant_id)
+        except Tenant.DoesNotExist:
+            raise ValidationError(f"Tenant with id '{effective_tenant_id}' not found")
 
         import logging
         logger = logging.getLogger(__name__)

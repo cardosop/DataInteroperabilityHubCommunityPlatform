@@ -88,6 +88,9 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         """
         Get active contract for an asset.
 
+        When multiple active contracts exist (e.g., both ODCS and ODPS),
+        prefers ODCS contract for backward compatibility.
+
         Args:
             asset_id: Asset ID
             tenant_id: Tenant ID
@@ -100,14 +103,34 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             raise ValidationError("tenant_id is required")
 
         def _get_contract():
-            try:
-                return Contract.objects.get(
-                    asset_id=asset_id,
-                    tenant_id=effective_tenant_id,
-                    status=ContractStatus.ACTIVE
-                )
-            except Contract.DoesNotExist:
+            from hub.apps.contracts.models import OriginalSpecType
+
+            # Get all active contracts for the asset
+            contracts = Contract.objects.filter(
+                asset_id=asset_id,
+                tenant_id=effective_tenant_id,
+                status=ContractStatus.ACTIVE
+            )
+
+            # If no contracts, return None
+            if not contracts.exists():
                 return None
+
+            # If only one contract, return it
+            if contracts.count() == 1:
+                return contracts.first()
+
+            # Multiple contracts: prefer ODCS over ODPS for backward compatibility
+            # This handles the case where both ODCS and ODPS contracts are attached
+            odcs_contract = contracts.filter(
+                original_spec_type=OriginalSpecType.ODCS
+            ).order_by('-version').first()
+
+            if odcs_contract:
+                return odcs_contract
+
+            # If no ODCS, return the first ODPS contract (or any other type)
+            return contracts.order_by('-version').first()
 
         return self.execute_with_metrics(
             operation="get_active_contract_for_asset",
@@ -504,6 +527,37 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         norm_errors.extend(validation_errors)
                         hub_contract = None
 
+                # Preserve existing extensions (especially x_odps links) when normalizing
+                # This ensures ODPS/ODCS bidirectional linking is maintained during normalization
+                if hub_contract and contract.hub_contract_json:
+                    existing_extensions = contract.hub_contract_json.get("extensions", {})
+                    if existing_extensions:
+                        # Preserve x_odps links specifically (critical for ODPS/ODCS linking)
+                        existing_x_odps = existing_extensions.get("x_odps", {})
+                        if existing_x_odps:
+                            import structlog
+                            logger = structlog.get_logger(__name__)
+                            logger.debug(
+                                "Preserving x_odps links during normalization",
+                                contract_id=str(contract.id),
+                                existing_x_odps=existing_x_odps
+                            )
+                            if "extensions" not in hub_contract:
+                                hub_contract["extensions"] = {}
+                            if "x_odps" not in hub_contract["extensions"]:
+                                hub_contract["extensions"]["x_odps"] = {}
+                            # Merge existing x_odps links with new extensions (preserve existing links)
+                            hub_contract["extensions"]["x_odps"].update(existing_x_odps)
+                            # Preserve any other extensions that might have been added
+                            for key, value in existing_extensions.items():
+                                if key != "x_odps" and key not in hub_contract["extensions"]:
+                                    hub_contract["extensions"][key] = value
+                            logger.debug(
+                                "Preserved x_odps links in normalized hub_contract",
+                                contract_id=str(contract.id),
+                                preserved_x_odps=hub_contract["extensions"]["x_odps"]
+                            )
+
                 # Update normalization fields
                 contract.hub_contract_version = "1.0.0" if hub_contract else None
                 contract.hub_contract_json = hub_contract
@@ -533,6 +587,28 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 contract.status = status
 
             contract.save()
+
+            # Log audit event for contract update
+            from hub.apps.audit.utils import create_audit_event
+            from hub.apps.users.models import User
+            from hub.apps.tenants.models import Tenant
+            try:
+                actor_user = User.objects.get(id=user_id) if user_id else None
+                tenant_obj = Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
+                create_audit_event(
+                    resource_type="CONTRACT",
+                    action="CONTRACT_UPDATED",
+                    actor_user=actor_user,
+                    tenant=tenant_obj,
+                    resource_id=str(contract.id),
+                    details={
+                        'status': contract.status,
+                        'normalization_status': contract.normalization_status,
+                        'updated_fields': ['original_raw'] if original_raw else []
+                    }
+                )
+            except Exception:
+                pass  # Don't fail update if audit logging fails
             return contract
 
         return self.execute_with_metrics(
@@ -558,11 +634,29 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
         Raises:
             NotFoundError: If contract not found
+            PermissionError: If user lacks deletion permission
         """
         effective_tenant_id = tenant_id or self.tenant_id
+        effective_user_id = user_id or self.user_id
 
         if not effective_tenant_id:
             raise ValidationError("tenant_id is required")
+
+        # Check deletion permission if user_id is provided
+        if effective_user_id:
+            from hub.apps.users.models import User
+            try:
+                user = User.objects.get(id=effective_user_id)
+                # Platform admins have all permissions
+                if not user.is_platform_admin:
+                    # Check if user has required role (TENANT_ADMIN)
+                    has_permission = user.has_role("TENANT_ADMIN")
+                    if not has_permission:
+                        raise PermissionError(
+                            f"User {effective_user_id} does not have required role (TENANT_ADMIN) for contract deletion"
+                        )
+            except User.DoesNotExist:
+                raise ValidationError(f"User {effective_user_id} not found")
 
         def _delete():
             contract = self.get_resource_or_raise(
@@ -701,7 +795,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             else:
                 # Synchronous validation
                 cli_client = DataContractCLIClient()
-                result = cli_client.validate(contract)
+                # Get raw contract and format
+                raw_contract = contract.original_raw or ""
+                format_str = contract.original_format.lower() if contract.original_format else "json"
+                result = cli_client.validate(
+                    raw_contract=raw_contract,
+                    format=format_str,
+                    tenant_id=effective_tenant_id
+                )
 
                 # Update contract validation status
                 contract.validation_status = result.get('validation_status')
@@ -1097,6 +1198,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     code="TENANT_MISMATCH"
                 )
 
+            # Get user for audit logging (needed in all code paths)
+            user = None
+            if effective_user_id:
+                try:
+                    user = User.objects.get(id=effective_user_id)
+                except User.DoesNotExist:
+                    pass
+
             # Get or create ODPS contract
             odps_contract = None
 
@@ -1323,14 +1432,6 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 normalization_result = normalizer.normalize(odps_doc, spec_version=odps_version)
                 hub_contract_from_odps = normalization_result.hub_contract
 
-                # Get user
-                user = None
-                if effective_user_id:
-                    try:
-                        user = User.objects.get(id=effective_user_id)
-                    except User.DoesNotExist:
-                        pass
-
                 # Find next available version for this asset to avoid unique constraint violation
                 # The constraint unique_contract_version_per_asset requires unique (tenant, asset, version)
                 # Since ODPS and ODCS contracts can be linked to the same asset, we need different versions
@@ -1416,22 +1517,34 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Establish bidirectional link
             # ODPS → ODCS: Store in ODPS contract's hub_contract_json.extensions.x_odps.odcs_link
-            if odps_contract.hub_contract_json:
-                if "extensions" not in odps_contract.hub_contract_json:
-                    odps_contract.hub_contract_json["extensions"] = {}
-                if "x_odps" not in odps_contract.hub_contract_json["extensions"]:
-                    odps_contract.hub_contract_json["extensions"]["x_odps"] = {}
-                odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = str(odcs_contract.id)
-                odps_contract.save(update_fields=["hub_contract_json"])
+            # Ensure hub_contract_json exists (create minimal structure if needed to store links)
+            if not odps_contract.hub_contract_json:
+                odps_contract.hub_contract_json = {
+                    "id": str(odps_contract.id),
+                    "hub_contract_version": odps_contract.hub_contract_version or "1.0.0",
+                    "schema": {}
+                }
+            if "extensions" not in odps_contract.hub_contract_json:
+                odps_contract.hub_contract_json["extensions"] = {}
+            if "x_odps" not in odps_contract.hub_contract_json["extensions"]:
+                odps_contract.hub_contract_json["extensions"]["x_odps"] = {}
+            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = str(odcs_contract.id)
+            odps_contract.save(update_fields=["hub_contract_json"])
 
             # ODCS → ODPS: Store in ODCS contract's hub_contract_json.extensions.x_odps.odps_link
-            if odcs_contract.hub_contract_json:
-                if "extensions" not in odcs_contract.hub_contract_json:
-                    odcs_contract.hub_contract_json["extensions"] = {}
-                if "x_odps" not in odcs_contract.hub_contract_json["extensions"]:
-                    odcs_contract.hub_contract_json["extensions"]["x_odps"] = {}
-                odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = str(odps_contract.id)
-                odcs_contract.save(update_fields=["hub_contract_json"])
+            # Ensure hub_contract_json exists (create minimal structure if needed to store links)
+            if not odcs_contract.hub_contract_json:
+                odcs_contract.hub_contract_json = {
+                    "id": str(odcs_contract.id),
+                    "hub_contract_version": odcs_contract.hub_contract_version or "1.0.0",
+                    "schema": {}
+                }
+            if "extensions" not in odcs_contract.hub_contract_json:
+                odcs_contract.hub_contract_json["extensions"] = {}
+            if "x_odps" not in odcs_contract.hub_contract_json["extensions"]:
+                odcs_contract.hub_contract_json["extensions"]["x_odps"] = {}
+            odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = str(odps_contract.id)
+            odcs_contract.save(update_fields=["hub_contract_json"])
 
             logger.info(
                 "ODPS-ODCS contracts linked bidirectionally",

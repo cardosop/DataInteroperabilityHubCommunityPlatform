@@ -1,0 +1,123 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 3.7411489486694336
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-010-63aa4050",
+      "journey_name": "Review AI Auto-Classification Results",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1769052099.971599,
+      "end_time": 1769052103.712748,
+      "duration": 3.7411489486694336,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769052099.971604,
+          "end_time": 1769052103.696759,
+          "duration": 3.7251548767089844,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "View Classification Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769052103.6967676,
+          "end_time": 1769052103.7022843,
+          "duration": 0.005516767501831055,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: AI Auto-Classification API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769052103.702293,
+          "end_time": 1769052103.7022974,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Review Classifications",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769052103.7023172,
+          "end_time": 1769052103.7023203,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Note: Classification Validation Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769052103.705943,
+          "end_time": 1769052103.7059476,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Rules Update Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769052103.7094567,
+          "end_time": 1769052103.709461,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Classification Reports Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769052103.7127423,
+          "end_time": 1769052103.7127461,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "1d5bf382-ee0c-4b69-97d1-59c271f4e5d4"
+      }
+    }
+  ],
+  "exported_at": "2026-01-22T03:21:43.712823"
+}

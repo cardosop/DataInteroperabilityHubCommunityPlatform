@@ -484,29 +484,6 @@ class ContractService(BaseService, ContractEventPublisher):
 - Graceful degradation on publish failures
 - Progress event publishing for long-running operations
 
-#### 13. TransformationEventPublisher
-**Location**: `hub/apps/core/events/service_publishers.py`
-**Service**: `TransformationService`
-**Events Published**:
-- `pipeline.started` - Transformation pipeline started
-- `pipeline.completed` - Transformation pipeline completed
-- `pipeline.failed` - Transformation pipeline failed
-- `transformation.pipeline.created` - Transformation pipeline created
-- `transformation.pipeline.updated` - Transformation pipeline updated
-- `transformation.pipeline.deleted` - Transformation pipeline deleted
-- `transformation.pipeline.execution.started` - Pipeline execution started
-- `transformation.pipeline.execution.completed` - Pipeline execution completed
-- `transformation.pipeline.execution.failed` - Pipeline execution failed
-- `transformation.pipeline.execution.progress` - Pipeline execution progress
-- `transformation.pipeline.execution.step_completed` - Pipeline execution step completed
-- `transformation.preview.progress` - Preview generation progress
-- `transformation.preview.generated` - Preview generated
-- `transformation.wrangling.operation.applied` - Wrangling operation applied
-
-**Special Features**:
-- Webhook integration for transformation events
-- Internal and external event type mapping
-
 #### 14. DataMeshEventPublisher
 **Location**: `hub/apps/core/events/service_publishers.py`
 **Service**: `DataMeshService`

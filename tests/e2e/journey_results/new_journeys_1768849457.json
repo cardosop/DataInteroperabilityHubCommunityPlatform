@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-009-ce8a86a5",
+      "journey_name": "Manage Asset Ratings and Reviews",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768849442.0855327,
+      "end_time": 1768849457.8065543,
+      "duration": 15.72102165222168,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "unexpectedly None : Quality score should be available",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768849442.0855381,
+          "end_time": 1768849457.7908275,
+          "duration": 15.705289363861084,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "View Ratings and Reviews",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768849457.790835,
+          "end_time": 1768849457.7950685,
+          "duration": 0.004233598709106445,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Read Reviews",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768849457.7950757,
+          "end_time": 1768849457.7988856,
+          "duration": 0.0038099288940429688,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Asset Quality Score",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768849457.7988894,
+          "end_time": 1768849457.8065462,
+          "duration": 0.00765681266784668,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-19T19:04:17.806662"
+}

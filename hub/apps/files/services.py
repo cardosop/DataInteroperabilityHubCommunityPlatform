@@ -122,15 +122,15 @@ class FileService(BaseService, FileEventPublisher):
             # We'll publish an event for validation tracking purposes
             try:
                 self.publish_file_updated(
-                    file_id=file_id,
+                    file_id=str(file_id),  # Ensure file_id is a string (not UUID)
                     changes={
                         "validation": {
                             "old": None,
                             "new": "validated_active"
                         }
                     },
-                    previous_status=previous_status,
-                    new_status=file_obj.status
+                    previous_status=previous_status.value if hasattr(previous_status, 'value') else str(previous_status),
+                    new_status=file_obj.status.value if hasattr(file_obj.status, 'value') else str(file_obj.status)
                 )
             except Exception as e:
                 # Log but don't fail validation if event publishing fails

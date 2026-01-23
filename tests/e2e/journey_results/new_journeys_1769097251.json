@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 12.157852411270142
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-3b6d4b28",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1769097239.2350986,
+      "end_time": 1769097251.392951,
+      "duration": 12.157852411270142,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769097239.2351067,
+          "end_time": 1769097251.371053,
+          "duration": 12.135946273803711,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769097251.3754992,
+          "end_time": 1769097251.3875082,
+          "duration": 0.012008905410766602,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769097251.3875213,
+          "end_time": 1769097251.3929465,
+          "duration": 0.005425214767456055,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "30a53ffe-fffc-4f96-bc9e-a90ff05d936a"
+      }
+    }
+  ],
+  "exported_at": "2026-01-22T15:54:11.393022"
+}

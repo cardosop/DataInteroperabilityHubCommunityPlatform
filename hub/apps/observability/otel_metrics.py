@@ -92,6 +92,13 @@ def setup_opentelemetry_metrics() -> Optional[object]:
         # Create Prometheus metric reader (uses prometheus_client REGISTRY)
         _metric_reader = PrometheusMetricReader(disable_target_info=False)
 
+        # Verify REGISTRY is available after creating PrometheusMetricReader
+        # REGISTRY is set by PrometheusMetricReader when it's instantiated
+        if REGISTRY is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning("REGISTRY is None after creating PrometheusMetricReader. This may indicate an issue with opentelemetry-exporter-prometheus.")
+
         # Create meter provider
         meter_provider = MeterProvider(
             resource=resource,
@@ -691,52 +698,6 @@ odcs_generation_success_rate = _UpDownCounterWrapper(
     unit='1',
     expected_labels=('tenant_id',)
 )
-
-# Transformation Pipeline Metrics (Task 9.5.1.7.1)
-transformation_pipeline_created_total = _CounterWrapper(
-    'transformation_pipeline_created_total',
-    'Total number of transformation pipelines created',
-    unit='1',
-    expected_labels=('tenant_id',)
-)
-
-transformation_pipeline_execution_duration_seconds = _HistogramWrapper(
-    'transformation_pipeline_execution_duration_seconds',
-    'Transformation pipeline execution duration in seconds',
-    unit='s',
-    buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0),
-    expected_labels=('status', 'tenant_id')
-)
-
-transformation_pipeline_execution_success_rate = _UpDownCounterWrapper(
-    'transformation_pipeline_execution_success_rate',
-    'Transformation pipeline execution success rate (0-1)',
-    unit='1',
-    expected_labels=('tenant_id',)
-)
-
-transformation_pipeline_execution_queue_depth = _UpDownCounterWrapper(
-    'transformation_pipeline_execution_queue_depth',
-    'Number of transformation pipeline executions in queue',
-    unit='1',
-    expected_labels=('status', 'tenant_id')
-)
-
-transformation_preview_generation_duration_seconds = _HistogramWrapper(
-    'transformation_preview_generation_duration_seconds',
-    'Transformation preview generation duration in seconds',
-    unit='s',
-    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
-    expected_labels=('tenant_id',)
-)
-
-transformation_wrangling_operations_total = _CounterWrapper(
-    'transformation_wrangling_operations_total',
-    'Total number of transformation wrangling operations',
-    unit='1',
-    expected_labels=('operation_type', 'status', 'tenant_id')
-)
-
 
 # ============================================================================
 # Histogram Metrics

@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.3990459442138672
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-ERRORS-e320fbd1",
+      "journey_name": "Product-First Flow - Error Scenarios",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1768626090.4436777,
+      "end_time": 1768626090.8427236,
+      "duration": 0.3990459442138672,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {
+        "error_scenarios_tested": 3
+      }
+    }
+  ],
+  "exported_at": "2026-01-17T05:01:30.842772"
+}
