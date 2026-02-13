@@ -924,6 +924,11 @@ datahub marketplace sync get <sync-job-id> --format json | jq '.errors'
 
 ## Additional Resources
 
-- [Marketplace Integration API Reference](../../docs/MARKETPLACE_API_REFERENCE.md)
-- [Marketplace Integration User Guide](../../docs/MARKETPLACE_INTEGRATION_USER_GUIDE.md)
-- [Connector Development Guide](../../docs/connectors/DEVELOPMENT.md)
+- **[CLI README](../README.md)** - Complete CLI documentation
+- **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management
+- **[BaaS Usage Guide](BAAS_USAGE.md)** - BaaS platform commands
+- **[ODH Usage Guide](ODH_USAGE.md)** - ML/ODH commands
+- **[Model Serving Usage Guide](MODEL_SERVING_USAGE.md)** - Model serving and A/B testing
+- **[Marketplace Integration API Reference](../../docs/MARKETPLACE_API_REFERENCE.md)** - Complete marketplace API documentation
+- **[Marketplace Integration User Guide](../../docs/MARKETPLACE_INTEGRATION_USER_GUIDE.md)** - User guide for marketplace integrations
+- **[API Reference](../../docs/API_REFERENCE.md)** - Complete API documentation

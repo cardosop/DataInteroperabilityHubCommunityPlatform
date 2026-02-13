@@ -1,0 +1,119 @@
+.odps-list-page {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.odps-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.odps-list-header h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.odps-empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.odps-empty-state p {
+  font-size: 1.2rem;
+  color: #666;
+  margin-bottom: 1.5rem;
+}
+
+.odps-list {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.odps-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.odps-table thead {
+  background: #f5f5f5;
+}
+
+.odps-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #ddd;
+}
+
+.odps-table td {
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.odps-table tbody tr:hover {
+  background: #f9f9f9;
+}
+
+.contract-id {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9rem;
+  background: #f0f0f0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-normalized-ok {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-normalized-with-warnings {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.status-normalization-failed {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.status-not-normalized {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #0066cc;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+}
+
+.btn-link:hover {
+  color: #0052a3;
+}

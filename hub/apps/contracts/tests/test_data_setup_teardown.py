@@ -14,24 +14,26 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Test isolation
 - Performance characteristics
 """
-import uuid
-import pytest
-import time
-from django.test import TestCase, TransactionTestCase
-from django.db import transaction, connection
 
-from hub.apps.contracts.models import Contract, OriginalSpecType, ContractStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import UserStatus
+import time
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase
+
 from hub.apps.assets.models import Asset, AssetStatus
-from tests.utils.test_data_management import TestDataManager, cleanup_test_data
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import UserStatus
 from tests.fixtures.test_data_factories import (
-    TenantFactory,
-    UserFactory,
     AssetFactory,
     ContractFactory,
+    TenantFactory,
+    UserFactory,
 )
-from django.contrib.auth import get_user_model
+from tests.utils.test_data_management import TestDataManager, cleanup_test_data
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -43,10 +45,7 @@ class TestDataFixtureLoadingTest(TestCase):
     def test_fixtures_are_properly_loaded(self):
         """Test that test data fixtures are properly loaded."""
         # Create test data using factory
-        tenant = TenantFactory.create_tenant(
-            name="Fixture Test Tenant",
-            slug="fixture-test"
-        )
+        tenant = TenantFactory.create_tenant(name="Fixture Test Tenant", slug="fixture-test")
 
         # Verify fixture was created
         self.assertIsNotNone(tenant, "Tenant fixture should be created")
@@ -73,9 +72,7 @@ class TestDataFixtureLoadingTest(TestCase):
         asset = AssetFactory.create_asset(tenant=tenant, created_by=user)
 
         contract = ContractFactory.create_contract(
-            tenant=tenant,
-            asset=asset,
-            original_spec_type=OriginalSpecType.ODCS
+            tenant=tenant, asset=asset, original_spec_type=OriginalSpecType.ODCS
         )
 
         # Verify required fields are set
@@ -89,13 +86,15 @@ class TestDataFixtureLoadingTest(TestCase):
         tenant = TenantFactory.create_tenant(
             name="Custom Tenant",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value
+            kyc_status=KYCStatus.VERIFIED.value,
         )
 
         # Verify custom values are applied
         self.assertEqual(tenant.name, "Custom Tenant", "Custom name should be applied")
         self.assertEqual(tenant.status, TenantStatus.ACTIVE, "Custom status should be applied")
-        self.assertEqual(tenant.kyc_status, KYCStatus.VERIFIED, "Custom KYC status should be applied")
+        self.assertEqual(
+            tenant.kyc_status, KYCStatus.VERIFIED, "Custom KYC status should be applied"
+        )
 
 
 class TestDataCleanupTest(TestCase):
@@ -121,19 +120,15 @@ class TestDataCleanupTest(TestCase):
         # Create additional objects
         user = self.test_data_manager.created_objects["users"][0]
         for _ in range(asset_count):
-            asset = AssetFactory.create_asset(
-                tenant=tenant,
-                created_by=user
-            )
+            asset = AssetFactory.create_asset(tenant=tenant, created_by=user)
             self.test_data_manager.created_objects["assets"].append(asset)
 
         for i in range(contract_count):
             # Use different assets to avoid unique constraint violations
-            asset = self.test_data_manager.created_objects["assets"][i % len(self.test_data_manager.created_objects["assets"])]
-            contract = ContractFactory.create_contract(
-                tenant=tenant,
-                asset=asset
-            )
+            asset = self.test_data_manager.created_objects["assets"][
+                i % len(self.test_data_manager.created_objects["assets"])
+            ]
+            contract = ContractFactory.create_contract(tenant=tenant, asset=asset)
             self.test_data_manager.created_objects["contracts"].append(contract)
 
         # Get counts before cleanup
@@ -146,12 +141,21 @@ class TestDataCleanupTest(TestCase):
 
         # Verify objects are deleted (within transaction, so they should still exist until rollback)
         # But we can verify cleanup was called and tracking was cleared
-        self.assertEqual(len(self.test_data_manager.created_objects["tenants"]), 0,
-                        "Tenant tracking should be cleared")
-        self.assertEqual(len(self.test_data_manager.created_objects["assets"]), 0,
-                        "Asset tracking should be cleared")
-        self.assertEqual(len(self.test_data_manager.created_objects["contracts"]), 0,
-                        "Contract tracking should be cleared")
+        self.assertEqual(
+            len(self.test_data_manager.created_objects["tenants"]),
+            0,
+            "Tenant tracking should be cleared",
+        )
+        self.assertEqual(
+            len(self.test_data_manager.created_objects["assets"]),
+            0,
+            "Asset tracking should be cleared",
+        )
+        self.assertEqual(
+            len(self.test_data_manager.created_objects["contracts"]),
+            0,
+            "Contract tracking should be cleared",
+        )
 
         # Verify cleanup method works (objects may still exist in transaction, but cleanup was called)
         # The actual deletion will be verified by Django's transaction rollback
@@ -159,10 +163,7 @@ class TestDataCleanupTest(TestCase):
     def test_cleanup_handles_dependencies_correctly(self):
         """Test that cleanup handles dependencies correctly."""
         # Create test data with dependencies
-        tenant = self.test_data_manager.create_complete_tenant_data(
-            asset_count=2,
-            contract_count=2
-        )
+        tenant = self.test_data_manager.create_complete_tenant_data(asset_count=2, contract_count=2)
 
         tenant_id = tenant.id
 
@@ -171,12 +172,21 @@ class TestDataCleanupTest(TestCase):
 
         # Verify cleanup was called (tracking cleared)
         # Actual deletion verified by Django's transaction rollback
-        self.assertEqual(len(self.test_data_manager.created_objects["tenants"]), 0,
-                        "Tenant tracking should be cleared")
-        self.assertEqual(len(self.test_data_manager.created_objects["assets"]), 0,
-                        "Asset tracking should be cleared")
-        self.assertEqual(len(self.test_data_manager.created_objects["contracts"]), 0,
-                        "Contract tracking should be cleared")
+        self.assertEqual(
+            len(self.test_data_manager.created_objects["tenants"]),
+            0,
+            "Tenant tracking should be cleared",
+        )
+        self.assertEqual(
+            len(self.test_data_manager.created_objects["assets"]),
+            0,
+            "Asset tracking should be cleared",
+        )
+        self.assertEqual(
+            len(self.test_data_manager.created_objects["contracts"]),
+            0,
+            "Contract tracking should be cleared",
+        )
 
     def test_cleanup_is_idempotent(self):
         """Test that cleanup is idempotent (can be called multiple times)."""
@@ -191,8 +201,11 @@ class TestDataCleanupTest(TestCase):
         self.test_data_manager.cleanup()
 
         # Verify cleanup is idempotent (no errors, tracking is cleared)
-        self.assertEqual(len(self.test_data_manager.created_objects["tenants"]), 0,
-                        "Tenant tracking should be cleared after multiple cleanups")
+        self.assertEqual(
+            len(self.test_data_manager.created_objects["tenants"]),
+            0,
+            "Tenant tracking should be cleared after multiple cleanups",
+        )
 
     def test_cleanup_handles_partial_creation(self):
         """Test that cleanup handles partial creation gracefully."""
@@ -209,8 +222,11 @@ class TestDataCleanupTest(TestCase):
         self.test_data_manager.cleanup()
 
         # Verify partial data cleanup was called (tracking cleared)
-        self.assertEqual(len(self.test_data_manager.created_objects["tenants"]), 0,
-                        "Partially created tenant tracking should be cleared")
+        self.assertEqual(
+            len(self.test_data_manager.created_objects["tenants"]),
+            0,
+            "Partially created tenant tracking should be cleared",
+        )
 
 
 class TestDataIsolationTest(TestCase):
@@ -226,8 +242,9 @@ class TestDataIsolationTest(TestCase):
         contract1_id = contract1.id
 
         # Verify data exists
-        self.assertTrue(Tenant.objects.filter(id=tenant1_id).exists(),
-                       "Tenant should exist in this test")
+        self.assertTrue(
+            Tenant.objects.filter(id=tenant1_id).exists(), "Tenant should exist in this test"
+        )
 
         # Note: Django's TestCase automatically cleans up after each test
         # So data from one test won't affect another
@@ -239,8 +256,9 @@ class TestDataIsolationTest(TestCase):
         tenant_id = tenant.id
 
         # Verify data exists
-        self.assertTrue(Tenant.objects.filter(id=tenant_id).exists(),
-                       "Tenant should exist in this test suite")
+        self.assertTrue(
+            Tenant.objects.filter(id=tenant_id).exists(), "Tenant should exist in this test suite"
+        )
 
         # Django's test framework uses separate test databases or transactions
         # So data from one suite won't affect another
@@ -264,15 +282,17 @@ class TestDataIsolationBetweenSuitesTest(TestCase):
         tenant_id = tenant.id
 
         # Verify data exists
-        self.assertTrue(Tenant.objects.filter(id=tenant_id).exists(),
-                       "Tenant should exist in this suite")
+        self.assertTrue(
+            Tenant.objects.filter(id=tenant_id).exists(), "Tenant should exist in this suite"
+        )
 
         # Cleanup should remove data
         self.test_data_manager.cleanup()
 
         # Verify data is removed
-        self.assertFalse(Tenant.objects.filter(id=tenant_id).exists(),
-                        "Tenant should be removed after cleanup")
+        self.assertFalse(
+            Tenant.objects.filter(id=tenant_id).exists(), "Tenant should be removed after cleanup"
+        )
 
     def test_isolation_uses_separate_transactions(self):
         """Test that isolation uses separate transactions."""
@@ -282,12 +302,16 @@ class TestDataIsolationBetweenSuitesTest(TestCase):
             tenant_id = tenant.id
 
             # Verify data exists within transaction
-            self.assertTrue(Tenant.objects.filter(id=tenant_id).exists(),
-                           "Tenant should exist within transaction")
+            self.assertTrue(
+                Tenant.objects.filter(id=tenant_id).exists(),
+                "Tenant should exist within transaction",
+            )
 
         # After transaction, data should still exist (committed)
-        self.assertTrue(Tenant.objects.filter(id=tenant_id).exists(),
-                       "Tenant should exist after transaction commit")
+        self.assertTrue(
+            Tenant.objects.filter(id=tenant_id).exists(),
+            "Tenant should exist after transaction commit",
+        )
 
         # Cleanup
         Tenant.objects.filter(id=tenant_id).delete()
@@ -307,7 +331,10 @@ class TestDataSetupPerformanceTest(TestCase):
         user = users[0]
         assets = [AssetFactory.create_asset(tenant=tenant, created_by=user) for _ in range(3)]
         # Use different assets to avoid unique constraint violations
-        contracts = [ContractFactory.create_contract(tenant=tenant, asset=assets[i % len(assets)]) for i in range(3)]
+        contracts = [
+            ContractFactory.create_contract(tenant=tenant, asset=assets[i % len(assets)])
+            for i in range(3)
+        ]
 
         end_time = time.time()
         setup_time = end_time - start_time
@@ -315,10 +342,15 @@ class TestDataSetupPerformanceTest(TestCase):
         # Setup should complete in reasonable time (allow more time in Docker Compose environment)
         max_time = 10.0  # 10 seconds for basic setup in test environment
         if setup_time > max_time:
-            self.skipTest(f"Setup took {setup_time:.2f}s, exceeding {max_time}s threshold. "
-                         f"This may indicate performance issues but could be due to test environment constraints.")
-        self.assertLess(setup_time, max_time,
-                       f"Setup should complete in < {max_time} seconds, took {setup_time:.2f}s")
+            self.skipTest(
+                f"Setup took {setup_time:.2f}s, exceeding {max_time}s threshold. "
+                f"This may indicate performance issues but could be due to test environment constraints."
+            )
+        self.assertLess(
+            setup_time,
+            max_time,
+            f"Setup should complete in < {max_time} seconds, took {setup_time:.2f}s",
+        )
 
     def test_bulk_setup_performance(self):
         """Test that bulk setup performance is acceptable."""
@@ -329,10 +361,7 @@ class TestDataSetupPerformanceTest(TestCase):
         test_data_manager = TestDataManager()
         tenants = []
         for _ in range(3):
-            tenant = test_data_manager.create_complete_tenant_data(
-                asset_count=2,
-                contract_count=2
-            )
+            tenant = test_data_manager.create_complete_tenant_data(asset_count=2, contract_count=2)
             tenants.append(tenant)
 
         end_time = time.time()
@@ -343,10 +372,15 @@ class TestDataSetupPerformanceTest(TestCase):
         # Use a more lenient threshold or skip if too slow
         max_time = 180.0  # 3 minutes for bulk setup in test environment
         if setup_time > max_time:
-            self.skipTest(f"Bulk setup took {setup_time:.2f}s, exceeding {max_time}s threshold. "
-                         f"This may indicate performance issues but could be due to test environment constraints.")
-        self.assertLess(setup_time, max_time,
-                       f"Bulk setup should complete in < {max_time} seconds, took {setup_time:.2f}s")
+            self.skipTest(
+                f"Bulk setup took {setup_time:.2f}s, exceeding {max_time}s threshold. "
+                f"This may indicate performance issues but could be due to test environment constraints."
+            )
+        self.assertLess(
+            setup_time,
+            max_time,
+            f"Bulk setup should complete in < {max_time} seconds, took {setup_time:.2f}s",
+        )
 
         # Cleanup
         for tenant in tenants:
@@ -357,10 +391,7 @@ class TestDataSetupPerformanceTest(TestCase):
         """Test that cleanup performance is acceptable."""
         # Create test data
         test_data_manager = TestDataManager()
-        tenant = test_data_manager.create_complete_tenant_data(
-            asset_count=5,
-            contract_count=5
-        )
+        tenant = test_data_manager.create_complete_tenant_data(asset_count=5, contract_count=5)
 
         # Measure cleanup time
         start_time = time.time()
@@ -369,5 +400,168 @@ class TestDataSetupPerformanceTest(TestCase):
         cleanup_time = end_time - start_time
 
         # Cleanup should complete in reasonable time
-        self.assertLess(cleanup_time, 3.0,
-                       f"Cleanup should complete in < 3 seconds, took {cleanup_time:.2f}s")
+        self.assertLess(
+            cleanup_time, 3.0, f"Cleanup should complete in < 3 seconds, took {cleanup_time:.2f}s"
+        )
+
+    def test_fixtures_handle_unicode_characters(self):
+        """Test that fixtures handle unicode characters correctly."""
+        # Create tenant with unicode characters
+        tenant = TenantFactory.create_tenant(name="测试租户 🏢", slug="test-unicode-tenant")
+
+        # Verify unicode characters are preserved
+        self.assertEqual(tenant.name, "测试租户 🏢", "Unicode characters should be preserved")
+        self.assertTrue(tenant.pk, "Tenant should have primary key")
+
+    def test_fixtures_handle_special_characters(self):
+        """Test that fixtures handle special characters correctly."""
+        # Create tenant with special characters
+        tenant = TenantFactory.create_tenant(
+            name="Test Tenant & Co. (Special)", slug="test-special-tenant"
+        )
+
+        # Verify special characters are handled
+        self.assertEqual(
+            tenant.name, "Test Tenant & Co. (Special)", "Special characters should be handled"
+        )
+        self.assertTrue(tenant.pk, "Tenant should have primary key")
+
+    def test_fixtures_handle_empty_optional_fields(self):
+        """Test that fixtures handle empty optional fields correctly."""
+        # Create contract with minimal required fields
+        tenant = TenantFactory.create_tenant()
+        user = UserFactory.create_user(tenant=tenant)
+        asset = AssetFactory.create_asset(tenant=tenant, created_by=user)
+
+        contract = ContractFactory.create_contract(
+            tenant=tenant, asset=asset, original_spec_type=OriginalSpecType.ODCS
+        )
+
+        # Verify contract was created even with minimal fields
+        self.assertIsNotNone(contract, "Contract should be created")
+        self.assertTrue(contract.pk, "Contract should have primary key")
+
+    def test_cleanup_handles_nonexistent_objects(self):
+        """Test that cleanup handles nonexistent objects gracefully."""
+        test_data_manager = TestDataManager()
+
+        # Try to cleanup without creating any objects
+        # Should not raise an error
+        try:
+            test_data_manager.cleanup()
+        except Exception as e:
+            self.fail(f"Cleanup should handle empty state gracefully, but raised: {e}")
+
+    def test_cleanup_handles_already_deleted_objects(self):
+        """Test that cleanup handles already deleted objects gracefully."""
+        test_data_manager = TestDataManager()
+        tenant = test_data_manager.create_tenant_with_users()
+        tenant_id = tenant.id
+
+        # Manually delete tenant
+        Tenant.objects.filter(id=tenant_id).delete()
+
+        # Cleanup should handle already deleted objects gracefully
+        try:
+            test_data_manager.cleanup()
+        except Exception as e:
+            self.fail(f"Cleanup should handle already deleted objects gracefully, but raised: {e}")
+
+    def test_fixtures_handle_very_long_strings(self):
+        """Test that fixtures handle very long strings correctly."""
+        # Create tenant with very long name
+        long_name = "A" * 1000
+        tenant = TenantFactory.create_tenant(name=long_name, slug="test-long-string-tenant")
+
+        # Verify long string is handled
+        self.assertEqual(tenant.name, long_name, "Very long strings should be handled")
+        self.assertTrue(tenant.pk, "Tenant should have primary key")
+
+    def test_isolation_prevents_cross_tenant_access(self):
+        """Test that isolation prevents cross-tenant data access."""
+        # Create two tenants
+        tenant1 = TenantFactory.create_tenant(name="Tenant 1")
+        tenant2 = TenantFactory.create_tenant(name="Tenant 2")
+
+        user1 = UserFactory.create_user(tenant=tenant1)
+        user2 = UserFactory.create_user(tenant=tenant2)
+
+        asset1 = AssetFactory.create_asset(tenant=tenant1, created_by=user1)
+        asset2 = AssetFactory.create_asset(tenant=tenant2, created_by=user2)
+
+        contract1 = ContractFactory.create_contract(tenant=tenant1, asset=asset1)
+        contract2 = ContractFactory.create_contract(tenant=tenant2, asset=asset2)
+
+        # Verify contracts belong to correct tenants
+        self.assertEqual(contract1.tenant, tenant1, "Contract 1 should belong to tenant 1")
+        self.assertEqual(contract2.tenant, tenant2, "Contract 2 should belong to tenant 2")
+
+        # Verify contracts are isolated
+        self.assertNotEqual(
+            contract1.tenant, contract2.tenant, "Contracts should be isolated by tenant"
+        )
+
+    def test_setup_handles_concurrent_creation(self):
+        """Test that setup handles concurrent creation correctly."""
+        import threading
+
+        tenants = []
+        errors = []
+
+        def create_tenant():
+            try:
+                tenant = TenantFactory.create_tenant(
+                    name=f"Concurrent Tenant {threading.current_thread().ident}"
+                )
+                tenants.append(tenant)
+            except Exception as e:
+                errors.append(e)
+
+        # Create multiple threads to create tenants concurrently
+        threads = [threading.Thread(target=create_tenant) for _ in range(5)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        # Verify all tenants were created successfully
+        self.assertEqual(
+            len(errors), 0, f"Concurrent creation should not raise errors, but got: {errors}"
+        )
+        self.assertEqual(len(tenants), 5, "All concurrent tenants should be created")
+
+    def test_cleanup_handles_circular_dependencies(self):
+        """Test that cleanup handles circular dependencies correctly."""
+        test_data_manager = TestDataManager()
+        tenant = test_data_manager.create_complete_tenant_data(asset_count=2, contract_count=2)
+
+        # Cleanup should handle dependencies correctly
+        try:
+            test_data_manager.cleanup()
+        except Exception as e:
+            self.fail(f"Cleanup should handle dependencies correctly, but raised: {e}")
+
+    def test_fixtures_preserve_field_defaults(self):
+        """Test that fixtures preserve field defaults correctly."""
+        # Create tenant without specifying status (should use default)
+        tenant = TenantFactory.create_tenant(name="Default Status Tenant")
+
+        # Verify default values are applied
+        self.assertIsNotNone(tenant.status, "Tenant should have a status (default or explicit)")
+        self.assertTrue(tenant.pk, "Tenant should have primary key")
+
+    def test_setup_handles_invalid_data_gracefully(self):
+        """Test that setup handles invalid data gracefully."""
+        # Try to create tenant with invalid slug (too long)
+        try:
+            long_slug = "a" * 300  # Exceeds typical slug length limit
+            tenant = TenantFactory.create_tenant(name="Invalid Slug Tenant", slug=long_slug)
+            # If creation succeeds, verify it was handled
+            self.assertIsNotNone(tenant, "Tenant creation should handle long slugs")
+        except Exception as e:
+            # If validation error occurs, that's acceptable
+            self.assertIsInstance(
+                e,
+                (ValueError, ValidationError),
+                "Should raise appropriate exception for invalid data",
+            )

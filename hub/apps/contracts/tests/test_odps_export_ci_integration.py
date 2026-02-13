@@ -11,36 +11,34 @@ These tests are designed for CI pipeline execution and follow engineering best p
 """
 
 import json
-import yaml
+
 import pytest
+import yaml
 from django.test import TestCase
-from django.contrib.auth import get_user_model
 
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
-)
-from hub.apps.contracts.odps_generator import (
-    generate_odps_from_hubcontract,
-    format_odps_as_json,
-    format_odps_as_yaml,
-)
-from hub.apps.contracts.odps_format_converter import (
-    convert_yaml_to_json,
-    convert_json_to_yaml,
+    OriginalFormat,
+    OriginalSpecType,
 )
 from hub.apps.contracts.odps_errors import ODPSExportError
-from hub.apps.users.models import UserStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+from hub.apps.contracts.odps_format_converter import (
+    convert_json_to_yaml,
+    convert_yaml_to_json,
+)
+from hub.apps.contracts.odps_generator import (
+    format_odps_as_json,
+    format_odps_as_yaml,
+    generate_odps_from_hubcontract,
+)
+from hub.apps.contracts.tests.test_base import ContractsTestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
-User = get_user_model()
 
 
-class ODPSExportFormatGenerationTest(TestCase):
+class ODPSExportFormatGenerationTest(ContractsTestBase):
     """
     Comprehensive tests for ODPS export format generation.
 
@@ -50,22 +48,11 @@ class ODPSExportFormatGenerationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
+        super().setUp()
 
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
 
         # Create comprehensive HubContract for testing
         self.hub_contract = {
@@ -137,10 +124,7 @@ class ODPSExportFormatGenerationTest(TestCase):
         self.assertEqual(parsed["version"], "4.1")
         self.assertIn("details", parsed["product"])
         self.assertIn("en", parsed["product"]["details"])
-        self.assertEqual(
-            parsed["product"]["details"]["en"]["name"],
-            "Export Test Product"
-        )
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "Export Test Product")
 
     def test_format_odps_as_json_with_indentation(self):
         """
@@ -157,13 +141,17 @@ class ODPSExportFormatGenerationTest(TestCase):
         parsed = json.loads(json_output)
 
         # Verify indentation (check for 4-space indentation in string)
-        lines = json_output.split('\n')
+        lines = json_output.split("\n")
         if len(lines) > 1:
             # First nested line should have 4 spaces
             for line in lines[1:]:
-                if line.strip() and not line.strip().startswith('{') and not line.strip().startswith('}'):
+                if (
+                    line.strip()
+                    and not line.strip().startswith("{")
+                    and not line.strip().startswith("}")
+                ):
                     # Check if indentation is present (at least some spaces)
-                    self.assertTrue(line.startswith(' ') or line.startswith('\t'))
+                    self.assertTrue(line.startswith(" ") or line.startswith("\t"))
 
         # Verify structure is preserved
         self.assertIn("schema", parsed)
@@ -181,7 +169,9 @@ class ODPSExportFormatGenerationTest(TestCase):
         odps_with_unicode = self.odps_doc.copy()
         if "product" in odps_with_unicode and "details" in odps_with_unicode["product"]:
             if "en" in odps_with_unicode["product"]["details"]:
-                odps_with_unicode["product"]["details"]["en"]["description"] = "Test with émojis 🎉 and ñoño"
+                odps_with_unicode["product"]["details"]["en"][
+                    "description"
+                ] = "Test with émojis 🎉 and ñoño"
 
         # Generate JSON with ensure_ascii=False (default)
         json_output = format_odps_as_json(odps_with_unicode, ensure_ascii=False)
@@ -218,10 +208,7 @@ class ODPSExportFormatGenerationTest(TestCase):
         self.assertEqual(parsed["version"], "4.1")
         self.assertIn("details", parsed["product"])
         self.assertIn("en", parsed["product"]["details"])
-        self.assertEqual(
-            parsed["product"]["details"]["en"]["name"],
-            "Export Test Product"
-        )
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "Export Test Product")
 
     def test_format_odps_as_yaml_with_options(self):
         """
@@ -233,10 +220,7 @@ class ODPSExportFormatGenerationTest(TestCase):
         """
         # Generate YAML with custom options
         yaml_output = format_odps_as_yaml(
-            self.odps_doc,
-            default_flow_style=False,
-            allow_unicode=True,
-            sort_keys=False
+            self.odps_doc, default_flow_style=False, allow_unicode=True, sort_keys=False
         )
 
         # Verify output is valid YAML
@@ -309,10 +293,7 @@ class ODPSExportFormatGenerationTest(TestCase):
                 yaml_details = yaml_product["details"]
 
                 if "en" in json_details and "en" in yaml_details:
-                    self.assertEqual(
-                        json_details["en"].get("name"),
-                        yaml_details["en"].get("name")
-                    )
+                    self.assertEqual(json_details["en"].get("name"), yaml_details["en"].get("name"))
 
 
 class ODPSFormatConversionTest(TestCase):
@@ -326,46 +307,49 @@ class ODPSFormatConversionTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create sample ODPS document in JSON format
-        self.odps_json = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product-conversion",
-                        "name": "Conversion Test Product",
-                        "description": "Test product for format conversion",
+        self.odps_json = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product-conversion",
+                            "name": "Conversion Test Product",
+                            "description": "Test product for format conversion",
+                        },
+                        "fr": {
+                            "productID": "test-product-conversion",
+                            "name": "Produit de Test de Conversion",
+                        },
                     },
-                    "fr": {
-                        "productID": "test-product-conversion",
-                        "name": "Produit de Test de Conversion",
-                    },
-                },
-                "dataSchema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"},
-                        {"name": "value", "type": "number"},
-                    ]
-                },
-                "marketplace": {
-                    "pricingPlans": {
-                        "declarative": [
-                            {
-                                "name": "Free Plan",
-                                "price": 0.0,
-                                "currency": "USD",
-                            },
-                            {
-                                "name": "Premium Plan",
-                                "price": 99.99,
-                                "currency": "USD",
-                            },
+                    "dataSchema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                            {"name": "value", "type": "number"},
                         ]
-                    }
+                    },
+                    "marketplace": {
+                        "pricingPlans": {
+                            "declarative": [
+                                {
+                                    "name": "Free Plan",
+                                    "price": 0.0,
+                                    "currency": "USD",
+                                },
+                                {
+                                    "name": "Premium Plan",
+                                    "price": 99.99,
+                                    "currency": "USD",
+                                },
+                            ]
+                        }
+                    },
                 },
             },
-        }, indent=2)
+            indent=2,
+        )
 
         # Create sample ODPS document in YAML format
         self.odps_yaml = """
@@ -421,14 +405,8 @@ product:
 
         # Verify data integrity
         self.assertEqual(parsed["version"], "4.1")
-        self.assertEqual(
-            parsed["product"]["details"]["en"]["name"],
-            "Conversion Test Product"
-        )
-        self.assertEqual(
-            len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
-            2
-        )
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "Conversion Test Product")
+        self.assertEqual(len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"]), 2)
 
     def test_convert_json_to_yaml_success(self):
         """
@@ -452,14 +430,8 @@ product:
 
         # Verify data integrity
         self.assertEqual(parsed["version"], "4.1")
-        self.assertEqual(
-            parsed["product"]["details"]["en"]["name"],
-            "Conversion Test Product"
-        )
-        self.assertEqual(
-            len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
-            2
-        )
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "Conversion Test Product")
+        self.assertEqual(len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"]), 2)
 
     def test_round_trip_yaml_json_yaml(self):
         """
@@ -482,11 +454,11 @@ product:
         self.assertEqual(json_parsed["version"], yaml_parsed["version"])
         self.assertEqual(
             json_parsed["product"]["details"]["en"]["name"],
-            yaml_parsed["product"]["details"]["en"]["name"]
+            yaml_parsed["product"]["details"]["en"]["name"],
         )
         self.assertEqual(
             len(json_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
-            len(yaml_parsed["product"]["marketplace"]["pricingPlans"]["declarative"])
+            len(yaml_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
         )
 
     def test_round_trip_json_yaml_json(self):
@@ -511,11 +483,11 @@ product:
         self.assertEqual(original_parsed["version"], json_parsed["version"])
         self.assertEqual(
             original_parsed["product"]["details"]["en"]["name"],
-            json_parsed["product"]["details"]["en"]["name"]
+            json_parsed["product"]["details"]["en"]["name"],
         )
         self.assertEqual(
             len(original_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
-            len(json_parsed["product"]["marketplace"]["pricingPlans"]["declarative"])
+            len(json_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
         )
 
     def test_convert_yaml_to_json_with_complex_structure(self):
@@ -564,12 +536,11 @@ product:
         self.assertEqual(len(parsed["product"]["details"]["en"]["tags"]), 3)
         self.assertEqual(len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"]), 2)
         self.assertEqual(
-            len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["features"]),
-            2
+            len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["features"]), 2
         )
         self.assertEqual(
             parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["pricing"]["base"],
-            10.0
+            10.0,
         )
 
     def test_convert_json_to_yaml_with_complex_structure(self):
@@ -581,34 +552,37 @@ product:
         - Arrays are handled correctly
         - Nested objects are maintained
         """
-        complex_json = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Complex Product",
-                        "tags": ["analytics", "research", "commercial"],
-                    }
-                },
-                "marketplace": {
-                    "pricingPlans": {
-                        "declarative": [
-                            {
-                                "name": "Basic",
-                                "features": ["feature1", "feature2"],
-                                "pricing": {"base": 10.0, "currency": "USD"},
-                            },
-                            {
-                                "name": "Pro",
-                                "features": ["feature1", "feature2", "feature3"],
-                                "pricing": {"base": 99.0, "currency": "USD"},
-                            },
-                        ]
-                    }
+        complex_json = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "name": "Complex Product",
+                            "tags": ["analytics", "research", "commercial"],
+                        }
+                    },
+                    "marketplace": {
+                        "pricingPlans": {
+                            "declarative": [
+                                {
+                                    "name": "Basic",
+                                    "features": ["feature1", "feature2"],
+                                    "pricing": {"base": 10.0, "currency": "USD"},
+                                },
+                                {
+                                    "name": "Pro",
+                                    "features": ["feature1", "feature2", "feature3"],
+                                    "pricing": {"base": 99.0, "currency": "USD"},
+                                },
+                            ]
+                        }
+                    },
                 },
             },
-        }, indent=2)
+            indent=2,
+        )
 
         yaml_output = convert_json_to_yaml(complex_json)
         parsed = yaml.safe_load(yaml_output)
@@ -617,12 +591,11 @@ product:
         self.assertEqual(len(parsed["product"]["details"]["en"]["tags"]), 3)
         self.assertEqual(len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"]), 2)
         self.assertEqual(
-            len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["features"]),
-            2
+            len(parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["features"]), 2
         )
         self.assertEqual(
             parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["pricing"]["base"],
-            10.0
+            10.0,
         )
 
     def test_convert_yaml_to_json_invalid_yaml(self):
@@ -690,7 +663,7 @@ product:
         self.assertEqual(cm.exception.error_code, ODPSExportError.ERROR_CODE_EXPORT_FAILED)
 
 
-class ODPSExportEndToEndIntegrationTest(TestCase):
+class ODPSExportEndToEndIntegrationTest(ContractsTestBase):
     """
     End-to-end integration tests for ODPS export workflow.
 
@@ -699,22 +672,11 @@ class ODPSExportEndToEndIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
+        super().setUp()
 
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
 
         # Create comprehensive HubContract
         self.hub_contract = {
@@ -767,10 +729,7 @@ class ODPSExportEndToEndIntegrationTest(TestCase):
         self.assertIn("version", json_parsed)
         self.assertIn("product", json_parsed)
         self.assertEqual(json_parsed["version"], "4.1")
-        self.assertEqual(
-            json_parsed["product"]["details"]["en"]["name"],
-            "E2E Test Product"
-        )
+        self.assertEqual(json_parsed["product"]["details"]["en"]["name"], "E2E Test Product")
 
     def test_complete_export_workflow_yaml(self):
         """
@@ -797,10 +756,7 @@ class ODPSExportEndToEndIntegrationTest(TestCase):
         self.assertIn("version", yaml_parsed)
         self.assertIn("product", yaml_parsed)
         self.assertEqual(yaml_parsed["version"], "4.1")
-        self.assertEqual(
-            yaml_parsed["product"]["details"]["en"]["name"],
-            "E2E Test Product"
-        )
+        self.assertEqual(yaml_parsed["product"]["details"]["en"]["name"], "E2E Test Product")
 
     def test_complete_workflow_with_format_conversion(self):
         """
@@ -835,10 +791,107 @@ class ODPSExportEndToEndIntegrationTest(TestCase):
         self.assertEqual(json_parsed["version"], json_parsed_2["version"])
         self.assertEqual(
             json_parsed["product"]["details"]["en"]["name"],
-            json_parsed_2["product"]["details"]["en"]["name"]
+            json_parsed_2["product"]["details"]["en"]["name"],
         )
         self.assertEqual(
             json_parsed["product"]["details"]["en"]["name"],
-            yaml_parsed["product"]["details"]["en"]["name"]
+            yaml_parsed["product"]["details"]["en"]["name"],
         )
 
+    def test_export_ci_integration_handles_unicode_characters(self):
+        """Test that export CI integration handles unicode characters correctly."""
+        hub_contract = self.hub_contract.copy()
+        hub_contract["info"]["name"] = "测试产品"
+        hub_contract["info"]["description"] = "测试描述"
+
+        odps_doc = generate_odps_from_hubcontract(
+            hub_contract=hub_contract,
+            target_version="4.1",
+            original_odcs_contract=None,
+            original_odcs_url=None,
+        )
+
+        json_output = format_odps_as_json(odps_doc)
+        json_parsed = json.loads(json_output)
+
+        # Should handle unicode characters
+        self.assertIsNotNone(json_parsed)
+        self.assertIn("product", json_parsed)
+
+    def test_export_ci_integration_handles_special_characters(self):
+        """Test that export CI integration handles special characters correctly."""
+        hub_contract = self.hub_contract.copy()
+        hub_contract["info"]["name"] = "Test & Co. (Special)"
+        hub_contract["info"]["description"] = "Test <description> & more"
+
+        odps_doc = generate_odps_from_hubcontract(
+            hub_contract=hub_contract,
+            target_version="4.1",
+            original_odcs_contract=None,
+            original_odcs_url=None,
+        )
+
+        json_output = format_odps_as_json(odps_doc)
+        json_parsed = json.loads(json_output)
+
+        # Should handle special characters
+        self.assertIsNotNone(json_parsed)
+        self.assertIn("product", json_parsed)
+
+    def test_export_ci_integration_handles_very_large_documents(self):
+        """Test that export CI integration handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = self.hub_contract.copy()
+        hub_contract["info"]["description"] = large_description
+
+        odps_doc = generate_odps_from_hubcontract(
+            hub_contract=hub_contract,
+            target_version="4.1",
+            original_odcs_contract=None,
+            original_odcs_url=None,
+        )
+
+        json_output = format_odps_as_json(odps_doc)
+        json_parsed = json.loads(json_output)
+
+        # Should handle very large documents
+        self.assertIsNotNone(json_parsed)
+        self.assertIn("product", json_parsed)
+
+    def test_export_ci_integration_handles_none_values(self):
+        """Test that export CI integration handles None values correctly."""
+        hub_contract = self.hub_contract.copy()
+        hub_contract["info"]["description"] = None  # None value
+
+        odps_doc = generate_odps_from_hubcontract(
+            hub_contract=hub_contract,
+            target_version="4.1",
+            original_odcs_contract=None,
+            original_odcs_url=None,
+        )
+
+        json_output = format_odps_as_json(odps_doc)
+        json_parsed = json.loads(json_output)
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(json_parsed)
+        self.assertIn("product", json_parsed)
+
+    def test_export_ci_integration_handles_nested_structures(self):
+        """Test that export CI integration handles nested structures correctly."""
+        hub_contract = self.hub_contract.copy()
+        hub_contract["info"]["nested"] = {"level1": {"level2": {"level3": {"value": "deep"}}}}
+
+        odps_doc = generate_odps_from_hubcontract(
+            hub_contract=hub_contract,
+            target_version="4.1",
+            original_odcs_contract=None,
+            original_odcs_url=None,
+        )
+
+        json_output = format_odps_as_json(odps_doc)
+        json_parsed = json.loads(json_output)
+
+        # Should handle nested structures
+        self.assertIsNotNone(json_parsed)
+        self.assertIn("product", json_parsed)

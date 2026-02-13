@@ -7,51 +7,57 @@ Tests verify that progress_percentage is correctly included in:
 - workflow.step.failed events
 - WebSocket events for real-time progress updates
 
-All tests use the actual event system (EventOutbox) without mocks/stubs.
+All tests use the actual event system (Event model, sync persistence) without mocks/stubs.
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     # pytest not available, using Django test runner
     pytest = None
     pytestmark = None
 
-import uuid
 import json
-from django.test import TestCase
-from django.contrib.auth import get_user_model
+import uuid
 
+from django.contrib.auth import get_user_model
+from django.test import TestCase, override_settings
+
+from hub.apps.core.events.models import Event
 from hub.apps.orchestration.models import (
+    StepStatus,
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStatus,
-    StepStatus,
 )
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
-from hub.apps.core.events.outbox import EventOutbox
 
 User = get_user_model()
 
 
+@override_settings(
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE=True,
+    EVENT_BUS_ENABLE_PERSISTENCE=True,
+    EVENT_BUS_ASYNC_PERSISTENCE=False,
+)
 class WorkflowProgressEventsNoMocksTest(TestCase):
     """Unit tests for progress_percentage in workflow step events without mocks (Task 0.3.3)"""
 
     def setUp(self):
         """Set up test fixtures"""
+        import hub.apps.core.events.bus as bus_module
+        bus_module._event_bus = None
+
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="VERIFIED"
+            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register a test task
@@ -60,36 +66,32 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
 
         self.engine.register_task("test_task", test_task)
 
-    def _get_step_events_from_outbox(self, workflow_instance_id: str, event_type: str = None):
-        """Helper to get step events from EventOutbox without mocks"""
-        events = EventOutbox.objects.filter(
+    def _get_step_events_from_events(self, workflow_instance_id: str, event_type: str = None):
+        """Helper to get step events from Event model (sync persistence)."""
+        events = Event.objects.filter(
             event_type__in=[
                 "workflow.step.started",
                 "workflow.step.completed",
-                "workflow.step.failed"
-            ]
-        ).order_by('created_at')
+                "workflow.step.failed",
+            ],
+            data__workflow_instance_id=workflow_instance_id,
+        ).order_by("created_at")
 
         if event_type:
             events = events.filter(event_type=event_type)
 
-        result = []
-        for event in events:
-            try:
-                # EventOutbox uses event_data field, not payload
-                event_data = event.event_data if hasattr(event, 'event_data') else json.loads(event.payload) if isinstance(event.payload, str) else event.payload
-                if event_data.get("workflow_instance_id") == workflow_instance_id:
-                    result.append({
-                        "event_type": event.event_type,
-                        "data": event_data,
-                        "tenant_id": str(event.tenant_id) if event.tenant_id else None,
-                        "created_at": event.created_at
-                    })
-            except (json.JSONDecodeError, AttributeError, TypeError) as e:
-                # Skip events that can't be parsed
-                continue
+        def _serialize_created_at(ts):
+            return ts.isoformat() if hasattr(ts, "isoformat") else ts
 
-        return result
+        return [
+            {
+                "event_type": e.event_type,
+                "data": e.data,
+                "tenant_id": str(e.tenant_id) if e.tenant_id else None,
+                "created_at": _serialize_created_at(e.created_at),
+            }
+            for e in events
+        ]
 
     def test_progress_in_step_started_event(self):
         """Test that progress_percentage is included in workflow.step.started events (Task 0.3.3)"""
@@ -120,13 +122,14 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
         self.engine.execute_instance(str(instance.id))
 
         # Get step.started events from outbox
-        step_started_events = self._get_step_events_from_outbox(
-            str(instance.id),
-            event_type="workflow.step.started"
+        step_started_events = self._get_step_events_from_events(
+            str(instance.id), event_type="workflow.step.started"
         )
 
         # Verify events were published
-        self.assertGreater(len(step_started_events), 0, "At least one step.started event should be published")
+        self.assertGreater(
+            len(step_started_events), 0, "At least one step.started event should be published"
+        )
 
         # Verify each event includes progress_percentage
         for event in step_started_events:
@@ -170,13 +173,14 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
         self.engine.execute_instance(str(instance.id))
 
         # Get step.completed events from outbox
-        step_completed_events = self._get_step_events_from_outbox(
-            str(instance.id),
-            event_type="workflow.step.completed"
+        step_completed_events = self._get_step_events_from_events(
+            str(instance.id), event_type="workflow.step.completed"
         )
 
         # Verify events were published
-        self.assertGreater(len(step_completed_events), 0, "At least one step.completed event should be published")
+        self.assertGreater(
+            len(step_completed_events), 0, "At least one step.completed event should be published"
+        )
 
         # Verify each event includes progress_percentage
         for event in step_completed_events:
@@ -194,6 +198,7 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
 
     def test_progress_in_step_failed_event(self):
         """Test that progress_percentage is included in workflow.step.failed events (Task 0.3.3)"""
+
         # Register a failing task
         def failing_task(input_data, instance, step):
             raise ValueError("Task failed intentionally")
@@ -231,13 +236,14 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
             pass
 
         # Get step.failed events from outbox
-        step_failed_events = self._get_step_events_from_outbox(
-            str(instance.id),
-            event_type="workflow.step.failed"
+        step_failed_events = self._get_step_events_from_events(
+            str(instance.id), event_type="workflow.step.failed"
         )
 
         # Verify at least one failed event was published
-        self.assertGreater(len(step_failed_events), 0, "At least one step.failed event should be published")
+        self.assertGreater(
+            len(step_failed_events), 0, "At least one step.failed event should be published"
+        )
 
         # Verify each event includes progress_percentage
         for event in step_failed_events:
@@ -285,32 +291,35 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
         self.engine.execute_instance(str(instance.id))
 
         # Get all step events from outbox
-        all_step_events = self._get_step_events_from_outbox(str(instance.id))
+        all_step_events = self._get_step_events_from_events(str(instance.id))
 
         # Filter step.started events and sort by step_index
-        step_started_events = sorted([
-            e for e in all_step_events
-            if e["event_type"] == "workflow.step.started"
-        ], key=lambda x: x["data"]["step_index"])
+        step_started_events = sorted(
+            [e for e in all_step_events if e["event_type"] == "workflow.step.started"],
+            key=lambda x: x["data"]["step_index"],
+        )
 
         # Verify progress increases monotonically
         progresses = [e["data"]["progress_percentage"] for e in step_started_events]
 
-        self.assertGreater(len(progresses), 0, "At least one step.started event should have progress")
+        self.assertGreater(
+            len(progresses), 0, "At least one step.started event should have progress"
+        )
 
         for i in range(1, len(progresses)):
             self.assertGreaterEqual(
-                progresses[i], progresses[i - 1],
-                f"Progress should increase or stay the same: {progresses[i-1]}% -> {progresses[i]}%"
+                progresses[i],
+                progresses[i - 1],
+                f"Progress should increase or stay the same: {progresses[i-1]}% -> {progresses[i]}%",
             )
 
         # Verify final progress is 100%
         if len(progresses) > 0:
             # Get step.completed events
-            step_completed_events = sorted([
-                e for e in all_step_events
-                if e["event_type"] == "workflow.step.completed"
-            ], key=lambda x: x["data"]["step_index"])
+            step_completed_events = sorted(
+                [e for e in all_step_events if e["event_type"] == "workflow.step.completed"],
+                key=lambda x: x["data"]["step_index"],
+            )
 
             if len(step_completed_events) > 0:
                 final_progress = step_completed_events[-1]["data"]["progress_percentage"]
@@ -344,7 +353,7 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
         self.engine.execute_instance(str(instance.id))
 
         # Get all step events from outbox
-        all_step_events = self._get_step_events_from_outbox(str(instance.id))
+        all_step_events = self._get_step_events_from_events(str(instance.id))
 
         # Verify we have events
         self.assertGreater(len(all_step_events), 0, "At least one step event should be published")
@@ -366,22 +375,25 @@ class WorkflowProgressEventsNoMocksTest(TestCase):
         self.assertIn("workflow.step.completed", event_types_found)
 
 
+@override_settings(
+    EVENT_BUS_FORCE_SYNC_PERSISTENCE=True,
+    EVENT_BUS_ENABLE_PERSISTENCE=True,
+    EVENT_BUS_ASYNC_PERSISTENCE=False,
+)
 class WorkflowProgressWebSocketEventsTest(TestCase):
     """E2E tests for progress_percentage in WebSocket events without mocks (Task 0.3.3)"""
 
     def setUp(self):
         """Set up test fixtures"""
+        import hub.apps.core.events.bus as bus_module
+        bus_module._event_bus = None
+
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="VERIFIED"
+            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register a test task
@@ -390,32 +402,29 @@ class WorkflowProgressWebSocketEventsTest(TestCase):
 
         self.engine.register_task("test_task", test_task)
 
-    def _get_step_events_from_outbox(self, workflow_instance_id: str):
-        """Helper to get step events from EventOutbox"""
-        events = EventOutbox.objects.filter(
+    def _get_step_events_from_events(self, workflow_instance_id: str):
+        """Helper to get step events from Event model (sync persistence)."""
+        events = Event.objects.filter(
             event_type__in=[
                 "workflow.step.started",
                 "workflow.step.completed",
-                "workflow.step.failed"
-            ]
-        ).order_by('created_at')
+                "workflow.step.failed",
+            ],
+            data__workflow_instance_id=workflow_instance_id,
+        ).order_by("created_at")
 
-        result = []
-        for event in events:
-            try:
-                # EventOutbox uses event_data field, not payload
-                event_data = event.event_data if hasattr(event, 'event_data') else json.loads(event.payload) if isinstance(event.payload, str) else event.payload
-                if event_data.get("workflow_instance_id") == workflow_instance_id:
-                    result.append({
-                        "event_type": event.event_type,
-                        "data": event_data,
-                        "tenant_id": str(event.tenant_id) if event.tenant_id else None,
-                        "created_at": event.created_at
-                    })
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                continue
+        def _serialize_created_at(ts):
+            return ts.isoformat() if hasattr(ts, "isoformat") else ts
 
-        return result
+        return [
+            {
+                "event_type": e.event_type,
+                "data": e.data,
+                "tenant_id": str(e.tenant_id) if e.tenant_id else None,
+                "created_at": _serialize_created_at(e.created_at),
+            }
+            for e in events
+        ]
 
     def test_websocket_event_format(self):
         """E2E test: Verify events are in correct format for WebSocket transmission (Task 0.3.3)"""
@@ -446,11 +455,12 @@ class WorkflowProgressWebSocketEventsTest(TestCase):
         self.engine.execute_instance(str(instance.id))
 
         # Get step events from outbox
-        step_events = self._get_step_events_from_outbox(str(instance.id))
+        step_events = self._get_step_events_from_events(str(instance.id))
 
         # Filter step events
         step_events_filtered = [
-            e for e in step_events
+            e
+            for e in step_events
             if e["event_type"] in ["workflow.step.started", "workflow.step.completed"]
         ]
 
@@ -510,32 +520,34 @@ class WorkflowProgressWebSocketEventsTest(TestCase):
         self.engine.execute_instance(str(instance.id))
 
         # Get step events from outbox
-        step_events = self._get_step_events_from_outbox(str(instance.id))
+        step_events = self._get_step_events_from_events(str(instance.id))
 
         # Filter step.started events and sort by step_index
-        step_started_events = sorted([
-            e for e in step_events
-            if e["event_type"] == "workflow.step.started"
-        ], key=lambda x: x["data"]["step_index"])
+        step_started_events = sorted(
+            [e for e in step_events if e["event_type"] == "workflow.step.started"],
+            key=lambda x: x["data"]["step_index"],
+        )
 
         # Verify progress increases monotonically
         progresses = [e["data"]["progress_percentage"] for e in step_started_events]
 
-        self.assertGreater(len(progresses), 0, "At least one step.started event should have progress")
+        self.assertGreater(
+            len(progresses), 0, "At least one step.started event should have progress"
+        )
 
         for i in range(1, len(progresses)):
             self.assertGreaterEqual(
-                progresses[i], progresses[i - 1],
-                f"Progress should increase: {progresses[i-1]}% -> {progresses[i]}%"
+                progresses[i],
+                progresses[i - 1],
+                f"Progress should increase: {progresses[i-1]}% -> {progresses[i]}%",
             )
 
         # Verify final progress is 100%
-        step_completed_events = sorted([
-            e for e in step_events
-            if e["event_type"] == "workflow.step.completed"
-        ], key=lambda x: x["data"]["step_index"])
+        step_completed_events = sorted(
+            [e for e in step_events if e["event_type"] == "workflow.step.completed"],
+            key=lambda x: x["data"]["step_index"],
+        )
 
         if len(step_completed_events) > 0:
             final_progress = step_completed_events[-1]["data"]["progress_percentage"]
             self.assertEqual(final_progress, 100.0, "Final progress should be 100%")
-

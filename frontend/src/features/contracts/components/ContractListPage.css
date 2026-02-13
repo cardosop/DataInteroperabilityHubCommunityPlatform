@@ -1,0 +1,105 @@
+.contract-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.contract-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.contract-list-header h1 {
+  margin: 0;
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+}
+
+.contract-list-table {
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+}
+
+.contract-list-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.contract-list-table thead {
+  background: var(--color-background-secondary);
+}
+
+.contract-list-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+}
+
+.contract-list-table tbody tr {
+  border-top: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.contract-list-table tbody tr:hover {
+  background: var(--color-background-secondary);
+}
+
+.contract-list-table td {
+  padding: var(--spacing-md);
+}
+
+.status-badge,
+.validation-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+
+.status-normalized-ok,
+.validation-valid {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.status-normalized-with-warnings,
+.validation-warning-only {
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
+}
+
+.status-normalization-failed,
+.validation-invalid,
+.validation-error {
+  background: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+.contract-list-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.contract-list-pagination button {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+}
+
+.contract-list-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

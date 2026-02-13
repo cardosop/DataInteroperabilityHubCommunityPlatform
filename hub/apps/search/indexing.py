@@ -99,28 +99,34 @@ class SearchIndexer:
     def _get_classification(tenant_id: str, resource_type: str, resource_id: str) -> Optional[str]:
         """Get highest classification for a resource"""
         try:
+            classifications = None
             if resource_type == "DATASET":
                 classifications = DataClassification.objects.filter(
                     tenant_id=tenant_id,
-                    dataset_id=resource_id,
-                    status="APPROVED"
-                )
+                    dataset_id=resource_id
+                ).exclude(status="REJECTED")  # Include APPROVED and PENDING, exclude REJECTED
             elif resource_type == "ASSET":
                 classifications = DataClassification.objects.filter(
                     tenant_id=tenant_id,
-                    asset_id=resource_id,
-                    status="APPROVED"
-                )
+                    asset_id=resource_id
+                ).exclude(status="REJECTED")  # Include APPROVED and PENDING, exclude REJECTED
+            elif resource_type == "CONTRACT":
+                # Contracts might have classifications via related assets/datasets
+                # For now, return None (can be enhanced later)
+                return None
             else:
                 return None
 
-            if classifications.exists():
+            if classifications and classifications.exists():
                 # Get highest classification
-                highest = max(
-                    classifications,
-                    key=lambda c: SearchIndexer._get_classification_priority(c.category)
-                )
-                return highest.category
+                # Convert to list to avoid queryset evaluation issues
+                classification_list = list(classifications)
+                if classification_list:
+                    highest = max(
+                        classification_list,
+                        key=lambda c: SearchIndexer._get_classification_priority(c.category)
+                    )
+                    return highest.category
 
         except Exception as e:
             logger.warning(

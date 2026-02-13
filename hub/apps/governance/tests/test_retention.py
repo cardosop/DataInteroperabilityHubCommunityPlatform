@@ -293,6 +293,7 @@ class RetentionPolicyTest(TestCase):
             policy_type=RetentionPolicyType.TIME_BASED.value,
             retention_period_days=30,
             action=RetentionAction.SOFT_DELETE.value,
+            grace_period_days=0,  # No grace so this policy is enforced (SOFT_DELETE)
             enabled=True,
             created_by=self.user
         )

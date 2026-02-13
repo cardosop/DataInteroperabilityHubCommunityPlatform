@@ -11,31 +11,28 @@ Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
 
 import json
-import yaml
+
 import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+import yaml
 from rest_framework import status
 
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
 )
-from hub.apps.users.models import UserStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel, Entitlement
-
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.marketplace.models import Entitlement, Listing, ListingStatus, PricingModel
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
-User = get_user_model()
 
 
-class ExportEndpointsIntegrationTest(TestCase):
+class ExportEndpointsIntegrationTest(ContractsAPITestBase):
     """
     Comprehensive integration tests for all export endpoints.
 
@@ -48,15 +45,18 @@ class ExportEndpointsIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up comprehensive test fixtures"""
-        self.client = APIClient()
+        super().setUp()
+        # Update tenant/user names for clarity
+        self.tenant.name = "Provider Tenant"
+        self.tenant.slug = "provider-tenant"
+        self.tenant.save()
 
-        # Create provider tenant
-        self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
+        self.user.email = "provider@example.com"
+        self.user.save()
+
+        # Use base tenant/user as provider
+        self.provider_tenant = self.tenant
+        self.provider_user = self.user
 
         # Create consumer tenant
         self.consumer_tenant = Tenant.objects.create(
@@ -64,14 +64,6 @@ class ExportEndpointsIntegrationTest(TestCase):
             slug="consumer-tenant",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
-        )
-
-        # Create users
-        self.provider_user = User.objects.create_user(
-            email="provider@example.com",
-            password="testpass123",
-            tenant=self.provider_tenant,
-            status=UserStatus.ACTIVE,
         )
 
         self.consumer_user = User.objects.create_user(

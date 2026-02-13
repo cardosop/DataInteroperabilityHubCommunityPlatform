@@ -17,29 +17,35 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.contracts.models import Contract, ContractStatus
 from hub.apps.files.models import File, FileStatus
 
+from hub.apps.jobs.tests.billing_support import ensure_tenant_has_active_subscription
 
-pytestmark = pytest.mark.django_db(transaction=True)
+
+# Use default transaction=False so the test client and middleware share the same DB
+# connection; with transaction=True the client can use a different connection and
+# TenantSuspensionMiddleware does not see the subscription created in setUp (403).
+pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 
 class JobProcessingTest(TestCase):
     """Integration tests for job processing (T.9)"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-        
+
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
-            slug="test-tenant"
+            slug="test-tenant",
         )
-        
+
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
-            tenant=self.tenant
+            tenant=self.tenant,
         )
-        
+
+        ensure_tenant_has_active_subscription(self.tenant)
         self.client.force_authenticate(user=self.user)
     
     def test_job_creation_and_status_tracking(self):

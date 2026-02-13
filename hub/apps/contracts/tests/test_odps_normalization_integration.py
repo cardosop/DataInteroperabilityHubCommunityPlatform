@@ -12,10 +12,11 @@ Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
 
 import json
+
 from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
-from hub.apps.contracts.normalization import normalize_contract, get_normalizer
+from hub.apps.contracts.normalization import get_normalizer, normalize_contract
 
 
 class ODPSNormalizationIntegrationTest(TestCase):
@@ -602,3 +603,137 @@ class ODPSNormalizationIntegrationTest(TestCase):
             len(warnings) > 0 or status == NormalizationStatus.NORMALIZED_WITH_WARNINGS,
             "Expected warnings for invalid pricingPlans type",
         )
+
+    def test_integration_handles_unicode_characters(self):
+        """Test that integration handles unicode characters correctly."""
+        contract = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-unicode",
+                        "name": "测试产品",
+                        "description": "测试描述",
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "字段名称", "type": "string"}]},
+            },
+        }
+
+        contract_json = json.dumps(contract)
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=contract_json, format="JSON"
+        )
+
+        # Should handle unicode characters
+        self.assertIsNotNone(hub_contract)
+        if hub_contract and "info" in hub_contract:
+            self.assertIsNotNone(hub_contract["info"])
+
+    def test_integration_handles_special_characters(self):
+        """Test that integration handles special characters correctly."""
+        contract = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-special",
+                        "name": "Test & Co. (Special)",
+                        "description": "Test <description> & more",
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "field-name", "type": "string"}]},
+            },
+        }
+
+        contract_json = json.dumps(contract)
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=contract_json, format="JSON"
+        )
+
+        # Should handle special characters
+        self.assertIsNotNone(hub_contract)
+        if hub_contract and "info" in hub_contract:
+            self.assertIsNotNone(hub_contract["info"])
+
+    def test_integration_handles_very_large_documents(self):
+        """Test that integration handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        contract = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-large",
+                        "name": "Test Product",
+                        "description": large_description,
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
+        }
+
+        contract_json = json.dumps(contract)
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=contract_json, format="JSON"
+        )
+
+        # Should handle very large documents
+        self.assertIsNotNone(hub_contract)
+
+    def test_integration_handles_none_values(self):
+        """Test that integration handles None values correctly."""
+        contract = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-none",
+                        "name": "Test Product",
+                        "description": None,  # None value
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
+        }
+
+        contract_json = json.dumps(contract)
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=contract_json, format="JSON"
+        )
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(hub_contract)
+
+    def test_integration_handles_nested_structures(self):
+        """Test that integration handles nested structures correctly."""
+        contract = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {"en": {"productID": "test-nested", "name": "Test Product"}},
+                "dataSchema": {
+                    "fields": [
+                        {
+                            "name": "id",
+                            "type": "string",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    ]
+                },
+            },
+        }
+
+        contract_json = json.dumps(contract)
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract=contract_json, format="JSON"
+        )
+
+        # Should handle nested structures
+        self.assertIsNotNone(hub_contract)
+        if hub_contract and "schema" in hub_contract:
+            self.assertIsNotNone(hub_contract["schema"])

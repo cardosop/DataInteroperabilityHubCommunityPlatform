@@ -954,6 +954,8 @@ if __name__ == "__main__":
 ## Additional Resources
 
 - **[SDK README](../README.md)** - Complete SDK documentation
-- **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management
-- **[Marketplace Usage Guide](MARKETPLACE_USAGE.md)** - Marketplace integration
+- **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management APIs
+- **[Marketplace Usage Guide](MARKETPLACE_USAGE.md)** - Marketplace integration APIs
+- **[ODH Usage Guide](ODH_USAGE.md)** - ML/ODH APIs
+- **[Model Serving Usage Guide](MODEL_SERVING_USAGE.md)** - Model serving and A/B testing APIs
 - **[API Reference](../../../docs/API_REFERENCE.md)** - Complete API documentation

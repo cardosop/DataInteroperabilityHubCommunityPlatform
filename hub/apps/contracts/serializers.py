@@ -158,6 +158,8 @@ class FieldPropertySerializer(serializers.Serializer):
         help_text="Data type (e.g., 'string', 'integer', 'number', 'boolean', 'date', 'datetime')"
     )
     nullable = serializers.BooleanField(
+        required=False,
+        default=True,
         help_text="Whether the field can be null"
     )
     description = serializers.CharField(
@@ -374,6 +376,15 @@ class ContractSerializer(serializers.ModelSerializer):
     quality_specification = serializers.SerializerMethodField(
         help_text="Quality specification extracted from quality.specification"
     )
+    asset = serializers.SerializerMethodField(
+        help_text="Asset ID (UUID string) this contract belongs to"
+    )
+
+    def get_asset(self, obj):
+        """Return asset ID as string for API consistency."""
+        if obj.asset_id is None:
+            return None
+        return str(obj.asset_id)
 
     class Meta:
         model = Contract
@@ -569,7 +580,13 @@ class ContractSerializer(serializers.ModelSerializer):
         # Serialize fields with enhanced properties
         serialized_fields = []
         for field in fields:
-            field_data = FieldPropertySerializer(field).data
+            # Normalize field: map 'type' to 'data_type' if needed, ensure 'nullable' exists
+            normalized_field = field.copy()
+            if 'type' in normalized_field and 'data_type' not in normalized_field:
+                normalized_field['data_type'] = normalized_field.pop('type')
+            if 'nullable' not in normalized_field:
+                normalized_field['nullable'] = True  # Default to nullable if not specified
+            field_data = FieldPropertySerializer(normalized_field).data
             # Add constraint flags
             field_name = field.get('name', '')
             field_data['is_primary_key'] = field_name in primary_key_set
@@ -677,6 +694,16 @@ class ContractUpdateSerializer(serializers.Serializer):
     """Serializer for contract update"""
     original_raw = serializers.CharField(required=False)
     original_format = serializers.ChoiceField(choices=OriginalFormat.choices, required=False)
+    original_spec_type = serializers.ChoiceField(
+        choices=OriginalSpecType.choices,
+        required=False,
+        help_text="Spec type (ODCS/ODPS) for the new content; used when updating original_raw.",
+    )
+    original_spec_version = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Spec version (e.g. 3.0.2, 4.1); used with original_spec_type when updating.",
+    )
     status = serializers.ChoiceField(choices=ContractStatus.choices, required=False)
     remove_external_refs = serializers.BooleanField(
         required=False,

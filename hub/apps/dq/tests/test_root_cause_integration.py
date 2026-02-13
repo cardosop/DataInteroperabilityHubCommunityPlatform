@@ -85,21 +85,25 @@ class RootCauseAnalysisIntegrationTest(TestCase):
                 created_by=self.user
             )
             
+            # Use version=i+2 so (tenant, asset, version) is unique per iteration
+            # (version=1 is already used by self.dataset in setUp)
             historical_dataset = Dataset.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
                 file=historical_file,
                 schema_json={"fields": [{"name": "col1", "type": "string", "data_type": "string"}]},
                 format="CSV",
-                version=1,
+                version=i + 2,
                 row_count=1000,
                 created_by=self.user
             )
             
             job = Job.objects.create(
                 tenant=self.tenant,
-                job_type=JobType.DQ_CHECK,
+                type=JobType.DQ_RUN,
                 status=JobStatus.COMPLETED,
+                resource_type="DQ_RUN",
+                resource_id=historical_dataset.id,
                 created_by=self.user
             )
             
@@ -119,8 +123,10 @@ class RootCauseAnalysisIntegrationTest(TestCase):
         # Create failed run with check failures
         job = Job.objects.create(
             tenant=self.tenant,
-            job_type=JobType.DQ_CHECK,
+            type=JobType.DQ_RUN,
             status=JobStatus.COMPLETED,
+            resource_type="DQ_RUN",
+            resource_id=self.dataset.id,
             created_by=self.user
         )
         
@@ -165,8 +171,10 @@ class RootCauseAnalysisIntegrationTest(TestCase):
         for i in range(3):
             job = Job.objects.create(
                 tenant=self.tenant,
-                job_type=JobType.DQ_CHECK,
+                type=JobType.DQ_RUN,
                 status=JobStatus.COMPLETED,
+                resource_type="DQ_RUN",
+                resource_id=self.dataset.id,
                 created_by=self.user
             )
             

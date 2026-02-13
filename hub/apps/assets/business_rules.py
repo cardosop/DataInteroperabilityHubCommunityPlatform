@@ -449,7 +449,7 @@ class AssetsBusinessRules(BusinessRules):
         Validate status transition is allowed.
 
         Allowed transitions:
-        - DRAFT → ACTIVE
+        - DRAFT → ACTIVE, RETIRED (soft-delete from draft allowed)
         - ACTIVE → PUBLIC
         - ACTIVE → RETIRED
         - PUBLIC → RETIRED
@@ -480,9 +480,9 @@ class AssetsBusinessRules(BusinessRules):
                 details=details
             )
 
-        # Define allowed transitions
+        # Define allowed transitions (DRAFT may go to RETIRED for soft-delete)
         allowed_transitions = {
-            AssetStatus.DRAFT: [AssetStatus.ACTIVE],
+            AssetStatus.DRAFT: [AssetStatus.ACTIVE, AssetStatus.RETIRED],
             AssetStatus.ACTIVE: [AssetStatus.PUBLIC, AssetStatus.RETIRED],
             AssetStatus.PUBLIC: [AssetStatus.RETIRED],
             AssetStatus.RETIRED: []  # No transitions from RETIRED

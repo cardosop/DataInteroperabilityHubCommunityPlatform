@@ -12,33 +12,38 @@ from hub.apps.jobs.models import Job, JobType, JobStatus
 from hub.apps.users.models import UserStatus
 from hub.apps.tenants.models import Tenant
 
+from hub.apps.jobs.tests.billing_support import ensure_tenant_has_active_subscription
 
-pytestmark = pytest.mark.django_db(transaction=True)
+
+# Use default transaction=False so the test client and middleware share the same DB
+# connection; with transaction=True the client can use a different connection and
+# TenantSuspensionMiddleware does not see the subscription created in setUp (403).
+pytestmark = pytest.mark.django_db
 User = get_user_model()
 
 
 class JobCancellationTest(TestCase):
     """Test job cancellation"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.client = APIClient()
-        
-        # Create tenant
+
         self.tenant = Tenant.objects.create(
             name="Test Tenant",
             slug="test-tenant",
             status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            kyc_status="UNVERIFIED",
         )
-        
-        # Create user
+
         self.user = User.objects.create_user(
             email="user@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
+
+        ensure_tenant_has_active_subscription(self.tenant)
     
     def test_cancel_pending_job(self):
         """Test cancelling a pending job"""

@@ -168,6 +168,15 @@ class GovernanceBusinessRules(BusinessRules):
             result = result.combine(access_request_result)
             validated_items.append('access_request')
 
+        # Validate access request approval if provided (approver in kwargs)
+        approver = kwargs.get('approver')
+        if access_request and approver and validation_type == 'approval':
+            approval_result = self._validate_access_request_approval(
+                access_request, approver, tenant
+            )
+            result = result.combine(approval_result)
+            validated_items.append('approval')
+
         # Validate classification if provided
         if classification and validation_type in ('classification', 'all'):
             classification_result = self._validate_classification(classification, tenant, user)
@@ -1044,8 +1053,8 @@ class GovernanceBusinessRules(BusinessRules):
         # Initialize combined result
         result = ValidationResult(is_valid=True)
         details = {
-            'access_request_id': str(access_request.id),
-            'status': access_request.status,
+            'access_request_id': str(getattr(access_request, 'id', None) or ''),
+            'status': getattr(access_request, 'status', AccessRequestStatus.PENDING.value),
         }
 
         # Validate tenant context consistency

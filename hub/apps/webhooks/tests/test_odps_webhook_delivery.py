@@ -2,28 +2,31 @@
 Integration tests for ODPS webhook delivery.
 
 Tests that ODPS events properly trigger webhook delivery with correct filtering.
+Uses real HTTP server (TestWebhookServer) for delivery tests; no mocks.
+Uses wait_until for delivery state (no fixed time.sleep) per FIX_PLAN_FLAKY_TESTS_5_6_2.
 """
 
 import json
 import uuid
-from unittest.mock import patch, MagicMock
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
+    DeliveryStatus,
     Webhook,
     WebhookDelivery,
     WebhookEventType,
     WebhookStatus,
-    DeliveryStatus,
 )
-from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.odps_webhook_errors import ODPSWebhookValidationError
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import UserStatus
+from hub.apps.webhooks.service import WebhookDeliveryService
+from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
+from tests.utils.polling import wait_until
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -51,102 +54,84 @@ class ODPSWebhookDeliveryTest(TestCase):
             display_name="Test User",
         )
 
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_trigger_odps_webhook_delivery(self, mock_post):
-        """Test that ODPS events trigger webhook delivery"""
-        # Create webhook subscribed to ODPS events
-        webhook = Webhook.objects.create(
-            tenant=self.tenant,
-            name="ODPS Webhook",
-            url="https://example.com/webhook",
-            secret="test-secret",
-            event_types=[WebhookEventType.ODPS_CREATED],
-            status=WebhookStatus.ACTIVE,
-            created_by=self.user,
-        )
+    def test_trigger_odps_webhook_delivery(self):
+        """Test that ODPS events trigger webhook delivery via real HTTP server."""
+        with TestWebhookServer(response_status=200) as server:
+            webhook = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook",
+                url=server.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
+            event_data = {
+                "contract_id": str(uuid.uuid4()),
+                "asset_id": str(uuid.uuid4()),
+                "status": "ACTIVE",
+            }
+            count = WebhookDeliveryService.trigger_webhook(
+                tenant_id=str(self.tenant.id),
+                event_type=WebhookEventType.ODPS_CREATED,
+                resource_type="ODPS",
+                resource_id=str(uuid.uuid4()),
+                event_data=event_data,
+            )
+            self.assertEqual(count, 1)
 
-        # Mock successful HTTP response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "OK"
-        mock_post.return_value = mock_response
+            def has_success_delivery():
+                d = WebhookDelivery.objects.filter(webhook=webhook).first()
+                return d is not None and d.status == DeliveryStatus.SUCCESS
 
-        # Trigger ODPS webhook
-        event_data = {
-            "contract_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
-            "status": "ACTIVE",
-        }
+            wait_until(
+                has_success_delivery, timeout=5.0, message="ODPS webhook delivery not SUCCESS"
+            )
+            deliveries = WebhookDelivery.objects.filter(webhook=webhook)
+            self.assertEqual(deliveries.count(), 1)
+            delivery = deliveries.first()
+            self.assertEqual(delivery.event_type, WebhookEventType.ODPS_CREATED)
+            self.assertEqual(delivery.status, DeliveryStatus.SUCCESS)
+            self.assertIsNotNone(delivery.delivered_at)
+            received = server.get_received_requests(timeout=2.0)
+            self.assertEqual(len(received), 1)
+            self.assertEqual(
+                received[0]["headers"].get("X-Webhook-Event-Type"), WebhookEventType.ODPS_CREATED
+            )
 
-        count = WebhookDeliveryService.trigger_webhook(
-            tenant_id=str(self.tenant.id),
-            event_type=WebhookEventType.ODPS_CREATED,
-            resource_type="ODPS",
-            resource_id=str(uuid.uuid4()),
-            event_data=event_data,
-        )
+    def test_trigger_odps_webhook_convenience_method(self):
+        """Test trigger_odps_webhook() convenience method via real HTTP server."""
+        with TestWebhookServer(response_status=200) as server:
+            webhook = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook",
+                url=server.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_UPDATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
+            event_data = {
+                "contract_id": str(uuid.uuid4()),
+                "changes": {"status": "ACTIVE"},
+            }
+            count = WebhookDeliveryService.trigger_odps_webhook(
+                tenant_id=str(self.tenant.id),
+                event_type=WebhookEventType.ODPS_UPDATED,
+                resource_type="ODPS",
+                resource_id=str(uuid.uuid4()),
+                event_data=event_data,
+            )
+            self.assertEqual(count, 1)
 
-        # Verify webhook was triggered
-        self.assertEqual(count, 1)
+            def has_delivery():
+                return WebhookDelivery.objects.filter(webhook=webhook).count() >= 1
 
-        # Verify delivery was created
-        deliveries = WebhookDelivery.objects.filter(webhook=webhook)
-        self.assertEqual(deliveries.count(), 1)
-
-        delivery = deliveries.first()
-        self.assertEqual(delivery.event_type, WebhookEventType.ODPS_CREATED)
-        self.assertEqual(delivery.status, DeliveryStatus.SUCCESS)
-        self.assertIsNotNone(delivery.delivered_at)
-
-        # Verify HTTP request was made
-        mock_post.assert_called_once()
-        call_args = mock_post.call_args
-        self.assertEqual(call_args[0][0], webhook.url)
-        self.assertEqual(call_args[1]["headers"]["X-Webhook-Event-Type"], WebhookEventType.ODPS_CREATED)
-
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_trigger_odps_webhook_convenience_method(self, mock_post):
-        """Test trigger_odps_webhook() convenience method"""
-        # Create webhook subscribed to ODPS events
-        webhook = Webhook.objects.create(
-            tenant=self.tenant,
-            name="ODPS Webhook",
-            url="https://example.com/webhook",
-            secret="test-secret",
-            event_types=[WebhookEventType.ODPS_UPDATED],
-            status=WebhookStatus.ACTIVE,
-            created_by=self.user,
-        )
-
-        # Mock successful HTTP response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "OK"
-        mock_post.return_value = mock_response
-
-        # Trigger ODPS webhook using convenience method
-        event_data = {
-            "contract_id": str(uuid.uuid4()),
-            "changes": {"status": "ACTIVE"},
-        }
-
-        count = WebhookDeliveryService.trigger_odps_webhook(
-            tenant_id=str(self.tenant.id),
-            event_type=WebhookEventType.ODPS_UPDATED,
-            resource_type="ODPS",
-            resource_id=str(uuid.uuid4()),
-            event_data=event_data,
-        )
-
-        # Verify webhook was triggered
-        self.assertEqual(count, 1)
-
-        # Verify delivery was created
-        deliveries = WebhookDelivery.objects.filter(webhook=webhook)
-        self.assertEqual(deliveries.count(), 1)
-
-        delivery = deliveries.first()
-        self.assertEqual(delivery.event_type, WebhookEventType.ODPS_UPDATED)
+            wait_until(has_delivery, timeout=5.0, message="ODPS webhook delivery not recorded")
+            deliveries = WebhookDelivery.objects.filter(webhook=webhook)
+            self.assertEqual(deliveries.count(), 1)
+            delivery = deliveries.first()
+            self.assertEqual(delivery.event_type, WebhookEventType.ODPS_UPDATED)
 
     def test_trigger_odps_webhook_invalid_event_type(self):
         """Test that trigger_odps_webhook() raises error for non-ODPS events"""
@@ -160,114 +145,101 @@ class ODPSWebhookDeliveryTest(TestCase):
             )
 
         self.assertIn("is not an ODPS event type", str(cm.exception))
-        self.assertEqual(cm.exception.error_code, ODPSWebhookValidationError.ERROR_CODE_INVALID_EVENT_TYPE)
-
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_odps_webhook_filtering(self, mock_post):
-        """Test that only webhooks subscribed to ODPS events receive deliveries"""
-        # Create webhook subscribed to ODPS events
-        odps_webhook = Webhook.objects.create(
-            tenant=self.tenant,
-            name="ODPS Webhook",
-            url="https://example.com/odps",
-            secret="test-secret",
-            event_types=[WebhookEventType.ODPS_CREATED],
-            status=WebhookStatus.ACTIVE,
-            created_by=self.user,
+        self.assertEqual(
+            cm.exception.error_code, ODPSWebhookValidationError.ERROR_CODE_INVALID_EVENT_TYPE
         )
 
-        # Create webhook subscribed to contract events only
-        contract_webhook = Webhook.objects.create(
-            tenant=self.tenant,
-            name="Contract Webhook",
-            url="https://example.com/contract",
-            secret="test-secret",
-            event_types=[WebhookEventType.CONTRACT_CREATED],
-            status=WebhookStatus.ACTIVE,
-            created_by=self.user,
-        )
+    def test_odps_webhook_filtering(self):
+        """Test that only webhooks subscribed to ODPS events receive deliveries (real HTTP)."""
+        with TestWebhookServer(response_status=200) as server_odps:
+            with TestWebhookServer(response_status=200) as server_contract:
+                odps_webhook = Webhook.objects.create(
+                    tenant=self.tenant,
+                    name="ODPS Webhook",
+                    url=server_odps.get_url(),
+                    secret="test-secret",
+                    event_types=[WebhookEventType.ODPS_CREATED],
+                    status=WebhookStatus.ACTIVE,
+                    created_by=self.user,
+                )
 
-        # Mock successful HTTP response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "OK"
-        mock_post.return_value = mock_response
+                contract_webhook = Webhook.objects.create(
+                    tenant=self.tenant,
+                    name="Contract Webhook",
+                    url=server_contract.get_url(),
+                    secret="test-secret",
+                    event_types=[WebhookEventType.CONTRACT_CREATED],
+                    status=WebhookStatus.ACTIVE,
+                    created_by=self.user,
+                )
 
-        # Trigger ODPS event
-        event_data = {
-            "contract_id": str(uuid.uuid4()),
-        }
+                event_data = {"contract_id": str(uuid.uuid4())}
 
-        count = WebhookDeliveryService.trigger_webhook(
-            tenant_id=str(self.tenant.id),
-            event_type=WebhookEventType.ODPS_CREATED,
-            resource_type="ODPS",
-            resource_id=str(uuid.uuid4()),
-            event_data=event_data,
-        )
+                count = WebhookDeliveryService.trigger_webhook(
+                    tenant_id=str(self.tenant.id),
+                    event_type=WebhookEventType.ODPS_CREATED,
+                    resource_type="ODPS",
+                    resource_id=str(uuid.uuid4()),
+                    event_data=event_data,
+                )
 
-        # Only ODPS webhook should receive delivery
-        self.assertEqual(count, 1)
+                self.assertEqual(count, 1)
 
-        # Verify only ODPS webhook has delivery
-        odps_deliveries = WebhookDelivery.objects.filter(webhook=odps_webhook)
-        self.assertEqual(odps_deliveries.count(), 1)
+                odps_deliveries = WebhookDelivery.objects.filter(webhook=odps_webhook)
+                self.assertEqual(odps_deliveries.count(), 1)
 
-        contract_deliveries = WebhookDelivery.objects.filter(webhook=contract_webhook)
-        self.assertEqual(contract_deliveries.count(), 0)
+                contract_deliveries = WebhookDelivery.objects.filter(webhook=contract_webhook)
+                self.assertEqual(contract_deliveries.count(), 0)
 
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_multiple_odps_webhooks_receive_delivery(self, mock_post):
-        """Test that multiple webhooks subscribed to same ODPS event receive delivery"""
-        # Create multiple webhooks subscribed to same ODPS event
-        webhook1 = Webhook.objects.create(
-            tenant=self.tenant,
-            name="ODPS Webhook 1",
-            url="https://example.com/webhook1",
-            secret="test-secret",
-            event_types=[WebhookEventType.ODPS_CREATED],
-            status=WebhookStatus.ACTIVE,
-            created_by=self.user,
-        )
+    def test_multiple_odps_webhooks_receive_delivery(self):
+        """Test that multiple webhooks subscribed to same ODPS event receive delivery (real HTTP)."""
+        with TestWebhookServer(response_status=200) as server:
+            webhook1 = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook 1",
+                url=server.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
 
-        webhook2 = Webhook.objects.create(
-            tenant=self.tenant,
-            name="ODPS Webhook 2",
-            url="https://example.com/webhook2",
-            secret="test-secret",
-            event_types=[WebhookEventType.ODPS_CREATED],
-            status=WebhookStatus.ACTIVE,
-            created_by=self.user,
-        )
+            webhook2 = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook 2",
+                url=server.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
 
-        # Mock successful HTTP response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "OK"
-        mock_post.return_value = mock_response
+            event_data = {"contract_id": str(uuid.uuid4())}
 
-        # Trigger ODPS event
-        event_data = {
-            "contract_id": str(uuid.uuid4()),
-        }
+            count = WebhookDeliveryService.trigger_webhook(
+                tenant_id=str(self.tenant.id),
+                event_type=WebhookEventType.ODPS_CREATED,
+                resource_type="ODPS",
+                resource_id=str(uuid.uuid4()),
+                event_data=event_data,
+            )
 
-        count = WebhookDeliveryService.trigger_webhook(
-            tenant_id=str(self.tenant.id),
-            event_type=WebhookEventType.ODPS_CREATED,
-            resource_type="ODPS",
-            resource_id=str(uuid.uuid4()),
-            event_data=event_data,
-        )
+            self.assertEqual(count, 2)
 
-        # Both webhooks should receive delivery
-        self.assertEqual(count, 2)
+            deliveries1 = WebhookDelivery.objects.filter(webhook=webhook1)
+            self.assertEqual(deliveries1.count(), 1)
 
-        # Verify both webhooks have deliveries
-        deliveries1 = WebhookDelivery.objects.filter(webhook=webhook1)
-        self.assertEqual(deliveries1.count(), 1)
+            deliveries2 = WebhookDelivery.objects.filter(webhook=webhook2)
+            self.assertEqual(deliveries2.count(), 1)
 
-        deliveries2 = WebhookDelivery.objects.filter(webhook=webhook2)
-        self.assertEqual(deliveries2.count(), 1)
+            def two_requests_received():
+                return len(server.get_received_requests(timeout=0.3)) >= 2
+
+            wait_until(
+                two_requests_received, timeout=5.0, message="Server did not receive 2 requests"
+            )
+            received = server.get_received_requests(timeout=2.0)
+            self.assertEqual(len(received), 2)
 
     def test_get_webhooks_for_odps_events(self):
         """Test get_webhooks_for_odps_events() service method"""
@@ -345,8 +317,7 @@ class ODPSWebhookDeliveryTest(TestCase):
 
         # Get webhooks for specific event type
         created_webhooks = WebhookDeliveryService.get_webhooks_for_event_type(
-            str(self.tenant.id),
-            WebhookEventType.ODPS_CREATED
+            str(self.tenant.id), WebhookEventType.ODPS_CREATED
         )
 
         webhook_ids = {w.id for w in created_webhooks}
@@ -354,54 +325,43 @@ class ODPSWebhookDeliveryTest(TestCase):
         self.assertIn(webhook3.id, webhook_ids)
         self.assertNotIn(webhook2.id, webhook_ids)
 
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_odps_webhook_payload_structure(self, mock_post):
-        """Test that ODPS webhook payload has correct structure"""
-        # Create webhook
-        webhook = Webhook.objects.create(
-            tenant=self.tenant,
-            name="ODPS Webhook",
-            url="https://example.com/webhook",
-            secret="test-secret",
-            event_types=[WebhookEventType.ODPS_CREATED],
-            status=WebhookStatus.ACTIVE,
-            created_by=self.user,
-        )
+    def test_odps_webhook_payload_structure(self):
+        """Test that ODPS webhook payload has correct structure (real server)."""
+        with TestWebhookServer(response_status=200) as server:
+            webhook = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook",
+                url=server.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
+            contract_id = str(uuid.uuid4())
+            resource_id = str(uuid.uuid4())
+            event_data = {
+                "contract_id": contract_id,
+                "status": "ACTIVE",
+            }
+            WebhookDeliveryService.trigger_webhook(
+                tenant_id=str(self.tenant.id),
+                event_type=WebhookEventType.ODPS_CREATED,
+                resource_type="ODPS",
+                resource_id=resource_id,
+                event_data=event_data,
+            )
 
-        # Mock successful HTTP response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "OK"
-        mock_post.return_value = mock_response
+            def has_delivery():
+                return WebhookDelivery.objects.filter(webhook=webhook).first() is not None
 
-        # Trigger ODPS webhook
-        contract_id = str(uuid.uuid4())
-        resource_id = str(uuid.uuid4())
-        event_data = {
-            "contract_id": contract_id,
-            "status": "ACTIVE",
-        }
-
-        WebhookDeliveryService.trigger_webhook(
-            tenant_id=str(self.tenant.id),
-            event_type=WebhookEventType.ODPS_CREATED,
-            resource_type="ODPS",
-            resource_id=resource_id,
-            event_data=event_data,
-        )
-
-        # Verify payload structure
-        delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
-        self.assertIsNotNone(delivery)
-
-        payload = delivery.payload
-        self.assertEqual(payload["event_type"], WebhookEventType.ODPS_CREATED)
-        self.assertEqual(payload["resource_type"], "ODPS")
-        self.assertEqual(payload["resource_id"], resource_id)
-        self.assertEqual(payload["data"], event_data)
-        self.assertIn("timestamp", payload)
-
-        # Verify signature is present
-        self.assertIsNotNone(delivery.signature)
-        self.assertEqual(len(delivery.signature), 64)  # SHA256 hex digest length
-
+            wait_until(has_delivery, timeout=5.0, message="ODPS webhook delivery not recorded")
+            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
+            self.assertIsNotNone(delivery)
+            payload = delivery.payload
+            self.assertEqual(payload["event_type"], WebhookEventType.ODPS_CREATED)
+            self.assertEqual(payload["resource_type"], "ODPS")
+            self.assertEqual(payload["resource_id"], resource_id)
+            self.assertEqual(payload["data"], event_data)
+            self.assertIn("timestamp", payload)
+            self.assertIsNotNone(delivery.signature)
+            self.assertEqual(len(delivery.signature), 64)

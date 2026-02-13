@@ -10,40 +10,46 @@ Tests the complete marketplace integration framework with real implementations:
 
 All tests use real services - no mocks or stubs.
 """
-import pytest
+
 import time
+
+import pytest
+from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
-from rest_framework import status
 from django_rq import get_queue
+from rest_framework import status
+from rest_framework.test import APIClient
 
-from hub.apps.integrations.factory import MarketplaceConnectorFactory
-from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob, MarketplaceMapping
+from hub.apps.assets.models import Asset, AssetSourceType
+from hub.apps.audit.models import AuditEvent
+from hub.apps.auth.models import APIKey
+from hub.apps.core.events.models import Event
 from hub.apps.integrations.base import (
-    MarketplaceType,
-    SyncDirection,
-    SyncStatus,
     DataMarketplaceConnector,
+    MarketplaceAssetMapping,
     MarketplaceListing,
     MarketplaceResource,
-    MarketplaceAssetMapping,
+    MarketplaceType,
+    SyncDirection,
     SyncResult,
+    SyncStatus,
 )
+from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.models import (
+    MarketplaceConnection,
+    MarketplaceMapping,
+    MarketplaceSyncJob,
+)
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.integrations.views import (
     MarketplaceConnectionViewSet,
-    MarketplaceSyncJobViewSet,
     MarketplaceMappingViewSet,
+    MarketplaceSyncJobViewSet,
 )
-from hub.apps.core.events.models import Event
-from hub.apps.audit.models import AuditEvent
-from hub.apps.jobs.models import Job, JobType, JobStatus
-from hub.apps.assets.models import Asset, AssetSourceType
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus, Role
-from hub.apps.auth.models import APIKey
+from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import Role, User, UserStatus
 
 User = get_user_model()
 pytestmark = [
@@ -62,22 +68,34 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # CRITICAL: Disconnect semantic service signals to prevent timeouts
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+
         self.tenant = Tenant.objects.create(
             name="Framework Test Tenant",
             slug="framework-test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
             email="framework-test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create role and assign to user
         data_provider_role, _ = Role.objects.get_or_create(
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider Role"}
+            name="DATA_PROVIDER", defaults={"description": "Data Provider Role"}
         )
         self.user.user_roles.create(role=data_provider_role)
 
@@ -86,19 +104,19 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             tenant=self.tenant,
             user=self.user,
             name="Framework Test API Key",
-            scopes=["integrations:write", "integrations:read"]
+            scopes=["integrations:write", "integrations:read"],
         )
 
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id="framework-test-request"
+            request_id="framework-test-request",
         )
 
         self.config = {
             "api_key": "test-api-key-123",
             "endpoint": "https://api.example.com",
-            "timeout": 30
+            "timeout": 30,
         }
 
         # Register real test connectors
@@ -106,10 +124,11 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
 
     def _register_test_connectors(self):
         """Register test connectors for integration tests"""
+
         # Base test connector class
         class TestConnectorBase(DataMarketplaceConnector):
             def __init__(self, **kwargs):
-                self.config = kwargs.get('config', {})
+                self.config = kwargs.get("config", {})
 
             @property
             def supported_sync_directions(self):
@@ -126,20 +145,20 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
                     MarketplaceListing(
                         marketplace_id="listing-1",
                         marketplace_type=self.marketplace_type,
-                        title="Test Listing 1"
+                        title="Test Listing 1",
                     ),
                     MarketplaceListing(
                         marketplace_id="listing-2",
                         marketplace_type=self.marketplace_type,
-                        title="Test Listing 2"
-                    )
+                        title="Test Listing 2",
+                    ),
                 ]
 
             def get_listing(self, listing_id: str):
                 return MarketplaceListing(
                     marketplace_id=listing_id,
                     marketplace_type=self.marketplace_type,
-                    title=f"Test Listing {listing_id}"
+                    title=f"Test Listing {listing_id}",
                 )
 
             def list_resources(self, listing_id: str):
@@ -148,7 +167,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
                         resource_id="resource-1",
                         resource_type="FILE",
                         name="Test Resource 1",
-                        url="https://example.com/resource1"
+                        url="https://example.com/resource1",
                     )
                 ]
 
@@ -169,14 +188,14 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
                     asset_data={"name": listing.title},
                     source_type=AssetSourceType.FEDERATED,
                     source_metadata={},
-                    odps_metadata={}
+                    odps_metadata={},
                 )
 
             def map_from_hub_asset(self, asset_data, odps_metadata=None, odcs_metadata=None):
                 return MarketplaceListing(
                     marketplace_id="test-listing",
                     marketplace_type=self.marketplace_type,
-                    title=asset_data.get("name", "Unknown")
+                    title=asset_data.get("name", "Unknown"),
                 )
 
             def sync_push(self, asset_ids, options=None):
@@ -184,15 +203,12 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
                     status=SyncStatus.COMPLETED,
                     total_items=len(asset_ids),
                     successful_items=len(asset_ids),
-                    failed_items=0
+                    failed_items=0,
                 )
 
             def sync_pull(self, listing_ids=None, filters=None, options=None):
                 return SyncResult(
-                    status=SyncStatus.COMPLETED,
-                    total_items=2,
-                    successful_items=2,
-                    failed_items=0
+                    status=SyncStatus.COMPLETED, total_items=2, successful_items=2, failed_items=0
                 )
 
         # Register connectors for different marketplace types
@@ -211,8 +227,12 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
                 return MarketplaceType.AWS_DATA_EXCHANGE
 
         # Register connectors
-        MarketplaceConnectorFactory.register_connector(MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestSnowflakeConnector)
-        MarketplaceConnectorFactory.register_connector(MarketplaceType.AWS_DATA_EXCHANGE, TestAWSConnector)
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestSnowflakeConnector
+        )
+        MarketplaceConnectorFactory.register_connector(
+            MarketplaceType.AWS_DATA_EXCHANGE, TestAWSConnector
+        )
 
         self.test_connectors[MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE] = TestSnowflakeConnector
         self.test_connectors[MarketplaceType.AWS_DATA_EXCHANGE] = TestAWSConnector
@@ -225,7 +245,19 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             except ValueError:
                 pass
 
-    # === Factory Integration Tests ===
+        # === Factory Integration Tests ===
+        """Reconnect signals after test"""
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass
 
     def test_factory_with_real_connectors(self):
         """Test factory creates real connector instances"""
@@ -236,8 +268,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
 
         # Test connector creation
         connector = MarketplaceConnectorFactory.create_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-            config=self.config
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, config=self.config
         )
 
         self.assertIsNotNone(connector)
@@ -268,19 +299,20 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Framework Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Verify connection in database
         db_connection = MarketplaceConnection.objects.get(id=connection.id)
         self.assertEqual(db_connection.name, "Framework Test Connection")
-        self.assertEqual(db_connection.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value)
+        self.assertEqual(
+            db_connection.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        )
         self.assertEqual(db_connection.tenant, self.tenant)
 
         # Test connection retrieval
         retrieved = self.service.get_connection(
-            connection_id=str(connection.id),
-            tenant_id=str(self.tenant.id)
+            connection_id=str(connection.id), tenant_id=str(self.tenant.id)
         )
         self.assertEqual(retrieved.id, connection.id)
 
@@ -289,7 +321,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            name="Updated Framework Test Connection"
+            name="Updated Framework Test Connection",
         )
         self.assertEqual(updated.name, "Updated Framework Test Connection")
 
@@ -304,18 +336,18 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Test connection
         result = self.service.test_connection(
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
-        self.assertTrue(result['success'])
-        self.assertIn('tested_at', result)
+        self.assertTrue(result["success"])
+        self.assertIn("tested_at", result)
 
     def test_service_sync_operations(self):
         """Test service sync operations with real database"""
@@ -324,7 +356,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Sync Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Create test asset
@@ -332,7 +364,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Asset",
-            source_type=AssetSourceType.HUB_NATIVE
+            source_type=AssetSourceType.HUB_NATIVE,
         )
 
         # Test PUSH sync
@@ -340,7 +372,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_ids=[str(asset.id)]
+            asset_ids=[str(asset.id)],
         )
 
         self.assertIsNotNone(sync_job.id)
@@ -357,7 +389,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            listing_ids=["listing-1", "listing-2"]
+            listing_ids=["listing-1", "listing-2"],
         )
 
         self.assertIsNotNone(pull_sync_job.id)
@@ -374,34 +406,40 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         create_data = {
             "marketplace_type": MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             "name": "API Test Connection",
-            "config": self.config
+            "config": self.config,
         }
-        response = client.post('/api/integrations/marketplace/connections/', create_data, format='json')
+        response = client.post(
+            "/api/integrations/marketplace/connections/", create_data, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        connection_id = response.data['id']
+        connection_id = response.data["id"]
 
         # Test LIST connections
-        response = client.get('/api/integrations/marketplace/connections/')
+        response = client.get("/api/integrations/marketplace/connections/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 1)
+        self.assertGreaterEqual(len(response.data["results"]), 1)
 
         # Test RETRIEVE connection
-        response = client.get(f'/api/integrations/marketplace/connections/{connection_id}/')
+        response = client.get(f"/api/integrations/marketplace/connections/{connection_id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['name'], "API Test Connection")
+        self.assertEqual(response.data["name"], "API Test Connection")
 
         # Test UPDATE connection
         update_data = {"name": "Updated API Test Connection"}
-        response = client.patch(f'/api/integrations/marketplace/connections/{connection_id}/', update_data, format='json')
+        response = client.patch(
+            f"/api/integrations/marketplace/connections/{connection_id}/",
+            update_data,
+            format="json",
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['name'], "Updated API Test Connection")
+        self.assertEqual(response.data["name"], "Updated API Test Connection")
 
         # Verify in database
         db_connection = MarketplaceConnection.objects.get(id=connection_id)
         self.assertEqual(db_connection.name, "Updated API Test Connection")
 
         # Test DELETE connection
-        response = client.delete(f'/api/integrations/marketplace/connections/{connection_id}/')
+        response = client.delete(f"/api/integrations/marketplace/connections/{connection_id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
         # Verify deleted
@@ -418,18 +456,16 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="API Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Test connection via API
         response = client.post(
-            f'/api/integrations/marketplace/connections/{connection.id}/test/',
-            {},
-            format='json'
+            f"/api/integrations/marketplace/connections/{connection.id}/test/", {}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('success', response.data)
-        self.assertTrue(response.data['success'])
+        self.assertIn("success", response.data)
+        self.assertTrue(response.data["success"])
 
     def test_api_sync_job_endpoints(self):
         """Test API sync job endpoints"""
@@ -442,7 +478,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Sync Job Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Create asset
@@ -450,28 +486,28 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Asset",
-            source_type=AssetSourceType.HUB_NATIVE
+            source_type=AssetSourceType.HUB_NATIVE,
         )
 
         # Test CREATE sync job
         sync_data = {
             "connection_id": str(connection.id),
             "direction": SyncDirection.PUSH.value,
-            "asset_ids": [str(asset.id)]
+            "asset_ids": [str(asset.id)],
         }
-        response = client.post('/api/integrations/marketplace/sync-jobs/', sync_data, format='json')
+        response = client.post("/api/integrations/marketplace/sync-jobs/", sync_data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        sync_job_id = response.data['id']
+        sync_job_id = response.data["id"]
 
         # Test LIST sync jobs
-        response = client.get('/api/integrations/marketplace/sync-jobs/')
+        response = client.get("/api/integrations/marketplace/sync-jobs/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 1)
+        self.assertGreaterEqual(len(response.data["results"]), 1)
 
         # Test RETRIEVE sync job
-        response = client.get(f'/api/integrations/marketplace/sync-jobs/{sync_job_id}/')
+        response = client.get(f"/api/integrations/marketplace/sync-jobs/{sync_job_id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['direction'], SyncDirection.PUSH.value)
+        self.assertEqual(response.data["direction"], SyncDirection.PUSH.value)
 
     # === Event Publishing Integration Tests ===
 
@@ -483,26 +519,28 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Event Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Wait for event persistence
         time.sleep(0.2)
 
         # Verify integration.connection.created event
-        events = Event.objects.filter(
-            event_type="integration.connection.created"
-        ).order_by('-timestamp')
+        events = Event.objects.filter(event_type="integration.connection.created").order_by(
+            "-timestamp"
+        )
         self.assertGreaterEqual(events.count(), 1)
 
         event = events.first()
         self.assertEqual(event.data["connection_id"], str(connection.id))
-        self.assertEqual(event.data["marketplace_type"], MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value)
+        self.assertEqual(
+            event.data["marketplace_type"], MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        )
 
         # Verify marketplace.connection.created event
         marketplace_events = Event.objects.filter(
             event_type="marketplace.connection.created"
-        ).order_by('-timestamp')
+        ).order_by("-timestamp")
         self.assertGreaterEqual(marketplace_events.count(), 1)
 
         marketplace_event = marketplace_events.first()
@@ -515,14 +553,14 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Sync Event Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         asset = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name="Test Asset",
-            source_type=AssetSourceType.HUB_NATIVE
+            source_type=AssetSourceType.HUB_NATIVE,
         )
 
         # Create sync job
@@ -530,7 +568,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_ids=[str(asset.id)]
+            asset_ids=[str(asset.id)],
         )
 
         # Wait for event persistence
@@ -538,11 +576,8 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
 
         # Verify sync job events
         events = Event.objects.filter(
-            event_type__in=[
-                "integration.sync_job.created",
-                "marketplace.sync.started"
-            ]
-        ).order_by('-timestamp')
+            event_type__in=["integration.sync_job.created", "marketplace.sync.started"]
+        ).order_by("-timestamp")
         self.assertGreaterEqual(events.count(), 1)
 
     # === Job Queue Integration Tests ===
@@ -554,14 +589,14 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Job Queue Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         asset = Asset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
             name="Test Asset",
-            source_type=AssetSourceType.HUB_NATIVE
+            source_type=AssetSourceType.HUB_NATIVE,
         )
 
         # Create sync job (should create background job)
@@ -569,11 +604,11 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_ids=[str(asset.id)]
+            asset_ids=[str(asset.id)],
         )
 
         # Verify sync job has workflow instance ID (workflow-based execution)
-        self.assertIn('workflow_instance_id', sync_job.metadata)
+        self.assertIn("workflow_instance_id", sync_job.metadata)
 
         # Verify sync job was created
         db_sync_job = MarketplaceSyncJob.objects.get(id=sync_job.id)
@@ -588,7 +623,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Audit Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Wait for audit log creation
@@ -598,7 +633,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         audit_events = AuditEvent.objects.filter(
             resource_type="MARKETPLACE_CONNECTION",
             action="CONNECTION_CREATED",
-            resource_id=str(connection.id)
+            resource_id=str(connection.id),
         )
         self.assertEqual(audit_events.count(), 1)
 
@@ -613,8 +648,7 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
         """Test complete framework integration: factory -> service -> API -> events -> jobs"""
         # 1. Factory: Create connector
         connector = MarketplaceConnectorFactory.create_connector(
-            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-            config=self.config
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, config=self.config
         )
         self.assertIsNotNone(connector)
 
@@ -624,21 +658,19 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="E2E Test Connection",
-            config=self.config
+            config=self.config,
         )
         self.assertIsNotNone(connection.id)
 
         # 3. API: Retrieve connection
         client = APIClient()
         client.force_authenticate(user=self.user)
-        response = client.get(f'/api/integrations/marketplace/connections/{connection.id}/')
+        response = client.get(f"/api/integrations/marketplace/connections/{connection.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # 4. Events: Verify events published
         time.sleep(0.2)
-        events = Event.objects.filter(
-            event_type="integration.connection.created"
-        )
+        events = Event.objects.filter(event_type="integration.connection.created")
         self.assertGreaterEqual(events.count(), 1)
 
         # 5. Jobs: Create sync job
@@ -646,18 +678,18 @@ class MarketplaceFrameworkIntegrationTest(TransactionTestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="E2E Test Asset",
-            source_type=AssetSourceType.HUB_NATIVE
+            source_type=AssetSourceType.HUB_NATIVE,
         )
 
         sync_job = self.service.sync_assets_to_marketplace(
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_ids=[str(asset.id)]
+            asset_ids=[str(asset.id)],
         )
         self.assertIsNotNone(sync_job.id)
 
         # 6. Verify complete integration
-        self.assertIn('workflow_instance_id', sync_job.metadata)
+        self.assertIn("workflow_instance_id", sync_job.metadata)
         self.assertEqual(sync_job.connection.id, connection.id)
         self.assertEqual(sync_job.tenant.id, self.tenant.id)

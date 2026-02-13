@@ -820,6 +820,10 @@ async def error_recovery_example():
 
 ## Additional Resources
 
-- [ODH Documentation](https://opendatahub.io/)
-- [DataHub SDK Main README](../README.md)
-- [DataHub API Documentation](https://api-docs.example.com/)
+- **[SDK README](../README.md)** - Complete SDK documentation
+- **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management APIs
+- **[Marketplace Usage Guide](MARKETPLACE_USAGE.md)** - Marketplace integration APIs
+- **[BaaS Usage Guide](BAAS_USAGE.md)** - BaaS platform APIs
+- **[Model Serving Usage Guide](MODEL_SERVING_USAGE.md)** - Model serving and A/B testing APIs
+- **[API Reference](../../../docs/API_REFERENCE.md)** - Complete API documentation
+- [ODH Documentation](https://opendatahub.io/) - External ODH documentation

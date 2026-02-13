@@ -122,7 +122,7 @@ class DataClassifier:
             category=ClassificationCategory.PII,
             patterns=[
                 r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$',
-                r'^[0-9a-fA-F:]+$',  # IPv6
+                r'^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4})+$',  # IPv6 (must contain colon)
             ],
             keywords=[],
             field_name_patterns=['ip_address', 'ip', 'ipv4', 'ipv6'],

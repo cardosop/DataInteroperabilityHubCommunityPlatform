@@ -85,7 +85,49 @@ class MyService(BaseService):
 2. **Event Publishing**: Publish events for asynchronous coordination
 3. **Transaction Management**: Manage transaction boundaries
 4. **Error Handling**: Handle errors consistently
-5. **Audit Logging**: Log all operations
+5. **Audit Logging**: Log all operations (emit audit events once per mutation)
+
+#### Service Layer Consistency (Phase 24.7)
+
+**CRITICAL**: All create/update/delete operations for domain resources MUST go through a service layer. Views use serializers for request validation only.
+
+**Rule**: No direct `serializer.save()` in views for writes. All mutations go through service layer methods that:
+- Apply business rules validation
+- Emit audit events once per mutation
+- Handle transaction boundaries
+- Publish domain events
+
+**Pattern**:
+```python
+# ✅ CORRECT: Use service layer
+def create(self, request, *args, **kwargs):
+    serializer = self.get_serializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    service = MyService(tenant_id=tenant_id, user_id=str(request.user.id))
+    resource = service.create_resource(
+        tenant_id=tenant_id,
+        user_id=str(request.user.id),
+        **serializer.validated_data,
+    )
+    return Response(ResourceSerializer(resource).data, status=status.HTTP_201_CREATED)
+
+# ❌ WRONG: Direct serializer.save() bypasses business rules and audit
+def create(self, request, *args, **kwargs):
+    serializer = self.get_serializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    resource = serializer.save()  # ❌ Bypasses service layer
+    return Response(ResourceSerializer(resource).data, status=status.HTTP_201_CREATED)
+```
+
+**Examples**:
+- `ScheduledIngestionViewSet`: Uses `IngestionService.create_scheduled_ingestion()`, `IngestionService.update_scheduled_ingestion()`, and `IngestionService.delete_scheduled_ingestion()`
+- `UserViewSet`: Uses `UserService.create_user()`, `UserService.update_user()`, and `UserService.delete_user()`
+- `APIKeyViewSet`: Uses `APIKeyService.create_api_key()` and `APIKeyService.delete_api_key()`
+
+**Note**: Serializers are still used for request validation and response serialization. The service layer handles the actual database mutations.
+
+See `docs/DEVELOPMENT_GUIDE.md` for complete guidelines.
 
 ### Service Classes
 
@@ -246,6 +288,89 @@ result = service.execute_pipeline(pipeline.id, asset_id)
 - `create_purchase()` - Create purchase order
 - `validate_pricing()` - Validate pricing model
 
+#### ODPSService ✅ (Implemented - ODPS Integration)
+
+**Location**: `hub/apps/contracts/services.py`
+**Status**: ✅ Implemented
+**Phase**: ODPS Integration
+
+**Responsibilities**:
+- Coordinate ODPS contract creation with normalization and validation
+- Manage ODPS linking to ODCS contracts
+- Handle ODPS export and generation
+- Coordinate ODPS workflow orchestration
+- Publish ODPS events (odps.created, odps.normalized, odps.linked, etc.)
+
+**Integration**:
+- Extends `BaseService` and `ODPSEventPublisher`
+- Integrates with ProductCreationWorkflow for multi-step operations
+- Uses ODPSNormalizer for document normalization
+- Uses ODPSBusinessRules for validation
+- Uses Event Bus for asynchronous coordination
+
+**Key Methods**:
+- `create_odps()` - Create ODPS contract with normalization
+- `link_odps_to_odcs()` - Link ODPS to existing ODCS contract
+- `export_odps()` - Export HubContract to ODPS format
+- `generate_odps_from_hubcontract()` - Generate ODPS from HubContract
+
+**Example**:
+```python
+from hub.apps.contracts.services import ODPSService
+
+service = ODPSService(tenant_id=tenant_id, user_id=user_id)
+contract = service.create_odps(
+    odps_raw=odps_document,
+    odps_format="JSON",
+    asset_id=asset_id,
+    resolve_external_refs=True
+)
+```
+
+#### MarketplaceIntegrationService ✅ (Implemented - Marketplace Integration Framework)
+
+**Location**: `hub/apps/integrations/services.py`
+**Status**: ✅ Implemented
+**Phase**: Marketplace Integration Framework
+
+**Responsibilities**:
+- Coordinate marketplace connection management
+- Manage bidirectional asset synchronization (PUSH and PULL)
+- Handle sync job management and tracking
+- Coordinate marketplace events with asset updates
+- Publish marketplace integration events (marketplace.connection.created, marketplace.sync.completed, etc.)
+
+**Integration**:
+- Extends `BaseService`, `IntegrationEventPublisher`, and `MarketplaceEventPublisher`
+- Integrates with MarketplaceSyncWorkflow for orchestration
+- Uses MarketplaceConnectorFactory for connector instantiation
+- Uses MarketplaceBusinessRules for validation
+- Uses Event Bus for asynchronous coordination
+
+**Key Methods**:
+- `create_connection()` - Create marketplace connection
+- `test_connection()` - Test marketplace connection and credentials
+- `sync_assets_to_marketplace()` - PUSH sync (Hub → Marketplace)
+- `sync_assets_from_marketplace()` - PULL sync (Marketplace → Hub)
+- `create_sync_job()` - Create scheduled sync job
+- `get_sync_status()` - Get sync job status and progress
+
+**Example**:
+```python
+from hub.apps.integrations.services import MarketplaceIntegrationService
+
+service = MarketplaceIntegrationService(tenant_id=tenant_id, user_id=user_id)
+connection = service.create_connection(
+    marketplace_type="CKAN",
+    name="My CKAN Connection",
+    config={"url": "https://example.com", "api_key": "..."}
+)
+sync_result = service.sync_assets_to_marketplace(
+    connection_id=connection.id,
+    asset_ids=[asset_id1, asset_id2]
+)
+```
+
 ---
 
 ## Workflow Integration
@@ -318,6 +443,69 @@ engine.start_instance(instance.id)
 - Asset ownership update
 - Policy application
 
+#### ProductCreationWorkflow ✅ (Implemented - ODPS Integration)
+
+**Location**: `hub/apps/orchestration/workflows/product_creation.py`
+**Status**: ✅ Implemented
+**Phase**: ODPS Integration
+
+**Steps**:
+1. Parse ODPS document, validate schema, detect version
+2. Resolve `$ref` references (internal, local, external)
+3. Extract ODCS from `product.contract` (required)
+4. Validate extracted ODCS contract
+5. Normalize ODCS → HubContract (technical)
+6. Normalize ODPS → HubContract (marketplace)
+7. Create ODCS contract record
+8. Create ODPS contract record
+9. Link contracts bidirectionally (ODPS ↔ ODCS)
+10. Index for search (ODPS product + ODCS technical)
+11. Generate semantic mapping (RDF)
+
+**Compensation Logic**: Each step has compensation handlers for rollback on failure.
+
+**DSL Example**:
+```json
+{
+  "version": "1.0.0",
+  "steps": [
+    {"name": "parse_odps", "type": "task", "task": "product_creation.parse_odps"},
+    {"name": "resolve_refs", "type": "task", "task": "product_creation.resolve_refs"},
+    {"name": "extract_contract", "type": "task", "task": "product_creation.extract_contract"},
+    {"name": "validate_odcs", "type": "task", "task": "product_creation.validate_odcs"},
+    {"name": "normalize_odcs", "type": "task", "task": "product_creation.normalize_odcs", "compensation": {"type": "task", "task": "product_creation.rollback_normalize_odcs"}},
+    {"name": "normalize_odps", "type": "task", "task": "product_creation.normalize_odps", "compensation": {"type": "task", "task": "product_creation.rollback_normalize_odps"}},
+    {"name": "create_odcs_contract", "type": "task", "task": "product_creation.create_odcs_contract", "compensation": {"type": "task", "task": "product_creation.rollback_odcs_contract"}},
+    {"name": "create_odps_contract", "type": "task", "task": "product_creation.create_odps_contract", "compensation": {"type": "task", "task": "product_creation.rollback_odps_contract"}},
+    {"name": "link_contracts", "type": "task", "task": "product_creation.link_contracts", "compensation": {"type": "task", "task": "product_creation.rollback_link_contracts"}},
+    {"name": "index_for_search", "type": "task", "task": "product_creation.index_for_search"},
+    {"name": "semantic_mapping", "type": "task", "task": "product_creation.semantic_mapping"}
+  ]
+}
+```
+
+#### MarketplaceSyncWorkflow ✅ (Implemented - Marketplace Integration Framework)
+
+**Location**: `hub/apps/orchestration/workflows/marketplace_sync.py`
+**Status**: ✅ Implemented
+**Phase**: Marketplace Integration Framework
+
+**PUSH Sync Steps** (Hub → Marketplace):
+1. Validate assets (ACTIVE status, valid contracts)
+2. Get marketplace connector from factory
+3. Transform HubContract to marketplace format (ODPS)
+4. Publish listings to marketplace via connector
+5. Create MarketplaceMapping records
+
+**PULL Sync Steps** (Marketplace → Hub):
+1. Get marketplace connector from factory
+2. Discover marketplace listings via connector
+3. Transform marketplace format to HubContract
+4. Create assets using AssetCreationWorkflow
+5. Create MarketplaceMapping records
+
+**Compensation Logic**: Each step has compensation handlers for rollback on failure.
+
 ---
 
 ## Event-Driven Coordination
@@ -375,6 +563,39 @@ def handle_pipeline_completed(event):
 - `mesh.domain_created`
 - `mesh.policy_applied`
 - `mesh.topology_updated`
+
+#### ODPS Events ✅ (Implemented - ODPS Integration)
+- `odps.created` - ODPS contract created
+- `odps.updated` - ODPS contract updated
+- `odps.deleted` - ODPS contract deleted
+- `odps.normalized` - ODPS contract normalized
+- `odps.linked` - ODPS contract linked to ODCS
+- `odps.unlinked` - ODPS contract unlinked from ODCS
+- `odps.ref.resolved` - ODPS $ref resolution completed
+- `odps.ref.failed` - ODPS $ref resolution failed
+- `odps.export.started` - ODPS export started
+- `odps.export.completed` - ODPS export completed
+- `odps.export.failed` - ODPS export failed
+- `odps.workflow.started` - ODPS workflow started
+- `odps.workflow.completed` - ODPS workflow completed
+- `odps.workflow.failed` - ODPS workflow failed
+- `odps.workflow.progress` - ODPS workflow progress update
+- `odps.creation.progress` - ODPS creation progress update
+- `odps.normalization.progress` - ODPS normalization progress update
+- `odps.ref.progress` - ODPS $ref resolution progress update
+
+#### Marketplace Integration Events ✅ (Implemented - Marketplace Integration Framework)
+- `marketplace.connection.created` - Marketplace connection created
+- `marketplace.connection.updated` - Marketplace connection updated
+- `marketplace.connection.deleted` - Marketplace connection deleted
+- `marketplace.connection.tested` - Marketplace connection tested
+- `marketplace.sync.started` - Marketplace sync started
+- `marketplace.sync.completed` - Marketplace sync completed
+- `marketplace.sync.failed` - Marketplace sync failed
+- `marketplace.sync.progress` - Marketplace sync progress update
+- `marketplace.mapping.created` - Marketplace mapping created
+- `marketplace.mapping.updated` - Marketplace mapping updated
+- `marketplace.mapping.deleted` - Marketplace mapping deleted
 
 ---
 
@@ -1084,6 +1305,102 @@ cache_result = result_rules.validate_result_caching(
 - Integrated with `VirtualizationWorkflow` for workflow validation
 - Registered in `BusinessRulesRegistry` for discovery and metrics
 
+#### ODPS Business Rules ✅ (Implemented - ODPS Integration)
+
+**Location**: `hub/apps/contracts/business_rules.py`
+**Classes**: `ODPSBusinessRules`, `ODPSLinkingRules`, `ODPSExportRules`
+**Registry Names**: `odps_document_validation`, `odps_linking_validation`, `odps_export_validation`
+**Phase**: ODPS Integration
+
+**Overview**:
+The ODPS business rules provide comprehensive validation for ODPS documents, including document structure validation, version validation, linking validation, and export validation.
+
+##### ODPSBusinessRules
+
+**Validation Methods**:
+
+1. **`validate()`** - Main validation orchestrator
+   - Coordinates all ODPS validation checks
+   - Accepts ODPS document and context
+   - Supports validation type filtering (`structure`, `version`, `linking`, `all`)
+   - Returns `ValidationResult` with comprehensive details
+
+2. **`validate_odps_structure()`** - ODPS document structure validation
+   - Validates ODPS document is valid JSON/YAML
+   - Ensures required fields (`schema`, `version`, `product`) are present
+   - Validates product structure (details, contract, pricing, access)
+   - Checks for required product fields (productID, name)
+
+3. **`validate_odps_version()`** - ODPS version validation
+   - Validates ODPS version is supported (4.1, 4.0, 3.x, 2.x)
+   - Checks version compatibility
+   - Validates version-specific fields
+
+4. **`validate_odps_contract_field()`** - Contract field validation
+   - Validates `product.contract` field structure
+   - Ensures contract spec is present (for Product-First flow)
+   - Validates contract reference structure (for Link flow)
+
+5. **`validate_odps_pricing()`** - Pricing validation
+   - Validates pricing plans structure
+   - Ensures pricing fields are valid
+   - Checks pricing plan compatibility
+
+6. **`validate_odps_access_methods()`** - Access methods validation
+   - Validates access methods structure
+   - Ensures access method fields are valid
+   - Checks access method compatibility
+
+**Example Usage**:
+```python
+from hub.apps.contracts.business_rules import ODPSBusinessRules
+
+rules = ODPSBusinessRules(tenant_id=tenant_id, user_id=user_id)
+result = rules.validate_odps_structure(
+    odps_document=odps_document,
+    raise_on_error=False
+)
+if not result.is_valid:
+    for error in result.errors:
+        logger.error(f"ODPS structure error: {error}")
+```
+
+##### ODPSLinkingRules
+
+**Validation Methods**:
+- **`validate_linking()`** - Link validation
+  - Validates ODPS can be linked to ODCS contract
+  - Checks contract compatibility
+  - Ensures tenant access permissions
+  - Detects circular references
+
+**Example Usage**:
+```python
+from hub.apps.contracts.business_rules import ODPSLinkingRules
+
+linking_rules = ODPSLinkingRules(tenant_id=tenant_id, user_id=user_id)
+result = linking_rules.validate_linking(
+    odps_contract=odps_contract,
+    odcs_contract=odcs_contract,
+    raise_on_error=True
+)
+```
+
+##### ODPSExportRules
+
+**Validation Methods**:
+- **`validate_export_format()`** - Export format validation
+  - Validates export format (JSON, YAML)
+  - Checks format compatibility
+- **`validate_export_fidelity()`** - Export fidelity validation
+  - Validates exported ODPS matches original
+  - Checks field preservation
+
+**Integration Points**:
+- Used by `ODPSService` for ODPS validation before operations
+- Integrated with `ProductCreationWorkflow` for workflow validation
+- Registered in `BusinessRulesRegistry` for discovery and metrics
+
 ### Rule Validation in Service Layer
 
 Rules are validated in service layer:
@@ -1237,6 +1554,9 @@ The framework standardization (Phase 9.7.2) provides:
 - ✅ AssetsBusinessRules (MVP)
 - ✅ DatasetsBusinessRules (MVP)
 - ✅ MarketplaceBusinessRules (MVP)
+- ✅ ODPSBusinessRules (ODPS Integration)
+- ✅ ODPSLinkingRules (ODPS Integration)
+- ✅ ODPSExportRules (ODPS Integration)
 - ✅ And 20+ other business rules classes
 
 ### Documentation
@@ -1281,6 +1601,50 @@ Compensation is executed automatically on failure:
 # Workflow engine automatically executes compensation
 # when a step fails and compensation is enabled
 ```
+
+### ODPS Compensation Logic ✅ (Implemented - ODPS Integration)
+
+**Location**: `hub/apps/contracts/odps_compensation.py`
+**Status**: ✅ Implemented
+**Phase**: ODPS Integration
+
+**ODPSCreationCompensation**:
+- **Purpose**: Handles rollback for ODPS creation operations
+- **Compensation Steps**:
+  - Rollback created ODPS contract
+  - Rollback created ODCS contract (if created)
+  - Remove bidirectional links
+  - Cleanup search index entries
+  - Rollback semantic mappings
+
+**Compensation Triggers**:
+- Normalization failure after contract creation
+- Linking failure after contract creation
+- Search indexing failure
+- Semantic mapping failure
+
+**Example**:
+```python
+from hub.apps.contracts.odps_compensation import ODPSCreationCompensation, ODPSCreationState
+
+compensation = ODPSCreationCompensation(tenant_id=tenant_id, user_id=user_id)
+state = ODPSCreationState(asset_id=asset_id)
+
+try:
+    # Create ODPS contract
+    contract = service.create_odps(...)
+    state.odps_contract_id = contract.id
+except Exception as e:
+    # Compensation automatically executed
+    compensation.rollback(state)
+    raise
+```
+
+**ProductCreationWorkflow Compensation**:
+- Each workflow step has compensation handlers
+- Compensation executed in reverse order on failure
+- State tracked in workflow instance state_data
+- Compensation handlers defined in workflow DSL
 
 ---
 

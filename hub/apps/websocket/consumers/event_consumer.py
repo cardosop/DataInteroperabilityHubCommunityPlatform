@@ -10,7 +10,19 @@ from datetime import datetime, timedelta
 from django.conf import settings
 
 import structlog
-from channels.generic.websocket import AsyncWebsocketConsumer
+try:
+    from channels.generic.websocket import AsyncWebsocketConsumer
+    CHANNELS_AVAILABLE = True
+except ImportError:
+    # Django Channels not available - create a proper stub that can be inherited
+    class AsyncWebsocketConsumer:
+        """Stub for AsyncWebsocketConsumer when channels is not available."""
+        def __init__(self, *args, **kwargs):
+            raise ImportError(
+                "Django Channels is not installed. "
+                "Install it with: pip install channels channels-redis"
+            )
+    CHANNELS_AVAILABLE = False
 from django.contrib.auth.models import AnonymousUser
 
 from hub.apps.core.events.bus import get_event_bus

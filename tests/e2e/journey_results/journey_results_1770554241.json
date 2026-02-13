@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-002-d796470a",
+      "journey_name": "Generate Compliance Report",
+      "persona": "Compliance & Privacy Officer",
+      "status": "failed",
+      "start_time": 1770554241.9637008,
+      "end_time": 1770554241.980243,
+      "duration": 0.01654219627380371,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '3537ac80-db42-47d0-8497-dcb4eeac9064', 'timestamp': '2026-02-08T12:37:21.973752+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Asset with Compliance Data",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770554241.9637094,
+          "end_time": 1770554241.9802358,
+          "duration": 0.016526460647583008,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '3537ac80-db42-47d0-8497-dcb4eeac9064', 'timestamp': '2026-02-08T12:37:21.973752+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:37:21.980363"
+}

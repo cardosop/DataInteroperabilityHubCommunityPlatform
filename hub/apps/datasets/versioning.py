@@ -33,8 +33,8 @@ class VersionHistoryManager:
         """
         # Combine schema and file content hash for version identification
         schema_str = json.dumps(dataset.schema_json or {}, sort_keys=True)
-        file_hash = dataset.file.content_sha256 or ""
-        
+        file_hash = (dataset.file.content_sha256 if dataset.file else None) or ""
+
         combined = f"{schema_str}:{file_hash}"
         return hashlib.sha256(combined.encode('utf-8')).hexdigest()
     
@@ -130,38 +130,39 @@ class VersionHistoryManager:
         
         major, minor, patch = parent_semver
         
-        # Compare schemas to determine version increment
-        schema_changed = VersionHistoryManager._schema_changed(
+        # Always check for breaking changes first (even if field names haven't changed,
+        # properties like nullable or type might have changed)
+        if VersionHistoryManager._is_breaking_change(
             parent_version.schema_json or {},
             dataset.schema_json or {}
-        )
-        
-        if schema_changed:
-            # Check if breaking change (field removed, type changed, nullable -> non-nullable)
-            if VersionHistoryManager._is_breaking_change(
+        ):
+            # Breaking change → increment major
+            major += 1
+            minor = 0
+            patch = 0
+        else:
+            # Compare schemas to determine version increment
+            schema_changed = VersionHistoryManager._schema_changed(
                 parent_version.schema_json or {},
                 dataset.schema_json or {}
-            ):
-                # Breaking change → increment major
-                major += 1
-                minor = 0
-                patch = 0
-            else:
+            )
+            
+            if schema_changed:
                 # Non-breaking change (new fields added) → increment minor
                 minor += 1
                 patch = 0
-        else:
-            # No schema change
-            # Check if metadata-only change
-            if VersionHistoryManager._has_metadata_only_changes(
-                parent_version,
-                dataset
-            ):
-                # Metadata-only change → increment patch
-                patch += 1
             else:
-                # Data change but no schema change (bug fix, data correction) → increment patch
-                patch += 1
+                # No schema change
+                # Check if metadata-only change
+                if VersionHistoryManager._has_metadata_only_changes(
+                    parent_version,
+                    dataset
+                ):
+                    # Metadata-only change → increment patch
+                    patch += 1
+                else:
+                    # Data change but no schema change (bug fix, data correction) → increment patch
+                    patch += 1
         
         return f"{major}.{minor}.{patch}"
     
@@ -248,11 +249,13 @@ class VersionHistoryManager:
         )
         if schema_changed:
             return False
-        
-        # File content unchanged (same hash)
+
+        # File content unchanged (same hash); if either has no file, not metadata-only
+        if not old_dataset.file or not new_dataset.file:
+            return False
         if old_dataset.file.content_sha256 != new_dataset.file.content_sha256:
             return False
-        
+
         # Row count unchanged
         if old_dataset.row_count != new_dataset.row_count:
             return False

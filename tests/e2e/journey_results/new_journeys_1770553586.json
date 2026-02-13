@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-008-9c0f4ebf",
+      "journey_name": "Create Transformation Pipeline for Asset",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1770553586.4980142,
+      "end_time": 1770553586.5168986,
+      "duration": 0.01888442039489746,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '8a384d74-0ce2-4599-b81a-ff3f7ae986f6', 'timestamp': '2026-02-08T12:26:26.508342+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770553586.4980283,
+          "end_time": 1770553586.5168893,
+          "duration": 0.018861055374145508,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '8a384d74-0ce2-4599-b81a-ff3f7ae986f6', 'timestamp': '2026-02-08T12:26:26.508342+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:26:26.517057"
+}

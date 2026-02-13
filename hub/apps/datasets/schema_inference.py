@@ -831,6 +831,98 @@ def infer_schema_from_parquet(file_content: bytes) -> Dict[str, Any]:
         raise ValueError(f"Failed to read Parquet file: {str(e)}")
 
 
+def infer_schema_from_excel(
+    file_content: bytes, sample_size: int = DEFAULT_SAMPLE_SIZE
+) -> Dict[str, Any]:
+    """
+    Infer schema from Excel file (.xlsx, .xls).
+
+    Args:
+        file_content: Excel file content as bytes
+        sample_size: Number of rows to sample (default: 10,000)
+
+    Returns:
+        Dictionary with inferred schema (same structure as infer_schema_from_csv)
+    """
+    if not PANDAS_AVAILABLE:
+        raise ImportError("pandas is required for Excel schema inference")
+    try:
+        import openpyxl  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "openpyxl is required for Excel schema inference (pip install openpyxl)"
+        )
+    buf = io.BytesIO(file_content)
+    try:
+        df = pd.read_excel(buf, engine="openpyxl")
+    except Exception as e:
+        raise ValueError(f"Failed to read Excel file: {str(e)}")
+    if df.empty or len(df.columns) == 0:
+        raise ValueError("Excel file is empty or has no columns")
+    sample_df = df.head(sample_size)
+    fields = []
+    primary_key_candidates = []
+    unique_constraint_candidates = []
+    index_recommendations = []
+    for column in df.columns:
+        values = sample_df[column].tolist()
+        values = [
+            None if (pd.isna(v) or (isinstance(v, float) and v != v)) else v
+            for v in values
+        ]
+        type_info = infer_type_from_values(values)
+        enhanced_properties = infer_field_properties(values, str(column))
+        sample_values = values[:10]
+        if np is not None:
+            sample_values = [
+                v.item() if hasattr(v, "item") and getattr(v, "item", None) else v
+                for v in sample_values
+            ]
+        field_schema = {
+            "name": str(column),
+            "data_type": type_info["data_type"],
+            "nullable": type_info["nullable"],
+            "sample_values": sample_values,
+        }
+        field_schema.update(enhanced_properties)
+        fields.append(field_schema)
+        non_null = [v for v in values if v is not None and v != ""]
+        try:
+            if non_null and len(non_null) == len(set(non_null)) == len(values):
+                primary_key_candidates.append(str(column))
+            elif non_null and len(non_null) == len(set(non_null)):
+                unique_constraint_candidates.append(str(column))
+        except TypeError:
+            pass
+        if str(column).lower().endswith("_id") or str(column).lower().endswith("id"):
+            index_recommendations.append(
+                {"field": str(column), "reason": "ID field pattern", "priority": "high"}
+            )
+        elif any(
+            x in str(column).lower()
+            for x in ("timestamp", "created_at", "updated_at")
+        ):
+            index_recommendations.append(
+                {
+                    "field": str(column),
+                    "reason": "Timestamp field",
+                    "priority": "medium",
+                }
+            )
+    return {
+        "fields": fields,
+        "primary_key_candidates": primary_key_candidates,
+        "unique_constraint_candidates": unique_constraint_candidates,
+        "index_recommendations": index_recommendations,
+        "row_count_estimated": len(df),
+        "inference_metadata": {
+            "sample_size": len(sample_df),
+            "strategy": "excel_first_n_rows",
+            "format": "EXCEL",
+        },
+    }
+
+
 def extract_sample_data(file_content: bytes, format: str, sample_size: int = DEFAULT_SAMPLE_DATA_SIZE) -> List[Dict[str, Any]]:
     """
     Extract sample data from file (first N rows).

@@ -4,13 +4,15 @@ Unit tests for ODCS Generator V2.2.2.
 Tests the ODCSGeneratorV2_2_2 class following TDD approach
 and engineering best practices without mocks/stubs.
 """
+
 import json
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.odcs_generator import ODCSGeneratorV2_2_2
-from hub.apps.contracts.odcs_errors import ODCSGenerationError
 from hub.apps.contracts.normalization import normalize_contract
+from hub.apps.contracts.odcs_errors import ODCSGenerationError
+from hub.apps.contracts.odcs_generator import ODCSGeneratorV2_2_2
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -44,14 +46,8 @@ class ODCSGeneratorV2_2_2BasicMappingTest(TestCase):
         self.generator = ODCSGeneratorV2_2_2()
         self.minimal_hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
     def test_generates_basic_odcs_structure(self):
@@ -67,15 +63,8 @@ class ODCSGeneratorV2_2_2BasicMappingTest(TestCase):
         """Test mapping of description field"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "description": "A test contract description"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract", "description": "A test contract description"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -85,15 +74,8 @@ class ODCSGeneratorV2_2_2BasicMappingTest(TestCase):
         """Test mapping of version field"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract", "version": "1.0.0"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -108,8 +90,7 @@ class ODCSGeneratorV2_2_2BasicMappingTest(TestCase):
     def test_ignores_target_version_parameter(self):
         """Test that target_version parameter is ignored (always uses 2.2.2)"""
         odcs_doc = self.generator.generate_odcs_from_hubcontract(
-            self.minimal_hub_contract,
-            target_version="3.0.2"  # Should be ignored
+            self.minimal_hub_contract, target_version="3.0.2"  # Should be ignored
         )
         self.assertEqual(odcs_doc["apiVersion"], "odcs.io/v2.2.2")
 
@@ -129,14 +110,10 @@ class ODCSGeneratorV2_2_2InfoSectionTest(TestCase):
                 "name": "Test Contract",
                 "owners": [
                     {"name": "John Doe", "email": "john@example.com"},
-                    {"name": "Jane Smith", "email": "jane@example.com"}
-                ]
+                    {"name": "Jane Smith", "email": "jane@example.com"},
+                ],
             },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -150,15 +127,8 @@ class ODCSGeneratorV2_2_2InfoSectionTest(TestCase):
         """Test mapping of tags"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "tags": ["production", "customer-data", "pii"]
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract", "tags": ["production", "customer-data", "pii"]},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -178,26 +148,24 @@ class ODCSGeneratorV2_2_2SchemaMappingTest(TestCase):
         """Test mapping of schema fields"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
+            "info": {"name": "Test Contract"},
             "schema": {
                 "fields": [
                     {
                         "name": "id",
                         "data_type": "string",
                         "nullable": False,
-                        "description": "Unique identifier"
+                        "description": "Unique identifier",
                     },
                     {
                         "name": "name",
                         "data_type": "string",
                         "nullable": True,
                         "min_length": 1,
-                        "max_length": 100
-                    }
+                        "max_length": 100,
+                    },
                 ]
-            }
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -224,16 +192,14 @@ class ODCSGeneratorV2_2_2SchemaMappingTest(TestCase):
         """Test mapping of primary key"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
+            "info": {"name": "Test Contract"},
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ],
-                "primary_key": ["id"]
-            }
+                "primary_key": ["id"],
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -245,16 +211,14 @@ class ODCSGeneratorV2_2_2SchemaMappingTest(TestCase):
         """Test mapping of composite primary key"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
+            "info": {"name": "Test Contract"},
             "schema": {
                 "fields": [
                     {"name": "id1", "data_type": "string"},
-                    {"name": "id2", "data_type": "string"}
+                    {"name": "id2", "data_type": "string"},
                 ],
-                "primary_key": ["id1", "id2"]
-            }
+                "primary_key": ["id1", "id2"],
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -266,16 +230,14 @@ class ODCSGeneratorV2_2_2SchemaMappingTest(TestCase):
         """Test mapping of unique constraints"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
+            "info": {"name": "Test Contract"},
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string"},
-                    {"name": "email", "data_type": "string"}
+                    {"name": "email", "data_type": "string"},
                 ],
-                "unique_constraints": [["email"]]
-            }
+                "unique_constraints": [["email"]],
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -287,16 +249,14 @@ class ODCSGeneratorV2_2_2SchemaMappingTest(TestCase):
         """Test mapping of indexes"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
+            "info": {"name": "Test Contract"},
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ],
-                "indexes": [["name"]]
-            }
+                "indexes": [["name"]],
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -308,14 +268,8 @@ class ODCSGeneratorV2_2_2SchemaMappingTest(TestCase):
         """Test that schema fields can use 'type' instead of 'data_type'"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -334,14 +288,8 @@ class ODCSGeneratorV2_2_2QualityMappingTest(TestCase):
         """Test mapping of quality rules"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            },
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
             "quality": {
                 "rules": [
                     {
@@ -349,10 +297,10 @@ class ODCSGeneratorV2_2_2QualityMappingTest(TestCase):
                         "type": "completeness",
                         "description": "Field must not be null",
                         "expression": "field IS NOT NULL",
-                        "severity": "error"
+                        "severity": "error",
                     }
                 ]
-            }
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -366,17 +314,9 @@ class ODCSGeneratorV2_2_2QualityMappingTest(TestCase):
         """Test mapping of default_profile_key"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            },
-            "quality": {
-                "default_profile_key": "default"
-            }
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+            "quality": {"default_profile_key": "default"},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -395,17 +335,9 @@ class ODCSGeneratorV2_2_2LifecycleMappingTest(TestCase):
         """Test mapping of basic lifecycle fields (2.2.2 supported)"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            },
-            "lifecycle": {
-                "data_source": "database"
-            }
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+            "lifecycle": {"data_source": "database"},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -416,21 +348,15 @@ class ODCSGeneratorV2_2_2LifecycleMappingTest(TestCase):
         """Test that 3.x lifecycle features are omitted with warning"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            },
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
             "lifecycle": {
                 "data_source": "database",
                 "refresh_cadence": "DAILY",  # 3.x feature
                 "slas": {"availability": 99.9},  # 3.x feature
                 "enhanced_features": {"some": "value"},  # 3.x feature
-                "advanced_slas": {"some": "value"}  # 3.x feature
-            }
+                "advanced_slas": {"some": "value"},  # 3.x feature
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -454,22 +380,16 @@ class ODCSGeneratorV2_2_2MarketplaceMappingTest(TestCase):
         """Test that 3.x marketplace features are omitted with warning"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            },
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
             "marketplace": {
                 "license_summary": "MIT License",  # 3.x feature
                 "intended_use": ["analytics"],  # 3.x feature
                 "restricted_use": ["resale"],  # 3.x feature
                 "enhanced_features": {"some": "value"},  # 3.x feature
                 "advanced_pricing": {"some": "value"},  # 3.x feature
-                "access_methods": [{"type": "api"}]  # 3.x feature
-            }
+                "access_methods": [{"type": "api"}],  # 3.x feature
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -488,17 +408,9 @@ class ODCSGeneratorV2_2_2PrivacyComplianceMappingTest(TestCase):
         """Test mapping of basic privacy_compliance fields (2.2.2 supported)"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            },
-            "privacy_compliance": {
-                "contains_personal_data": True
-            }
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+            "privacy_compliance": {"contains_personal_data": True},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -509,21 +421,15 @@ class ODCSGeneratorV2_2_2PrivacyComplianceMappingTest(TestCase):
         """Test that 3.x privacy features are omitted with warning"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            },
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
             "privacy_compliance": {
                 "contains_personal_data": True,
                 "personal_data_categories": ["email"],  # 3.x feature
                 "jurisdictions": ["EU"],  # 3.x feature
                 "legal_bases": ["consent"],  # 3.x feature
-                "retention_policy": {"period": "P5Y"}  # 3.x feature
-            }
+                "retention_policy": {"period": "P5Y"},  # 3.x feature
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -558,10 +464,7 @@ class ODCSGeneratorV2_2_2ValidationTest(TestCase):
 
     def test_validates_info_name_required(self):
         """Test that info.name is required"""
-        invalid_contract = {
-            "id": "test-contract-1",
-            "info": {}  # Missing 'name'
-        }
+        invalid_contract = {"id": "test-contract-1", "info": {}}  # Missing 'name'
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.generate_odcs_from_hubcontract(invalid_contract)
@@ -572,9 +475,7 @@ class ODCSGeneratorV2_2_2ValidationTest(TestCase):
     def test_validates_id_required(self):
         """Test that id is required"""
         invalid_contract = {
-            "info": {
-                "name": "Test Contract"
-            }
+            "info": {"name": "Test Contract"}
             # Missing 'id'
         }
 
@@ -588,15 +489,8 @@ class ODCSGeneratorV2_2_2ValidationTest(TestCase):
         """Test that invalid field types raise errors"""
         invalid_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "description": 123  # Should be string
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract", "description": 123},  # Should be string
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
         }
 
         with self.assertRaises(ODCSGenerationError) as cm:
@@ -623,22 +517,12 @@ class ODCSGeneratorV2_2_2RoundTripTest(TestCase):
             "name": "Test Contract",
             "version": "1.0.0",
             "description": "A test contract",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         # Normalize to HubContract
         hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(original_odcs),
-            format="json",
-            spec_type="ODCS"
+            raw_contract=json.dumps(original_odcs), format="json", spec_type="ODCS"
         )
 
         self.assertEqual(status.value, "NORMALIZED_OK")
@@ -669,43 +553,29 @@ class ODCSGeneratorV2_2_2RoundTripTest(TestCase):
             "version": "1.0.0",
             "description": "A comprehensive test contract",
             "info": {
-                "owners": [
-                    {"name": "John Doe", "email": "john@example.com"}
-                ],
-                "tags": ["production", "test"]
+                "owners": [{"name": "John Doe", "email": "john@example.com"}],
+                "tags": ["production", "test"],
             },
             "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ],
-                "primary_key": "id"
+                "fields": [{"name": "id", "type": "string", "nullable": False}],
+                "primary_key": "id",
             },
             "quality": {
                 "rules": [
                     {
                         "name": "not_null",
                         "type": "completeness",
-                        "description": "Field must not be null"
+                        "description": "Field must not be null",
                     }
                 ]
             },
-            "lifecycle": {
-                "data_source": "database"
-            },
-            "privacy_compliance": {
-                "contains_personal_data": False
-            }
+            "lifecycle": {"data_source": "database"},
+            "privacy_compliance": {"contains_personal_data": False},
         }
 
         # Normalize to HubContract
         hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(original_odcs),
-            format="json",
-            spec_type="ODCS"
+            raw_contract=json.dumps(original_odcs), format="json", spec_type="ODCS"
         )
 
         self.assertEqual(status.value, "NORMALIZED_OK")
@@ -724,3 +594,86 @@ class ODCSGeneratorV2_2_2RoundTripTest(TestCase):
         self.assertIn("lifecycle", generated_odcs)
         self.assertIn("privacy_compliance", generated_odcs)
 
+    def test_generation_handles_unicode_characters(self):
+        """Test that generation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-unicode",
+            "info": {"name": "测试合同", "description": "测试描述"},
+            "schema": {"fields": [{"name": "字段名称", "data_type": "string"}]},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify unicode characters are preserved
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "测试合同")
+
+    def test_generation_handles_special_characters(self):
+        """Test that generation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-special",
+            "info": {"name": "Test & Co. (Special)", "description": "Test <description> & more"},
+            "schema": {"fields": [{"name": "field-name", "data_type": "string"}]},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify special characters are preserved
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test & Co. (Special)")
+
+    def test_generation_handles_very_large_documents(self):
+        """Test that generation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-large",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+            # If generation succeeds, verify structure
+            self.assertIn("name", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSGenerationError, "Should raise ODCSGenerationError for very large documents"
+            )
+
+    def test_generation_handles_none_values(self):
+        """Test that generation handles None values correctly."""
+        hub_contract = {
+            "id": "test-none",
+            "info": {"name": "Test Product", "description": None},  # None value
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSGenerationError, "Should raise ODCSGenerationError for None values"
+            )
+
+    def test_generation_handles_nested_structures(self):
+        """Test that generation handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-nested",
+            "info": {
+                "name": "Test Product",
+                "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+            },
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify nested structure is preserved
+        self.assertIn("name", result)
+        self.assertIsNotNone(result)

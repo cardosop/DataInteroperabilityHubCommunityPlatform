@@ -69,7 +69,8 @@ class MarketplaceConnectionCreateSerializer(serializers.Serializer):
     )
     name = serializers.CharField(
         max_length=255,
-        help_text="Human-readable name for this connection (unique per tenant)"
+        allow_blank=True,
+        help_text="Human-readable name (empty/whitespace rejected by service layer)"
     )
     config = serializers.JSONField(
         help_text="Connection configuration dictionary (API keys, endpoints, etc.). Will be encrypted at rest."
@@ -81,14 +82,10 @@ class MarketplaceConnectionCreateSerializer(serializers.Serializer):
     )
 
     def validate_name(self, value):
-        """Validate connection name"""
-        if not value or not value.strip():
-            raise serializers.ValidationError("Connection name cannot be empty")
-        if len(value.strip()) < 1:
-            raise serializers.ValidationError("Connection name must be at least 1 character")
-        if len(value.strip()) > 255:
-            raise serializers.ValidationError("Connection name cannot exceed 255 characters")
-        return value.strip()
+        """Pass through; empty/whitespace rejected by MarketplaceIntegrationBusinessRules in service."""
+        if value is not None and isinstance(value, str):
+            return value.strip() if value.strip() else value
+        return value
 
     def validate_config(self, value):
         """Validate config is a dictionary"""

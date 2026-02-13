@@ -3,9 +3,11 @@ Security URL Configuration
 
 URL patterns for security incident management endpoints.
 """
-from django.urls import path, include
+
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from .views import SecurityIncidentViewSet, SecurityAuditLogViewSet
+
+from .views_security import SecurityAuditLogViewSet, SecurityIncidentViewSet
 
 # Security router (for /api/v1/security/)
 router = DefaultRouter()
@@ -15,4 +17,3 @@ router.register(r"audit-logs", SecurityAuditLogViewSet, basename="security-audit
 urlpatterns = [
     path("", include(router.urls)),
 ]
-

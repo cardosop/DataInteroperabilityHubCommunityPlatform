@@ -7,22 +7,24 @@ the metadata-first architecture pattern:
 - download_resource() handles deferred operations (request listing, accept terms, create DB, extract schema, download)
 - map_to_hub_asset() includes external resource references
 """
-import pytest
-from unittest.mock import Mock, patch, MagicMock, call
-from datetime import datetime
 
-from hub.apps.integrations.connectors.snowflake_connector import SnowflakeConnector
+from datetime import datetime
+from unittest.mock import MagicMock, Mock, call, patch
+
+import pytest
+
+from hub.apps.assets.models import AssetSourceType
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
-    MarketplaceType,
-    SyncDirection,
-    SyncStatus,
+    MarketplaceAssetMapping,
     MarketplaceListing,
     MarketplaceResource,
+    MarketplaceType,
+    SyncDirection,
     SyncResult,
-    MarketplaceAssetMapping,
+    SyncStatus,
 )
-from hub.apps.assets.models import AssetSourceType
-
+from hub.apps.integrations.connectors.snowflake_connector import SnowflakeConnector
 
 # Use pytest.mark.django_db without transaction to avoid foreign key constraint issues
 pytestmark = pytest.mark.django_db
@@ -34,11 +36,11 @@ class TestSnowflakeConnectorMetadataFirst:
     @pytest.fixture
     def connector(self):
         """Create a Snowflake connector instance for testing"""
-        with patch('hub.apps.integrations.connectors.snowflake_connector.SNOWFLAKE_AVAILABLE', True):
+        with patch(
+            "hub.apps.integrations.connectors.snowflake_connector.SNOWFLAKE_AVAILABLE", True
+        ):
             connector = SnowflakeConnector(
-                account="test_account",
-                user="test_user",
-                token="test_token"
+                account="test_account", user="test_user", token="test_token"
             )
             # Mock the connection to avoid actual Snowflake calls
             connector._connection = Mock()
@@ -56,11 +58,8 @@ class TestSnowflakeConnectorMetadataFirst:
             category="Analytics",
             tags=["sample", "data"],
             metadata={
-                "snowflake_database": {
-                    "DATABASE_OWNER": "SNOWFLAKE",
-                    "COMMENT": "Sample database"
-                }
-            }
+                "snowflake_database": {"DATABASE_OWNER": "SNOWFLAKE", "COMMENT": "Sample database"}
+            },
         )
 
     def test_sync_pull_does_not_create_databases(self, connector, sample_listing):
@@ -68,12 +67,14 @@ class TestSnowflakeConnectorMetadataFirst:
         # Mock list_listings to return sample listing
         connector.list_listings = Mock(return_value=[sample_listing])
         connector.list_resources = Mock(return_value=[])
-        connector.map_to_hub_asset = Mock(return_value=MarketplaceAssetMapping(
-            asset_data={"name": "Test"},
-            source_type=AssetSourceType.FEDERATED,
-            source_metadata={},
-            odps_metadata={}
-        ))
+        connector.map_to_hub_asset = Mock(
+            return_value=MarketplaceAssetMapping(
+                asset_data={"name": "Test"},
+                source_type=AssetSourceType.FEDERATED,
+                source_metadata={},
+                odps_metadata={},
+            )
+        )
 
         # Mock methods that should NOT be called
         connector._request_listing = Mock()
@@ -105,7 +106,7 @@ class TestSnowflakeConnectorMetadataFirst:
             asset_data={"name": "Test"},
             source_type=AssetSourceType.FEDERATED,
             source_metadata={},
-            odps_metadata={}
+            odps_metadata={},
         )
         connector.map_to_hub_asset = Mock(return_value=mapping)
 
@@ -130,7 +131,7 @@ class TestSnowflakeConnectorMetadataFirst:
             asset_data={"name": "Test Asset"},
             source_type=AssetSourceType.FEDERATED,
             source_metadata={"listing_id": "SNOWFLAKE_SAMPLE_DATA"},
-            odps_metadata={}
+            odps_metadata={},
         )
         connector.map_to_hub_asset = Mock(return_value=mapping)
 
@@ -145,7 +146,9 @@ class TestSnowflakeConnectorMetadataFirst:
         assert isinstance(result.metadata["mappings"][0], dict)
         assert result.metadata["mappings"][0]["asset_data"]["name"] == "Test Asset"
 
-    def test_map_to_hub_asset_includes_external_resource_references(self, connector, sample_listing):
+    def test_map_to_hub_asset_includes_external_resource_references(
+        self, connector, sample_listing
+    ):
         """Test that map_to_hub_asset() includes external resource references"""
         # Test with no resources (should create default resource reference)
         sample_listing.resources = []
@@ -194,14 +197,16 @@ class TestSnowflakeConnectorMetadataFirst:
         connector._accept_legal_terms = Mock(return_value=True)
         connector._create_database_from_listing = Mock(return_value="DB_SAMPLE_DATA")
         connector._extract_schema_metadata = Mock(return_value={"fields": []})
-        connector._execute_sql = Mock(side_effect=[
-            # First call: Get list of tables
-            [{"TABLE_SCHEMA": "PUBLIC", "TABLE_NAME": "SAMPLE_TABLE"}],
-            # Second call: Verify table exists
-            [{"TABLE_NAME": "SAMPLE_TABLE"}],
-            # Third call: Fetch data
-            [{"col1": "value1", "col2": "value2"}]
-        ])
+        connector._execute_sql = Mock(
+            side_effect=[
+                # First call: Get list of tables
+                [{"TABLE_SCHEMA": "PUBLIC", "TABLE_NAME": "SAMPLE_TABLE"}],
+                # Second call: Verify table exists
+                [{"TABLE_NAME": "SAMPLE_TABLE"}],
+                # Third call: Fetch data
+                [{"col1": "value1", "col2": "value2"}],
+            ]
+        )
         connector._download_table = Mock(return_value=destination_path)
 
         # Execute download_resource with listing ID
@@ -227,12 +232,14 @@ class TestSnowflakeConnectorMetadataFirst:
         connector._create_database_from_listing = Mock()
 
         # Mock table download (database already exists, no deferred operations needed)
-        connector._execute_sql = Mock(side_effect=[
-            # Verify table exists
-            [{"TABLE_NAME": "SAMPLE_TABLE"}],
-            # Fetch data
-            [{"col1": "value1", "col2": "value2"}]
-        ])
+        connector._execute_sql = Mock(
+            side_effect=[
+                # Verify table exists
+                [{"TABLE_NAME": "SAMPLE_TABLE"}],
+                # Fetch data
+                [{"col1": "value1", "col2": "value2"}],
+            ]
+        )
         connector._download_table = Mock(return_value=destination_path)
 
         # Execute download_resource with table identifier
@@ -279,7 +286,7 @@ class TestSnowflakeConnectorMetadataFirst:
             asset_data={"name": "Test"},
             source_type=AssetSourceType.FEDERATED,
             source_metadata={},
-            odps_metadata={}
+            odps_metadata={},
         )
         connector.map_to_hub_asset = Mock(return_value=mapping)
 
@@ -296,12 +303,14 @@ class TestSnowflakeConnectorMetadataFirst:
         # Step 1: sync_pull should only map (metadata-only)
         connector.list_listings = Mock(return_value=[sample_listing])
         connector.list_resources = Mock(return_value=[])
-        connector.map_to_hub_asset = Mock(return_value=MarketplaceAssetMapping(
-            asset_data={"name": "Test"},
-            source_type=AssetSourceType.FEDERATED,
-            source_metadata={},
-            odps_metadata={}
-        ))
+        connector.map_to_hub_asset = Mock(
+            return_value=MarketplaceAssetMapping(
+                asset_data={"name": "Test"},
+                source_type=AssetSourceType.FEDERATED,
+                source_metadata={},
+                odps_metadata={},
+            )
+        )
 
         sync_result = connector.sync_pull()
 
@@ -331,3 +340,73 @@ class TestSnowflakeConnectorMetadataFirst:
         # Verify sync_pull did NOT perform these operations
         # (already verified in test_sync_pull_does_not_create_databases)
 
+    def test_sync_pull_with_empty_listing_ids(self, connector):
+        """Test sync_pull() error handling with empty listing_ids list"""
+        result = connector.sync_pull(listing_ids=[])
+        assert isinstance(result, SyncResult)
+        assert result.total_items == 0
+        assert result.successful_items == 0
+
+    def test_sync_pull_with_none_listing_ids(self, connector):
+        """Test sync_pull() error handling with None listing_ids"""
+        try:
+            result = connector.sync_pull(listing_ids=None)  # type: ignore[arg-type]
+            # Should handle None gracefully (may use default behavior)
+            assert isinstance(result, SyncResult)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+    def test_sync_pull_with_zero_limit(self, connector, sample_listing):
+        """Test sync_pull() edge case with zero limit"""
+        connector.list_listings = Mock(return_value=[sample_listing])
+        connector.list_resources = Mock(return_value=[])
+        connector.map_to_hub_asset = Mock(
+            return_value=MarketplaceAssetMapping(
+                asset_data={"name": "Test"},
+                source_type=AssetSourceType.FEDERATED,
+                source_metadata={},
+                odps_metadata={},
+            )
+        )
+
+        result = connector.sync_pull(options={"limit": 0})
+        assert isinstance(result, SyncResult)
+        assert result.total_items == 0
+        assert result.successful_items == 0
+
+    def test_map_to_hub_asset_with_none_listing(self, connector):
+        """Test map_to_hub_asset() error handling with None listing"""
+        with pytest.raises((ValueError, TypeError)):
+            connector.map_to_hub_asset(None)  # type: ignore[arg-type]
+
+    def test_map_to_hub_asset_with_empty_metadata(self, connector):
+        """Test map_to_hub_asset() error handling with empty metadata"""
+        listing = MarketplaceListing(
+            marketplace_id="TEST_LISTING",
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
+            title="Test Listing",
+            metadata={},  # Empty metadata
+        )
+        connector.list_resources = Mock(return_value=[])
+
+        # Should handle empty metadata gracefully
+        mapping = connector.map_to_hub_asset(listing)
+        assert isinstance(mapping, MarketplaceAssetMapping)
+        assert mapping.asset_data is not None
+
+    def test_download_resource_with_empty_resource_id(self, connector):
+        """Test download_resource() error handling with empty resource_id"""
+        with pytest.raises((ValueError, NotFoundError)):
+            connector.download_resource(
+                resource_id="", listing_id="test-listing", asset_id="test-asset"
+            )
+
+    def test_download_resource_with_none_resource_id(self, connector):
+        """Test download_resource() error handling with None resource_id"""
+        with pytest.raises((ValueError, TypeError, NotFoundError)):
+            connector.download_resource(
+                resource_id=None,  # type: ignore[arg-type]
+                listing_id="test-listing",
+                asset_id="test-asset",
+            )

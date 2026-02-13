@@ -1,0 +1,72 @@
+/**
+ * Accessibility Styles
+ * WCAG 2.1 AA compliant styles
+ */
+
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Focus visible styles (already in index.css, but ensure consistency) */
+:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Ensure interactive elements have minimum touch target size (44x44px) */
+button,
+a,
+input[type='checkbox'],
+input[type='radio'],
+select {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --color-primary-500: #0056b3;
+    --color-text-primary: #000000;
+    --color-text-secondary: #333333;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Ensure sufficient color contrast for text */
+.text-muted {
+  color: var(--color-text-secondary);
+}
+
+/* Ensure links are distinguishable and meet WCAG 2 AA contrast (4.5:1 on white) */
+a:not([class]) {
+  color: var(--color-primary-700);
+  text-decoration: underline;
+}
+
+a:not([class]):hover,
+a:not([class]):focus {
+  color: var(--color-primary-800);
+  text-decoration: underline;
+}

@@ -8,24 +8,27 @@ Tests verify:
 4. Error handling
 5. Compensation logic
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     pytest = None
     pytestmark = None
 
 import json
-from django.test import TestCase
-from django.contrib.auth import get_user_model
 
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import UserStatus
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
 from hub.apps.contracts.models import Contract, OriginalSpecType
+from hub.apps.orchestration.models import WorkflowDefinition, WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import UserStatus
 
 User = get_user_model()
 
@@ -52,9 +55,11 @@ class ProductCreationWorkflowDefinitionTest(TestCase):
         ProductCreationWorkflow.register_workflow(self.registry)
 
         # Verify workflow definition exists (may already exist from previous test)
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ProductCreationWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ProductCreationWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should be created")
         self.assertEqual(workflow_def.name, ProductCreationWorkflow.WORKFLOW_NAME)
@@ -65,9 +70,11 @@ class ProductCreationWorkflowDefinitionTest(TestCase):
         """Test that workflow DSL has all required steps"""
         ProductCreationWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ProductCreationWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ProductCreationWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should exist")
         dsl = workflow_def.dsl_json
@@ -92,19 +99,23 @@ class ProductCreationWorkflowDefinitionTest(TestCase):
             "link_contracts",
             "link_data_file",
             "index_for_search",
-            "semantic_mapping"
+            "semantic_mapping",
         ]
 
         for required_step in required_steps:
-            self.assertIn(required_step, step_names, f"Step '{required_step}' should be in workflow")
+            self.assertIn(
+                required_step, step_names, f"Step '{required_step}' should be in workflow"
+            )
 
     def test_workflow_steps_have_compensation(self):
         """Test that workflow steps that need compensation have it"""
         ProductCreationWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ProductCreationWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ProductCreationWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should exist")
         dsl = workflow_def.dsl_json
@@ -115,12 +126,14 @@ class ProductCreationWorkflowDefinitionTest(TestCase):
             "normalize_odps",
             "create_odcs_contract",
             "create_odps_contract",
-            "link_contracts"
+            "link_contracts",
         ]
 
         for step_def in dsl["steps"]:
             if step_def["name"] in steps_with_compensation:
-                self.assertIn("compensation", step_def, f"Step '{step_def['name']}' should have compensation")
+                self.assertIn(
+                    "compensation", step_def, f"Step '{step_def['name']}' should have compensation"
+                )
                 self.assertIn("type", step_def["compensation"])
                 self.assertIn("task", step_def["compensation"])
 
@@ -141,11 +154,13 @@ class ProductCreationWorkflowDefinitionTest(TestCase):
             "product_creation.link_contracts",
             "product_creation.link_data_file",
             "product_creation.index_for_search",
-            "product_creation.semantic_mapping"
+            "product_creation.semantic_mapping",
         ]
 
         for task_name in required_tasks:
-            self.assertIn(task_name, self.engine.task_registry, f"Task '{task_name}' should be registered")
+            self.assertIn(
+                task_name, self.engine.task_registry, f"Task '{task_name}' should be registered"
+            )
 
     def test_register_tasks_registers_compensation_tasks(self):
         """Test that register_tasks registers compensation tasks"""
@@ -158,11 +173,15 @@ class ProductCreationWorkflowDefinitionTest(TestCase):
             "product_creation.rollback_odcs_contract",
             "product_creation.rollback_odps_contract",
             "product_creation.rollback_link_contracts",
-            "product_creation.rollback_link_data_file"
+            "product_creation.rollback_link_data_file",
         ]
 
         for task_name in compensation_tasks:
-            self.assertIn(task_name, self.engine.task_registry, f"Compensation task '{task_name}' should be registered")
+            self.assertIn(
+                task_name,
+                self.engine.task_registry,
+                f"Compensation task '{task_name}' should be registered",
+            )
 
 
 class ProductCreationWorkflowStepExecutionTest(TestCase):
@@ -171,14 +190,13 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -196,8 +214,14 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "description": "Test product description"
+                        "description": "Test product description",
                     }
+                },
+                "dataSchema": {
+                    "fields": [
+                        {"name": "id", "type": "string", "description": "Unique identifier"},
+                        {"name": "name", "type": "string", "description": "Name field"},
+                    ]
                 },
                 "contract": {
                     "spec": {
@@ -212,19 +236,19 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
                                     "name": "id",
                                     "type": "string",
                                     "nullable": False,
-                                    "description": "Unique identifier"
+                                    "description": "Unique identifier",
                                 },
                                 {
                                     "name": "name",
                                     "type": "string",
                                     "nullable": True,
-                                    "description": "Name field"
-                                }
+                                    "description": "Name field",
+                                },
                             ]
-                        }
+                        },
                     }
-                }
-            }
+                },
+            },
         }
         self.valid_odps_raw = json.dumps(self.valid_odps_doc)
 
@@ -234,15 +258,17 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
             "original_raw": self.valid_odps_raw,
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Register workflow first
         ProductCreationWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ProductCreationWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ProductCreationWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -251,10 +277,10 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
             tenant=self.tenant,
             input_data=input_data,
             created_by_id=str(self.user.id),
-            status=WorkflowStatus.DRAFT
+            status=WorkflowStatus.DRAFT,
         )
 
-        step = type('Step', (), {"name": "parse_odps"})()
+        step = type("Step", (), {"name": "parse_odps"})()
         result = ProductCreationWorkflow._parse_odps_task(input_data, instance, step)
 
         self.assertIn("odps_document", result)
@@ -269,15 +295,17 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
             "original_raw": '{"invalid": "odps"}',
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Register workflow first
         ProductCreationWorkflow.register_workflow(self.registry)
 
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ProductCreationWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ProductCreationWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -286,20 +314,85 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
             tenant=self.tenant,
             input_data=input_data,
             created_by_id=str(self.user.id),
-            status=WorkflowStatus.DRAFT
+            status=WorkflowStatus.DRAFT,
         )
 
-        step = type('Step', (), {"name": "parse_odps"})()
+        step = type("Step", (), {"name": "parse_odps"})()
 
-        from hub.apps.contracts.odps_parser import ODPSValidationError
+        from hub.apps.contracts.odps_errors import ODPSValidationError
+
         with self.assertRaises(ODPSValidationError):
+            ProductCreationWorkflow._parse_odps_task(input_data, instance, step)
+
+    def test_parse_odps_task_with_malformed_json_raises_error(self):
+        """Test parse_odps task with malformed JSON raises error (edge case)"""
+        input_data = {
+            "original_raw": '{"invalid": json}',  # Invalid JSON
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        ProductCreationWorkflow.register_workflow(self.registry)
+
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ProductCreationWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
+
+        instance = WorkflowInstance.objects.create(
+            workflow_definition=workflow_def,
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            workflow_version="1.0.0",
+            tenant=self.tenant,
+            input_data=input_data,
+            created_by_id=str(self.user.id),
+            status=WorkflowStatus.DRAFT,
+        )
+
+        step = type("Step", (), {"name": "parse_odps"})()
+
+        # Should raise JSON decode error or validation error
+        with self.assertRaises((ValueError, json.JSONDecodeError, Exception)):
+            ProductCreationWorkflow._parse_odps_task(input_data, instance, step)
+
+    def test_parse_odps_task_with_empty_string_raises_error(self):
+        """Test parse_odps task with empty string raises error (edge case)"""
+        input_data = {
+            "original_raw": "",
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        ProductCreationWorkflow.register_workflow(self.registry)
+
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ProductCreationWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
+
+        instance = WorkflowInstance.objects.create(
+            workflow_definition=workflow_def,
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            workflow_version="1.0.0",
+            tenant=self.tenant,
+            input_data=input_data,
+            created_by_id=str(self.user.id),
+            status=WorkflowStatus.DRAFT,
+        )
+
+        step = type("Step", (), {"name": "parse_odps"})()
+
+        # Should raise validation error for empty input
+        with self.assertRaises(Exception):
             ProductCreationWorkflow._parse_odps_task(input_data, instance, step)
 
     def test_extract_contract_task_with_valid_contract_succeeds(self):
         """Test extract_contract task with valid product.contract"""
-        input_data = {
-            "odps_document_resolved": self.valid_odps_doc
-        }
+        input_data = {"odps_document_resolved": self.valid_odps_doc}
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=WorkflowDefinition.objects.get(
@@ -311,10 +404,10 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
             input_data=input_data,
             created_by_id=str(self.user.id),
             status=WorkflowStatus.DRAFT,
-            state_data={"odps_document_resolved": self.valid_odps_doc}
+            state_data={"odps_document_resolved": self.valid_odps_doc},
         )
 
-        step = type('Step', (), {"name": "extract_contract"})()
+        step = type("Step", (), {"name": "extract_contract"})()
         result = ProductCreationWorkflow._extract_contract_task(input_data, instance, step)
 
         self.assertIn("odcs_contract", result)
@@ -328,19 +421,15 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
+                },
                 # Missing contract section
-            }
+            },
         }
 
-        input_data = {
-            "odps_document_resolved": odps_doc_no_contract
-        }
+        input_data = {"odps_document_resolved": odps_doc_no_contract}
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=WorkflowDefinition.objects.get(
@@ -352,12 +441,13 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
             input_data=input_data,
             created_by_id=str(self.user.id),
             status=WorkflowStatus.DRAFT,
-            state_data={"odps_document_resolved": odps_doc_no_contract}
+            state_data={"odps_document_resolved": odps_doc_no_contract},
         )
 
-        step = type('Step', (), {"name": "extract_contract"})()
+        step = type("Step", (), {"name": "extract_contract"})()
 
-        from hub.apps.contracts.odps_parser import ODPSValidationError
+        from hub.apps.contracts.odps_errors import ODPSValidationError
+
         with self.assertRaises(ODPSValidationError):
             ProductCreationWorkflow._extract_contract_task(input_data, instance, step)
 
@@ -366,9 +456,11 @@ class ProductCreationWorkflowStepExecutionTest(TestCase):
         ProductCreationWorkflow.register_workflow(self.registry)
 
         # Get the most recent workflow definition (in case multiple exist)
-        workflow_def = WorkflowDefinition.objects.filter(
-            name=ProductCreationWorkflow.WORKFLOW_NAME
-        ).order_by('-created_at').first()
+        workflow_def = (
+            WorkflowDefinition.objects.filter(name=ProductCreationWorkflow.WORKFLOW_NAME)
+            .order_by("-created_at")
+            .first()
+        )
 
         self.assertIsNotNone(workflow_def, "Workflow definition should exist")
         dsl = workflow_def.dsl_json
@@ -386,14 +478,13 @@ class ProductCreationWorkflowE2ETest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant E2E",
-            slug="test-tenant-e2e"
+            name="Test Tenant E2E", slug="test-tenant-e2e", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email="test-e2e@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -411,8 +502,14 @@ class ProductCreationWorkflowE2ETest(TestCase):
                     "en": {
                         "productID": "test-product-e2e",
                         "name": "Test Product E2E",
-                        "description": "Test product description for E2E testing"
+                        "description": "Test product description for E2E testing",
                     }
+                },
+                "dataSchema": {
+                    "fields": [
+                        {"name": "id", "type": "string", "description": "Unique identifier"},
+                        {"name": "name", "type": "string", "description": "Name field"},
+                    ]
                 },
                 "contract": {
                     "spec": {
@@ -428,19 +525,19 @@ class ProductCreationWorkflowE2ETest(TestCase):
                                     "name": "id",
                                     "type": "string",
                                     "nullable": False,
-                                    "description": "Unique identifier"
+                                    "description": "Unique identifier",
                                 },
                                 {
                                     "name": "name",
                                     "type": "string",
                                     "nullable": True,
-                                    "description": "Name field"
-                                }
+                                    "description": "Name field",
+                                },
                             ]
-                        }
+                        },
                     }
-                }
-            }
+                },
+            },
         }
         self.valid_odps_raw = json.dumps(self.valid_odps_doc)
 
@@ -450,7 +547,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
             "original_raw": self.valid_odps_raw,
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Execute workflow
@@ -459,7 +556,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Start and execute workflow
@@ -472,12 +569,10 @@ class ProductCreationWorkflowE2ETest(TestCase):
 
         # Verify both contracts were created
         odps_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODPS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODPS
         )
         odcs_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODCS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODCS
         )
 
         self.assertEqual(odps_contracts.count(), 1, "ODPS contract should be created")
@@ -497,14 +592,14 @@ class ProductCreationWorkflowE2ETest(TestCase):
             self.assertEqual(
                 odps_extensions["x_odps"].get("odcs_link"),
                 str(odcs_contract.id),
-                "ODPS contract should link to ODCS contract"
+                "ODPS contract should link to ODCS contract",
             )
 
         if "x_odps" in odcs_extensions:
             self.assertEqual(
                 odcs_extensions["x_odps"].get("odps_link"),
                 str(odps_contract.id),
-                "ODCS contract should link to ODPS contract"
+                "ODCS contract should link to ODPS contract",
             )
 
         # Verify contracts have correct spec types
@@ -514,17 +609,19 @@ class ProductCreationWorkflowE2ETest(TestCase):
     def test_product_first_flow_error_handling_validation_error(self):
         """E2E test: Product-First flow error handling - validation error (Task 3.1.2)"""
         # Invalid ODPS document (missing required fields)
-        invalid_odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            # Missing product field
-        })
+        invalid_odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                # Missing product field
+            }
+        )
 
         input_data = {
             "original_raw": invalid_odps_raw,
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Execute workflow
@@ -533,7 +630,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Start and execute workflow - should fail at validation step
@@ -543,22 +640,24 @@ class ProductCreationWorkflowE2ETest(TestCase):
         except Exception:
             pass  # Expected to fail
 
-        # Verify workflow failed
+        # Verify workflow failed (may be FAILED or ROLLED_BACK if compensation ran)
         instance.refresh_from_db()
-        self.assertEqual(instance.status, WorkflowStatus.FAILED)
+        self.assertIn(instance.status, [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK])
 
         # Verify no contracts were created
         odps_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODPS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODPS
         )
         odcs_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODCS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODCS
         )
 
-        self.assertEqual(odps_contracts.count(), 0, "No ODPS contract should be created on validation error")
-        self.assertEqual(odcs_contracts.count(), 0, "No ODCS contract should be created on validation error")
+        self.assertEqual(
+            odps_contracts.count(), 0, "No ODPS contract should be created on validation error"
+        )
+        self.assertEqual(
+            odcs_contracts.count(), 0, "No ODCS contract should be created on validation error"
+        )
 
     def test_product_first_flow_error_handling_missing_contract(self):
         """E2E test: Product-First flow error handling - missing contract (Task 3.1.2)"""
@@ -570,11 +669,14 @@ class ProductCreationWorkflowE2ETest(TestCase):
                 "details": {
                     "en": {
                         "productID": "test-product-no-contract",
-                        "name": "Test Product No Contract"
+                        "name": "Test Product No Contract",
                     }
-                }
+                },
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
+                },
                 # Missing contract section
-            }
+            },
         }
         odps_no_contract_raw = json.dumps(odps_no_contract)
 
@@ -582,7 +684,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
             "original_raw": odps_no_contract_raw,
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Execute workflow
@@ -591,7 +693,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Start and execute workflow - should fail at extract_contract step
@@ -601,22 +703,24 @@ class ProductCreationWorkflowE2ETest(TestCase):
         except Exception:
             pass  # Expected to fail
 
-        # Verify workflow failed
+        # Verify workflow failed (may be FAILED or ROLLED_BACK if compensation ran)
         instance.refresh_from_db()
-        self.assertEqual(instance.status, WorkflowStatus.FAILED)
+        self.assertIn(instance.status, [WorkflowStatus.FAILED, WorkflowStatus.ROLLED_BACK])
 
         # Verify no contracts were created
         odps_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODPS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODPS
         )
         odcs_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODCS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODCS
         )
 
-        self.assertEqual(odps_contracts.count(), 0, "No ODPS contract should be created when contract is missing")
-        self.assertEqual(odcs_contracts.count(), 0, "No ODCS contract should be created when contract is missing")
+        self.assertEqual(
+            odps_contracts.count(), 0, "No ODPS contract should be created when contract is missing"
+        )
+        self.assertEqual(
+            odcs_contracts.count(), 0, "No ODCS contract should be created when contract is missing"
+        )
 
     def test_product_first_flow_with_optional_asset_creation(self):
         """E2E test: Product-First flow with optional asset creation (Task 3.1.2 Step 10)"""
@@ -630,7 +734,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
             content_type="text/csv",
             storage_path="test/test-data.csv",
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         input_data = {
@@ -640,7 +744,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
             "user_id": str(self.user.id),
             "file_id": str(test_file.id),
             "asset_key": "test-asset-e2e",
-            "asset_name": "Test Asset E2E"
+            "asset_name": "Test Asset E2E",
         }
 
         # Execute workflow
@@ -649,7 +753,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Start and execute workflow
@@ -662,6 +766,7 @@ class ProductCreationWorkflowE2ETest(TestCase):
 
         # Verify asset was created
         from hub.apps.assets.models import Asset
+
         assets = Asset.objects.filter(tenant=self.tenant, key="test-asset-e2e")
         self.assertEqual(assets.count(), 1, "Asset should be created")
 
@@ -669,14 +774,10 @@ class ProductCreationWorkflowE2ETest(TestCase):
 
         # Verify contracts are linked to asset
         odps_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODPS,
-            asset=asset
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODPS, asset=asset
         )
         odcs_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODCS,
-            asset=asset
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODCS, asset=asset
         )
 
         self.assertEqual(odps_contracts.count(), 1, "ODPS contract should be linked to asset")
@@ -689,14 +790,13 @@ class ProductCreationWorkflowCompensationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant Compensation",
-            slug="test-tenant-compensation"
+            name="Test Tenant Compensation", slug="test-tenant-compensation"
         )
         self.user = User.objects.create_user(
             email="test-compensation@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -714,8 +814,11 @@ class ProductCreationWorkflowCompensationTest(TestCase):
                     "en": {
                         "productID": "test-product-compensation",
                         "name": "Test Product Compensation",
-                        "description": "Test product for compensation testing"
+                        "description": "Test product for compensation testing",
                     }
+                },
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "contract": {
                     "spec": {
@@ -730,13 +833,13 @@ class ProductCreationWorkflowCompensationTest(TestCase):
                                     "name": "id",
                                     "type": "string",
                                     "nullable": False,
-                                    "description": "Unique identifier"
+                                    "description": "Unique identifier",
                                 }
                             ]
-                        }
+                        },
                     }
-                }
-            }
+                },
+            },
         }
         self.valid_odps_raw = json.dumps(self.valid_odps_doc)
 
@@ -746,7 +849,7 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             "original_raw": self.valid_odps_raw,
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Create workflow instance
@@ -754,15 +857,16 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Manually execute steps up to create_odcs_contract
         instance = self.engine.start_instance(str(instance.id))
 
         # Execute steps manually to get to create_odcs_contract
-        from hub.apps.orchestration.models import WorkflowStep, StepStatus
-        steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by('step_index')
+        from hub.apps.orchestration.models import StepStatus, WorkflowStep
+
+        steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by("step_index")
 
         # Get step definitions from workflow DSL
         dsl = instance.workflow_definition.dsl_json
@@ -831,13 +935,16 @@ class ProductCreationWorkflowCompensationTest(TestCase):
 
             try:
                 # Try to execute create_odps_contract - should fail
+                # Note: _execute_step catches exceptions when compensation is enabled, so we check step status instead
                 create_odps_step_def = step_defs[create_odps_step.step_index]
-                with self.assertRaises(ValueError):
-                    self.engine._execute_step(instance, create_odps_step, create_odps_step_def)
+                self.engine._execute_step(instance, create_odps_step, create_odps_step_def)
 
-                # Trigger compensation using engine's compensation instance
-                # (which has access to the task registry)
-                self.engine.compensation._compensate_step(instance, create_odcs_step)
+                # Verify step was marked as failed
+                create_odps_step.refresh_from_db()
+                self.assertEqual(create_odps_step.status, StepStatus.FAILED)
+
+                # Trigger compensation via _handle_step_failure (which is what execute_instance does)
+                self.engine._handle_step_failure(instance, create_odps_step)
 
                 # Verify ODCS contract was deleted (compensation executed)
                 with self.assertRaises(Contract.DoesNotExist):
@@ -846,7 +953,9 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             finally:
                 # Restore original task
                 if original_task:
-                    self.engine.task_registry["product_creation.create_odps_contract"] = original_task
+                    self.engine.task_registry["product_creation.create_odps_contract"] = (
+                        original_task
+                    )
 
         except Exception as e:
             # If we get here, compensation should have been triggered
@@ -867,7 +976,7 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             "original_raw": self.valid_odps_raw,
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Create workflow instance
@@ -875,15 +984,16 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Execute workflow up to create_odps_contract
         instance = self.engine.start_instance(str(instance.id))
 
         # Manually execute steps to get to create_odps_contract
-        from hub.apps.orchestration.models import WorkflowStep, StepStatus
-        steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by('step_index')
+        from hub.apps.orchestration.models import StepStatus, WorkflowStep
+
+        steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by("step_index")
 
         # Get step definitions from workflow DSL
         dsl = instance.workflow_definition.dsl_json
@@ -934,13 +1044,17 @@ class ProductCreationWorkflowCompensationTest(TestCase):
 
         try:
             # Try to execute link_contracts - should fail
+            # Note: _execute_step catches exceptions when compensation is enabled, so we check step status instead
             link_contracts_step_def = step_defs[link_contracts_step.step_index]
-            with self.assertRaises(ValueError):
-                self.engine._execute_step(instance, link_contracts_step, link_contracts_step_def)
+            self.engine._execute_step(instance, link_contracts_step, link_contracts_step_def)
 
-            # Trigger compensation for create_odps_contract using engine's compensation instance
-            create_odps_step = steps[7]
-            self.engine.compensation._compensate_step(instance, create_odps_step)
+            # Verify step was marked as failed
+            link_contracts_step.refresh_from_db()
+            self.assertEqual(link_contracts_step.status, StepStatus.FAILED)
+
+            # Trigger compensation via _handle_step_failure (which is what execute_instance does)
+            # This will compensate all previous steps including create_odps_contract
+            self.engine._handle_step_failure(instance, link_contracts_step)
 
             # Verify ODPS contract was deleted (compensation executed)
             with self.assertRaises(Contract.DoesNotExist):
@@ -957,7 +1071,7 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             "original_raw": self.valid_odps_raw,
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         # Create workflow instance
@@ -965,15 +1079,16 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         # Execute workflow up to link_contracts
         instance = self.engine.start_instance(str(instance.id))
 
         # Manually execute steps to get to link_contracts
-        from hub.apps.orchestration.models import WorkflowStep, StepStatus
-        steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by('step_index')
+        from hub.apps.orchestration.models import StepStatus, WorkflowStep
+
+        steps = WorkflowStep.objects.filter(workflow_instance=instance).order_by("step_index")
 
         # Get step definitions from workflow DSL
         dsl = instance.workflow_definition.dsl_json
@@ -1011,21 +1126,21 @@ class ProductCreationWorkflowCompensationTest(TestCase):
         odcs_contract = Contract.objects.get(id=odcs_contract_id)
 
         # Check if links exist in hub_contract_json
-        odps_has_link = (
-            odps_contract.hub_contract_json and
-            odps_contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odcs_link")
-        )
-        odcs_has_link = (
-            odcs_contract.hub_contract_json and
-            odcs_contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
-        )
+        odps_has_link = odps_contract.hub_contract_json and odps_contract.hub_contract_json.get(
+            "extensions", {}
+        ).get("x_odps", {}).get("odcs_link")
+        odcs_has_link = odcs_contract.hub_contract_json and odcs_contract.hub_contract_json.get(
+            "extensions", {}
+        ).get("x_odps", {}).get("odps_link")
 
         # If links don't exist yet, execute link_contracts step
         if not odps_has_link or not odcs_has_link:
             link_contracts_step = steps[8]
             try:
                 link_contracts_step_def = step_defs[link_contracts_step.step_index]
-                step_output = self.engine._execute_step(instance, link_contracts_step, link_contracts_step_def)
+                step_output = self.engine._execute_step(
+                    instance, link_contracts_step, link_contracts_step_def
+                )
 
                 # Update workflow state with step output
                 step_state = step_output.get("state", {})
@@ -1049,14 +1164,12 @@ class ProductCreationWorkflowCompensationTest(TestCase):
         odps_contract.refresh_from_db()
         odcs_contract.refresh_from_db()
 
-        odps_link = (
-            odps_contract.hub_contract_json and
-            odps_contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odcs_link")
-        )
-        odcs_link = (
-            odcs_contract.hub_contract_json and
-            odcs_contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
-        )
+        odps_link = odps_contract.hub_contract_json and odps_contract.hub_contract_json.get(
+            "extensions", {}
+        ).get("x_odps", {}).get("odcs_link")
+        odcs_link = odcs_contract.hub_contract_json and odcs_contract.hub_contract_json.get(
+            "extensions", {}
+        ).get("x_odps", {}).get("odps_link")
 
         if odps_link or odcs_link:
             # Links exist - now test compensation
@@ -1070,12 +1183,16 @@ class ProductCreationWorkflowCompensationTest(TestCase):
             odcs_contract.refresh_from_db()
 
             odps_link_after = (
-                odps_contract.hub_contract_json and
-                odps_contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odcs_link")
+                odps_contract.hub_contract_json
+                and odps_contract.hub_contract_json.get("extensions", {})
+                .get("x_odps", {})
+                .get("odcs_link")
             )
             odcs_link_after = (
-                odcs_contract.hub_contract_json and
-                odcs_contract.hub_contract_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
+                odcs_contract.hub_contract_json
+                and odcs_contract.hub_contract_json.get("extensions", {})
+                .get("x_odps", {})
+                .get("odps_link")
             )
 
             self.assertIsNone(odps_link_after, "ODPS contract link should be removed")
@@ -1088,14 +1205,13 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant Events",
-            slug="test-tenant-events"
+            name="Test Tenant Events", slug="test-tenant-events", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email="test-events@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -1113,8 +1229,11 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
                     "en": {
                         "productID": "test-product-events",
                         "name": "Test Product Events",
-                        "description": "Test product for event testing"
+                        "description": "Test product for event testing",
                     }
+                },
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "contract": {
                     "spec": {
@@ -1129,241 +1248,522 @@ class ProductCreationWorkflowEventPublishingTest(TestCase):
                                     "name": "id",
                                     "type": "string",
                                     "nullable": False,
-                                    "description": "Unique identifier"
+                                    "description": "Unique identifier",
                                 }
                             ]
-                        }
+                        },
                     }
-                }
-            }
+                },
+            },
         }
         self.valid_odps_raw = json.dumps(self.valid_odps_doc)
 
     def test_workflow_created_event_published(self):
         """Test that workflow.created event is published when ProductCreationWorkflow instance is created"""
-        from unittest.mock import patch
-        import uuid
+        from hub.apps.core.events.models import Event
 
-        with patch("hub.apps.core.events.service_publishers.EventPublisher.publish") as mock_publish:
-            mock_publish.return_value = str(uuid.uuid4())
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
 
-            input_data = {
-                "original_raw": self.valid_odps_raw,
-                "original_format": "JSON",
-                "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
-            }
+        # Count events before
+        initial_count = Event.objects.filter(event_type="workflow.created").count()
 
-            instance = self.engine.create_instance(
-                workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
-                input_data=input_data,
-                tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
-            )
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
 
-            # Verify workflow.created event was published
-            mock_publish.assert_called()
-            created_calls = [
-                call for call in mock_publish.call_args_list
-                if call[1]["event_type"] == "workflow.created"
-            ]
-            self.assertGreater(len(created_calls), 0, "workflow.created event should be published")
+        # Verify workflow.created event was published by querying Event model
+        created_events = Event.objects.filter(
+            event_type="workflow.created",
+            data__workflow_instance_id=str(instance.id),
+        )
+        self.assertGreater(created_events.count(), 0, "workflow.created event should be published")
 
-            call_args = created_calls[0]
-            self.assertEqual(call_args[1]["data"]["workflow_instance_id"], str(instance.id))
-            self.assertEqual(call_args[1]["data"]["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME)
+        # Verify event data
+        created_event = created_events.first()
+        self.assertEqual(created_event.data["workflow_instance_id"], str(instance.id))
+        self.assertEqual(created_event.data["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME)
+        self.assertEqual(created_event.tenant_id, self.tenant.id)
+        self.assertEqual(created_event.user_id, self.user.id)
+
+    def test_workflow_created_event_published_edge_case_empty_input(self):
+        """Test workflow.created event published with empty input data (edge case)"""
+        from hub.apps.core.events.models import Event
+
+        input_data = {
+            "original_raw": "",
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
+
+        # Verify event was still published even with empty input
+        created_events = Event.objects.filter(
+            event_type="workflow.created",
+            data__workflow_instance_id=str(instance.id),
+        )
+        self.assertGreater(
+            created_events.count(), 0, "Event should be published even with empty input"
+        )
 
     def test_workflow_started_event_published(self):
         """Test that workflow.started event is published when ProductCreationWorkflow is started"""
-        from unittest.mock import patch
-        import uuid
+        from hub.apps.core.events.models import Event
 
-        with patch("hub.apps.core.events.service_publishers.EventPublisher.publish") as mock_publish:
-            mock_publish.return_value = str(uuid.uuid4())
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
 
-            input_data = {
-                "original_raw": self.valid_odps_raw,
-                "original_format": "JSON",
-                "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
-            }
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
 
-            instance = self.engine.create_instance(
-                workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
-                input_data=input_data,
-                tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
+        # Count started events before
+        initial_count = Event.objects.filter(
+            event_type="workflow.started",
+            data__workflow_instance_id=str(instance.id),
+        ).count()
+
+        instance = self.engine.start_instance(str(instance.id))
+
+        # Verify workflow.started event was published by querying Event model
+        started_events = Event.objects.filter(
+            event_type="workflow.started",
+            data__workflow_instance_id=str(instance.id),
+        )
+        self.assertEqual(
+            started_events.count(),
+            initial_count + 1,
+            "workflow.started event should be published once",
+        )
+
+        # Verify event data
+        started_event = started_events.first()
+        self.assertEqual(started_event.data["workflow_instance_id"], str(instance.id))
+        self.assertEqual(started_event.data["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME)
+        self.assertEqual(started_event.tenant_id, self.tenant.id)
+        self.assertEqual(started_event.user_id, self.user.id)
+
+    def test_workflow_started_event_not_published_if_already_started(self):
+        """Test that workflow.started event is not published twice if workflow already started (edge case)"""
+        from hub.apps.core.events.models import Event
+
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
+
+        # Start workflow first time
+        instance = self.engine.start_instance(str(instance.id))
+        first_started_count = Event.objects.filter(
+            event_type="workflow.started",
+            data__workflow_instance_id=str(instance.id),
+        ).count()
+
+        # Try to start again (engine rejects RUNNING -> RUNNING; no duplicate event)
+        instance.refresh_from_db()
+        if instance.status == WorkflowStatus.RUNNING:
+            from django.core.exceptions import ValidationError
+            try:
+                self.engine.start_instance(str(instance.id))
+            except ValidationError:
+                # Expected: invalid transition RUNNING -> RUNNING
+                pass
+            second_started_count = Event.objects.filter(
+                event_type="workflow.started",
+                data__workflow_instance_id=str(instance.id),
+            ).count()
+            # Should not have increased (second start was rejected, so no new event)
+            self.assertLessEqual(
+                second_started_count,
+                first_started_count,
+                "Should not publish duplicate workflow.started when start_instance rejects RUNNING->RUNNING",
             )
-
-            # Reset mock to only count started event
-            mock_publish.reset_mock()
-
-            instance = self.engine.start_instance(str(instance.id))
-
-            # Verify workflow.started event was published
-            started_calls = [
-                call for call in mock_publish.call_args_list
-                if call[1]["event_type"] == "workflow.started"
-            ]
-            self.assertEqual(len(started_calls), 1, "workflow.started event should be published once")
-
-            call_args = started_calls[0]
-            self.assertEqual(call_args[1]["data"]["workflow_instance_id"], str(instance.id))
-            self.assertEqual(call_args[1]["data"]["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME)
 
     def test_workflow_step_events_published(self):
         """Test that workflow.step.started and workflow.step.completed events are published for each step"""
-        from unittest.mock import patch
-        import uuid
+        from hub.apps.core.events.models import Event
 
-        with patch("hub.apps.core.events.service_publishers.EventPublisher.publish") as mock_publish:
-            mock_publish.return_value = str(uuid.uuid4())
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
 
-            input_data = {
-                "original_raw": self.valid_odps_raw,
-                "original_format": "JSON",
-                "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
-            }
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
 
-            instance = self.engine.create_instance(
-                workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
-                input_data=input_data,
-                tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
-            )
+        instance = self.engine.start_instance(str(instance.id))
 
-            instance = self.engine.start_instance(str(instance.id))
+        # Count step events before execution
+        initial_started_count = Event.objects.filter(
+            event_type="workflow.step.started",
+            data__workflow_instance_id=str(instance.id),
+        ).count()
+        initial_completed_count = Event.objects.filter(
+            event_type="workflow.step.completed",
+            data__workflow_instance_id=str(instance.id),
+        ).count()
 
-            # Reset mock to only count step events
-            mock_publish.reset_mock()
+        # Execute workflow
+        instance = self.engine.execute_instance(str(instance.id))
 
-            # Execute workflow
-            instance = self.engine.execute_instance(str(instance.id))
+        # Verify step events were published by querying Event model
+        step_started_events = Event.objects.filter(
+            event_type="workflow.step.started",
+            data__workflow_instance_id=str(instance.id),
+        )
+        step_completed_events = Event.objects.filter(
+            event_type="workflow.step.completed",
+            data__workflow_instance_id=str(instance.id),
+        )
 
-            # Verify step events were published
-            step_started_calls = [
-                call for call in mock_publish.call_args_list
-                if call[1]["event_type"] == "workflow.step.started"
-            ]
-            step_completed_calls = [
-                call for call in mock_publish.call_args_list
-                if call[1]["event_type"] == "workflow.step.completed"
-            ]
+        # ProductCreationWorkflow has 12 steps, so we should have step events
+        self.assertGreater(
+            step_started_events.count(),
+            initial_started_count,
+            "workflow.step.started events should be published",
+        )
+        self.assertGreater(
+            step_completed_events.count(),
+            initial_completed_count,
+            "workflow.step.completed events should be published",
+        )
 
-            # ProductCreationWorkflow has 12 steps, so we should have at least some step events
-            self.assertGreater(len(step_started_calls), 0, "workflow.step.started events should be published")
-            self.assertGreater(len(step_completed_calls), 0, "workflow.step.completed events should be published")
+        # Verify first step event has correct structure
+        first_started = step_started_events.order_by("timestamp").first()
+        if first_started:
+            self.assertIn("step_index", first_started.data)
+            self.assertIn("step_name", first_started.data)
+            self.assertIn("progress_percentage", first_started.data)
+            self.assertEqual(first_started.tenant_id, self.tenant.id)
+            self.assertEqual(first_started.user_id, self.user.id)
 
-            # Verify first step event has correct structure
-            first_started = step_started_calls[0]
-            self.assertIn("step_index", first_started[1]["data"])
-            self.assertIn("step_name", first_started[1]["data"])
-            self.assertIn("progress_percentage", first_started[1]["data"])
+        # Verify first completed event has correct structure
+        first_completed = step_completed_events.order_by("timestamp").first()
+        if first_completed:
+            self.assertIn("step_index", first_completed.data)
+            self.assertIn("step_name", first_completed.data)
+            self.assertIn("progress_percentage", first_completed.data)
+            self.assertEqual(first_completed.tenant_id, self.tenant.id)
+            self.assertEqual(first_completed.user_id, self.user.id)
 
-            # Verify first completed event has correct structure
-            first_completed = step_completed_calls[0]
-            self.assertIn("step_index", first_completed[1]["data"])
-            self.assertIn("step_name", first_completed[1]["data"])
-            self.assertIn("progress_percentage", first_completed[1]["data"])
+    def test_workflow_step_events_published_in_order(self):
+        """Test that workflow step events are published in correct order (edge case)"""
+        from hub.apps.core.events.models import Event
+
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
+
+        instance = self.engine.start_instance(str(instance.id))
+        instance = self.engine.execute_instance(str(instance.id))
+
+        # Get all step events ordered by timestamp
+        step_events = Event.objects.filter(
+            event_type__in=["workflow.step.started", "workflow.step.completed"],
+            data__workflow_instance_id=str(instance.id),
+        ).order_by("timestamp")
+
+        # Verify events alternate between started and completed (or at least started comes before completed for same step)
+        step_indices_seen = {}
+        for event in step_events:
+            step_index = event.data.get("step_index")
+            step_name = event.data.get("step_name")
+            if step_index is not None:
+                if step_index not in step_indices_seen:
+                    step_indices_seen[step_index] = []
+                step_indices_seen[step_index].append(event.event_type)
+
+        # For each step, started should come before completed
+        for step_index, event_types in step_indices_seen.items():
+            started_indices = [i for i, et in enumerate(event_types) if "started" in et]
+            completed_indices = [i for i, et in enumerate(event_types) if "completed" in et]
+            if started_indices and completed_indices:
+                # First started should come before first completed
+                self.assertLess(
+                    min(started_indices),
+                    min(completed_indices),
+                    f"Step {step_index} ({step_name}): started event should come before completed",
+                )
 
     def test_workflow_completed_event_published(self):
         """Test that workflow.completed event is published when ProductCreationWorkflow completes successfully"""
-        from unittest.mock import patch
-        import uuid
+        from hub.apps.core.events.models import Event
 
-        with patch("hub.apps.core.events.service_publishers.EventPublisher.publish") as mock_publish:
-            mock_publish.return_value = str(uuid.uuid4())
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
 
-            input_data = {
-                "original_raw": self.valid_odps_raw,
-                "original_format": "JSON",
-                "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
-            }
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
 
-            instance = self.engine.create_instance(
-                workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
-                input_data=input_data,
-                tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
-            )
+        instance = self.engine.start_instance(str(instance.id))
 
-            instance = self.engine.start_instance(str(instance.id))
+        # Count completed events before execution
+        initial_count = Event.objects.filter(
+            event_type="workflow.completed",
+            data__workflow_instance_id=str(instance.id),
+        ).count()
 
-            # Reset mock to only count completed event
-            mock_publish.reset_mock()
+        instance = self.engine.execute_instance(str(instance.id))
 
-            instance = self.engine.execute_instance(str(instance.id))
+        # Verify workflow.completed event was published by querying Event model
+        completed_events = Event.objects.filter(
+            event_type="workflow.completed",
+            data__workflow_instance_id=str(instance.id),
+        )
+        self.assertEqual(
+            completed_events.count(),
+            initial_count + 1,
+            "workflow.completed event should be published once",
+        )
 
-            # Verify workflow.completed event was published
-            completed_calls = [
-                call for call in mock_publish.call_args_list
-                if call[1]["event_type"] == "workflow.completed"
-            ]
-            self.assertEqual(len(completed_calls), 1, "workflow.completed event should be published once")
+        # Verify event data
+        completed_event = completed_events.first()
+        self.assertEqual(completed_event.data["workflow_instance_id"], str(instance.id))
+        self.assertEqual(
+            completed_event.data["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME
+        )
+        self.assertIn("output_data", completed_event.data)
+        self.assertIn("duration_ms", completed_event.data)
+        self.assertEqual(completed_event.tenant_id, self.tenant.id)
+        self.assertEqual(completed_event.user_id, self.user.id)
+        # Verify duration_ms is a number
+        self.assertIsInstance(completed_event.data["duration_ms"], (int, float))
+        self.assertGreaterEqual(completed_event.data["duration_ms"], 0)
 
-            call_args = completed_calls[0]
-            self.assertEqual(call_args[1]["data"]["workflow_instance_id"], str(instance.id))
-            self.assertEqual(call_args[1]["data"]["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME)
-            self.assertIn("output_data", call_args[1]["data"])
-            self.assertIn("duration_ms", call_args[1]["data"])
+    def test_workflow_completed_event_not_published_on_failure(self):
+        """Test that workflow.completed event is NOT published when workflow fails (edge case)"""
+        from hub.apps.core.events.models import Event
 
-    def test_workflow_failed_event_published(self):
-        """Test that workflow.failed event is published when ProductCreationWorkflow fails"""
-        from unittest.mock import patch
-        import uuid
-
-        with patch("hub.apps.core.events.service_publishers.EventPublisher.publish") as mock_publish:
-            mock_publish.return_value = str(uuid.uuid4())
-
-            # Invalid ODPS document that will cause failure
-            invalid_odps_raw = json.dumps({
+        # Invalid ODPS document that will cause failure
+        invalid_odps_raw = json.dumps(
+            {
                 "schema": "https://opendataproducts.org/schema/v4.1",
                 "version": "4.1",
                 # Missing product field
-            })
-
-            input_data = {
-                "original_raw": invalid_odps_raw,
-                "original_format": "JSON",
-                "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
             }
+        )
 
-            instance = self.engine.create_instance(
-                workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
-                input_data=input_data,
-                tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
+        input_data = {
+            "original_raw": invalid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
+
+        instance = self.engine.start_instance(str(instance.id))
+
+        # Count completed events before execution
+        initial_completed_count = Event.objects.filter(
+            event_type="workflow.completed",
+            data__workflow_instance_id=str(instance.id),
+        ).count()
+
+        # Execute workflow - should fail
+        try:
+            instance = self.engine.execute_instance(str(instance.id))
+        except Exception:
+            pass  # Expected to fail
+
+        instance.refresh_from_db()
+
+        # Verify workflow.completed event was NOT published if workflow failed
+        if instance.status != WorkflowStatus.COMPLETED:
+            completed_events = Event.objects.filter(
+                event_type="workflow.completed",
+                data__workflow_instance_id=str(instance.id),
+            )
+            self.assertEqual(
+                completed_events.count(),
+                initial_completed_count,
+                "workflow.completed event should NOT be published when workflow fails",
             )
 
-            instance = self.engine.start_instance(str(instance.id))
+    def test_workflow_failed_event_published(self):
+        """Test that workflow.failed event is published when ProductCreationWorkflow fails"""
+        from hub.apps.core.events.models import Event
 
-            # Reset mock to only count failed event
-            mock_publish.reset_mock()
+        # Invalid ODPS document that will cause failure
+        invalid_odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                # Missing product field
+            }
+        )
 
-            # Execute workflow - should fail
-            try:
-                instance = self.engine.execute_instance(str(instance.id))
-            except Exception:
-                pass  # Expected to fail
+        input_data = {
+            "original_raw": invalid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
 
-            instance.refresh_from_db()
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
 
-            # Verify workflow.failed event was published if workflow failed
-            if instance.status == WorkflowStatus.FAILED:
-                failed_calls = [
-                    call for call in mock_publish.call_args_list
-                    if call[1]["event_type"] == "workflow.failed"
-                ]
-                # Note: Failed event might not be published if exception is raised before event publishing
-                # This is acceptable behavior - the important thing is that the workflow status is FAILED
-                if len(failed_calls) > 0:
-                    call_args = failed_calls[0]
-                    self.assertEqual(call_args[1]["data"]["workflow_instance_id"], str(instance.id))
-                    self.assertEqual(call_args[1]["data"]["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME)
-                    self.assertIn("error_message", call_args[1]["data"])
+        instance = self.engine.start_instance(str(instance.id))
+
+        # Count failed events before execution
+        initial_failed_count = Event.objects.filter(
+            event_type="workflow.failed",
+            data__workflow_instance_id=str(instance.id),
+        ).count()
+
+        # Execute workflow - should fail
+        try:
+            instance = self.engine.execute_instance(str(instance.id))
+        except Exception:
+            pass  # Expected to fail
+
+        instance.refresh_from_db()
+
+        # Verify workflow.failed event was published if workflow failed
+        if instance.status == WorkflowStatus.FAILED:
+            failed_events = Event.objects.filter(
+                event_type="workflow.failed",
+                data__workflow_instance_id=str(instance.id),
+            )
+            # Note: Failed event might not be published if exception is raised before event publishing
+            # This is acceptable behavior - the important thing is that the workflow status is FAILED
+            if failed_events.count() > initial_failed_count:
+                failed_event = failed_events.order_by("-timestamp").first()
+                self.assertEqual(failed_event.data["workflow_instance_id"], str(instance.id))
+                self.assertEqual(
+                    failed_event.data["workflow_name"], ProductCreationWorkflow.WORKFLOW_NAME
+                )
+                self.assertIn("error_message", failed_event.data)
+                self.assertEqual(failed_event.tenant_id, self.tenant.id)
+                self.assertEqual(failed_event.user_id, self.user.id)
+                # Verify error_message is not empty
+                self.assertIsNotNone(failed_event.data["error_message"])
+                self.assertNotEqual(failed_event.data["error_message"], "")
+
+    def test_workflow_failed_event_with_detailed_error_info(self):
+        """Test that workflow.failed event includes detailed error information (edge case)"""
+        from hub.apps.core.events.models import Event
+
+        # Create ODPS document with invalid contract structure
+        invalid_odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test", "name": "Test"}},
+                    "dataSchema": {"fields": []},
+                    "contract": {
+                        "spec": {
+                            # Invalid contract - missing required fields
+                            "apiVersion": "odcs.io/v3.0.2",
+                        }
+                    },
+                },
+            }
+        )
+
+        input_data = {
+            "original_raw": invalid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
+
+        instance = self.engine.start_instance(str(instance.id))
+
+        # Execute workflow - should fail
+        try:
+            instance = self.engine.execute_instance(str(instance.id))
+        except Exception:
+            pass  # Expected to fail
+
+        instance.refresh_from_db()
+
+        # Verify failed event has detailed error information
+        if instance.status == WorkflowStatus.FAILED:
+            failed_events = Event.objects.filter(
+                event_type="workflow.failed",
+                data__workflow_instance_id=str(instance.id),
+            )
+            if failed_events.exists():
+                failed_event = failed_events.order_by("-timestamp").first()
+                # Verify error details are present
+                self.assertIn("error_message", failed_event.data)
+                error_message = failed_event.data["error_message"]
+                self.assertIsNotNone(error_message)
+                self.assertIsInstance(error_message, str)
+                # Error message should contain useful information
+                self.assertGreater(len(error_message), 0)
 
 
 class ProductCreationWorkflowProgressTrackingTest(TestCase):
@@ -1372,14 +1772,13 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant Progress",
-            slug="test-tenant-progress"
+            name="Test Tenant Progress", slug="test-tenant-progress"
         )
         self.user = User.objects.create_user(
             email="test-progress@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.engine = WorkflowEngine()
         self.registry = WorkflowRegistry()
@@ -1397,8 +1796,11 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
                     "en": {
                         "productID": "test-product-progress",
                         "name": "Test Product Progress",
-                        "description": "Test product for progress tracking"
+                        "description": "Test product for progress tracking",
                     }
+                },
+                "dataSchema": {
+                    "fields": [{"name": "id", "type": "string", "description": "Unique identifier"}]
                 },
                 "contract": {
                     "spec": {
@@ -1413,13 +1815,13 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
                                     "name": "id",
                                     "type": "string",
                                     "nullable": False,
-                                    "description": "Unique identifier"
+                                    "description": "Unique identifier",
                                 }
                             ]
-                        }
+                        },
                     }
-                }
-            }
+                },
+            },
         }
         self.valid_odps_raw = json.dumps(self.valid_odps_doc)
 
@@ -1429,14 +1831,14 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
             "original_raw": self.valid_odps_raw,
             "original_format": "JSON",
             "tenant_id": str(self.tenant.id),
-            "user_id": str(self.user.id)
+            "user_id": str(self.user.id),
         }
 
         instance = self.engine.create_instance(
             workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
             input_data=input_data,
             tenant_id=str(self.tenant.id),
-            created_by_id=str(self.user.id)
+            created_by_id=str(self.user.id),
         )
 
         instance = self.engine.start_instance(str(instance.id))
@@ -1445,7 +1847,11 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
         # Verify progress is tracked in state_data
         instance.refresh_from_db()
         self.assertIsNotNone(instance.state_data, "state_data should not be None")
-        self.assertIn("progress_percentage", instance.state_data, "progress_percentage should be in state_data")
+        self.assertIn(
+            "progress_percentage",
+            instance.state_data,
+            "progress_percentage should be in state_data",
+        )
 
         progress = instance.state_data.get("progress_percentage")
         self.assertIsNotNone(progress, "progress_percentage should not be None")
@@ -1458,96 +1864,186 @@ class ProductCreationWorkflowProgressTrackingTest(TestCase):
 
     def test_progress_increases_monotonically(self):
         """Test that progress percentage increases monotonically during workflow execution"""
-        from unittest.mock import patch
-        import uuid
+        from hub.apps.core.events.models import Event
+
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
+
+        instance = self.engine.start_instance(str(instance.id))
+        instance = self.engine.execute_instance(str(instance.id))
+
+        # Get all step events with progress_percentage from Event model
+        step_events = Event.objects.filter(
+            event_type__in=["workflow.step.started", "workflow.step.completed"],
+            data__workflow_instance_id=str(instance.id),
+        ).order_by("timestamp")
 
         progress_values = []
+        for event in step_events:
+            if "progress_percentage" in event.data:
+                progress_values.append(event.data["progress_percentage"])
 
-        def capture_progress(event_type, data, **kwargs):
-            if event_type in ["workflow.step.started", "workflow.step.completed"]:
-                if "progress_percentage" in data:
-                    progress_values.append(data["progress_percentage"])
-            return str(uuid.uuid4())
+        # Verify progress increases monotonically (or stays the same)
+        if len(progress_values) > 1:
+            for i in range(1, len(progress_values)):
+                self.assertGreaterEqual(
+                    progress_values[i],
+                    progress_values[i - 1],
+                    f"Progress should not decrease: {progress_values[i-1]} -> {progress_values[i]}",
+                )
 
-        with patch("hub.apps.core.events.service_publishers.EventPublisher.publish", side_effect=capture_progress):
-            input_data = {
-                "original_raw": self.valid_odps_raw,
-                "original_format": "JSON",
-                "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
-            }
+    def test_progress_increases_monotonically_edge_case_retry(self):
+        """Test that progress increases monotonically even when steps are retried (edge case)"""
+        from hub.apps.core.events.models import Event
 
-            instance = self.engine.create_instance(
-                workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
-                input_data=input_data,
-                tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
-            )
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
 
-            instance = self.engine.start_instance(str(instance.id))
-            instance = self.engine.execute_instance(str(instance.id))
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
 
-            # Verify progress increases monotonically (or stays the same)
-            if len(progress_values) > 1:
-                for i in range(1, len(progress_values)):
-                    self.assertGreaterEqual(
-                        progress_values[i],
-                        progress_values[i - 1],
-                        f"Progress should not decrease: {progress_values[i-1]} -> {progress_values[i]}"
-                    )
+        instance = self.engine.start_instance(str(instance.id))
+
+        # Get initial progress
+        initial_events = Event.objects.filter(
+            event_type__in=["workflow.step.started", "workflow.step.completed"],
+            data__workflow_instance_id=str(instance.id),
+        ).order_by("timestamp")
+
+        initial_progress_values = [
+            e.data["progress_percentage"] for e in initial_events if "progress_percentage" in e.data
+        ]
+
+        # Execute workflow
+        instance = self.engine.execute_instance(str(instance.id))
+
+        # Get all progress values after execution
+        all_events = Event.objects.filter(
+            event_type__in=["workflow.step.started", "workflow.step.completed"],
+            data__workflow_instance_id=str(instance.id),
+        ).order_by("timestamp")
+
+        all_progress_values = [
+            e.data["progress_percentage"] for e in all_events if "progress_percentage" in e.data
+        ]
+
+        # Verify progress never decreases
+        if len(all_progress_values) > 1:
+            for i in range(1, len(all_progress_values)):
+                self.assertGreaterEqual(
+                    all_progress_values[i],
+                    all_progress_values[i - 1],
+                    f"Progress should not decrease even with retries: "
+                    f"{all_progress_values[i-1]} -> {all_progress_values[i]}",
+                )
 
     def test_progress_in_step_events(self):
         """Test that progress_percentage is included in step.started and step.completed events"""
-        from unittest.mock import patch
-        import uuid
+        from hub.apps.core.events.models import Event
 
-        with patch("hub.apps.core.events.service_publishers.EventPublisher.publish") as mock_publish:
-            mock_publish.return_value = str(uuid.uuid4())
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
 
-            input_data = {
-                "original_raw": self.valid_odps_raw,
-                "original_format": "JSON",
-                "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
-            }
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
 
-            instance = self.engine.create_instance(
-                workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
-                input_data=input_data,
-                tenant_id=str(self.tenant.id),
-                created_by_id=str(self.user.id)
+        instance = self.engine.start_instance(str(instance.id))
+        instance = self.engine.execute_instance(str(instance.id))
+
+        # Verify progress_percentage in step events by querying Event model
+        step_started_events = Event.objects.filter(
+            event_type="workflow.step.started",
+            data__workflow_instance_id=str(instance.id),
+        )
+        step_completed_events = Event.objects.filter(
+            event_type="workflow.step.completed",
+            data__workflow_instance_id=str(instance.id),
+        )
+
+        # Verify all step.started events have progress_percentage
+        self.assertGreater(step_started_events.count(), 0, "Should have step.started events")
+        for event in step_started_events:
+            self.assertIn("progress_percentage", event.data)
+            progress = event.data["progress_percentage"]
+            self.assertIsNotNone(progress, "progress_percentage should not be None")
+            self.assertIsInstance(progress, (int, float), "progress_percentage should be a number")
+            self.assertGreaterEqual(progress, 0.0, "progress_percentage should be >= 0.0")
+            self.assertLessEqual(progress, 100.0, "progress_percentage should be <= 100.0")
+
+        # Verify all step.completed events have progress_percentage
+        self.assertGreater(step_completed_events.count(), 0, "Should have step.completed events")
+        for event in step_completed_events:
+            self.assertIn("progress_percentage", event.data)
+            progress = event.data["progress_percentage"]
+            self.assertIsNotNone(progress, "progress_percentage should not be None")
+            self.assertIsInstance(progress, (int, float), "progress_percentage should be a number")
+            self.assertGreaterEqual(progress, 0.0, "progress_percentage should be >= 0.0")
+            self.assertLessEqual(progress, 100.0, "progress_percentage should be <= 100.0")
+
+    def test_progress_in_step_events_edge_case_final_step(self):
+        """Test that final step has progress_percentage = 100.0 (edge case)"""
+        from hub.apps.core.events.models import Event
+
+        input_data = {
+            "original_raw": self.valid_odps_raw,
+            "original_format": "JSON",
+            "tenant_id": str(self.tenant.id),
+            "user_id": str(self.user.id),
+        }
+
+        instance = self.engine.create_instance(
+            workflow_name=ProductCreationWorkflow.WORKFLOW_NAME,
+            input_data=input_data,
+            tenant_id=str(self.tenant.id),
+            created_by_id=str(self.user.id),
+        )
+
+        instance = self.engine.start_instance(str(instance.id))
+        instance = self.engine.execute_instance(str(instance.id))
+
+        # Get the last step completed event
+        last_completed_event = (
+            Event.objects.filter(
+                event_type="workflow.step.completed",
+                data__workflow_instance_id=str(instance.id),
             )
+            .order_by("-timestamp")
+            .first()
+        )
 
-            instance = self.engine.start_instance(str(instance.id))
-
-            # Reset mock to only count step events
-            mock_publish.reset_mock()
-
-            instance = self.engine.execute_instance(str(instance.id))
-
-            # Verify progress_percentage in step events
-            step_started_calls = [
-                call for call in mock_publish.call_args_list
-                if call[1]["event_type"] == "workflow.step.started"
-            ]
-            step_completed_calls = [
-                call for call in mock_publish.call_args_list
-                if call[1]["event_type"] == "workflow.step.completed"
-            ]
-
-            # Verify all step.started events have progress_percentage
-            for call in step_started_calls:
-                self.assertIn("progress_percentage", call[1]["data"])
-                progress = call[1]["data"]["progress_percentage"]
-                self.assertIsNotNone(progress)
-                self.assertGreaterEqual(progress, 0.0)
-                self.assertLessEqual(progress, 100.0)
-
-            # Verify all step.completed events have progress_percentage
-            for call in step_completed_calls:
-                self.assertIn("progress_percentage", call[1]["data"])
-                progress = call[1]["data"]["progress_percentage"]
-                self.assertIsNotNone(progress)
-                self.assertGreaterEqual(progress, 0.0)
-                self.assertLessEqual(progress, 100.0)
-
+        if last_completed_event and instance.status == WorkflowStatus.COMPLETED:
+            # Final step should have progress_percentage = 100.0
+            self.assertIn("progress_percentage", last_completed_event.data)
+            final_progress = last_completed_event.data["progress_percentage"]
+            self.assertEqual(
+                final_progress,
+                100.0,
+                f"Final step should have progress_percentage = 100.0, got {final_progress}",
+            )

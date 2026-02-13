@@ -12,6 +12,7 @@ from django.utils import timezone
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+from hub.apps.assets.business_rules import AssetsBusinessRules
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceStatus
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.semantic.utils import map_asset_to_semantic
@@ -629,6 +630,10 @@ class AssetCreationWorkflow:
         if Asset.objects.filter(tenant=tenant, key=key).exists():
             raise ValueError(f'Asset with key "{key}" already exists for this tenant')
 
+        # Validate required fields before creation
+        if not key or not name:
+            raise ValueError("Asset key and name are required")
+
         # Create asset
         with transaction.atomic():
             asset = Asset.objects.create(
@@ -640,6 +645,37 @@ class AssetCreationWorkflow:
                 status=AssetStatus.DRAFT,
                 visibility=visibility,
                 created_by=created_by
+            )
+
+        # Validate created asset using AssetsBusinessRules
+        assets_rules = AssetsBusinessRules(
+            tenant_id=str(tenant_id) if tenant_id else None,
+            user_id=str(created_by_id) if created_by_id else None
+        )
+
+        asset_validation_result = assets_rules.validate(
+            asset=asset,
+            tenant=tenant,
+            user=created_by,
+            validation_type="all"
+        )
+
+        if not asset_validation_result.is_valid:
+            error_messages = asset_validation_result.errors
+            # Log errors but don't fail - asset is already created
+            logger.warning(
+                "Asset validation warnings after creation",
+                workflow_instance_id=str(instance.id),
+                asset_id=str(asset.id),
+                warnings=asset_validation_result.warnings,
+                errors=error_messages,
+            )
+        elif asset_validation_result.warnings:
+            logger.warning(
+                "Asset validation warnings",
+                workflow_instance_id=str(instance.id),
+                asset_id=str(asset.id),
+                warnings=asset_validation_result.warnings,
             )
 
         # Store asset_id in state_data for subsequent steps
@@ -1704,8 +1740,44 @@ class AssetCreationWorkflow:
                 "blockers": blockers
             }
 
-        # Activate asset
+        # Validate asset lifecycle transition using AssetsBusinessRules
+        tenant_id = str(asset.tenant_id) if asset.tenant_id else None
+        user_id = str(instance.created_by_id) if instance.created_by_id else None
+
+        assets_rules = AssetsBusinessRules(
+            tenant_id=tenant_id,
+            user_id=user_id
+        )
+
+        # Validate status transition
         old_status = asset.status
+        new_status = AssetStatus.ACTIVE
+
+        lifecycle_validation_result = assets_rules.validate(
+            asset=asset,
+            tenant=asset.tenant,
+            user=instance.created_by,
+            validation_type="lifecycle",
+            old_status=old_status,
+            new_status=new_status
+        )
+
+        if not lifecycle_validation_result.is_valid:
+            error_messages = lifecycle_validation_result.errors
+            raise ValueError(
+                f"Asset activation validation failed: {'; '.join(error_messages)}"
+            )
+
+        # Log validation warnings if any
+        if lifecycle_validation_result.warnings:
+            logger.warning(
+                "Asset activation validation warnings",
+                workflow_instance_id=str(instance.id),
+                asset_id=str(asset.id),
+                warnings=lifecycle_validation_result.warnings,
+            )
+
+        # Activate asset
         asset.status = AssetStatus.ACTIVE
         asset.increment_version()
         asset.save(update_fields=['status', 'version', 'updated_at'])

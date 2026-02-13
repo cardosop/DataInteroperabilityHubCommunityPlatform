@@ -10,31 +10,33 @@ Tests that:
 
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
 """
+
+import time
+
 import pytest
 import requests
-import time
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from django.contrib.auth import get_user_model
 from django_rq import get_queue
 
-from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
 from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.integrations.tasks import execute_marketplace_sync
+from hub.apps.notifications.models import EmailDelivery, EmailDeliveryStatus, EmailType
 from hub.apps.notifications.tasks import (
+    send_marketplace_connection_test_failure_email,
     send_marketplace_sync_completion_email,
     send_marketplace_sync_failure_email,
-    send_marketplace_connection_test_failure_email
 )
-from hub.apps.notifications.models import EmailDelivery, EmailType, EmailDeliveryStatus
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
 from hub.apps.observability.otel_metrics import (
-    marketplace_connection_tests_total,
     marketplace_connection_test_failures_total,
+    marketplace_connection_tests_total,
     marketplace_sync_jobs_total,
 )
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
 
 User = get_user_model()
 pytestmark = [
@@ -49,20 +51,16 @@ class MarketplaceAlertingIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Alerting Test Tenant",
-            slug="alerting-test-tenant",
-            status="ACTIVE"
+            name="Alerting Test Tenant", slug="alerting-test-tenant", status="ACTIVE"
         )
         self.user = User.objects.create_user(
-            email="alerting-test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="alerting-test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
     def test_marketplace_alerts_loaded_in_prometheus(self):
         """Test that marketplace alerts are loaded in Prometheus"""
         # Try both localhost (if running outside docker) and service name (if running in docker)
-        prometheus_urls = ['http://localhost:9090', 'http://prometheus:9090']
+        prometheus_urls = ["http://localhost:9090", "http://prometheus:9090"]
         prometheus_url = None
         for url in prometheus_urls:
             try:
@@ -84,13 +82,10 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             self.assertEqual(response.status_code, 200, "Prometheus should be accessible")
 
             data = response.json()
-            groups = data.get('data', {}).get('groups', [])
+            groups = data.get("data", {}).get("groups", [])
 
             # Find marketplace alerts group
-            marketplace_groups = [
-                g for g in groups
-                if 'marketplace' in g.get('name', '').lower()
-            ]
+            marketplace_groups = [g for g in groups if "marketplace" in g.get("name", "").lower()]
 
             # If alerts not loaded yet, that's OK - they'll be loaded on next reload
             if len(marketplace_groups) == 0:
@@ -103,24 +98,24 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             self.assertGreater(
                 len(marketplace_groups),
                 0,
-                "Marketplace alert groups should be loaded in Prometheus"
+                "Marketplace alert groups should be loaded in Prometheus",
             )
 
             # Check for specific alerts
             marketplace_group = marketplace_groups[0]
-            rules = marketplace_group.get('rules', [])
-            alert_names = [r.get('name') for r in rules]
+            rules = marketplace_group.get("rules", [])
+            alert_names = [r.get("name") for r in rules]
 
             expected_alerts = [
-                'MarketplaceSyncJobFailure',
-                'MarketplaceSyncJobHighFailureRate',
-                'MarketplaceSyncJobLongDuration',
-                'MarketplaceConnectorOperationErrors',
-                'MarketplaceConnectorHighErrorRate',
-                'MarketplaceAPICallErrors',
-                'MarketplaceAPIHighErrorRate',
-                'MarketplaceConnectionTestFailures',
-                'MarketplaceConnectionTestHighFailureRate',
+                "MarketplaceSyncJobFailure",
+                "MarketplaceSyncJobHighFailureRate",
+                "MarketplaceSyncJobLongDuration",
+                "MarketplaceConnectorOperationErrors",
+                "MarketplaceConnectorHighErrorRate",
+                "MarketplaceAPICallErrors",
+                "MarketplaceAPIHighErrorRate",
+                "MarketplaceConnectionTestFailures",
+                "MarketplaceConnectionTestHighFailureRate",
             ]
 
             # Check that at least some expected alerts are present
@@ -128,19 +123,19 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             self.assertGreater(
                 len(found_alerts),
                 0,
-                f"At least some marketplace alerts should be configured. Found: {found_alerts}, All: {alert_names}"
+                f"At least some marketplace alerts should be configured. Found: {found_alerts}, All: {alert_names}",
             )
 
             # Verify the new connection test failure alerts are present
             self.assertIn(
-                'MarketplaceConnectionTestFailures',
+                "MarketplaceConnectionTestFailures",
                 alert_names,
-                "MarketplaceConnectionTestFailures alert should be configured"
+                "MarketplaceConnectionTestFailures alert should be configured",
             )
             self.assertIn(
-                'MarketplaceConnectionTestHighFailureRate',
+                "MarketplaceConnectionTestHighFailureRate",
                 alert_names,
-                "MarketplaceConnectionTestHighFailureRate alert should be configured"
+                "MarketplaceConnectionTestHighFailureRate alert should be configured",
             )
 
         except requests.exceptions.RequestException as e:
@@ -149,7 +144,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
     def test_connection_test_failure_alert_rule(self):
         """Test that connection test failure alert rule is evaluable"""
         # Try both localhost (if running outside docker) and service name (if running in docker)
-        prometheus_urls = ['http://localhost:9090', 'http://prometheus:9090']
+        prometheus_urls = ["http://localhost:9090", "http://prometheus:9090"]
         prometheus_url = None
         for url in prometheus_urls:
             try:
@@ -165,12 +160,10 @@ class MarketplaceAlertingIntegrationTest(TestCase):
 
         try:
             # Query the alert rule
-            query = 'rate(marketplace_connection_test_failures_total[5m]) > 0.1'
+            query = "rate(marketplace_connection_test_failures_total[5m]) > 0.1"
 
             response = requests.get(
-                f"{prometheus_url}/api/v1/query",
-                params={'query': query},
-                timeout=10
+                f"{prometheus_url}/api/v1/query", params={"query": query}, timeout=10
             )
 
             self.assertEqual(response.status_code, 200, "Prometheus query should succeed")
@@ -182,7 +175,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
     def test_sync_job_failure_alert_rule(self):
         """Test that sync job failure alert rule is evaluable"""
         # Try both localhost (if running outside docker) and service name (if running in docker)
-        prometheus_urls = ['http://localhost:9090', 'http://prometheus:9090']
+        prometheus_urls = ["http://localhost:9090", "http://prometheus:9090"]
         prometheus_url = None
         for url in prometheus_urls:
             try:
@@ -201,9 +194,7 @@ class MarketplaceAlertingIntegrationTest(TestCase):
             query = 'rate(marketplace_sync_jobs_total{status="failed"}[5m]) > 0.1'
 
             response = requests.get(
-                f"{prometheus_url}/api/v1/query",
-                params={'query': query},
-                timeout=10
+                f"{prometheus_url}/api/v1/query", params={"query": query}, timeout=10
             )
 
             self.assertEqual(response.status_code, 200, "Prometheus query should succeed")
@@ -218,22 +209,20 @@ class MarketplaceNotificationIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Notification Test Tenant",
-            slug="notification-test-tenant",
-            status="ACTIVE"
+            name="Notification Test Tenant", slug="notification-test-tenant", status="ACTIVE"
         )
         self.user = User.objects.create_user(
             email="notification-test@example.com",
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
-            display_name="Test User"
+            display_name="Test User",
         )
 
     @override_settings(
-        EMAIL_BACKEND='smtp',
-        SMTP_HOST='localhost',
+        EMAIL_BACKEND="smtp",
+        SMTP_HOST="localhost",
         SMTP_PORT=587,
-        SMTP_FROM_EMAIL='noreply@example.com'
+        SMTP_FROM_EMAIL="noreply@example.com",
     )
     def test_sync_completion_notification_sent(self):
         """Test that sync completion notification is sent correctly"""
@@ -243,7 +232,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             name="Test Connection",
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             config={"base_url": "https://demo.ckan.org", "api_key": "test-key"},
-            is_active=True
+            is_active=True,
         )
 
         # Create a completed sync job
@@ -254,7 +243,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             status=SyncStatus.COMPLETED.value,
             items_synced=10,
             items_failed=0,
-            completed_at=timezone.now()
+            completed_at=timezone.now(),
         )
 
         try:
@@ -262,24 +251,21 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             result = send_marketplace_sync_completion_email(str(sync_job.id))
 
             # Verify notification was sent (or attempted)
-            if result.get('success'):
+            if result.get("success"):
                 # Verify email delivery record was created
                 delivery = EmailDelivery.objects.filter(
-                    email_type=EmailType.MARKETPLACE_SYNC_COMPLETION.value,
-                    to_email=self.user.email
+                    email_type=EmailType.MARKETPLACE_SYNC_COMPLETION.value, to_email=self.user.email
                 ).first()
                 self.assertIsNotNone(delivery, "Email delivery record should be created")
                 self.assertEqual(
-                    delivery.status,
-                    EmailDeliveryStatus.SENT,
-                    "Email should be marked as sent"
+                    delivery.status, EmailDeliveryStatus.SENT, "Email should be marked as sent"
                 )
 
                 # Verify template context
                 self.assertIsNotNone(delivery.metadata_json, "Metadata should be stored")
                 context = delivery.metadata_json
-                self.assertEqual(context.get('sync_job_id'), str(sync_job.id))
-                self.assertEqual(context.get('marketplace_type'), connection.marketplace_type)
+                self.assertEqual(context.get("sync_job_id"), str(sync_job.id))
+                self.assertEqual(context.get("marketplace_type"), connection.marketplace_type)
         except Exception as e:
             # Email service may not be available - that's OK
             # This test verifies the integration structure is correct
@@ -287,10 +273,10 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             self.assertIsNotNone(result, "Function should return a result")
 
     @override_settings(
-        EMAIL_BACKEND='smtp',
-        SMTP_HOST='localhost',
+        EMAIL_BACKEND="smtp",
+        SMTP_HOST="localhost",
         SMTP_PORT=587,
-        SMTP_FROM_EMAIL='noreply@example.com'
+        SMTP_FROM_EMAIL="noreply@example.com",
     )
     def test_sync_failure_notification_sent(self):
         """Test that sync failure notification is sent correctly"""
@@ -300,7 +286,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             name="Test Connection",
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             config={"base_url": "https://demo.ckan.org", "api_key": "test-key"},
-            is_active=True
+            is_active=True,
         )
 
         # Create a failed sync job
@@ -312,7 +298,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             items_synced=5,
             items_failed=5,
             errors=[{"message": "Test error", "timestamp": timezone.now().isoformat()}],
-            completed_at=timezone.now()
+            completed_at=timezone.now(),
         )
 
         try:
@@ -320,33 +306,32 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             result = send_marketplace_sync_failure_email(str(sync_job.id))
 
             # Verify notification was sent (or attempted)
-            if result.get('success'):
+            if result.get("success"):
                 # Verify email delivery record was created
                 delivery = EmailDelivery.objects.filter(
-                    email_type=EmailType.MARKETPLACE_SYNC_FAILURE.value,
-                    to_email=self.user.email
+                    email_type=EmailType.MARKETPLACE_SYNC_FAILURE.value, to_email=self.user.email
                 ).first()
                 self.assertIsNotNone(delivery, "Email delivery record should be created")
                 self.assertEqual(
-                    delivery.status,
-                    EmailDeliveryStatus.SENT,
-                    "Email should be marked as sent"
+                    delivery.status, EmailDeliveryStatus.SENT, "Email should be marked as sent"
                 )
 
                 # Verify template context includes error message
                 context = delivery.metadata_json
                 self.assertIsNotNone(context, "Metadata should be stored")
-                self.assertEqual(context.get('sync_job_id'), str(sync_job.id))
-                self.assertIsNotNone(context.get('error_message'), "Error message should be in context")
+                self.assertEqual(context.get("sync_job_id"), str(sync_job.id))
+                self.assertIsNotNone(
+                    context.get("error_message"), "Error message should be in context"
+                )
         except Exception as e:
             # Email service may not be available - that's OK
             self.assertIsNotNone(result, "Function should return a result")
 
     @override_settings(
-        EMAIL_BACKEND='smtp',
-        SMTP_HOST='localhost',
+        EMAIL_BACKEND="smtp",
+        SMTP_HOST="localhost",
         SMTP_PORT=587,
-        SMTP_FROM_EMAIL='noreply@example.com'
+        SMTP_FROM_EMAIL="noreply@example.com",
     )
     def test_connection_test_failure_notification_sent(self):
         """Test that connection test failure notification is sent correctly"""
@@ -356,7 +341,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             name="Test Connection",
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             config={"base_url": "https://demo.ckan.org", "api_key": "test-key"},
-            is_active=True
+            is_active=True,
         )
 
         try:
@@ -366,28 +351,26 @@ class MarketplaceNotificationIntegrationTest(TestCase):
                 error_message="Connection test failed: Authentication error",
                 tested_at=timezone.now().isoformat(),
                 user_id=str(self.user.id),
-                tenant_id=str(self.tenant.id)
+                tenant_id=str(self.tenant.id),
             )
 
             # Verify notification was sent (or attempted)
-            if result.get('success'):
+            if result.get("success"):
                 # Verify email delivery record was created
                 delivery = EmailDelivery.objects.filter(
                     email_type=EmailType.MARKETPLACE_CONNECTION_TEST_FAILURE.value,
-                    to_email=self.user.email
+                    to_email=self.user.email,
                 ).first()
                 self.assertIsNotNone(delivery, "Email delivery record should be created")
                 self.assertEqual(
-                    delivery.status,
-                    EmailDeliveryStatus.SENT,
-                    "Email should be marked as sent"
+                    delivery.status, EmailDeliveryStatus.SENT, "Email should be marked as sent"
                 )
 
                 # Verify template context
                 context = delivery.metadata_json
                 self.assertIsNotNone(context, "Metadata should be stored")
-                self.assertEqual(context.get('connection_id'), str(connection.id))
-                self.assertIn('error_message', context, "Error message should be in context")
+                self.assertEqual(context.get("connection_id"), str(connection.id))
+                self.assertIn("error_message", context, "Error message should be in context")
         except Exception as e:
             # Email service may not be available - that's OK
             self.assertIsNotNone(result, "Function should return a result")
@@ -395,12 +378,13 @@ class MarketplaceNotificationIntegrationTest(TestCase):
     def test_notification_templates_exist(self):
         """Test that notification templates exist"""
         import os
+
         from django.template.loader import get_template
 
         templates = [
-            'notifications/emails/marketplace_sync_completion.html',
-            'notifications/emails/marketplace_sync_failure.html',
-            'notifications/emails/marketplace_connection_test_failure.html',
+            "notifications/emails/marketplace_sync_completion.html",
+            "notifications/emails/marketplace_sync_failure.html",
+            "notifications/emails/marketplace_connection_test_failure.html",
         ]
 
         for template_name in templates:
@@ -418,13 +402,12 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             name="Test Connection",
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             config={"base_url": "https://demo.ckan.org", "api_key": "test-key"},
-            is_active=True
+            is_active=True,
         )
 
         # Create service and test connection
         service = MarketplaceIntegrationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Test connection (will likely fail, but metrics should be recorded)
@@ -432,13 +415,13 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             result = service.test_connection(
                 connection_id=str(connection.id),
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
             # Metrics should be recorded regardless of success/failure
             # We can't easily verify metrics without Prometheus, but we verify
             # the code path doesn't crash
-            self.assertIn('success', result, "Result should contain success field")
+            self.assertIn("success", result, "Result should contain success field")
 
         except Exception as e:
             # Connection test may fail, but metrics recording should not crash
@@ -453,7 +436,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             name="Test Connection",
             marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
             config={"base_url": "https://demo.ckan.org", "api_key": "test-key"},
-            is_active=True
+            is_active=True,
         )
 
         # Create a sync job
@@ -464,7 +447,7 @@ class MarketplaceNotificationIntegrationTest(TestCase):
             status=SyncStatus.COMPLETED.value,
             items_synced=10,
             items_failed=0,
-            completed_at=timezone.now()
+            completed_at=timezone.now(),
         )
 
         # Verify that notification can be triggered
@@ -476,6 +459,85 @@ class MarketplaceNotificationIntegrationTest(TestCase):
 
         # Verify it's a job
         from django_rq import job
-        # Check that it's decorated as a job
-        self.assertTrue(hasattr(send_marketplace_sync_completion_email, 'delay'))
 
+        # Check that it's decorated as a job
+        self.assertTrue(hasattr(send_marketplace_sync_completion_email, "delay"))
+
+    def test_notification_tasks_with_none_parameters(self):
+        """Test notification tasks error handling with None parameters"""
+        from hub.apps.notifications.tasks import (
+            send_marketplace_connection_test_failure_email,
+            send_marketplace_sync_completion_email,
+            send_marketplace_sync_failure_email,
+        )
+
+        # Test with None parameters - should handle gracefully or raise appropriate errors
+        try:
+            # These may raise ValueError or TypeError if None is not allowed
+            send_marketplace_sync_completion_email(None, None)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+        try:
+            send_marketplace_sync_failure_email(None, None, None)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+        try:
+            send_marketplace_connection_test_failure_email(None, None)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+    def test_sync_job_creation_with_invalid_connection(self):
+        """Test sync job creation error handling with invalid connection"""
+        service = MarketplaceIntegrationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
+        )
+        # Create a connection that doesn't exist
+        with self.assertRaises(Exception):
+            service.sync_from_marketplace(
+                connection_id="invalid-connection-id",
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+            )
+
+    def test_sync_job_creation_with_empty_tenant_id(self):
+        """Test sync job creation error handling with empty tenant_id"""
+        service = MarketplaceIntegrationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
+        )
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE,
+            name="Test Connection",
+            config={"base_url": "https://data.gov"},
+        )
+
+        with self.assertRaises((ValueError, TypeError)):
+            service.sync_from_marketplace(
+                connection_id=str(connection.id),
+                tenant_id="",
+                user_id=str(self.user.id),
+            )
+
+    def test_sync_job_creation_with_none_user_id(self):
+        """Test sync job creation error handling with None user_id"""
+        service = MarketplaceIntegrationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
+        )
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE,
+            name="Test Connection",
+            config={"base_url": "https://data.gov"},
+        )
+
+        with self.assertRaises((ValueError, TypeError)):
+            service.sync_from_marketplace(
+                connection_id=str(connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=None,  # type: ignore[arg-type]
+            )

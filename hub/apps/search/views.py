@@ -242,17 +242,23 @@ class SearchViewSet(viewsets.ViewSet):
             limit=limit
         )
 
-        # Track suggestion query
-        SearchEngine.track_search(
-            tenant_id=str(tenant.id),
-            query=query,
-            query_type="SUGGESTION",
-            result_count=len(suggestions),
-            user_id=str(request.user.id) if request.user.is_authenticated else None,
-            session_id=request.session.session_key if hasattr(request, 'session') else None,
-            ip_address=request.META.get('REMOTE_ADDR'),
-            user_agent=request.META.get('HTTP_USER_AGENT')
-        )
+        # Track suggestion query (handle session gracefully for tests)
+        try:
+            SearchEngine.track_search(
+                tenant_id=str(tenant.id),
+                query=query,
+                query_type="SUGGESTION",
+                result_count=len(suggestions),
+                user_id=str(request.user.id) if request.user.is_authenticated else None,
+                session_id=request.session.session_key if hasattr(request, 'session') and hasattr(request.session, 'session_key') else None,
+                ip_address=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT')
+            )
+        except Exception as e:
+            # Log error but don't fail the request if tracking fails
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to track suggestion query: {e}", exc_info=True)
 
         serializer = SearchSuggestionSerializer(suggestions, many=True)
         return Response(serializer.data)
@@ -281,9 +287,27 @@ class SearchViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        SearchEngine.track_click(analytics_id, result_id, result_type)
-
-        return Response({'status': 'click tracked'})
+        try:
+            SearchEngine.track_click(analytics_id, result_id, result_type)
+            return Response({'status': 'click tracked'})
+        except Exception as e:
+            # Return 400 if analytics not found, 500 for other errors
+            from hub.apps.search.models import SearchAnalytics
+            try:
+                SearchAnalytics.objects.get(id=analytics_id)
+                # Analytics exists but track_click failed for another reason
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to track click: {e}", exc_info=True)
+                return Response(
+                    {'error': 'Failed to track click'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            except SearchAnalytics.DoesNotExist:
+                return Response(
+                    {'error': f'Analytics not found: {analytics_id}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsAuditor])
     def analytics(self, request: Request) -> Response:

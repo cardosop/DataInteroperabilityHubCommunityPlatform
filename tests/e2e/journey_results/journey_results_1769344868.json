@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-001-bb76ede5",
+      "journey_name": "Programmatic Contract-First Onboarding",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1769344868.105835,
+      "end_time": 1769344868.1157632,
+      "duration": 0.009928226470947266,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create contract: 400 - {'error': 'Contract normalization failed', 'code': 'VALIDATION_ERROR', 'details': {'code': 'NORMALIZATION_FAILED', 'errors': [\"Contract must have a 'name' field\", 'info -> name: Value error, info.name must be provided']}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Contract via API",
+          "status": "StepStatus.FAILED",
+          "start_time": 1769344868.105849,
+          "end_time": 1769344868.1157568,
+          "duration": 0.009907722473144531,
+          "error_message": "Failed to create contract: 400 - {'error': 'Contract normalization failed', 'code': 'VALIDATION_ERROR', 'details': {'code': 'NORMALIZATION_FAILED', 'errors': [\"Contract must have a 'name' field\", 'info -> name: Value error, info.name must be provided']}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{'asset_id': None, 'original_raw': '{\"id\": \"test-contract\", \"hub_contract_version\": \"1.0.0\", \"info\": {\"title\": \"Test Contract\"}, \"schema\": {\"fields\": [{\"name\": \"id\", \"type\": \"string\"}]}}'}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-25T12:41:08.116523"
+}

@@ -11,103 +11,87 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Framework-based validation execution
 - Registry integration
 """
+
 import json
-from django.test import TestCase
 
 from hub.apps.contracts.business_rules import (
     ODPSBusinessRules,
-    ODPSLinkingRules,
     ODPSExportRules,
+    ODPSLinkingRules,
     ODPSNormalizationRules,
-    ODPSRuleExecutionContext
+    ODPSRuleExecutionContext,
 )
-from hub.apps.contracts.services import ContractService
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
     OriginalFormat,
+    OriginalSpecType,
 )
+from hub.apps.contracts.services import ContractService
+from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.registry import get_registry
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
 
 
-class ODPSBusinessRulesContractServiceIntegrationTest(TestCase):
+class ODPSBusinessRulesContractServiceIntegrationTest(ContractsTestBase):
     """Integration tests for ODPSBusinessRules with ContractService"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
-        self.contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        super().setUp()
+
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
+
+        # ContractService and ODPSBusinessRules are already initialized in base class
+        # but we need to create odps_rules instance
         self.odps_rules = ODPSBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
     def test_contract_service_with_odps_validation(self):
         """Test ContractService.get_contract with ODPS business rules validation"""
         # Create ODPS contract via service
         from hub.apps.contracts.services import ODPSService
-        odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
 
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product-integration",
-                        "name": "Test Product Integration"
-                    }
+        odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product-integration",
+                            "name": "Test Product Integration",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
             }
-        })
+        )
 
         contract = odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Validate using business rules framework
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            contract=contract
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
         )
-        result = self.odps_rules.validate(context, validation_type='contract')
+        result = self.odps_rules.validate(context, validation_type="contract")
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertIn('contract', result.details['validated_items'])
+        self.assertIn("contract", result.details["validated_items"])
 
         # Verify contract can be retrieved via ContractService
         retrieved_contract = self.contract_service.get_contract(
-            contract_id=str(contract.id),
-            tenant_id=str(self.tenant.id)
+            contract_id=str(contract.id), tenant_id=str(self.tenant.id)
         )
         self.assertEqual(retrieved_contract.id, contract.id)
 
@@ -117,27 +101,18 @@ class ODPSBusinessRulesContractServiceIntegrationTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            odps_doc=odps_doc
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), odps_doc=odps_doc
         )
-        result = self.odps_rules.validate(context, validation_type='structure')
+        result = self.odps_rules.validate(context, validation_type="structure")
 
         self.assertTrue(result.is_valid, f"Structure validation failed: {result.errors}")
-        self.assertIn('structure', result.details['validated_items'])
+        self.assertIn("structure", result.details["validated_items"])
 
     def test_contract_service_with_odps_version_validation(self):
         """Test ODPS version validation via framework"""
@@ -145,135 +120,108 @@ class ODPSBusinessRulesContractServiceIntegrationTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            odps_doc=odps_doc
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), odps_doc=odps_doc
         )
         result = self.odps_rules.validate(
-            context,
-            validation_type='version',
-            required_version='4.1'
+            context, validation_type="version", required_version="4.1"
         )
 
         self.assertTrue(result.is_valid, f"Version validation failed: {result.errors}")
-        self.assertIn('version', result.details['validated_items'])
+        self.assertIn("version", result.details["validated_items"])
 
 
-class ODPSLinkingRulesContractServiceIntegrationTest(TestCase):
+class ODPSLinkingRulesContractServiceIntegrationTest(ContractsTestBase):
     """Integration tests for ODPSLinkingRules with ContractService"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
-        self.contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        super().setUp()
+
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
+
         self.linking_rules = ODPSLinkingRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create ODCS contract
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-odcs-integration",
-            "name": "Test ODCS Integration",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-odcs-integration",
+                "name": "Test ODCS Integration",
+                "version": "3.0.2",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
         self.odcs_contract = self.contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS.value
+            original_spec_type=OriginalSpecType.ODCS.value,
         )
 
         # Create ODPS contract
         from hub.apps.contracts.services import ODPSService
-        odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+
+        odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Store ODCS raw for use in linking tests
         self.odcs_raw = odcs_raw
 
         # Create ODPS contract without contract section initially
         # (we'll link it properly in tests)
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-integration",
-                        "name": "Test ODPS Integration"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-odps-integration",
+                            "name": "Test ODPS Integration",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
             }
-        })
+        )
 
         self.odps_contract = odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
     def test_contract_service_with_linking_validation(self):
         """Test ContractService.link_odps_to_odcs with linking rules validation"""
         # Create ODPS with embedded ODCS contract for linking
         odcs_contract_dict = json.loads(self.odcs_raw)
-        odps_with_contract = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-linking-validation",
-                        "name": "Test ODPS for Linking Validation"
-                    }
+        odps_with_contract = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-odps-linking-validation",
+                            "name": "Test ODPS for Linking Validation",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                    "contract": {"spec": odcs_contract_dict},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                },
-                "contract": {
-                    "spec": odcs_contract_dict
-                }
             }
-        })
+        )
 
         # Link contracts via service using odps_raw (creates and links in one step)
         linked_odps = self.contract_service.link_odps_to_odcs(
@@ -281,7 +229,7 @@ class ODPSLinkingRulesContractServiceIntegrationTest(TestCase):
             odps_raw=odps_with_contract,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Refresh from database
@@ -293,40 +241,40 @@ class ODPSLinkingRulesContractServiceIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             contract=linked_odps,
-            odcs_contract=self.odcs_contract
+            odcs_contract=self.odcs_contract,
         )
 
         # Test link validation (should pass - link exists)
-        link_result = self.linking_rules.validate(context, validation_type='link')
+        link_result = self.linking_rules.validate(context, validation_type="link")
         self.assertTrue(link_result.is_valid, f"Link validation failed: {link_result.errors}")
-        self.assertIn('link', link_result.details['validated_items'])
+        self.assertIn("link", link_result.details["validated_items"])
 
         # Test referential integrity separately
-        integrity_result = self.linking_rules.validate(context, validation_type='integrity')
-        self.assertTrue(integrity_result.is_valid, f"Integrity validation failed: {integrity_result.errors}")
-        self.assertIn('integrity', integrity_result.details['validated_items'])
+        integrity_result = self.linking_rules.validate(context, validation_type="integrity")
+        self.assertTrue(
+            integrity_result.is_valid, f"Integrity validation failed: {integrity_result.errors}"
+        )
+        self.assertIn("integrity", integrity_result.details["validated_items"])
 
     def test_contract_service_with_referential_integrity_validation(self):
         """Test referential integrity validation via framework"""
         # Create ODPS with embedded ODCS contract and link them
         odcs_contract_dict = json.loads(self.odcs_raw)
-        odps_with_contract = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-integrity-validation",
-                        "name": "Test ODPS for Integrity Validation"
-                    }
+        odps_with_contract = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-odps-integrity-validation",
+                            "name": "Test ODPS for Integrity Validation",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                    "contract": {"spec": odcs_contract_dict},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                },
-                "contract": {
-                    "spec": odcs_contract_dict
-                }
             }
-        })
+        )
 
         # Link contracts via service
         linked_odps = self.contract_service.link_odps_to_odcs(
@@ -334,77 +282,63 @@ class ODPSLinkingRulesContractServiceIntegrationTest(TestCase):
             odps_raw=odps_with_contract,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         linked_odps.refresh_from_db()
 
         # Validate referential integrity
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            contract=linked_odps
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=linked_odps
         )
-        result = self.linking_rules.validate(context, validation_type='integrity')
+        result = self.linking_rules.validate(context, validation_type="integrity")
 
-        self.assertTrue(result.is_valid, f"Referential integrity validation failed: {result.errors}")
-        self.assertIn('integrity', result.details['validated_items'])
+        self.assertTrue(
+            result.is_valid, f"Referential integrity validation failed: {result.errors}"
+        )
+        self.assertIn("integrity", result.details["validated_items"])
 
 
-class ODPSExportRulesContractServiceIntegrationTest(TestCase):
+class ODPSExportRulesContractServiceIntegrationTest(ContractsTestBase):
     """Integration tests for ODPSExportRules with ContractService"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
-        self.contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        super().setUp()
+
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
+
         self.export_rules = ODPSExportRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create ODPS contract
         from hub.apps.contracts.services import ODPSService
-        odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
 
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-export-integration",
-                        "name": "Test ODPS Export Integration"
-                    }
+        odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-odps-export-integration",
+                            "name": "Test ODPS Export Integration",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
             }
-        })
+        )
 
         self.odps_contract = odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
     def test_contract_service_with_export_format_validation(self):
@@ -412,29 +346,28 @@ class ODPSExportRulesContractServiceIntegrationTest(TestCase):
         context = ODPSRuleExecutionContext(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            metadata={'output_format': 'json'}
+            metadata={"output_format": "json"},
         )
-        result = self.export_rules.validate(context, validation_type='format', output_format='json')
+        result = self.export_rules.validate(context, validation_type="format", output_format="json")
 
         self.assertTrue(result.is_valid, f"Export format validation failed: {result.errors}")
-        self.assertIn('format', result.details['validated_items'])
+        self.assertIn("format", result.details["validated_items"])
 
     def test_contract_service_with_data_completeness_validation(self):
         """Test data completeness validation via framework"""
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            contract=self.odps_contract
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=self.odps_contract
         )
-        result = self.export_rules.validate(context, validation_type='completeness')
+        result = self.export_rules.validate(context, validation_type="completeness")
 
         self.assertTrue(result.is_valid, f"Data completeness validation failed: {result.errors}")
-        self.assertIn('completeness', result.details['validated_items'])
+        self.assertIn("completeness", result.details["validated_items"])
 
     def test_contract_service_with_fidelity_validation(self):
         """Test export fidelity validation via framework"""
         # Generate exported ODPS
         from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
+
         # Pass hub_contract_json instead of contract object
         if not self.odps_contract.hub_contract_json:
             self.skipTest("ODPS contract has no hub_contract_json")
@@ -444,37 +377,27 @@ class ODPSExportRulesContractServiceIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             contract=self.odps_contract,
-            odps_doc=exported_odps
+            odps_doc=exported_odps,
         )
         result = self.export_rules.validate(
-            context,
-            validation_type='fidelity',
-            exported_odps=exported_odps,
-            output_format='json'
+            context, validation_type="fidelity", exported_odps=exported_odps, output_format="json"
         )
 
         self.assertTrue(result.is_valid, f"Fidelity validation failed: {result.errors}")
-        self.assertIn('fidelity', result.details['validated_items'])
+        self.assertIn("fidelity", result.details["validated_items"])
 
 
-class ODPSBusinessRulesRegistryIntegrationTest(TestCase):
+class ODPSBusinessRulesRegistryIntegrationTest(ContractsTestBase):
     """Integration tests for ODPS business rules registry"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
+        super().setUp()
+
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
+
         self.registry = get_registry()
 
     def test_odps_rules_registered(self):
@@ -503,23 +426,17 @@ class ODPSBusinessRulesRegistryIntegrationTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         from hub.apps.core.business_rules.base import RuleExecutionContext
+
         context = RuleExecutionContext(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            metadata={'odps_doc': odps_doc}
+            metadata={"odps_doc": odps_doc},
         )
 
         # Execute via registry
@@ -527,7 +444,7 @@ class ODPSBusinessRulesRegistryIntegrationTest(TestCase):
             rule_names=["odps_validation"],
             context=context,
             odps_doc=odps_doc,
-            validation_type='structure'
+            validation_type="structure",
         )
 
         self.assertIn("odps_validation", results)
@@ -535,70 +452,56 @@ class ODPSBusinessRulesRegistryIntegrationTest(TestCase):
         self.assertTrue(result.is_valid, f"Registry execution failed: {result.errors}")
 
 
-class ODPSNormalizationRulesContractServiceIntegrationTest(TestCase):
+class ODPSNormalizationRulesContractServiceIntegrationTest(ContractsTestBase):
     """Integration tests for ODPSNormalizationRules with ContractService"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
-        self.contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        super().setUp()
+
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
+
         self.normalization_rules = ODPSNormalizationRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
+        self.odps_rules = self.normalization_rules  # alias for tests that call .validate(context)
         self.registry = get_registry()
 
     def test_contract_service_with_normalization_eligibility(self):
         """Test normalization eligibility validation via framework"""
         # Create ODCS contract via service
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-contract-normalization",
-            "name": "Test Contract Normalization",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "value", "type": "integer"}
-                ]
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-contract-normalization",
+                "name": "Test Contract Normalization",
+                "version": "3.0.2",
+                "schema": {
+                    "fields": [
+                        {"name": "id", "type": "string"},
+                        {"name": "value", "type": "integer"},
+                    ]
+                },
             }
-        })
+        )
 
         contract = self.contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="JSON",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS.value
+            original_spec_type=OriginalSpecType.ODCS.value,
         )
 
         # Validate eligibility using business rules framework
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            contract=contract
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
         )
 
-        result = self.normalization_rules.execute(
-            context=context,
-            validation_type="eligibility"
-        )
+        result = self.normalization_rules.execute(context=context, validation_type="eligibility")
 
         self.assertTrue(result.is_valid, f"Eligibility validation failed: {result.errors}")
         self.assertIn("eligibility", result.details)
@@ -607,25 +510,23 @@ class ODPSNormalizationRulesContractServiceIntegrationTest(TestCase):
     def test_contract_service_with_normalization_status(self):
         """Test normalization status validation via framework"""
         # Create and normalize ODCS contract via service
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-contract-status",
-            "name": "Test Contract Status",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-contract-status",
+                "name": "Test Contract Status",
+                "version": "3.0.2",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
         contract = self.contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="JSON",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS.value
+            original_spec_type=OriginalSpecType.ODCS.value,
         )
 
         # Contract should be normalized after creation
@@ -634,15 +535,10 @@ class ODPSNormalizationRulesContractServiceIntegrationTest(TestCase):
 
         # Validate status using business rules framework
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            contract=contract
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
         )
 
-        result = self.normalization_rules.execute(
-            context=context,
-            validation_type="status"
-        )
+        result = self.normalization_rules.execute(context=context, validation_type="status")
 
         self.assertTrue(result.is_valid, f"Status validation failed: {result.errors}")
         self.assertIn("status", result.details)
@@ -651,26 +547,28 @@ class ODPSNormalizationRulesContractServiceIntegrationTest(TestCase):
     def test_contract_service_with_normalization_fidelity(self):
         """Test normalization fidelity validation via framework"""
         # Create and normalize ODCS contract via service
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-contract-fidelity",
-            "name": "Test Contract Fidelity",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "value", "type": "integer"}
-                ]
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-contract-fidelity",
+                "name": "Test Contract Fidelity",
+                "version": "3.0.2",
+                "schema": {
+                    "fields": [
+                        {"name": "id", "type": "string"},
+                        {"name": "value", "type": "integer"},
+                    ]
+                },
             }
-        })
+        )
 
         contract = self.contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="JSON",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS.value
+            original_spec_type=OriginalSpecType.ODCS.value,
         )
 
         # Contract should be normalized after creation
@@ -679,15 +577,10 @@ class ODPSNormalizationRulesContractServiceIntegrationTest(TestCase):
 
         # Validate fidelity using business rules framework
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            contract=contract
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
         )
 
-        result = self.normalization_rules.execute(
-            context=context,
-            validation_type="fidelity"
-        )
+        result = self.normalization_rules.execute(context=context, validation_type="fidelity")
 
         self.assertTrue(result.is_valid, f"Fidelity validation failed: {result.errors}")
         self.assertIn("fidelity", result.details)
@@ -704,41 +597,213 @@ class ODPSNormalizationRulesContractServiceIntegrationTest(TestCase):
     def test_normalization_rules_execution_via_registry(self):
         """Test normalization rules execution via registry"""
         # Create contract
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-contract-registry",
-            "name": "Test Contract Registry",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-contract-registry",
+                "name": "Test Contract Registry",
+                "version": "3.0.2",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
         contract = self.contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="JSON",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS.value
+            original_spec_type=OriginalSpecType.ODCS.value,
         )
 
         # Execute via registry
         context = ODPSRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            contract=contract
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
         )
 
         results = self.registry.execute_rules(
             rule_names=["odps_normalization_validation"],
             context=context,
-            validation_type="eligibility"
+            validation_type="eligibility",
         )
 
         self.assertIn("odps_normalization_validation", results)
         result = results["odps_normalization_validation"]
         self.assertTrue(result.is_valid, f"Registry execution failed: {result.errors}")
 
+    def test_business_rules_handle_unicode_characters(self):
+        """Test that business rules handle unicode characters correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-unicode",
+                            "name": "测试产品",
+                            "description": "测试描述",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Validate using business rules framework
+        context = ODPSRuleExecutionContext(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
+        )
+
+        result = self.odps_rules.validate(context)
+        # Should handle unicode characters
+        self.assertIsNotNone(result)
+
+    def test_business_rules_handle_special_characters(self):
+        """Test that business rules handle special characters correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-special",
+                            "name": "Test & Co. (Special)",
+                            "description": "Test <description> & more",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Validate using business rules framework
+        context = ODPSRuleExecutionContext(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
+        )
+
+        result = self.odps_rules.validate(context)
+        # Should handle special characters
+        self.assertIsNotNone(result)
+
+    def test_business_rules_handle_very_large_documents(self):
+        """Test that business rules handle very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-large",
+                            "name": "Test Product",
+                            "description": large_description,
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Validate using business rules framework
+        context = ODPSRuleExecutionContext(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
+        )
+
+        result = self.odps_rules.validate(context)
+        # Should handle very large documents
+        self.assertIsNotNone(result)
+
+    def test_business_rules_handle_none_values(self):
+        """Test that business rules handle None values correctly."""
+        # ODPS schema requires string for description; use empty string for optional semantics
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-none",
+                            "name": "Test Product",
+                            "description": "",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Validate using business rules framework
+        context = ODPSRuleExecutionContext(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
+        )
+
+        result = self.odps_rules.validate(context)
+        # Should handle None values gracefully
+        self.assertIsNotNone(result)
+
+    def test_business_rules_handle_nested_structures(self):
+        """Test that business rules handle nested structures correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-nested",
+                            "name": "Test Product",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Validate using business rules framework
+        context = ODPSRuleExecutionContext(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), contract=contract
+        )
+
+        result = self.odps_rules.validate(context)
+        # Should handle nested structures
+        self.assertIsNotNone(result)

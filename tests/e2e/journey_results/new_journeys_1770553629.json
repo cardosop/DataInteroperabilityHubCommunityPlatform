@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.025008678436279297
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-004-cd34cac5",
+      "journey_name": "Manage Activity Feeds",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1770553629.6564507,
+      "end_time": 1770553629.6814594,
+      "duration": 0.025008678436279297,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Activity Feeds Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553629.6663496,
+          "end_time": 1770553629.6663613,
+          "duration": 1.1682510375976562e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Activity Filtering Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553629.6734066,
+          "end_time": 1770553629.6734157,
+          "duration": 9.059906005859375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Activity Moderation Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553629.681444,
+          "end_time": 1770553629.681457,
+          "duration": 1.3113021850585938e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:27:09.681587"
+}

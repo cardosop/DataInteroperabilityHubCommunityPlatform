@@ -8,27 +8,26 @@ Tests all new filtering capabilities:
 - model_name
 """
 import json
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+
 from rest_framework import status
 
-from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalSpecType
-from tests.factories import TenantFactory, UserFactory, AssetFactory
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalSpecType,
+)
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from tests.factories import AssetFactory
 
-User = get_user_model()
 
-
-class APIFilteringPhase15TestCase(TestCase):
+class APIFilteringPhase15TestCase(ContractsAPITestBase):
     """Test Phase 15 API filtering endpoints."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = TenantFactory()
-        self.user = UserFactory(tenant=self.tenant)
+        super().setUp()
         self.asset = AssetFactory(tenant=self.tenant)
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
         
         # Create test contracts with various configurations
         self.contract1 = self._create_contract(

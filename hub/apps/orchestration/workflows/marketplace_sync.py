@@ -1062,14 +1062,9 @@ class MarketplaceSyncWorkflow:
 
         MarketplaceSyncWorkflow._update_progress(instance, 40, "map_listings_to_assets")
 
+        # Return full mapped_assets so engine merge does not overwrite with minimal data
         return {
-            "mapped_assets": [
-                {
-                    "listing_id": item["listing_id"],
-                    "marketplace_id": item["marketplace_id"]
-                }
-                for item in mapped_assets
-            ],
+            "mapped_assets": mapped_assets,
             "state": {
                 "mapped_assets": mapped_assets
             }

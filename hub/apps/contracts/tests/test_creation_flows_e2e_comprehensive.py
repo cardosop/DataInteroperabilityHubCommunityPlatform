@@ -14,36 +14,31 @@ Tests verify complete workflows, bidirectional linking, state consistency, and e
 
 import json
 import uuid
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+
 from rest_framework import status
 
+from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.contracts.linking_validation import LinkingValidationError, validate_linking
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
     NormalizationStatus,
-    OriginalSpecType,
     OriginalFormat,
+    OriginalSpecType,
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import UserStatus
-from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.files.models import File, FileStatus
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.orchestration.registry import WorkflowRegistry
-from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
-from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
-from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
 from hub.apps.contracts.services import ContractService
-from hub.apps.contracts.linking_validation import validate_linking, LinkingValidationError
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.files.models import File, FileStatus
+from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
+from hub.apps.orchestration.registry import WorkflowRegistry
+from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.orchestration.workflows.asset_creation import AssetCreationWorkflow
+from hub.apps.orchestration.workflows.contract_creation import ContractCreationWorkflow
+from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
 from hub.apps.search.models import SearchIndex
 
-User = get_user_model()
 
-
-class CreationFlowsE2EComprehensiveTest(TestCase):
+class CreationFlowsE2EComprehensiveTest(ContractsAPITestBase):
     """
     Comprehensive E2E tests for all creation flows (Task 10.1.2).
 
@@ -57,24 +52,16 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
+        super().setUp()
         unique_id = str(uuid.uuid4())[:8]
 
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant E2E {unique_id}",
-            slug=f"test-tenant-e2e-{unique_id}",
-            status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value,
-        )
+        # Update tenant/user names for clarity
+        self.tenant.name = f"Test Tenant E2E {unique_id}"
+        self.tenant.slug = f"test-tenant-e2e-{unique_id}"
+        self.tenant.save()
 
-        # Create user
-        self.user = User.objects.create_user(
-            email=f"test-e2e-{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE.value,
-        )
+        self.user.email = f"test-e2e-{unique_id}@example.com"
+        self.user.save()
         self.user.refresh_from_db()
 
         # Sample ODCS contract for Technical-First and Data-First flows
@@ -91,27 +78,23 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                         "name": "id",
                         "type": "string",
                         "nullable": False,
-                        "description": "Unique identifier"
+                        "description": "Unique identifier",
                     },
                     {
                         "name": "name",
                         "type": "string",
                         "nullable": True,
-                        "description": "Name field"
+                        "description": "Name field",
                     },
                     {
                         "name": "price",
                         "type": "number",
                         "nullable": True,
-                        "description": "Price field"
+                        "description": "Price field",
                     },
                 ]
             },
-            "info": {
-                "owners": [
-                    {"name": "Test Owner", "email": "owner@example.com"}
-                ]
-            },
+            "info": {"owners": [{"name": "Test Owner", "email": "owner@example.com"}]},
         }
 
         # Sample ODPS document for Product-First flow
@@ -127,24 +110,16 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                         "productVersion": "1.0.0",
                     }
                 },
-                "contract": {
-                    "spec": self.odcs_contract_data
-                },
-                "dataQuality": {
-                    "declarative": []
-                },
-                "SLA": {
-                    "declarative": []
-                },
-                "pricingPlans": {
-                    "declarative": []
-                }
-            }
+                "contract": {"spec": self.odcs_contract_data},
+                "dataQuality": {"declarative": []},
+                "SLA": {"declarative": []},
+                "pricingPlans": {"declarative": []},
+            },
         }
 
         # Create test file for Data-First flow
         # Create CSV content
-        self.csv_content = b'id,name,email,age\n1,John Doe,john@example.com,30\n2,Jane Smith,jane@example.com,25\n3,Bob Johnson,bob@example.com,35\n'
+        self.csv_content = b"id,name,email,age\n1,John Doe,john@example.com,30\n2,Jane Smith,jane@example.com,25\n3,Bob Johnson,bob@example.com,35\n"
 
         # Create file record
         self.test_file = File.objects.create(
@@ -153,26 +128,28 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             content_type="text/csv",
             size=len(self.csv_content),
             status=FileStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Upload file to storage (S3/MinIO)
         try:
-            from hub.apps.files.storage import S3StorageClient
             from django.core.files.base import ContentFile
+
+            from hub.apps.files.storage import S3StorageClient
 
             storage = S3StorageClient()
             storage_path = storage.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=str(self.test_file.id),
-                file_content=ContentFile(self.csv_content, name="test_data.csv")
+                file_content=ContentFile(self.csv_content, name="test_data.csv"),
             )
             self.test_file.storage_path = storage_path
-            self.test_file.save(update_fields=['storage_path'])
+            self.test_file.save(update_fields=["storage_path"])
         except Exception as e:
             # If S3 is not available, log warning but continue
             # The test will fail with a clear error message
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Could not upload file to S3/MinIO: {e}")
 
@@ -203,21 +180,21 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Step 1: Create product via Product-First endpoint
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
                 "resolve_external_refs": True,
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('odps_contract', response.data)
-        self.assertIn('odcs_contract', response.data)
+        self.assertIn("odps_contract", response.data)
+        self.assertIn("odcs_contract", response.data)
 
-        odps_contract_id = response.data['odps_contract']['id']
-        odcs_contract_id = response.data['odcs_contract']['id']
+        odps_contract_id = response.data["odps_contract"]["id"]
+        odcs_contract_id = response.data["odcs_contract"]["id"]
 
         # Step 2: Verify both contracts were created
         odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
@@ -249,7 +226,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             self.assertEqual(
                 odps_extensions["x_odps"].get("odcs_link"),
                 str(odcs_contract.id),
-                "ODPS contract should link to ODCS contract"
+                "ODPS contract should link to ODCS contract",
             )
 
         # ODCS → ODPS link
@@ -257,13 +234,13 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             self.assertEqual(
                 odcs_extensions["x_odps"].get("odps_link"),
                 str(odps_contract.id),
-                "ODCS contract should link to ODPS contract"
+                "ODCS contract should link to ODPS contract",
             )
 
         # Step 4: Verify workflow completed successfully
-        if 'workflow_instance_id' in response.data:
+        if "workflow_instance_id" in response.data:
             workflow_instance = WorkflowInstance.objects.get(
-                id=response.data['workflow_instance_id']
+                id=response.data["workflow_instance_id"]
             )
             self.assertEqual(workflow_instance.status, WorkflowStatus.COMPLETED)
 
@@ -280,14 +257,14 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             user_id=str(self.user.id),
             resolve_external_refs=True,
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
 
-        self.assertIn('odps_contract', result)
-        self.assertIn('odcs_contract', result)
+        self.assertIn("odps_contract", result)
+        self.assertIn("odcs_contract", result)
 
-        odps_contract = result['odps_contract']
-        odcs_contract = result['odcs_contract']
+        odps_contract = result["odps_contract"]
+        odcs_contract = result["odcs_contract"]
 
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
         self.assertEqual(odcs_contract.original_spec_type, OriginalSpecType.ODCS)
@@ -300,16 +277,10 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
         odcs_extensions = odcs_contract.hub_contract_json.get("extensions", {})
 
         if "x_odps" in odps_extensions:
-            self.assertEqual(
-                odps_extensions["x_odps"].get("odcs_link"),
-                str(odcs_contract.id)
-            )
+            self.assertEqual(odps_extensions["x_odps"].get("odcs_link"), str(odcs_contract.id))
 
         if "x_odps" in odcs_extensions:
-            self.assertEqual(
-                odcs_extensions["x_odps"].get("odps_link"),
-                str(odps_contract.id)
-            )
+            self.assertEqual(odcs_extensions["x_odps"].get("odps_link"), str(odps_contract.id))
 
     def test_product_first_flow_with_asset_linking(self):
         """Test Product-First flow with asset linking"""
@@ -321,25 +292,25 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             key=f"test-asset-{uuid.uuid4().hex[:8]}",
             name="Test Asset",
             status=AssetStatus.DRAFT,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create product with asset_id
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
                 "resolve_external_refs": True,
                 "asset_id": str(asset.id),
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-        odps_contract_id = response.data['odps_contract']['id']
-        odcs_contract_id = response.data['odcs_contract']['id']
+        odps_contract_id = response.data["odps_contract"]["id"]
+        odcs_contract_id = response.data["odcs_contract"]["id"]
 
         # Verify contracts are linked to asset
         odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
@@ -364,18 +335,18 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Step 1: Create ODCS contract
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(self.odcs_contract_data),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
                 "original_spec_version": "3.0.2",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        odcs_contract_id = response.data['id']
+        odcs_contract_id = response.data["id"]
 
         # Step 2: Verify ODCS contract was created
         odcs_contract = Contract.objects.get(id=odcs_contract_id, tenant=self.tenant)
@@ -398,34 +369,26 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                         "productVersion": "1.0.0",
                     }
                 },
-                "contract": {
-                    "spec": self.odcs_contract_data
-                },
-                "dataQuality": {
-                    "declarative": []
-                },
-                "SLA": {
-                    "declarative": []
-                },
-                "pricingPlans": {
-                    "declarative": []
-                }
-            }
+                "contract": {"spec": self.odcs_contract_data},
+                "dataQuality": {"declarative": []},
+                "SLA": {"declarative": []},
+                "pricingPlans": {"declarative": []},
+            },
         }
 
         # Step 4: Link ODPS contract (optional)
         link_response = self.client.post(
-            f'/api/v1/contracts/{odcs_contract_id}/link-odps/',
+            f"/api/v1/contracts/{odcs_contract_id}/link-odps/",
             {
                 "original_raw": json.dumps(odps_doc_for_linking),
                 "original_format": "JSON",
                 "resolve_external_refs": True,
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(link_response.status_code, status.HTTP_200_OK)
-        odps_contract_id = link_response.data['id']
+        odps_contract_id = link_response.data["id"]
 
         # Step 5: Verify ODPS contract was created
         odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
@@ -450,7 +413,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             self.assertEqual(
                 odps_extensions["x_odps"].get("odcs_link"),
                 str(odcs_contract.id),
-                "ODPS contract should link to ODCS contract"
+                "ODPS contract should link to ODCS contract",
             )
 
         # ODCS → ODPS link
@@ -458,7 +421,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             self.assertEqual(
                 odcs_extensions["x_odps"].get("odps_link"),
                 str(odps_contract.id),
-                "ODCS contract should link to ODPS contract"
+                "ODCS contract should link to ODPS contract",
             )
 
     def test_technical_first_flow_with_workflow_direct(self):
@@ -470,7 +433,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
 
         self.assertIsNotNone(contract)
@@ -489,13 +452,11 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                         "productVersion": "1.0.0",
                     }
                 },
-                "contract": {
-                    "spec": self.odcs_contract_data
-                },
+                "contract": {"spec": self.odcs_contract_data},
                 "dataQuality": {"declarative": []},
                 "SLA": {"declarative": []},
-                "pricingPlans": {"declarative": []}
-            }
+                "pricingPlans": {"declarative": []},
+            },
         }
 
         odps_contract = service.link_odps_to_odcs(
@@ -503,7 +464,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             odps_raw=json.dumps(odps_doc_for_linking),
             odps_format="JSON",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
@@ -526,18 +487,18 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Create ODCS contract only
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(self.odcs_contract_data),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
                 "original_spec_version": "3.0.2",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        odcs_contract_id = response.data['id']
+        odcs_contract_id = response.data["id"]
 
         # Verify ODCS contract was created
         odcs_contract = Contract.objects.get(id=odcs_contract_id, tenant=self.tenant)
@@ -545,8 +506,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Verify no ODPS contract exists
         odps_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODPS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODPS
         )
         self.assertEqual(odps_contracts.count(), 0, "No ODPS contract should exist")
 
@@ -593,28 +553,28 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Generate ODPS from HubContract
         generate_response = self.client.post(
-            f'/api/v1/contracts/{odcs_contract.id}/generate-odps/?output_format=json',
+            f"/api/v1/contracts/{odcs_contract.id}/generate-odps/?output_format=json",
             {},
-            format='json'
+            format="json",
         )
 
         if generate_response.status_code == status.HTTP_200_OK:
-            self.assertIn('odps_document', generate_response.data)
-            generated_odps = generate_response.data['odps_document']
+            self.assertIn("odps_document", generate_response.data)
+            generated_odps = generate_response.data["odps_document"]
 
             # Link generated ODPS
             link_response = self.client.post(
-                f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
+                f"/api/v1/contracts/{odcs_contract.id}/link-odps/",
                 {
                     "original_raw": json.dumps(generated_odps),
                     "original_format": "JSON",
                     "resolve_external_refs": True,
                 },
-                format='json'
+                format="json",
             )
 
             if link_response.status_code == status.HTTP_200_OK:
-                odps_contract_id = link_response.data['id']
+                odps_contract_id = link_response.data["id"]
                 odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
 
                 # Verify bidirectional linking
@@ -625,9 +585,13 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                 odcs_extensions = odcs_contract.hub_contract_json.get("extensions", {})
 
                 if "x_odps" in odps_extensions:
-                    self.assertEqual(odps_extensions["x_odps"].get("odcs_link"), str(odcs_contract.id))
+                    self.assertEqual(
+                        odps_extensions["x_odps"].get("odcs_link"), str(odcs_contract.id)
+                    )
                 if "x_odps" in odcs_extensions:
-                    self.assertEqual(odcs_extensions["x_odps"].get("odps_link"), str(odps_contract.id))
+                    self.assertEqual(
+                        odcs_extensions["x_odps"].get("odps_link"), str(odps_contract.id)
+                    )
 
     # ========== DATA-FIRST FLOW TESTS ==========
 
@@ -660,7 +624,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             send_notifications=False,
             created_by_id=str(self.user.id),
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
 
         self.assertTrue(result.get("success", False))
@@ -701,34 +665,26 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                                 "productVersion": "1.0.0",
                             }
                         },
-                        "contract": {
-                            "spec": self.odcs_contract_data  # Use similar structure
-                        },
-                        "dataQuality": {
-                            "declarative": []
-                        },
-                        "SLA": {
-                            "declarative": []
-                        },
-                        "pricingPlans": {
-                            "declarative": []
-                        }
-                    }
+                        "contract": {"spec": self.odcs_contract_data},  # Use similar structure
+                        "dataQuality": {"declarative": []},
+                        "SLA": {"declarative": []},
+                        "pricingPlans": {"declarative": []},
+                    },
                 }
 
                 # Step 5: Link ODPS contract (optional)
                 link_response = self.client.post(
-                    f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
+                    f"/api/v1/contracts/{odcs_contract.id}/link-odps/",
                     {
                         "original_raw": json.dumps(odps_doc_for_linking),
                         "original_format": "JSON",
                         "resolve_external_refs": True,
                     },
-                    format='json'
+                    format="json",
                 )
 
                 if link_response.status_code == status.HTTP_200_OK:
-                    odps_contract_id = link_response.data['id']
+                    odps_contract_id = link_response.data["id"]
 
                     # Step 6: Verify ODPS contract was created and linked to asset
                     odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
@@ -743,9 +699,13 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                     odcs_extensions = odcs_contract.hub_contract_json.get("extensions", {})
 
                     if "x_odps" in odps_extensions:
-                        self.assertEqual(odps_extensions["x_odps"].get("odcs_link"), str(odcs_contract.id))
+                        self.assertEqual(
+                            odps_extensions["x_odps"].get("odcs_link"), str(odcs_contract.id)
+                        )
                     if "x_odps" in odcs_extensions:
-                        self.assertEqual(odcs_extensions["x_odps"].get("odps_link"), str(odps_contract.id))
+                        self.assertEqual(
+                            odcs_extensions["x_odps"].get("odps_link"), str(odps_contract.id)
+                        )
 
     def test_data_first_flow_without_odps(self):
         """Test Data-First flow without ODPS linking (ODPS is optional)"""
@@ -766,7 +726,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             send_notifications=False,
             created_by_id=str(self.user.id),
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
 
         self.assertTrue(result.get("success", False))
@@ -795,9 +755,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
                 # Verify no ODPS contract exists
                 odps_contracts = Contract.objects.filter(
-                    tenant=self.tenant,
-                    original_spec_type=OriginalSpecType.ODPS,
-                    asset=asset
+                    tenant=self.tenant, original_spec_type=OriginalSpecType.ODPS, asset=asset
                 )
                 self.assertEqual(odps_contracts.count(), 0, "No ODPS contract should exist")
 
@@ -809,17 +767,17 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Create product via Product-First flow
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        odps_contract_id = response.data['odps_contract']['id']
-        odcs_contract_id = response.data['odcs_contract']['id']
+        odps_contract_id = response.data["odps_contract"]["id"]
+        odcs_contract_id = response.data["odcs_contract"]["id"]
 
         # Verify linking using validation function
         odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
@@ -829,7 +787,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
         validated_odps, validated_odcs = validate_linking(
             odps_contract_id=str(odps_contract.id),
             odcs_contract_id=str(odcs_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertEqual(validated_odps.id, odps_contract.id)
@@ -841,17 +799,17 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Create ODCS contract
         odcs_response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(self.odcs_contract_data),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(odcs_response.status_code, status.HTTP_201_CREATED)
-        odcs_contract_id = odcs_response.data['id']
+        odcs_contract_id = odcs_response.data["id"]
 
         # Link ODPS
         odps_doc = {
@@ -865,26 +823,24 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                         "productVersion": "1.0.0",
                     }
                 },
-                "contract": {
-                    "spec": self.odcs_contract_data
-                },
+                "contract": {"spec": self.odcs_contract_data},
                 "dataQuality": {"declarative": []},
                 "SLA": {"declarative": []},
-                "pricingPlans": {"declarative": []}
-            }
+                "pricingPlans": {"declarative": []},
+            },
         }
 
         link_response = self.client.post(
-            f'/api/v1/contracts/{odcs_contract_id}/link-odps/',
+            f"/api/v1/contracts/{odcs_contract_id}/link-odps/",
             {
                 "original_raw": json.dumps(odps_doc),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(link_response.status_code, status.HTTP_200_OK)
-        odps_contract_id = link_response.data['id']
+        odps_contract_id = link_response.data["id"]
 
         # Verify linking using validation function
         odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
@@ -893,7 +849,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
         validated_odps, validated_odcs = validate_linking(
             odps_contract_id=str(odps_contract.id),
             odcs_contract_id=str(odcs_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertEqual(validated_odps.id, odps_contract.id)
@@ -917,7 +873,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             send_notifications=False,
             created_by_id=str(self.user.id),
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
 
         if result.get("success", False):
@@ -953,33 +909,33 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                                     "productVersion": "1.0.0",
                                 }
                             },
-                            "contract": {
-                                "spec": self.odcs_contract_data
-                            },
+                            "contract": {"spec": self.odcs_contract_data},
                             "dataQuality": {"declarative": []},
                             "SLA": {"declarative": []},
-                            "pricingPlans": {"declarative": []}
-                        }
+                            "pricingPlans": {"declarative": []},
+                        },
                     }
 
                     link_response = self.client.post(
-                        f'/api/v1/contracts/{odcs_contract.id}/link-odps/',
+                        f"/api/v1/contracts/{odcs_contract.id}/link-odps/",
                         {
                             "original_raw": json.dumps(odps_doc),
                             "original_format": "JSON",
                         },
-                        format='json'
+                        format="json",
                     )
 
                     if link_response.status_code == status.HTTP_200_OK:
-                        odps_contract_id = link_response.data['id']
-                        odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
+                        odps_contract_id = link_response.data["id"]
+                        odps_contract = Contract.objects.get(
+                            id=odps_contract_id, tenant=self.tenant
+                        )
 
                         # Verify linking using validation function
                         validated_odps, validated_odcs = validate_linking(
                             odps_contract_id=str(odps_contract.id),
                             odcs_contract_id=str(odcs_contract.id),
-                            tenant_id=str(self.tenant.id)
+                            tenant_id=str(self.tenant.id),
                         )
 
                         self.assertEqual(validated_odps.id, odps_contract.id)
@@ -993,38 +949,38 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Create ODCS contract first
         odcs_response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(self.odcs_contract_data),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(odcs_response.status_code, status.HTTP_201_CREATED)
-        odcs_contract_id = odcs_response.data['id']
+        odcs_contract_id = odcs_response.data["id"]
 
         # Create ODPS contract separately
         odps_response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         if odps_response.status_code == status.HTTP_201_CREATED:
-            odps_contract_id = odps_response.data['odps_contract']['id']
+            odps_contract_id = odps_response.data["odps_contract"]["id"]
 
             # Link ODPS to ODCS
             link_response = self.client.post(
-                f'/api/v1/contracts/{odcs_contract_id}/link-odps/',
+                f"/api/v1/contracts/{odcs_contract_id}/link-odps/",
                 {
                     "odps_contract_id": odps_contract_id,
                 },
-                format='json'
+                format="json",
             )
 
             if link_response.status_code == status.HTTP_200_OK:
@@ -1039,9 +995,13 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
                 odcs_extensions = odcs_contract.hub_contract_json.get("extensions", {})
 
                 if "x_odps" in odps_extensions:
-                    self.assertEqual(odps_extensions["x_odps"].get("odcs_link"), str(odcs_contract.id))
+                    self.assertEqual(
+                        odps_extensions["x_odps"].get("odcs_link"), str(odcs_contract.id)
+                    )
                 if "x_odps" in odcs_extensions:
-                    self.assertEqual(odcs_extensions["x_odps"].get("odps_link"), str(odps_contract.id))
+                    self.assertEqual(
+                        odcs_extensions["x_odps"].get("odps_link"), str(odps_contract.id)
+                    )
 
     def test_linking_operations_odcs_to_odps(self):
         """Test linking operations: ODCS → ODPS"""
@@ -1049,17 +1009,17 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Create ODPS contract first
         odps_response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         if odps_response.status_code == status.HTTP_201_CREATED:
-            odps_contract_id = odps_response.data['odps_contract']['id']
-            odcs_contract_id = odps_response.data['odcs_contract']['id']
+            odps_contract_id = odps_response.data["odps_contract"]["id"]
+            odcs_contract_id = odps_response.data["odcs_contract"]["id"]
 
             # Verify linking already exists (Product-First flow creates both)
             odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
@@ -1083,17 +1043,17 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Create product via Product-First flow
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        odps_contract_id = response.data['odps_contract']['id']
-        odcs_contract_id = response.data['odcs_contract']['id']
+        odps_contract_id = response.data["odps_contract"]["id"]
+        odcs_contract_id = response.data["odcs_contract"]["id"]
 
         # Validate bidirectional linking
         odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
@@ -1103,7 +1063,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
         validated_odps, validated_odcs = validate_linking(
             odps_contract_id=str(odps_contract.id),
             odcs_contract_id=str(odcs_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertEqual(validated_odps.id, odps_contract.id)
@@ -1126,18 +1086,17 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
         invalid_odcs_id = str(uuid.uuid4())
 
         link_response = self.client.post(
-            f'/api/v1/contracts/{invalid_odcs_id}/link-odps/',
+            f"/api/v1/contracts/{invalid_odcs_id}/link-odps/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         # Should fail with 404 or 400
         self.assertIn(
-            link_response.status_code,
-            [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST]
+            link_response.status_code, [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST]
         )
 
     # ========== COMPREHENSIVE E2E TEST SUITE ==========
@@ -1152,31 +1111,31 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # 1. Product-First flow
         product_response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(product_response.status_code, status.HTTP_201_CREATED)
-        product_odps_id = product_response.data['odps_contract']['id']
-        product_odcs_id = product_response.data['odcs_contract']['id']
+        product_odps_id = product_response.data["odps_contract"]["id"]
+        product_odcs_id = product_response.data["odcs_contract"]["id"]
 
         # 2. Technical-First flow
         technical_odcs_response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(self.odcs_contract_data),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(technical_odcs_response.status_code, status.HTTP_201_CREATED)
-        technical_odcs_id = technical_odcs_response.data['id']
+        technical_odcs_id = technical_odcs_response.data["id"]
 
         # 3. Data-First flow (workflow will create the asset)
         unique_key = f"test-asset-comprehensive-{uuid.uuid4().hex[:12]}"
@@ -1192,7 +1151,7 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             send_notifications=False,
             created_by_id=str(self.user.id),
             engine=self.engine,
-            registry=self.registry
+            registry=self.registry,
         )
 
         self.assertTrue(data_result.get("success", False))
@@ -1257,47 +1216,43 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
 
         # Create product via Product-First flow
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(self.odps_document),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        odps_contract_id = response.data['odps_contract']['id']
-        odcs_contract_id = response.data['odcs_contract']['id']
+        odps_contract_id = response.data["odps_contract"]["id"]
+        odcs_contract_id = response.data["odcs_contract"]["id"]
 
         # Verify database state
         odps_contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
         odcs_contract = Contract.objects.get(id=odcs_contract_id, tenant=self.tenant)
 
         # Verify API state
-        odps_get_response = self.client.get(f'/api/v1/contracts/{odps_contract_id}/')
+        odps_get_response = self.client.get(f"/api/v1/contracts/{odps_contract_id}/")
         self.assertEqual(odps_get_response.status_code, status.HTTP_200_OK)
 
-        odcs_get_response = self.client.get(f'/api/v1/contracts/{odcs_contract_id}/')
+        odcs_get_response = self.client.get(f"/api/v1/contracts/{odcs_contract_id}/")
         self.assertEqual(odcs_get_response.status_code, status.HTTP_200_OK)
 
         # Verify workflow state
-        if 'workflow_instance_id' in response.data:
+        if "workflow_instance_id" in response.data:
             workflow_instance = WorkflowInstance.objects.get(
-                id=response.data['workflow_instance_id']
+                id=response.data["workflow_instance_id"]
             )
             self.assertEqual(workflow_instance.status, WorkflowStatus.COMPLETED)
 
         # Verify search indexing (if implemented)
         odps_search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=odps_contract_id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=odps_contract_id
         ).first()
 
         odcs_search_index = SearchIndex.objects.filter(
-            tenant=self.tenant,
-            resource_type="CONTRACT",
-            resource_id=odcs_contract_id
+            tenant=self.tenant, resource_type="CONTRACT", resource_id=odcs_contract_id
         ).first()
 
         # Search indexing may be optional, so we check if it exists
@@ -1307,3 +1262,210 @@ class CreationFlowsE2EComprehensiveTest(TestCase):
             self.assertEqual(str(odps_search_index.resource_id), str(odps_contract_id))
         if odcs_search_index:
             self.assertEqual(str(odcs_search_index.resource_id), str(odcs_contract_id))
+
+    def test_creation_flows_handle_unicode_characters(self):
+        """Test that creation flows handle unicode characters correctly."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODPS document with unicode characters
+        odps_doc = self.odps_document.copy()
+        odps_doc["product"]["details"]["en"]["name"] = "测试产品 🏢"
+        odps_doc["product"]["details"]["en"]["description"] = "测试描述"
+
+        response = self.client.post(
+            "/api/v1/contracts/products/",
+            {
+                "original_raw": json.dumps(odps_doc),
+                "original_format": "JSON",
+            },
+            format="json",
+        )
+
+        # Should succeed
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED])
+        if response.status_code == status.HTTP_201_CREATED:
+            # Verify unicode characters are preserved
+            odps_contract_id = response.data.get("odps_contract", {}).get("id")
+            if odps_contract_id:
+                odps_contract = Contract.objects.get(id=odps_contract_id)
+                hub_contract = odps_contract.hub_contract_json
+                if hub_contract and "product" in hub_contract:
+                    product_details = hub_contract["product"].get("details", {}).get("en", {})
+                    if "name" in product_details:
+                        self.assertEqual(
+                            product_details["name"],
+                            "测试产品 🏢",
+                            "Unicode characters should be preserved",
+                        )
+
+    def test_creation_flows_handle_special_characters(self):
+        """Test that creation flows handle special characters correctly."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODPS document with special characters
+        odps_doc = self.odps_document.copy()
+        odps_doc["product"]["details"]["en"]["name"] = "Test & Co. (Special)"
+        odps_doc["product"]["details"]["en"]["description"] = "Test <description> & more"
+
+        response = self.client.post(
+            "/api/v1/contracts/products/",
+            {
+                "original_raw": json.dumps(odps_doc),
+                "original_format": "JSON",
+            },
+            format="json",
+        )
+
+        # Should succeed
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED])
+        if response.status_code == status.HTTP_201_CREATED:
+            # Verify special characters are preserved
+            odps_contract_id = response.data.get("odps_contract", {}).get("id")
+            if odps_contract_id:
+                odps_contract = Contract.objects.get(id=odps_contract_id)
+                hub_contract = odps_contract.hub_contract_json
+                if hub_contract and "product" in hub_contract:
+                    product_details = hub_contract["product"].get("details", {}).get("en", {})
+                    if "name" in product_details:
+                        self.assertEqual(
+                            product_details["name"],
+                            "Test & Co. (Special)",
+                            "Special characters should be preserved",
+                        )
+
+    def test_creation_flows_handle_very_large_documents(self):
+        """Test that creation flows handle very large documents correctly."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODPS document with very large field
+        odps_doc = self.odps_document.copy()
+        odps_doc["product"]["details"]["en"]["description"] = "A" * 100000  # 100KB string
+
+        response = self.client.post(
+            "/api/v1/contracts/products/",
+            {
+                "original_raw": json.dumps(odps_doc),
+                "original_format": "JSON",
+            },
+            format="json",
+        )
+
+        # Should either succeed or fail gracefully
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_201_CREATED,
+                status.HTTP_202_ACCEPTED,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            ],
+        )
+
+    def test_creation_flows_handle_none_values(self):
+        """Test that creation flows handle None values correctly."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODPS document with None values
+        odps_doc = self.odps_document.copy()
+        odps_doc["product"]["details"]["en"]["optional_field"] = None
+
+        response = self.client.post(
+            "/api/v1/contracts/products/",
+            {
+                "original_raw": json.dumps(odps_doc),
+                "original_format": "JSON",
+            },
+            format="json",
+        )
+
+        # Should handle None values gracefully
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED, status.HTTP_400_BAD_REQUEST],
+        )
+
+    def test_creation_flows_handle_nested_structures(self):
+        """Test that creation flows handle nested structures correctly."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODPS document with deeply nested structure
+        odps_doc = self.odps_document.copy()
+        odps_doc["product"]["nested"] = {
+            "level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}
+        }
+
+        response = self.client.post(
+            "/api/v1/contracts/products/",
+            {
+                "original_raw": json.dumps(odps_doc),
+                "original_format": "JSON",
+            },
+            format="json",
+        )
+
+        # Should succeed
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED])
+        if response.status_code == status.HTTP_201_CREATED:
+            # Verify nested structure is preserved
+            odps_contract_id = response.data.get("odps_contract", {}).get("id")
+            if odps_contract_id:
+                odps_contract = Contract.objects.get(id=odps_contract_id)
+                hub_contract = odps_contract.hub_contract_json
+                if (
+                    hub_contract
+                    and "product" in hub_contract
+                    and "nested" in hub_contract["product"]
+                ):
+                    self.assertIn(
+                        "level1",
+                        hub_contract["product"]["nested"],
+                        "Nested structures should be preserved",
+                    )
+
+    def test_creation_flows_maintain_cross_tenant_isolation(self):
+        """Test that creation flows maintain cross-tenant isolation."""
+        # Create second tenant
+        tenant2 = Tenant.objects.create(
+            name="Creation Flows Test Tenant 2",
+            slug="creation-flows-test-2",
+            status=TenantStatus.ACTIVE.value,
+            kyc_status=KYCStatus.VERIFIED.value,
+        )
+
+        user2 = User.objects.create_user(
+            email="creation-flows-test-2@example.com",
+            password="testpass123",
+            tenant=tenant2,
+            status=UserStatus.ACTIVE.value,
+        )
+
+        # Authenticate as user2
+        self.client.force_authenticate(user=user2)
+
+        # Create ODPS document for tenant2
+        odps_doc = self.odps_document.copy()
+        odps_doc["product"]["details"]["en"][
+            "productID"
+        ] = f"tenant2-product-{uuid.uuid4().hex[:12]}"
+
+        response = self.client.post(
+            "/api/v1/contracts/products/",
+            {
+                "original_raw": json.dumps(odps_doc),
+                "original_format": "JSON",
+            },
+            format="json",
+        )
+
+        # Should succeed
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED])
+        if response.status_code == status.HTTP_201_CREATED:
+            odps_contract_id = response.data.get("odps_contract", {}).get("id")
+            if odps_contract_id:
+                odps_contract = Contract.objects.get(id=odps_contract_id)
+
+                # Verify tenant isolation
+                self.assertEqual(odps_contract.tenant, tenant2, "Contract should belong to tenant2")
+                self.assertNotEqual(
+                    odps_contract.tenant, self.tenant, "Contract should not belong to tenant1"
+                )

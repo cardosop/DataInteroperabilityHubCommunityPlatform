@@ -291,18 +291,28 @@ class JobQueueInfrastructureTest(TestCase):
         self.assertEqual(get_queue_for_job_type(JobType.CONTRACT_MIGRATION), "job_default")
     
     def test_reserved_slots_ratio(self):
-        """Test that reserved slots are calculated correctly"""
+        """Test that reserved slots are calculated correctly from settings"""
         from django.conf import settings
         
-        # With default WORKER_MAX_CONCURRENCY=4 and WORKER_RESERVED_SLOTS_RATIO=0.5
-        # Reserved slots should be 2, shared slots should be 2
-        self.assertEqual(settings.WORKER_RESERVED_SLOTS, 2)
-        self.assertEqual(settings.WORKER_SHARED_SLOTS, 2)
-        
-        # Total should equal max concurrency
+        # Reserved + shared must equal max concurrency
         self.assertEqual(
             settings.WORKER_RESERVED_SLOTS + settings.WORKER_SHARED_SLOTS,
-            settings.WORKER_MAX_CONCURRENCY
+            settings.WORKER_MAX_CONCURRENCY,
+            "Reserved + shared slots must equal WORKER_MAX_CONCURRENCY",
+        )
+        # Formula: reserved = max(1, int(max_concurrency * ratio))
+        expected_reserved = max(
+            1,
+            int(settings.WORKER_MAX_CONCURRENCY * settings.WORKER_RESERVED_SLOTS_RATIO),
+        )
+        self.assertEqual(
+            settings.WORKER_RESERVED_SLOTS,
+            expected_reserved,
+            "WORKER_RESERVED_SLOTS should match ratio formula",
+        )
+        self.assertEqual(
+            settings.WORKER_SHARED_SLOTS,
+            settings.WORKER_MAX_CONCURRENCY - expected_reserved,
         )
     
     def test_starvation_threshold(self):

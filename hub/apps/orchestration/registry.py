@@ -5,7 +5,7 @@ Manages workflow registration, discovery, dependency tracking, and validation.
 """
 import logging
 from typing import Dict, Any, Optional, List, Set
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.core.exceptions import ValidationError
 
 from .models import WorkflowDefinition
@@ -27,6 +27,8 @@ class WorkflowRegistry:
         self.version_manager = WorkflowVersionManager()
         self._dependency_graph: Dict[str, Set[str]] = {}
         self._reverse_dependency_graph: Dict[str, Set[str]] = {}
+        # Cache for workflow definitions to avoid repeated database queries
+        self._workflow_cache: Dict[str, 'WorkflowDefinition'] = {}  # type: ignore
 
     @transaction.atomic
     def register_workflow(
@@ -64,14 +66,29 @@ class WorkflowRegistry:
             else:
                 version = "1.0.0"
 
+        # Check cache first to avoid database query
+        cache_key = f"{workflow_name}:{version}"
+        if cache_key in self._workflow_cache:
+            cached_workflow = self._workflow_cache[cache_key]
+            # Verify it still exists in database (might have been deleted)
+            try:
+                cached_workflow.refresh_from_db()
+                logger.debug(f"Workflow {workflow_name} version {version} found in cache")
+                dependencies = dsl_json.get("dependencies", [])
+                self._update_dependency_graph(workflow_name, dependencies)
+                return cached_workflow
+            except Exception:
+                # Workflow was deleted, remove from cache
+                del self._workflow_cache[cache_key]
+
         # Check if workflow already exists (idempotent check)
         from hub.apps.orchestration.models import WorkflowDefinition
-        # Use select_for_update with nowait=False to ensure we see the latest state
-        # and handle concurrent registrations properly
+        # Use select_for_update with skip_locked=True to avoid blocking on concurrent registrations
+        # This prevents deadlocks and allows concurrent test execution
         try:
             existing = WorkflowDefinition.objects.filter(
                 name=workflow_name, version=version
-            ).select_for_update(nowait=False).first()
+            ).select_for_update(skip_locked=True).first()
         except Exception:
             # If select_for_update fails, fall back to regular query
             existing = WorkflowDefinition.objects.filter(
@@ -79,6 +96,8 @@ class WorkflowRegistry:
             ).first()
 
         if existing:
+            # Cache the workflow definition for future use
+            self._workflow_cache[cache_key] = existing
             logger.debug(f"Workflow {workflow_name} version {version} already exists, returning existing workflow")
             # Update dependency graph even if workflow exists (in case dependencies changed)
             dependencies = dsl_json.get("dependencies", [])
@@ -102,12 +121,15 @@ class WorkflowRegistry:
                 description=description,
                 created_by_id=created_by_id
             )
+            # Cache the newly created workflow definition
+            self._workflow_cache[cache_key] = workflow_def
             logger.debug(f"Successfully created workflow {workflow_name} version {version}")
-        except ValidationError as e:
+        except (ValidationError, IntegrityError) as e:
             # Handle race condition: workflow might have been created by another process
+            # This can happen with ValidationError or IntegrityError (unique constraint violation)
             error_msg = str(e)
-            logger.debug(f"Caught ValidationError during workflow creation: {error_msg}")
-            if "already exists" in error_msg.lower():
+            logger.debug(f"Caught {type(e).__name__} during workflow creation: {error_msg}")
+            if "already exists" in error_msg.lower() or "duplicate key" in error_msg.lower() or "unique constraint" in error_msg.lower():
                 logger.info(f"Workflow {workflow_name} version {version} was created concurrently, retrieving existing workflow")
                 # Use the same query method as the initial check to ensure consistency
                 # Refresh from database to ensure we see the latest state
@@ -139,6 +161,8 @@ class WorkflowRegistry:
                     workflow_name, version=version
                 )
                 if existing:
+                    # Cache the workflow definition
+                    self._workflow_cache[cache_key] = existing
                     logger.debug(f"Found existing workflow {workflow_name} version {version} via version_manager, returning it")
                     self._update_dependency_graph(workflow_name, dependencies)
                     return existing

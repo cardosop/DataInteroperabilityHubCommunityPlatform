@@ -9,9 +9,11 @@ Comprehensive tests for search business rules validation, including:
 - Filter validation tests
 - Integration tests with SearchService
 """
+
 import uuid
-from django.test import TestCase
+
 from django.conf import settings
+from django.test import TestCase
 
 from hub.apps.core.business_rules.registry import get_registry
 from hub.apps.search.business_rules import (
@@ -20,7 +22,7 @@ from hub.apps.search.business_rules import (
 )
 from hub.apps.search.models import SearchIndex
 from hub.apps.search.services import SearchService
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
 
@@ -29,19 +31,32 @@ class SearchBusinessRulesInitializationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # CRITICAL: Disconnect semantic service signals to prevent timeouts
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+
         self.tenant = Tenant.objects.create(
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
 
     def test_search_business_rules_initialization(self):
         """Test SearchBusinessRules can be initialized with tenant and user"""
-        rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.assertIsNotNone(rules)
         self.assertEqual(rules.get_rule_name(), "SearchBusinessRules")
         self.assertEqual(rules.tenant_id, str(self.tenant.id))
@@ -102,14 +117,12 @@ class SearchBusinessRulesInitializationTest(TestCase):
 
     def test_create_search_context(self):
         """Test SearchBusinessRules can create search context"""
-        rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         context = rules.create_search_context(
             query="test query",
             filters={"resource_type": "CONTRACT"},
             tenant=self.tenant,
-            user=self.user
+            user=self.user,
         )
         self.assertIsNotNone(context)
         self.assertIsInstance(context, SearchRuleExecutionContext)
@@ -169,19 +182,16 @@ class SearchQueryValidationTest(TestCase):
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_query_valid(self):
         """Test query validation with valid query"""
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            query="test query"
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query="test query")
         result = self.rules.validate(context)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -243,7 +253,8 @@ class SearchQueryValidationTest(TestCase):
     def test_validate_query_length_too_long(self):
         """Test query length validation with query exceeding max length"""
         from django.conf import settings
-        max_length = getattr(settings, 'SEARCH_QUERY_MAX_LENGTH', 1000)
+
+        max_length = getattr(settings, "SEARCH_QUERY_MAX_LENGTH", 1000)
         long_query = "a" * (max_length + 1)
         result = self.rules._validate_query_length(long_query)
         self.assertFalse(result.is_valid)
@@ -271,15 +282,12 @@ class SearchQueryValidationTest(TestCase):
             result = self.rules._validate_query_security(query)
             self.assertFalse(result.is_valid)
             self.assertGreater(len(result.errors), 0)
-            self.assertEqual(result.details.get('dangerous_pattern'), pattern)
+            self.assertEqual(result.details.get("dangerous_pattern"), pattern)
 
     def test_validate_query_security_with_tenant_context(self):
         """Test query security validation with tenant context"""
         query = "test query"
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            query=query
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query=query)
         result = self.rules._validate_query_security(query, context)
         # Should pass for normal queries
         self.assertTrue(result.is_valid)
@@ -289,7 +297,7 @@ class SearchQueryValidationTest(TestCase):
         query = "test query"
         result = self.rules._validate_query_complexity(query)
         self.assertTrue(result.is_valid)
-        self.assertIn('complexity_score', result.details)
+        self.assertIn("complexity_score", result.details)
 
     def test_validate_query_complexity_complex(self):
         """Test query complexity validation with complex query"""
@@ -297,33 +305,33 @@ class SearchQueryValidationTest(TestCase):
         query = "((test & query) | (another & term)) & !excluded"
         result = self.rules._validate_query_complexity(query)
         # Should have complexity score calculated
-        self.assertIn('complexity_score', result.details)
-        self.assertIn('operator_count', result.details)
-        self.assertIn('max_depth', result.details)
-        self.assertIn('term_count', result.details)
+        self.assertIn("complexity_score", result.details)
+        self.assertIn("operator_count", result.details)
+        self.assertIn("max_depth", result.details)
+        self.assertIn("term_count", result.details)
 
     def test_validate_query_complexity_exceeds_limit(self):
         """Test query complexity validation with query exceeding complexity limit"""
         from django.conf import settings
-        complexity_limit = getattr(settings, 'SEARCH_QUERY_COMPLEXITY_LIMIT', 50)
+
+        complexity_limit = getattr(settings, "SEARCH_QUERY_COMPLEXITY_LIMIT", 50)
 
         # Create a very complex query that should exceed the limit
         # Deep nesting with many operators
-        query = "(" * 10 + "term1 & term2" + ")" * 10 + " | " + "(" * 10 + "term3 & term4" + ")" * 10
+        query = (
+            "(" * 10 + "term1 & term2" + ")" * 10 + " | " + "(" * 10 + "term3 & term4" + ")" * 10
+        )
         result = self.rules._validate_query_complexity(query)
 
         # Should fail if complexity exceeds limit
-        if result.details.get('complexity_score', 0) > complexity_limit:
+        if result.details.get("complexity_score", 0) > complexity_limit:
             self.assertFalse(result.is_valid)
             self.assertGreater(len(result.errors), 0)
             self.assertIn("complexity", result.errors[0].lower())
 
     def test_validate_query_empty(self):
         """Test query validation with empty query"""
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            query=""
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query="")
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -331,10 +339,7 @@ class SearchQueryValidationTest(TestCase):
 
     def test_validate_query_whitespace_only(self):
         """Test query validation with whitespace-only query"""
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            query="   "
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query="   ")
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -342,10 +347,7 @@ class SearchQueryValidationTest(TestCase):
     def test_validate_query_too_long(self):
         """Test query validation with query exceeding length limit"""
         long_query = "a" * 1001  # Exceeds 1000 character limit
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            query=long_query
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query=long_query)
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -360,21 +362,38 @@ class SearchQueryValidationTest(TestCase):
         ]
 
         for query, pattern, error_keyword in dangerous_queries:
-            context = SearchRuleExecutionContext(
-                tenant_id=str(self.tenant.id),
-                query=query
-            )
+            context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query=query)
             result = self.rules.validate(context)
             self.assertFalse(result.is_valid, f"Query '{query}' should be invalid")
             self.assertGreater(len(result.errors), 0)
             # Check if dangerous pattern is detected in details or error message contains keyword
-            errors_str = ' '.join(result.errors)
+            errors_str = " ".join(result.errors)
             self.assertTrue(
-                result.details.get('dangerous_pattern') == pattern or
-                error_keyword.lower() in errors_str.lower(),
+                result.details.get("dangerous_pattern") == pattern
+                or error_keyword.lower() in errors_str.lower(),
                 f"Expected dangerous pattern '{pattern}' or keyword '{error_keyword}' to be detected. "
-                f"Errors: {result.errors}, Details: {result.details}"
+                f"Errors: {result.errors}, Details: {result.details}",
             )
+
+    def test_validate_combined_query_and_filter_errors_error_handling(self):
+        """Error handling: validate() with invalid query and invalid filters returns combined errors."""
+        context = SearchRuleExecutionContext(
+            tenant_id=str(self.tenant.id),
+            query="",
+            filters={"tenant_id": str(self.tenant.id), "resource_type": "CONTRACT"},
+        )
+        result = self.rules.validate(context)
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+        errors_lower = " ".join(result.errors).lower()
+        self.assertTrue(
+            "empty" in errors_lower or "query" in errors_lower,
+            f"Expected query-related error in: {result.errors}",
+        )
+        self.assertTrue(
+            "tenant_id" in errors_lower,
+            f"Expected filter tenant_id error in: {result.errors}",
+        )
 
 
 class SearchIndexValidationTest(TestCase):
@@ -389,36 +408,37 @@ class SearchIndexValidationTest(TestCase):
             name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_index_valid(self):
         """Test index validation with valid index"""
         # Create a real contract first so consistency check passes
         from hub.apps.contracts.models import Contract
+
         contract = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="1.0.0",
-            hub_contract_json={"info": {"title": "Test Contract"}}
+            hub_contract_json={"info": {"title": "Test Contract"}},
         )
 
         index = SearchIndex.objects.create(
             tenant=self.tenant,
             resource_type="CONTRACT",
             resource_id=contract.id,
-            title="Test Contract"
+            title="Test Contract",
         )
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules.validate(context)
-        self.assertTrue(result.is_valid, f"Index validation failed: {result.errors}, warnings: {result.warnings}")
+        self.assertTrue(
+            result.is_valid,
+            f"Index validation failed: {result.errors}, warnings: {result.warnings}",
+        )
         self.assertEqual(len(result.errors), 0)
 
     def test_validate_index_wrong_tenant(self):
@@ -427,12 +447,9 @@ class SearchIndexValidationTest(TestCase):
             tenant=self.other_tenant,
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
-            title="Other Tenant Contract"
+            title="Other Tenant Contract",
         )
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -441,15 +458,10 @@ class SearchIndexValidationTest(TestCase):
     def test_validate_index_structure_missing_tenant(self):
         """Test index structure validation with missing tenant"""
         index = SearchIndex(
-            resource_type="CONTRACT",
-            resource_id=uuid.uuid4(),
-            title="Test Contract"
+            resource_type="CONTRACT", resource_id=uuid.uuid4(), title="Test Contract"
         )
         # Don't save to avoid database constraint
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -458,15 +470,9 @@ class SearchIndexValidationTest(TestCase):
     def test_validate_index_structure_invalid_resource_type(self):
         """Test index structure validation with invalid resource type"""
         index = SearchIndex.objects.create(
-            tenant=self.tenant,
-            resource_type="INVALID_TYPE",
-            resource_id=uuid.uuid4(),
-            title="Test"
+            tenant=self.tenant, resource_type="INVALID_TYPE", resource_id=uuid.uuid4(), title="Test"
         )
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -479,12 +485,9 @@ class SearchIndexValidationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
             title="Test Contract",
-            schema_fields="not a list"  # type: ignore
+            schema_fields="not a list",  # type: ignore
         )
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -497,12 +500,9 @@ class SearchIndexValidationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
             title="Test Contract",
-            tags="not a list"  # type: ignore
+            tags="not a list",  # type: ignore
         )
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -515,12 +515,9 @@ class SearchIndexValidationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
             title="Test Contract",
-            owner_email="invalid-email"
+            owner_email="invalid-email",
         )
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_structure(index, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -528,23 +525,25 @@ class SearchIndexValidationTest(TestCase):
 
     def test_validate_index_update_timestamp_inconsistency(self):
         """Test index update validation with timestamp inconsistency"""
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         # Create a real contract first
         from hub.apps.contracts.models import Contract
+
         contract = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="1.0.0",
-            hub_contract_json={"info": {"title": "Test Contract"}}
+            hub_contract_json={"info": {"title": "Test Contract"}},
         )
 
         index = SearchIndex.objects.create(
             tenant=self.tenant,
             resource_type="CONTRACT",
             resource_id=contract.id,
-            title="Test Contract"
+            title="Test Contract",
         )
         # Manually set indexed_at before created_at (shouldn't happen normally)
         # Need to refresh from DB first to get the actual created_at
@@ -557,19 +556,29 @@ class SearchIndexValidationTest(TestCase):
         index.refresh_from_db()
 
         result = self.rules._validate_index_update(index)
-        self.assertFalse(result.is_valid, f"Expected timestamp inconsistency error. Errors: {result.errors}")
+        self.assertFalse(
+            result.is_valid, f"Expected timestamp inconsistency error. Errors: {result.errors}"
+        )
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(any("indexed_at" in error.lower() or "created_at" in error.lower() or "significantly" in error.lower() for error in result.errors))
+        self.assertTrue(
+            any(
+                "indexed_at" in error.lower()
+                or "created_at" in error.lower()
+                or "significantly" in error.lower()
+                for error in result.errors
+            )
+        )
 
     def test_validate_index_update_missing_search_vector(self):
         """Test index update validation with missing search_vector"""
         # Create a real contract first
         from hub.apps.contracts.models import Contract
+
         contract = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="1.0.0",
-            hub_contract_json={"info": {"title": "Test Contract"}}
+            hub_contract_json={"info": {"title": "Test Contract"}},
         )
 
         index = SearchIndex.objects.create(
@@ -577,11 +586,13 @@ class SearchIndexValidationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=contract.id,
             title="Test Contract",
-            search_vector=None
+            search_vector=None,
         )
         result = self.rules._validate_index_update(index)
         # Should warn but not fail
-        self.assertTrue(result.is_valid, f"Expected valid result with warnings. Errors: {result.errors}")
+        self.assertTrue(
+            result.is_valid, f"Expected valid result with warnings. Errors: {result.errors}"
+        )
         self.assertGreater(len(result.warnings), 0)
         self.assertTrue(any("search_vector" in warning.lower() for warning in result.warnings))
 
@@ -592,16 +603,18 @@ class SearchIndexValidationTest(TestCase):
             tenant=self.tenant,
             resource_type="CONTRACT",
             resource_id=non_existent_id,
-            title="Non-existent Contract"
+            title="Non-existent Contract",
         )
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_consistency(index, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(any("non-existent" in error.lower() or "not found" in error.lower() for error in result.errors))
+        self.assertTrue(
+            any(
+                "non-existent" in error.lower() or "not found" in error.lower()
+                for error in result.errors
+            )
+        )
 
     def test_validate_index_consistency_tenant_mismatch(self):
         """Test index consistency validation with tenant mismatch"""
@@ -612,7 +625,7 @@ class SearchIndexValidationTest(TestCase):
             tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="1.0.0",
-            hub_contract_json={"info": {"title": "Test Contract"}}
+            hub_contract_json={"info": {"title": "Test Contract"}},
         )
 
         # Create index with wrong tenant
@@ -620,13 +633,10 @@ class SearchIndexValidationTest(TestCase):
             tenant=self.other_tenant,  # Wrong tenant
             resource_type="CONTRACT",
             resource_id=contract.id,
-            title="Test Contract"
+            title="Test Contract",
         )
 
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.other_tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.other_tenant.id), index=index)
         result = self.rules._validate_index_consistency(index, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -634,16 +644,18 @@ class SearchIndexValidationTest(TestCase):
 
     def test_validate_index_consistency_stale_index(self):
         """Test index consistency validation with stale index"""
-        from hub.apps.contracts.models import Contract
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
+
+        from hub.apps.contracts.models import Contract
 
         # Create contract
         contract = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="1.0.0",
-            hub_contract_json={"info": {"title": "Test Contract"}}
+            hub_contract_json={"info": {"title": "Test Contract"}},
         )
 
         # Create index
@@ -651,7 +663,7 @@ class SearchIndexValidationTest(TestCase):
             tenant=self.tenant,
             resource_type="CONTRACT",
             resource_id=contract.id,
-            title="Test Contract"
+            title="Test Contract",
         )
 
         # Refresh contract to get updated_at
@@ -662,35 +674,42 @@ class SearchIndexValidationTest(TestCase):
 
         # Update contract (simulating resource update)
         # Set updated_at explicitly if it exists
-        if hasattr(contract, 'updated_at'):
+        if hasattr(contract, "updated_at"):
             contract.updated_at = timezone.now()
             contract.save()
             contract.refresh_from_db()
 
         # Set index indexed_at to be older than contract updated_at or created_at
-        if hasattr(contract, 'updated_at') and contract.updated_at:
+        if hasattr(contract, "updated_at") and contract.updated_at:
             index.indexed_at = contract.updated_at - timedelta(days=1)
         else:
             # If updated_at doesn't exist, use created_at
             index.indexed_at = contract.created_at - timedelta(days=1)
         index.save()
 
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         result = self.rules._validate_index_consistency(index, context)
         # Should warn about stale index if updated_at exists and was set
-        self.assertTrue(result.is_valid, f"Consistency check should not fail. Errors: {result.errors}")
+        self.assertTrue(
+            result.is_valid, f"Consistency check should not fail. Errors: {result.errors}"
+        )
         # Check for warnings - Contract model may or may not have updated_at field
         # If it does and was updated, we should get a warning
-        if hasattr(contract, 'updated_at') and contract.updated_at:
+        if hasattr(contract, "updated_at") and contract.updated_at:
             # Only assert warning if updated_at is actually newer than indexed_at
             if contract.updated_at > index.indexed_at:
-                self.assertGreater(len(result.warnings), 0,
-                                 f"Expected stale index warning when updated_at ({contract.updated_at}) > indexed_at ({index.indexed_at}). "
-                                 f"Warnings: {result.warnings}")
-                self.assertTrue(any("stale" in warning.lower() or "updated" in warning.lower() for warning in result.warnings))
+                self.assertGreater(
+                    len(result.warnings),
+                    0,
+                    f"Expected stale index warning when updated_at ({contract.updated_at}) > indexed_at ({index.indexed_at}). "
+                    f"Warnings: {result.warnings}",
+                )
+                self.assertTrue(
+                    any(
+                        "stale" in warning.lower() or "updated" in warning.lower()
+                        for warning in result.warnings
+                    )
+                )
 
 
 class SearchFilterValidationTest(TestCase):
@@ -702,12 +721,12 @@ class SearchFilterValidationTest(TestCase):
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_filters_valid(self):
         """Test filter validation with valid filters"""
@@ -718,10 +737,7 @@ class SearchFilterValidationTest(TestCase):
             "owner_id": str(self.user.id),  # Use valid owner_id from tenant
         }
         context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters,
-            tenant=self.tenant,
-            user=self.user
+            tenant_id=str(self.tenant.id), filters=filters, tenant=self.tenant, user=self.user
         )
         result = self.rules.validate(context)
         self.assertTrue(result.is_valid)
@@ -730,8 +746,7 @@ class SearchFilterValidationTest(TestCase):
     def test_validate_filters_invalid_type(self):
         """Test filter validation with invalid filter type"""
         context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters="not a dict"  # type: ignore
+            tenant_id=str(self.tenant.id), filters="not a dict"  # type: ignore
         )
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)
@@ -740,13 +755,8 @@ class SearchFilterValidationTest(TestCase):
 
     def test_validate_filters_invalid_tags(self):
         """Test filter validation with invalid tags format"""
-        filters = {
-            "tags": "not a list"
-        }
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        filters = {"tags": "not a list"}
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -754,13 +764,8 @@ class SearchFilterValidationTest(TestCase):
 
     def test_validate_filters_invalid_owner_id(self):
         """Test filter validation with invalid owner_id format"""
-        filters = {
-            "owner_id": 12345  # Not a string UUID
-        }
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        filters = {"owner_id": 12345}  # Not a string UUID
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules.validate(context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -768,13 +773,8 @@ class SearchFilterValidationTest(TestCase):
 
     def test_validate_filters_unknown_key(self):
         """Test filter validation with unknown filter key"""
-        filters = {
-            "unknown_key": "value"
-        }
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        filters = {"unknown_key": "value"}
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules.validate(context)
         # Unknown keys generate warnings, not errors
         self.assertTrue(result.is_valid)
@@ -791,20 +791,17 @@ class SearchFilterExpressionValidationTest(TestCase):
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_filter_expressions_valid_resource_type(self):
         """Test filter expression validation with valid resource_type"""
         filters = {"resource_type": "CONTRACT"}
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules._validate_filter_expressions(filters)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -908,24 +905,23 @@ class SearchFilterSecurityValidationTest(TestCase):
             name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
         self.other_user = User.objects.create_user(
-            email="other@example.com", password="testpass123", tenant=self.other_tenant,
-            status=UserStatus.ACTIVE
+            email="other@example.com",
+            password="testpass123",
+            tenant=self.other_tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_filter_security_tenant_id_in_filter(self):
         """Test filter security validation rejects tenant_id in filters"""
         filters = {"tenant_id": str(self.tenant.id)}
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules._validate_filter_security(filters, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -934,22 +930,16 @@ class SearchFilterSecurityValidationTest(TestCase):
     def test_validate_filter_security_valid_owner_id(self):
         """Test filter security validation with valid owner_id belonging to tenant"""
         filters = {"owner_id": str(self.user.id)}
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules._validate_filter_security(filters, context)
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
-        self.assertTrue(result.details.get('owner_validated', False))
+        self.assertTrue(result.details.get("owner_validated", False))
 
     def test_validate_filter_security_invalid_owner_id_different_tenant(self):
         """Test filter security validation rejects owner_id from different tenant"""
         filters = {"owner_id": str(self.other_user.id)}
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules._validate_filter_security(filters, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -959,10 +949,7 @@ class SearchFilterSecurityValidationTest(TestCase):
     def test_validate_filter_security_invalid_owner_id_nonexistent(self):
         """Test filter security validation rejects nonexistent owner_id"""
         filters = {"owner_id": str(uuid.uuid4())}
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules._validate_filter_security(filters, context)
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -978,10 +965,7 @@ class SearchFilterSecurityValidationTest(TestCase):
     def test_validate_filter_security_uuid_patterns_warning(self):
         """Test filter security validation warns about UUID patterns"""
         filters = {"domain": f"domain-{uuid.uuid4()}"}
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         result = self.rules._validate_filter_security(filters, context)
         # Should pass but with warnings
         self.assertTrue(result.is_valid)
@@ -997,19 +981,19 @@ class SearchFilterPerformanceValidationTest(TestCase):
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_filter_performance_valid_filter_count(self):
         """Test filter performance validation with valid filter count"""
         filters = {
             "resource_type": "CONTRACT",
             "classification": "PUBLIC",
-            "quality_status": "PASS"
+            "quality_status": "PASS",
         }
         result = self.rules._validate_filter_performance(filters)
         self.assertTrue(result.is_valid)
@@ -1061,11 +1045,7 @@ class SearchFilterPerformanceValidationTest(TestCase):
 
     def test_validate_filter_performance_impacting_combinations(self):
         """Test filter performance validation warns about performance-impacting combinations"""
-        filters = {
-            "domain": "sales",
-            "classification": "PUBLIC",
-            "resource_type": "CONTRACT"
-        }
+        filters = {"domain": "sales", "classification": "PUBLIC", "resource_type": "CONTRACT"}
         result = self.rules._validate_filter_performance(filters)
         # Should pass but may warn about combinations
         self.assertTrue(result.is_valid)
@@ -1080,12 +1060,12 @@ class SearchFilterValidationIntegrationTest(TestCase):
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.search_service = SearchService()
 
         # Create some test search indices
@@ -1097,7 +1077,7 @@ class SearchFilterValidationIntegrationTest(TestCase):
             description="This is a test contract",
             classification="PUBLIC",
             quality_status="PASS",
-            tags=["tag1", "tag2"]
+            tags=["tag1", "tag2"],
         )
         self.index2 = SearchIndex.objects.create(
             tenant=self.tenant,
@@ -1106,7 +1086,7 @@ class SearchFilterValidationIntegrationTest(TestCase):
             title="Test Asset 1",
             description="This is a test asset",
             classification="INTERNAL",
-            quality_status="WARN"
+            quality_status="WARN",
         )
 
     def test_search_service_with_validated_filters(self):
@@ -1114,14 +1094,11 @@ class SearchFilterValidationIntegrationTest(TestCase):
         filters = {
             "resource_type": "CONTRACT",
             "classification": "PUBLIC",
-            "quality_status": "PASS"
+            "quality_status": "PASS",
         }
 
         # Validate filters first
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         validation_result = self.rules.validate(context)
 
         # Should pass validation
@@ -1135,7 +1112,7 @@ class SearchFilterValidationIntegrationTest(TestCase):
             resource_type=filters.get("resource_type"),
             classification=filters.get("classification"),
             quality_status=filters.get("quality_status"),
-            limit=10
+            limit=10,
         )
 
         # Should return results
@@ -1149,14 +1126,11 @@ class SearchFilterValidationIntegrationTest(TestCase):
         """Test SearchService integration with invalid filters"""
         filters = {
             "tenant_id": str(self.tenant.id),  # Should be rejected
-            "resource_type": "CONTRACT"
+            "resource_type": "CONTRACT",
         }
 
         # Validate filters
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), filters=filters)
         validation_result = self.rules.validate(context)
 
         # Should fail validation
@@ -1173,15 +1147,12 @@ class SearchFilterValidationIntegrationTest(TestCase):
             "compliance_status": "PASS",
             "tags": ["tag1", "tag2"],
             "owner_id": str(self.user.id),
-            "domain": "test-domain"
+            "domain": "test-domain",
         }
 
         # Validate filters
         context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            filters=filters,
-            tenant=self.tenant,
-            user=self.user
+            tenant_id=str(self.tenant.id), filters=filters, tenant=self.tenant, user=self.user
         )
         validation_result = self.rules.validate(context)
 
@@ -1200,7 +1171,7 @@ class SearchFilterValidationIntegrationTest(TestCase):
             tags=filters.get("tags"),
             owner_id=filters.get("owner_id"),
             domain=filters.get("domain"),
-            limit=10
+            limit=10,
         )
 
         # Should return results
@@ -1216,12 +1187,12 @@ class SearchQueryValidationIntegrationTest(TestCase):
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.search_service = SearchService()
 
         # Create some test search indices
@@ -1230,14 +1201,14 @@ class SearchQueryValidationIntegrationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
             title="Test Contract 1",
-            description="This is a test contract"
+            description="This is a test contract",
         )
         self.index2 = SearchIndex.objects.create(
             tenant=self.tenant,
             resource_type="ASSET",
             resource_id=uuid.uuid4(),
             title="Test Asset 1",
-            description="This is a test asset"
+            description="This is a test asset",
         )
 
     def test_search_service_with_validated_query(self):
@@ -1245,18 +1216,15 @@ class SearchQueryValidationIntegrationTest(TestCase):
         query = "test contract"
 
         # Validate query first
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            query=query
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query=query)
         validation_result = self.rules.validate(context)
-        self.assertTrue(validation_result.is_valid, f"Query validation failed: {validation_result.errors}")
+        self.assertTrue(
+            validation_result.is_valid, f"Query validation failed: {validation_result.errors}"
+        )
 
         # Perform search using SearchService
         results, total = self.search_service.search(
-            tenant_id=str(self.tenant.id),
-            query=query,
-            limit=10
+            tenant_id=str(self.tenant.id), query=query, limit=10
         )
 
         # Should return results without errors
@@ -1270,10 +1238,7 @@ class SearchQueryValidationIntegrationTest(TestCase):
         invalid_query = "test; DROP TABLE"
 
         # Validate query first
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            query=invalid_query
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query=invalid_query)
         validation_result = self.rules.validate(context)
 
         # Validation should fail
@@ -1288,25 +1253,20 @@ class SearchQueryValidationIntegrationTest(TestCase):
         query = "test & contract"
 
         # Validate query first
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            query=query
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), query=query)
         validation_result = self.rules.validate(context)
 
         # Complex queries should be validated for complexity
         if validation_result.is_valid:
             # If valid, perform search
             results, total = self.search_service.search(
-                tenant_id=str(self.tenant.id),
-                query=query,
-                limit=10
+                tenant_id=str(self.tenant.id), query=query, limit=10
             )
             self.assertIsInstance(results, list)
             self.assertIsInstance(total, int)
         else:
             # If complexity exceeds limit, should not proceed
-            self.assertIn('complexity', ' '.join(validation_result.errors).lower())
+            self.assertIn("complexity", " ".join(validation_result.errors).lower())
 
     def test_search_service_tenant_isolation(self):
         """Test that SearchService enforces tenant isolation"""
@@ -1320,23 +1280,21 @@ class SearchQueryValidationIntegrationTest(TestCase):
             tenant=other_tenant,
             resource_type="CONTRACT",
             resource_id=uuid.uuid4(),
-            title="Other Tenant Contract"
+            title="Other Tenant Contract",
         )
 
         # Search should only return results for current tenant
         query = "contract"
         results, total = self.search_service.search(
-            tenant_id=str(self.tenant.id),
-            query=query,
-            limit=10
+            tenant_id=str(self.tenant.id), query=query, limit=10
         )
 
         # Verify results only contain current tenant's data
         for result in results:
-            self.assertEqual(str(result.get('tenant_id')), str(self.tenant.id))
+            self.assertEqual(str(result.get("tenant_id")), str(self.tenant.id))
 
         # Verify other tenant's index is not in results
-        result_ids = [r.get('id') for r in results]
+        result_ids = [r.get("id") for r in results]
         self.assertNotIn(str(other_index.id), result_ids)
 
 
@@ -1349,12 +1307,12 @@ class SearchIndexValidationIntegrationTest(TestCase):
             name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
         )
-        self.rules = SearchBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        self.rules = SearchBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.search_service = SearchService()
 
     def test_search_service_with_validated_index(self):
@@ -1366,26 +1324,26 @@ class SearchIndexValidationIntegrationTest(TestCase):
             tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="1.0.0",
-            hub_contract_json={"info": {"title": "Test Contract", "description": "A test contract"}}
+            hub_contract_json={
+                "info": {"title": "Test Contract", "description": "A test contract"}
+            },
         )
 
         # Index the contract
         from hub.apps.search.indexing import SearchIndexer
+
         index = SearchIndexer.index_contract(contract)
 
         # Validate index
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         validation_result = self.rules.validate(context)
-        self.assertTrue(validation_result.is_valid, f"Index validation failed: {validation_result.errors}")
+        self.assertTrue(
+            validation_result.is_valid, f"Index validation failed: {validation_result.errors}"
+        )
 
         # Perform search using SearchService
         results, total = self.search_service.search(
-            tenant_id=str(self.tenant.id),
-            query="test contract",
-            limit=10
+            tenant_id=str(self.tenant.id), query="test contract", limit=10
         )
 
         # Should return results without errors
@@ -1394,13 +1352,15 @@ class SearchIndexValidationIntegrationTest(TestCase):
         self.assertGreaterEqual(total, 0)
 
         # Verify the indexed contract appears in results (search returns SearchIndex IDs)
-        result_ids = [r.get('id') for r in results]
+        result_ids = [r.get("id") for r in results]
         # The search might return the index or might need to match by resource_id
         # Check if either the index ID or the contract ID appears in results
         found = str(index.id) in result_ids or str(contract.id) in result_ids
-        self.assertTrue(found,
-                       f"Expected index {index.id} or contract {contract.id} in results. "
-                       f"Result IDs: {result_ids}, Total: {total}")
+        self.assertTrue(
+            found,
+            f"Expected index {index.id} or contract {contract.id} in results. "
+            f"Result IDs: {result_ids}, Total: {total}",
+        )
 
     def test_search_service_rejects_invalid_index_structure(self):
         """Test that SearchService should work with business rules validation"""
@@ -1409,15 +1369,12 @@ class SearchIndexValidationIntegrationTest(TestCase):
             tenant=self.tenant,
             resource_type="",  # Invalid: empty resource_type
             resource_id=uuid.uuid4(),
-            title="Test"
+            title="Test",
         )
         # Don't save to avoid database constraint
 
         # Validate index
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         validation_result = self.rules.validate(context)
 
         # Validation should fail
@@ -1429,20 +1386,23 @@ class SearchIndexValidationIntegrationTest(TestCase):
 
     def test_search_service_with_stale_index(self):
         """Test SearchService with stale but valid index"""
-        from hub.apps.contracts.models import Contract
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
+
+        from hub.apps.contracts.models import Contract
 
         # Create contract
         contract = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="1.0.0",
-            hub_contract_json={"info": {"title": "Test Contract"}}
+            hub_contract_json={"info": {"title": "Test Contract"}},
         )
 
         # Index the contract
         from hub.apps.search.indexing import SearchIndexer
+
         index = SearchIndexer.index_contract(contract)
 
         # Update contract (simulating resource update)
@@ -1454,7 +1414,7 @@ class SearchIndexValidationIntegrationTest(TestCase):
         contract.refresh_from_db()
 
         # Set index indexed_at to be older than contract updated_at (if it exists)
-        if hasattr(contract, 'updated_at') and contract.updated_at:
+        if hasattr(contract, "updated_at") and contract.updated_at:
             index.indexed_at = contract.updated_at - timedelta(days=1)
         else:
             # If updated_at doesn't exist, use created_at
@@ -1462,26 +1422,26 @@ class SearchIndexValidationIntegrationTest(TestCase):
         index.save()
 
         # Validate index (should warn about staleness if updated_at exists)
-        context = SearchRuleExecutionContext(
-            tenant_id=str(self.tenant.id),
-            index=index
-        )
+        context = SearchRuleExecutionContext(tenant_id=str(self.tenant.id), index=index)
         validation_result = self.rules.validate(context)
 
         # Should be valid
         self.assertTrue(validation_result.is_valid)
         # Only check for warnings if contract has updated_at and it's newer than indexed_at
-        if hasattr(contract, 'updated_at') and contract.updated_at and contract.updated_at > index.indexed_at:
-            self.assertGreater(len(validation_result.warnings), 0,
-                             f"Expected stale index warning. Warnings: {validation_result.warnings}")
+        if (
+            hasattr(contract, "updated_at")
+            and contract.updated_at
+            and contract.updated_at > index.indexed_at
+        ):
+            self.assertGreater(
+                len(validation_result.warnings),
+                0,
+                f"Expected stale index warning. Warnings: {validation_result.warnings}",
+            )
 
         # SearchService should still work (stale index is still usable)
         results, total = self.search_service.search(
-            tenant_id=str(self.tenant.id),
-            query="test",
-            limit=10
+            tenant_id=str(self.tenant.id), query="test", limit=10
         )
         self.assertIsInstance(results, list)
         self.assertIsInstance(total, int)
-
-

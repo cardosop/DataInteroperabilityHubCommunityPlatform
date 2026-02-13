@@ -3,33 +3,40 @@ File Storage Views
 
 REST API views for file upload, download, and management.
 """
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError, NotFound
+
+import os
+import time
+import uuid
+
+import structlog
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-import uuid
-import os
+from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.response import Response
+
+from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.responses import handle_service_exception
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
+from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
+from hub.apps.tenants.services import get_tenant_file_size_limit
 
 from .models import File, FileStatus
 from .serializers import (
-    FileInitSerializer,
-    FileInitResponseSerializer,
-    FileCompleteSerializer,
-    FileSerializer,
-    FileDownloadResponseSerializer,
     ChunkUploadInitSerializer,
-    ChunkUploadResponseSerializer
+    ChunkUploadResponseSerializer,
+    FileCompleteSerializer,
+    FileDownloadResponseSerializer,
+    FileInitResponseSerializer,
+    FileInitSerializer,
+    FileSerializer,
 )
-from .storage import S3StorageClient
-from .validators import get_chunk_size, calculate_chunk_count, validate_file_size, validate_file_type
 from .services import FileService
-from hub.apps.audit.utils import create_audit_event
-from hub.apps.tenants.services import get_tenant_file_size_limit
-import structlog
-from django.conf import settings
-import time
+from .storage import S3StorageClient
+from .validators import calculate_chunk_count, get_chunk_size
 
 logger = structlog.get_logger(__name__)
 
@@ -40,51 +47,39 @@ class FileViewSet(viewsets.ModelViewSet):
 
     Tenant-scoped: users can only see/manage files in their tenant.
     """
+
     queryset = File.objects.all()
     serializer_class = FileSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
 
     def get_queryset(self):
-        """Filter queryset based on user permissions"""
+        """Filter queryset based on user permissions and optional status filter."""
         user = self.request.user
 
         # Platform admins can see all files
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return File.objects.all()
+            queryset = File.objects.all()
+        else:
+            # Phase 16: use central helper (docs/TENANT_ISOLATION.md)
+            tenant_id_str = get_request_tenant_id(self.request)
+            if not tenant_id_str:
+                return File.objects.none()
 
-        # Get tenant from request (set by middleware/authentication) or user
-        # Priority: request.tenant_id > request.tenant > user.tenant_id > user.tenant
-        tenant_id = None
-        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-            tenant_id = self.request.tenant_id
-            if isinstance(tenant_id, str):
-                import uuid
-                try:
-                    tenant_id = uuid.UUID(tenant_id)
-                except (ValueError, TypeError):
-                    tenant_id = None
-        if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
-            tenant_id = self.request.tenant.id
-        if not tenant_id and hasattr(user, "tenant_id") and user.tenant_id:
-            tenant_id = user.tenant_id
-        if not tenant_id and hasattr(user, "tenant") and user.tenant:
-            tenant_id = user.tenant.id
+            try:
+                tenant_id = uuid.UUID(tenant_id_str)
+            except (ValueError, TypeError):
+                return File.objects.none()
+            queryset = File.objects.filter(tenant_id=tenant_id)
 
-        # Regular users can only see files in their tenant
-        if tenant_id:
-            if isinstance(tenant_id, str):
-                import uuid
-                try:
-                    tenant_id = uuid.UUID(tenant_id)
-                except (ValueError, TypeError):
-                    return File.objects.none()
-            return File.objects.filter(tenant_id=tenant_id)
-
-        return File.objects.none()
+        # Filter by status when query param is provided
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        return queryset
 
     @transaction.atomic
-    @action(detail=False, methods=['post'], url_path='init')
+    @action(detail=False, methods=["post"], url_path="init")
     def init_upload(self, request):
         """
         Initialize file upload.
@@ -102,29 +97,38 @@ class FileViewSet(viewsets.ModelViewSet):
         serializer = FileInitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        name = serializer.validated_data['name']
-        content_type = serializer.validated_data['content_type']
-        size = serializer.validated_data['size']
-        upload_method = serializer.validated_data.get('upload_method', 'browser')
+        name = serializer.validated_data["name"]
+        content_type = serializer.validated_data["content_type"]
+        size = serializer.validated_data["size"]
+        upload_method = serializer.validated_data.get("upload_method", "browser")
 
-        # Get tenant from user
-        tenant = request.user.tenant if hasattr(request.user, 'tenant') and request.user.tenant else None
+        # Phase 16: use central helper
+        _, tenant = get_request_tenant(request)
         if not tenant:
             return Response(
-                {'error': 'User must belong to a tenant to upload files'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "User must belong to a tenant to upload files"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Validate file size with tenant-specific limit
+        # Delegate file creation to FileService (business rules: tenant, size, type, quota)
+        file_service = FileService(
+            tenant_id=str(tenant.id),
+            user_id=str(request.user.id) if request.user and request.user.id else None,
+        )
         try:
-            validate_file_size(size, upload_method, tenant_id=str(tenant.id))
-        except ValidationError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
+            file_obj = file_service.create_file(
+                tenant_id=str(tenant.id),
+                user_id=str(request.user.id) if request.user and request.user.id else None,
+                name=name,
+                content_type=content_type,
+                size=size,
+                upload_method=upload_method,
+                created_by_id=str(request.user.id) if request.user and request.user.id else None,
             )
+        except ServiceValidationError as e:
+            return handle_service_exception(e)
 
-        # Get tenant file size limit for logging
+        storage_path = file_obj.storage_path
         tenant_limit = get_tenant_file_size_limit(str(tenant.id))
         logger.info(
             "file_upload_initiated",
@@ -133,55 +137,8 @@ class FileViewSet(viewsets.ModelViewSet):
             file_size=size,
             tenant_limit=tenant_limit,
             upload_method=upload_method,
-            message=f"File upload initiated: {name} ({size} bytes), tenant limit: {tenant_limit} bytes"
+            message=f"File upload initiated: {name} ({size} bytes), tenant limit: {tenant_limit} bytes",
         )
-
-        # Generate storage path: tenant_id/file_id/filename
-        file_id = uuid.uuid4()
-        storage_path = f"{tenant.id}/{file_id}/{name}"
-
-        # Create file record
-        file_obj = File.objects.create(
-            tenant=tenant,
-            name=name,
-            content_type=content_type,
-            size=size,
-            storage_path=storage_path,
-            status=FileStatus.PENDING,
-            created_by=request.user,
-            metadata_json={
-                'upload_method': upload_method,
-                'chunk_size': None,
-                'chunk_count': None,
-                'multipart_upload_id': None
-            }
-        )
-
-        # Publish file.created event
-        try:
-            file_service = FileService(
-                tenant_id=str(tenant.id),
-                user_id=str(request.user.id) if request.user and request.user.id else None
-            )
-            file_service.publish_file_created(
-                file_id=str(file_obj.id),
-                name=file_obj.name,
-                content_type=file_obj.content_type,
-                size=file_obj.size,
-                status=file_obj.status,
-                content_sha256=file_obj.content_sha256
-            )
-        except Exception as e:
-            # Log but don't fail file creation if event publishing fails
-            logger.warning(
-                f"Failed to publish file.created event for file {file_obj.id}: {e}",
-                extra={
-                    "file_id": str(file_obj.id),
-                    "tenant_id": str(tenant.id),
-                    "error": str(e)
-                },
-                exc_info=True
-            )
 
         # Determine if multipart upload is needed
         # Use multipart for files > 100MB
@@ -194,57 +151,68 @@ class FileViewSet(viewsets.ModelViewSet):
             chunk_count = calculate_chunk_count(size, chunk_size)
 
             # Update metadata
-            file_obj.metadata_json.update({
-                'chunk_size': chunk_size,
-                'chunk_count': chunk_count
-            })
-            file_obj.save(update_fields=['metadata_json'])
+            file_obj.metadata_json.update({"chunk_size": chunk_size, "chunk_count": chunk_count})
+            file_obj.save(update_fields=["metadata_json"])
 
             # Initiate multipart upload
             storage_client = S3StorageClient()
             upload_id = storage_client.initiate_multipart_upload(
-                key=storage_path,
-                content_type=content_type
+                key=storage_path, content_type=content_type
             )
 
-            file_obj.metadata_json['multipart_upload_id'] = upload_id
+            file_obj.metadata_json["multipart_upload_id"] = upload_id
             file_obj.status = FileStatus.UPLOADING
-            file_obj.save(update_fields=['metadata_json', 'status'])
+            file_obj.save(update_fields=["metadata_json", "status"])
 
             # Generate URL for first chunk
             upload_url = storage_client.generate_presigned_part_url(
-                key=storage_path,
-                upload_id=upload_id,
-                part_number=1,
-                expires_in=3600
+                key=storage_path, upload_id=upload_id, part_number=1, expires_in=3600
             )
 
+            # For browser uploads, generate URL with localhost endpoint
+            # Store upload_method in metadata for chunk uploads
+            file_obj.metadata_json["upload_method"] = upload_method
+            file_obj.save(update_fields=["metadata_json"])
+
+            # Note: For multipart uploads, chunk URLs are generated separately in init_chunk_upload
+            # which will handle browser endpoint replacement
+
             response_data = {
-                'file_id': str(file_obj.id),
-                'upload_url': upload_url,
-                'fields': {},  # Not used for multipart
-                'chunk_size': chunk_size,
-                'chunk_count': chunk_count,
-                'requires_multipart': True,
-                'upload_id': upload_id
+                "file_id": str(file_obj.id),
+                "upload_url": upload_url,
+                "fields": {},  # Not used for multipart
+                "chunk_size": chunk_size,
+                "chunk_count": chunk_count,
+                "requires_multipart": True,
+                "upload_id": upload_id,
             }
         else:
             # Simple upload - generate presigned POST URL
             storage_client = S3StorageClient()
-            max_size = settings.MAX_BROWSER_UPLOAD_SIZE if upload_method == 'browser' else settings.MAX_SDK_UPLOAD_SIZE
+            max_size = (
+                settings.MAX_BROWSER_UPLOAD_SIZE
+                if upload_method == "browser"
+                else settings.MAX_SDK_UPLOAD_SIZE
+            )
 
+            # For browser uploads, use PUT method (simpler, direct upload) and generate URL with localhost
+            # For SDK uploads, can use POST with fields if needed
+            use_put = upload_method == "browser"
+            for_browser = upload_method == "browser"
             presigned_data = storage_client.generate_presigned_upload_url(
                 key=storage_path,
                 content_type=content_type,
                 expires_in=3600,
-                max_size=max_size
+                max_size=max_size,
+                use_put=use_put,
+                for_browser=for_browser,
             )
 
             response_data = {
-                'file_id': str(file_obj.id),
-                'upload_url': presigned_data['upload_url'],
-                'fields': presigned_data['fields'],
-                'requires_multipart': False
+                "file_id": str(file_obj.id),
+                "upload_url": presigned_data["upload_url"],
+                "fields": presigned_data["fields"],
+                "requires_multipart": False,
             }
 
         # Log audit event
@@ -255,20 +223,20 @@ class FileViewSet(viewsets.ModelViewSet):
             tenant=tenant,
             resource_id=str(file_obj.id),
             details={
-                'name': name,
-                'size': size,
-                'content_type': content_type,
-                'upload_method': upload_method,
-                'requires_multipart': requires_multipart
+                "name": name,
+                "size": size,
+                "content_type": content_type,
+                "upload_method": upload_method,
+                "requires_multipart": requires_multipart,
             },
-            request=request
+            request=request,
         )
 
         response_serializer = FileInitResponseSerializer(response_data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
-    @action(detail=True, methods=['post'], url_path='complete')
+    @action(detail=True, methods=["post"], url_path="complete")
     def complete_upload(self, request, id=None):
         """
         Complete file upload.
@@ -283,37 +251,31 @@ class FileViewSet(viewsets.ModelViewSet):
         """
         file_obj = self.get_object()
 
-        if file_obj.status not in [FileStatus.PENDING, FileStatus.UPLOADING]:
-            return Response(
-                {'error': f'File is not in a state that allows completion (current: {file_obj.status})'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
         serializer = FileCompleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        content_sha256 = serializer.validated_data['content_sha256']
-        parts = serializer.validated_data.get('parts', [])
+        content_sha256 = serializer.validated_data["content_sha256"]
+        parts = serializer.validated_data.get("parts", [])
 
         # For multipart uploads, complete the multipart upload
-        if file_obj.metadata_json.get('multipart_upload_id'):
+        if file_obj.metadata_json.get("multipart_upload_id"):
             if not parts:
                 return Response(
-                    {'error': 'Parts are required for multipart upload completion'},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"error": "Parts are required for multipart upload completion"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             storage_client = S3StorageClient()
             try:
                 storage_client.complete_multipart_upload(
                     key=file_obj.storage_path,
-                    upload_id=file_obj.metadata_json['multipart_upload_id'],
-                    parts=parts
+                    upload_id=file_obj.metadata_json["multipart_upload_id"],
+                    parts=parts,
                 )
             except Exception as e:
                 return Response(
-                    {'error': f'Failed to complete multipart upload: {str(e)}'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    {"error": f"Failed to complete multipart upload: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
         # Verify file exists in storage
@@ -334,8 +296,8 @@ class FileViewSet(viewsets.ModelViewSet):
                         extra={
                             "file_id": str(file_obj.id),
                             "tenant_id": str(file_obj.tenant.id),
-                            "error": str(size_error)
-                        }
+                            "error": str(size_error),
+                        },
                     )
                     file_exists_in_storage = False
         except Exception as e:
@@ -348,8 +310,8 @@ class FileViewSet(viewsets.ModelViewSet):
                 extra={
                     "file_id": str(file_obj.id),
                     "tenant_id": str(file_obj.tenant.id),
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             file_exists_in_storage = False
 
@@ -357,18 +319,15 @@ class FileViewSet(viewsets.ModelViewSet):
         if file_exists_in_storage and stored_size is not None:
             if stored_size != file_obj.size:
                 return Response(
-                    {'error': f'File size mismatch: expected {file_obj.size}, got {stored_size}'},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"error": f"File size mismatch: expected {file_obj.size}, got {stored_size}"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
         elif not file_exists_in_storage:
             # File doesn't exist in storage - allow in test/dev mode (similar to dataset service fallback)
             # In production, this should be an error, but for test/dev we allow it
             logger.info(
                 f"File {file_obj.id} not found in storage, allowing completion (test/dev mode)",
-                extra={
-                    "file_id": str(file_obj.id),
-                    "tenant_id": str(file_obj.tenant.id)
-                }
+                extra={"file_id": str(file_obj.id), "tenant_id": str(file_obj.tenant.id)},
             )
 
         # Validate final file size against tenant limit (for chunked uploads, total size may exceed limit)
@@ -381,79 +340,81 @@ class FileViewSet(viewsets.ModelViewSet):
                     # In production, we might want to delete the file from storage
                     return Response(
                         {
-                            'error': f'File size ({stored_size} bytes) exceeds tenant limit ({tenant_limit} bytes). '
-                                    'File upload rejected.'
+                            "error": f"File size ({stored_size} bytes) exceeds tenant limit ({tenant_limit} bytes). "
+                            "File upload rejected."
                         },
-                        status=status.HTTP_400_BAD_REQUEST
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
             except Exception as e:
                 logger.warning(
                     "file_size_validation_failed",
                     file_id=str(file_obj.id),
                     error=str(e),
-                    message="Failed to validate file size against tenant limit"
+                    message="Failed to validate file size against tenant limit",
                 )
                 # Continue with upload if validation fails (graceful degradation)
 
-        # TODO: In production, download file and verify SHA-256 hash
-        # For MVP, we trust the client-provided hash
-        # In production: download file, calculate hash, compare
+        # Validate SHA-256 hash format (must be 64 hex characters)
+        import re
 
-        # Track previous status for event publishing
-        previous_status = file_obj.status
-
-        # Update file record
-        file_obj.content_sha256 = content_sha256
-        file_obj.status = FileStatus.ACTIVE
-        file_obj.save(update_fields=['content_sha256', 'status', 'updated_at'])
-
-        # Publish file.uploaded event
-        upload_start_time = file_obj.created_at.timestamp() if file_obj.created_at else None
-        upload_duration_ms = None
-        if upload_start_time:
-            upload_duration_ms = int((timezone.now().timestamp() - upload_start_time) * 1000)
-
-        try:
-            file_service = FileService(
-                tenant_id=str(file_obj.tenant.id),
-                user_id=str(request.user.id) if request.user and request.user.id else None
-            )
-            file_service.publish_file_uploaded(
-                file_id=str(file_obj.id),
-                file_size=file_obj.size,
-                content_type=file_obj.content_type,
-                upload_duration_ms=upload_duration_ms,
-                content_sha256=file_obj.content_sha256
-            )
-
-            # Also publish file.updated event if status changed
-            if previous_status != FileStatus.ACTIVE:
-                file_service.publish_file_updated(
-                    file_id=str(file_obj.id),
-                    changes={
-                        "status": {
-                            "old": previous_status.value if hasattr(previous_status, 'value') else str(previous_status),
-                            "new": FileStatus.ACTIVE.value
-                        },
-                        "content_sha256": {
-                            "old": None,
-                            "new": content_sha256
-                        }
-                    },
-                    previous_status=previous_status.value if hasattr(previous_status, 'value') else str(previous_status),
-                    new_status=FileStatus.ACTIVE.value
-                )
-        except Exception as e:
-            # Log but don't fail upload completion if event publishing fails
-            logger.warning(
-                f"Failed to publish file.uploaded event for file {file_obj.id}: {e}",
-                extra={
-                    "file_id": str(file_obj.id),
-                    "tenant_id": str(file_obj.tenant.id),
-                    "error": str(e)
+        if not re.match(r"^[a-f0-9]{64}$", content_sha256, re.IGNORECASE):
+            return Response(
+                {
+                    "error": f"Invalid SHA-256 hash format. Expected 64 hex characters, got: {content_sha256[:20]}..."
                 },
-                exc_info=True
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # If file exists in storage, verify hash matches actual file content
+        if file_exists_in_storage:
+            try:
+                import hashlib
+
+                # Download file from storage
+                file_content = storage_client.get_file_content(file_obj.storage_path)
+                # Calculate actual hash
+                actual_hash = hashlib.sha256(file_content).hexdigest()
+                # Compare hashes
+                if actual_hash.lower() != content_sha256.lower():
+                    return Response(
+                        {
+                            "error": f"Hash mismatch: provided hash does not match file content. Expected: {actual_hash[:20]}..., got: {content_sha256[:20]}..."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except Exception as e:
+                # If hash verification fails (e.g., download error), log but allow in test/dev mode
+                logger.warning(
+                    f"Hash verification failed for file {file_obj.id}: {e}. "
+                    f"Allowing completion without hash verification (test/dev mode).",
+                    extra={
+                        "file_id": str(file_obj.id),
+                        "tenant_id": str(file_obj.tenant.id),
+                        "error": str(e),
+                    },
+                )
+                # In production, this should be an error, but for test/dev we allow it
+                # TODO: Make this strict in production
+
+        # Delegate domain update to FileService (business rules: state, write access)
+        file_service = FileService(
+            tenant_id=str(file_obj.tenant.id),
+            user_id=str(request.user.id) if request.user and request.user.id else None,
+        )
+        try:
+            file_obj = file_service.update_file(
+                file_id=str(file_obj.id),
+                tenant_id=str(file_obj.tenant.id),
+                user_id=str(request.user.id) if request.user and request.user.id else None,
+                content_sha256=content_sha256,
+                new_status=(
+                    FileStatus.ACTIVE.value
+                    if hasattr(FileStatus.ACTIVE, "value")
+                    else str(FileStatus.ACTIVE)
+                ),
+            )
+        except ServiceValidationError as e:
+            return handle_service_exception(e)
 
         # Log audit event
         create_audit_event(
@@ -463,16 +424,16 @@ class FileViewSet(viewsets.ModelViewSet):
             tenant=file_obj.tenant,
             resource_id=str(file_obj.id),
             details={
-                'name': file_obj.name,
-                'size': file_obj.size,
-                'content_sha256': content_sha256
+                "name": file_obj.name,
+                "size": file_obj.size,
+                "content_sha256": content_sha256,
             },
-            request=request
+            request=request,
         )
 
         return Response(FileSerializer(file_obj).data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get'], url_path='download')
+    @action(detail=True, methods=["get"], url_path="download")
     def download(self, request, id=None):
         """
         Get download URL for file.
@@ -485,30 +446,28 @@ class FileViewSet(viewsets.ModelViewSet):
 
         if not file_obj.can_download():
             return Response(
-                {'error': f'File is not available for download (status: {file_obj.status})'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": f"File is not available for download (status: {file_obj.status})"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Generate pre-signed download URL
         storage_client = S3StorageClient()
         download_start_time = time.time()
         download_url = storage_client.generate_presigned_download_url(
-            key=file_obj.storage_path,
-            expires_in=3600,  # 1 hour
-            filename=file_obj.name
+            key=file_obj.storage_path, expires_in=3600, filename=file_obj.name  # 1 hour
         )
 
         # Publish file.downloaded event
         try:
             file_service = FileService(
                 tenant_id=str(file_obj.tenant.id),
-                user_id=str(request.user.id) if request.user and request.user.id else None
+                user_id=str(request.user.id) if request.user and request.user.id else None,
             )
             download_duration_ms = int((time.time() - download_start_time) * 1000)
             file_service.publish_file_downloaded(
                 file_id=str(file_obj.id),
                 download_duration_ms=download_duration_ms,
-                download_size=file_obj.size
+                download_size=file_obj.size,
             )
         except Exception as e:
             # Log but don't fail download URL generation if event publishing fails
@@ -517,9 +476,9 @@ class FileViewSet(viewsets.ModelViewSet):
                 extra={
                     "file_id": str(file_obj.id),
                     "tenant_id": str(file_obj.tenant.id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # Log audit event
@@ -529,19 +488,17 @@ class FileViewSet(viewsets.ModelViewSet):
             actor_user=request.user,
             tenant=file_obj.tenant,
             resource_id=str(file_obj.id),
-            details={'name': file_obj.name},
-            request=request
+            details={"name": file_obj.name},
+            request=request,
         )
 
-        response_serializer = FileDownloadResponseSerializer({
-            'download_url': download_url,
-            'expires_in': 3600,
-            'filename': file_obj.name
-        })
+        response_serializer = FileDownloadResponseSerializer(
+            {"download_url": download_url, "expires_in": 3600, "filename": file_obj.name}
+        )
 
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['post'], url_path='chunks/init')
+    @action(detail=True, methods=["post"], url_path="chunks/init")
     def init_chunk_upload(self, request, id=None):
         """
         Initialize chunk upload (for multipart uploads).
@@ -558,35 +515,82 @@ class FileViewSet(viewsets.ModelViewSet):
 
         if file_obj.status != FileStatus.UPLOADING:
             return Response(
-                {'error': 'File is not in UPLOADING state'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "File is not in UPLOADING state"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         serializer = ChunkUploadInitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        chunk_number = serializer.validated_data['chunk_number']
-        upload_id = file_obj.metadata_json.get('multipart_upload_id')
+        chunk_number = serializer.validated_data["chunk_number"]
+        upload_id = file_obj.metadata_json.get("multipart_upload_id")
 
         if not upload_id:
             return Response(
-                {'error': 'File does not have an active multipart upload'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "File does not have an active multipart upload"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Generate pre-signed URL for chunk
         storage_client = S3StorageClient()
+        # Check upload_method from file metadata (set during init)
+        upload_method = file_obj.metadata_json.get("upload_method", "sdk")
+        for_browser = upload_method == "browser"
+
+        # For browser uploads, we need to generate URL with localhost endpoint
+        # But generate_presigned_part_url doesn't support for_browser parameter yet
+        # So we'll generate and then replace (signature will be invalid, need better solution)
+        # TODO: Add for_browser parameter to generate_presigned_part_url
         upload_url = storage_client.generate_presigned_part_url(
             key=file_obj.storage_path,
             upload_id=upload_id,
             part_number=chunk_number,
-            expires_in=3600
+            expires_in=3600,
         )
 
-        response_serializer = ChunkUploadResponseSerializer({
-            'upload_url': upload_url,
-            'expires_in': 3600
-        })
+        # For browser uploads, we need to regenerate with localhost endpoint
+        # This is a workaround - ideally generate_presigned_part_url should support for_browser
+        if for_browser and "minio:9000" in upload_url:
+            # Create temporary client with localhost for signing
+            import boto3
+            from botocore.config import Config
+            from django.conf import settings
+
+            browser_endpoint = storage_client.endpoint_url.replace("minio:9000", "localhost:9000")
+            s3_config = Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "path"},
+                retries={"max_attempts": 3, "mode": "standard"},
+            )
+            browser_client = boto3.client(
+                "s3",
+                endpoint_url=browser_endpoint,
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                use_ssl=storage_client.use_ssl,
+                verify=getattr(settings, "AWS_S3_VERIFY", True),
+                config=s3_config,
+            )
+            upload_url = browser_client.generate_presigned_url(
+                "upload_part",
+                Params={
+                    "Bucket": storage_client.bucket_name,
+                    "Key": file_obj.storage_path,
+                    "UploadId": upload_id,
+                    "PartNumber": chunk_number,
+                },
+                ExpiresIn=3600,
+            )
+            logger.info(
+                "presigned_chunk_url_generated_for_browser",
+                file_id=str(file_obj.id),
+                chunk_number=chunk_number,
+                upload_url=upload_url,
+                message="Presigned chunk URL generated with localhost endpoint for browser access",
+            )
+
+        response_serializer = ChunkUploadResponseSerializer(
+            {"upload_url": upload_url, "expires_in": 3600}
+        )
 
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
@@ -597,43 +601,22 @@ class FileViewSet(viewsets.ModelViewSet):
 
         DELETE /files/{id}
 
-        Soft deletes file record and removes from storage.
+        Soft deletes file record and removes from storage. Delegates to FileService.
         """
         file_obj = self.get_object()
 
-        # Delete from storage
-        storage_client = S3StorageClient()
+        file_service = FileService(
+            tenant_id=str(file_obj.tenant.id),
+            user_id=str(request.user.id) if request.user and request.user.id else None,
+        )
         try:
-            storage_client.delete_file(file_obj.storage_path)
-        except Exception as e:
-            # Log error but continue with soft delete
-            pass
-
-        # Soft delete: mark as DELETED
-        file_obj.status = FileStatus.DELETED
-        file_obj.save(update_fields=['status', 'updated_at'])
-
-        # Publish file.deleted event
-        try:
-            file_service = FileService(
-                tenant_id=str(file_obj.tenant.id),
-                user_id=str(request.user.id) if request.user and request.user.id else None
-            )
-            file_service.publish_file_deleted(
+            file_service.delete_file(
                 file_id=str(file_obj.id),
-                reason="User requested deletion"
+                tenant_id=str(file_obj.tenant.id),
+                user_id=str(request.user.id) if request.user and request.user.id else None,
             )
-        except Exception as e:
-            # Log but don't fail deletion if event publishing fails
-            logger.warning(
-                f"Failed to publish file.deleted event for file {file_obj.id}: {e}",
-                extra={
-                    "file_id": str(file_obj.id),
-                    "tenant_id": str(file_obj.tenant.id),
-                    "error": str(e)
-                },
-                exc_info=True
-            )
+        except ServiceValidationError as e:
+            return handle_service_exception(e)
 
         # Log audit event
         create_audit_event(
@@ -642,8 +625,8 @@ class FileViewSet(viewsets.ModelViewSet):
             actor_user=request.user,
             tenant=file_obj.tenant,
             resource_id=str(file_obj.id),
-            details={'name': file_obj.name},
-            request=request
+            details={"name": file_obj.name},
+            request=request,
         )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -655,4 +638,3 @@ class FileViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         """Retrieve file by ID"""
         return super().retrieve(request, *args, **kwargs)
-

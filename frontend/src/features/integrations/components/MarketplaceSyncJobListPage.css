@@ -1,0 +1,126 @@
+.sync-job-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.sync-job-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.sync-job-list-header h1 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.sync-job-list-filters {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.filter-select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  min-width: 200px;
+}
+
+.sync-job-list-table {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+
+.sync-job-list-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sync-job-list-table thead {
+  background: var(--color-gray-light);
+}
+
+.sync-job-list-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.sync-job-list-table td {
+  padding: var(--spacing-md);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.sync-job-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.sync-job-row:hover {
+  background: var(--color-gray-light);
+}
+
+.sync-job-status {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+
+.sync-job-status-pending {
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
+}
+
+.sync-job-status-running {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+}
+
+.sync-job-status-completed {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.sync-job-status-failed {
+  background: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+.sync-job-status-partial {
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
+}
+
+.sync-job-status-cancelled {
+  background: var(--color-gray-light);
+  color: var(--color-gray-dark);
+}
+
+.sync-job-failed {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+}
+
+.sync-job-list-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.pagination-info {
+  color: var(--color-text-secondary);
+}

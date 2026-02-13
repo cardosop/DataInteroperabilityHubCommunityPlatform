@@ -274,19 +274,17 @@ class URLPatternValidatorStartupTest(TestCase):
         """Test that validation runs in normal Django mode"""
         from hub.apps.api.apps import ApiConfig
         from django.apps import apps
+        from unittest.mock import patch
 
         # Get app config
         app_config = apps.get_app_config('api')
         self.assertIsInstance(app_config, ApiConfig)
 
-        # Simulate normal Django runserver
-        original_argv = sys.argv[:]
-        try:
-            sys.argv = ['manage.py', 'runserver']
+        # Mock should_skip_initialization to return False (simulating normal mode)
+        # Since we're in a test, unittest is loaded, so we need to mock the check
+        with patch('hub.apps.core.utils.test_mode.should_skip_initialization', return_value=False):
             should_validate = app_config._should_validate()
             self.assertTrue(should_validate, "Validation should run in normal mode")
-        finally:
-            sys.argv = original_argv
 
 
 class URLPatternValidatorRealPatternsTest(TestCase):

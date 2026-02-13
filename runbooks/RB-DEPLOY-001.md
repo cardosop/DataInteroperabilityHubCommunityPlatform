@@ -83,6 +83,11 @@ make type-check
 - ✅ No linting errors
 - ✅ No type checking errors
 
+### 1.1 Docker Compose (local/staging) notes
+
+- **Frontend startup**: In `docker-compose.yml`, the frontend service uses `depends_on: api-service: condition: service_healthy`. The frontend container only starts after api-service passes its health check (`/health`). This avoids the frontend serving before the API is ready.
+- **Traefik**: Traefik's health check reflects Traefik's own API (`/api/rawdata`). It does **not** imply that api-gateway or api-service are healthy. When routing traffic via Traefik, verify backend health separately (e.g. `curl` api-gateway and api-service health endpoints).
+
 ### 2. Change Approval
 
 - ✅ Change ticket approved (if required by process)

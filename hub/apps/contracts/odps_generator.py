@@ -1169,7 +1169,8 @@ def format_odps_as_yaml(
     odps_doc: Dict[str, Any],
     default_flow_style: bool = False,
     allow_unicode: bool = True,
-    sort_keys: bool = False
+    sort_keys: bool = False,
+    _yaml_available: Optional[bool] = None,
 ) -> str:
     """
     Format ODPS document as YAML string (Task 2.1.8).
@@ -1179,6 +1180,8 @@ def format_odps_as_yaml(
         default_flow_style: If True, use flow style (default: False, uses block style)
         allow_unicode: If True, allow unicode characters (default: True)
         sort_keys: If True, sort dictionary keys (default: False)
+        _yaml_available: Internal/test hook. If False, raises as if PyYAML were missing.
+            Default None uses actual YAML availability.
 
     Returns:
         ODPS document as YAML string
@@ -1186,7 +1189,8 @@ def format_odps_as_yaml(
     Raises:
         ODPSExportError: If YAML serialization fails or PyYAML is not available
     """
-    if not YAML_AVAILABLE:
+    effective_yaml = _yaml_available if _yaml_available is not None else YAML_AVAILABLE
+    if not effective_yaml:
         raise ODPSExportError(
             message="PyYAML is not available. Install PyYAML to use YAML output format.",
             error_code=ODPSExportError.ERROR_CODE_EXPORT_FAILED,

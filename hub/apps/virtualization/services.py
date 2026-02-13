@@ -20,7 +20,10 @@ from hub.apps.virtualization.models import (
     QueryExecutionStatus,
     QueryExecutionMode,
 )
-from hub.apps.virtualization.business_rules import QueryExecutionBusinessRules
+from hub.apps.virtualization.business_rules import (
+    QueryExecutionBusinessRules,
+    VirtualizationBusinessRules,
+)
 from hub.apps.virtualization.metrics import (
     virtualization_dataset_created_total,
     virtualization_dataset_creation_duration_seconds,
@@ -1303,6 +1306,36 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
         if status is None:
             status = VirtualDatasetStatus.DRAFT  # type: ignore
 
+        # Validate via VirtualizationBusinessRules before any mutation
+        payload_dataset = VirtualDataset(
+            tenant_id=effective_tenant_id,
+            name=name,
+            query=query,
+            query_type=query_type,
+            description=description or "",
+            schema=schema or {},
+            sources=sources or [],
+            version=version,
+            status=status,
+        )
+        rules = VirtualizationBusinessRules(
+            tenant_id=effective_tenant_id,
+            user_id=effective_user_id,
+        )
+        result = rules.validate(
+            virtual_dataset=payload_dataset,
+            tenant=tenant,
+            user=user,
+            query=query,
+            validation_type="all",
+        )
+        if not result.is_valid:
+            raise ValidationError(
+                "; ".join(result.errors),
+                code="BUSINESS_RULES_VALIDATION",
+                details=result.details,
+            )
+
         # 1. Check user permissions (role and scope)
         try:
             self._check_user_permissions(effective_user_id, effective_tenant_id)
@@ -1712,6 +1745,24 @@ class VirtualizationService(BaseService, VirtualizationEventPublisher):
             virtual_dataset.version = version
         if status is not None:
             virtual_dataset.status = status
+
+        # Validate via VirtualizationBusinessRules before save (updated state)
+        rules = VirtualizationBusinessRules(
+            tenant_id=effective_tenant_id,
+            user_id=effective_user_id,
+        )
+        result = rules.validate(
+            virtual_dataset=virtual_dataset,
+            tenant=tenant,
+            user=user,
+            validation_type="all",
+        )
+        if not result.is_valid:
+            raise ValidationError(
+                "; ".join(result.errors),
+                code="BUSINESS_RULES_VALIDATION",
+                details=result.details,
+            )
 
         # Save the updated dataset
         virtual_dataset.save()

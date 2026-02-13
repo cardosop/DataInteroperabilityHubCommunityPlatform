@@ -13,11 +13,25 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Allow non-SSL connections so Django and other services can connect; init runs only on first init
+      - ./infrastructure/postgres/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
+    command: >
+      postgres
+      -c max_wal_size=4GB
+      -c checkpoint_timeout=15min
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c shared_buffers=256MB
+      -c maintenance_work_mem=256MB
+      -c checkpoint_flush_after=256kB
+      -c wal_compression=on
+      -c max_connections=200
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hub}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 1800s
     networks:
       - hub-net
 
@@ -146,13 +160,7 @@ services:
     depends_on:
       redis-cache:
         condition: service_healthy
-    # Health check disabled - redis exporter is a minimal image without standard tools
-    # Metrics endpoint verified working at http://localhost:9121/metrics
-    # healthcheck:
-    #   test: ["CMD", "true"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
+    # No healthcheck: oliver006/redis_exporter:latest is scratch (no shell/true), so CMD true fails. Status shows "Up" only.
 
   # Redis Exporter for Queue Instance
   redis-exporter-queue:
@@ -168,13 +176,6 @@ services:
     depends_on:
       redis-queue:
         condition: service_healthy
-    # Health check disabled - redis exporter is a minimal image without standard tools
-    # Metrics endpoint verified working at http://localhost:9121/metrics
-    # healthcheck:
-    #   test: ["CMD", "true"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
 
   # Redis Exporter for Events Instance
   redis-exporter-events:
@@ -190,13 +191,6 @@ services:
     depends_on:
       redis-events:
         condition: service_healthy
-    # Health check disabled - redis exporter is a minimal image without standard tools
-    # Metrics endpoint verified working at http://localhost:9121/metrics
-    # healthcheck:
-    #   test: ["CMD", "true"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
 
   # Redis Exporter for Channels Instance
   redis-exporter-channels:
@@ -212,13 +206,6 @@ services:
     depends_on:
       redis-channels:
         condition: service_healthy
-    # Health check disabled - redis exporter is a minimal image without standard tools
-    # Metrics endpoint verified working at http://localhost:9121/metrics
-    # healthcheck:
-    #   test: ["CMD", "true"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
 
   # MinIO (S3-compatible storage)
   minio:
@@ -268,7 +255,7 @@ services:
       dockerfile: services/semantic-service/Dockerfile
     container_name: hub-semantic
     ports:
-      - "${SEMANTIC_PORT:-8094}:8081"
+      - "${SEMANTIC_PORT:-8081}:8081"
     environment:
       FUSEKI_URL: http://fuseki:3030
       FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
@@ -306,7 +293,8 @@ services:
     environment:
       # Email Service Configuration (can be overridden in .env.dev)
       - EMAIL_BACKEND=${EMAIL_BACKEND:-smtp}
-      - EMAIL_BASE_URL=${EMAIL_BASE_URL:-http://localhost:8000}
+      # Default to frontend container port mapping for clickable links (password reset, invitations)
+      - EMAIL_BASE_URL=${EMAIL_BASE_URL:-http://localhost:3000}
       - EMAIL_JOB_NOTIFICATIONS_ENABLED=${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
       # SendGrid (if EMAIL_BACKEND=sendgrid)
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
@@ -316,7 +304,7 @@ services:
       - AWS_SES_REGION=${AWS_SES_REGION:-}
       - AWS_SES_FROM_EMAIL=${AWS_SES_FROM_EMAIL:-}
       - AWS_SES_FROM_NAME=${AWS_SES_FROM_NAME:-Data Interoperability Hub}
-      # SMTP (if EMAIL_BACKEND=smtp)
+      # SMTP (if EMAIL_BACKEND=smtp). For local E2E password-reset, use MailHog: SMTP_HOST=mailhog SMTP_PORT=1025 SMTP_USE_TLS=false
       - SMTP_HOST=${SMTP_HOST:-localhost}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USERNAME=${SMTP_USERNAME:-}
@@ -353,6 +341,18 @@ services:
       - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE:-}
       # Mock server for testing marketplace connectors
       - MOCK_SERVER_URL=${MOCK_SERVER_URL:-http://mock-server:8080}
+      # Redis configuration (explicit URLs for Docker service names)
+      - REDIS_CACHE_URL=redis://redis-cache:6379/0
+      - REDIS_QUEUE_URL=redis://redis-queue:6379/0
+      - REDIS_EVENTS_URL=redis://redis-events:6379/0
+      - REDIS_CHANNELS_URL=redis://redis-channels:6379/0
+      # Legacy REDIS_URL for backward compatibility
+      - REDIS_URL=redis://redis-cache:6379/0
+      # Prefect Integration Service URL (for scheduled ingestion/export deployment sync and trigger)
+      - PREFECT_INTEGRATION_SERVICE_URL=${PREFECT_INTEGRATION_SERVICE_URL:-http://prefect-integration-service:8084}
+      # E2E: set RATE_LIMIT_E2E_RELAX=true when running Playwright E2E against this API
+      # so auth rate limit uses 20/min (platform max) instead of 5/min
+      - RATE_LIMIT_E2E_RELAX=${RATE_LIMIT_E2E_RELAX:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -368,16 +368,59 @@ services:
         condition: service_healthy
       jaeger:
         condition: service_healthy
-      # Test marketplace instances (optional - for testing marketplace connectors)
+      # Test marketplace instances (optional - mock-server has no healthcheck)
       mock-server:
-        condition: service_healthy
+        condition: service_started
     networks:
       - hub-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # Liveness: /health/live/ always 200 if process is up; use /health/ for readiness (DB+Redis)
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # MailHog (local email capture for dev/test)
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: hub-mailhog
+    ports:
+      - "8025:8025" # UI + HTTP API
+      - "1025:1025" # SMTP
+    networks:
+      - hub-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8025/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hub-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://api-service:8000/api/v1}
+      - VITE_WS_BASE_URL=${VITE_WS_BASE_URL:-ws://api-service:8000}
+      - VITE_USE_TRAEFIK_ENTRYPOINT=${VITE_USE_TRAEFIK_ENTRYPOINT:-}
+      - VITE_ENV=${ENV:-development}
+    networks:
+      - hub-net
+    depends_on:
+      api-service:
+        condition: service_healthy
+    healthcheck:
+      # Use 127.0.0.1 and CMD-SHELL so busybox wget works reliably; nginx serves on port 80
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   # Worker Service
   worker-service:
@@ -387,7 +430,7 @@ services:
     environment:
       # Email Service Configuration (inherited from api-service)
       - EMAIL_BACKEND=${EMAIL_BACKEND:-smtp}
-      - EMAIL_BASE_URL=${EMAIL_BASE_URL:-http://localhost:8000}
+      - EMAIL_BASE_URL=${EMAIL_BASE_URL:-http://localhost:3000}
       - EMAIL_JOB_NOTIFICATIONS_ENABLED=${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
       # SendGrid (if EMAIL_BACKEND=sendgrid)
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
@@ -397,7 +440,7 @@ services:
       - AWS_SES_REGION=${AWS_SES_REGION:-}
       - AWS_SES_FROM_EMAIL=${AWS_SES_FROM_EMAIL:-}
       - AWS_SES_FROM_NAME=${AWS_SES_FROM_NAME:-Data Interoperability Hub}
-      # SMTP (if EMAIL_BACKEND=smtp)
+      # SMTP (if EMAIL_BACKEND=smtp). For local E2E password-reset, use MailHog: SMTP_HOST=mailhog SMTP_PORT=1025 SMTP_USE_TLS=false
       - SMTP_HOST=${SMTP_HOST:-localhost}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USERNAME=${SMTP_USERNAME:-}
@@ -461,9 +504,9 @@ services:
         condition: service_healthy
       jaeger:
         condition: service_healthy
-      # Test marketplace instances (optional - for testing marketplace connectors)
+      # Test marketplace instances (optional - mock-server has no healthcheck)
       mock-server:
-        condition: service_healthy
+        condition: service_started
     networks:
       - hub-net
     healthcheck:
@@ -479,19 +522,15 @@ services:
       context: .
       dockerfile: services/workflow-engine/Dockerfile
     environment:
-      # Database configuration
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER:-hub}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
-      - POSTGRES_DB=${POSTGRES_DB:-hub}
-      # Redis configuration
-      - REDIS_URL=redis://redis:6379/0
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # Workflow engine configuration
-      - WORKFLOW_ENGINE_HEALTH_PORT=${WORKFLOW_ENGINE_HEALTH_PORT:-8088}
+      # Database: use .env.dev (no override) so credentials match api-service and postgres when run with --env-file .env.dev
+      # Redis configuration (use same service names as api-service; no "redis" service exists)
+      - REDIS_CACHE_URL=redis://redis-cache:6379/0
+      - REDIS_QUEUE_URL=redis://redis-queue:6379/0
+      - REDIS_EVENTS_URL=redis://redis-events:6379/0
+      - REDIS_CHANNELS_URL=redis://redis-channels:6379/0
+      - REDIS_URL=redis://redis-cache:6379/0
+      # Workflow engine: app listens on 8088 inside container; host port is in ports (default 8098)
+      # Do not set WORKFLOW_ENGINE_HEALTH_PORT in env so main.py uses default 8088 for /healthz
       - WORKFLOW_ENGINE_POLL_INTERVAL=${WORKFLOW_ENGINE_POLL_INTERVAL:-5}
       - WORKFLOW_ENGINE_BATCH_SIZE=${WORKFLOW_ENGINE_BATCH_SIZE:-10}
       # Django settings
@@ -511,7 +550,7 @@ services:
     # Uses services/workflow-engine/main.py which includes health check HTTP server on port 8088
     command: python services/workflow-engine/main.py --poll-interval ${WORKFLOW_ENGINE_POLL_INTERVAL:-5} --batch-size ${WORKFLOW_ENGINE_BATCH_SIZE:-10}
     ports:
-      - "${WORKFLOW_ENGINE_HEALTH_PORT:-8088}:8088"  # Health check endpoints (/healthz, /ready, /metrics)
+      - "${WORKFLOW_ENGINE_HEALTH_PORT:-8098}:8088"  # Health check endpoints (/healthz, /ready, /metrics)
     volumes:
       - .:/app
     env_file:
@@ -532,11 +571,11 @@ services:
     networks:
       - hub-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8088/healthz"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8088/healthz"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 45s
 
   # DataContract CLI Service
   datacontract-service:
@@ -545,7 +584,7 @@ services:
       dockerfile: services/datacontract-service/Dockerfile
     container_name: hub-datacontract
     ports:
-      - "${DATACONTRACT_PORT:-8082}:8080"
+      - "${DATACONTRACT_PORT:-8080}:8080"
     networks:
       - hub-net
     healthcheck:
@@ -561,7 +600,7 @@ services:
       dockerfile: services/compliance-service/Dockerfile
     container_name: hub-compliance
     ports:
-      - "${COMPLIANCE_PORT:-8084}:8082"
+      - "${COMPLIANCE_PORT:-8082}:8082"
     networks:
       - hub-net
     healthcheck:
@@ -578,13 +617,16 @@ services:
     container_name: hub-dq
     ports:
       - "${DQ_PORT:-8083}:8083"
+    environment:
+      PYTHONPATH: /app
     networks:
       - hub-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 45s
 
   # Prefect Server
   prefect-server:
@@ -592,25 +634,35 @@ services:
       context: .
       dockerfile: services/prefect-server/Dockerfile
     container_name: hub-prefect-server
-    command: prefect server start --host 0.0.0.0
+    command: sh -c "prefect server database upgrade -y 2>/dev/null || true; exec prefect server start --host 0.0.0.0"
     environment:
       PREFECT_API_URL: http://localhost:4200/api
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:${PREFECT_DB_PASSWORD:-prefect}@prefect-db:5432/prefect
       PREFECT_LOGGING_LEVEL: ${PREFECT_LOGGING_LEVEL:-INFO}
+      # Redis messaging (Prefect 3 recommended for scaling)
+      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
+      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
+      PREFECT_REDIS_MESSAGING_HOST: redis-queue
+      PREFECT_REDIS_MESSAGING_PORT: 6379
+      PREFECT_REDIS_MESSAGING_DB: 0
     ports:
       - "${PREFECT_SERVER_PORT:-4200}:4200"
       - "${PREFECT_UI_PORT:-4201}:4201"
     volumes:
       - prefect-server-data:/root/.prefect
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4200/health"]
+      # Prefect 3 exposes health at /api/health (not /health)
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 40s
+      start_period: 120s
     depends_on:
       prefect-db:
         condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - hub-net
 
@@ -626,25 +678,69 @@ services:
       - "${PREFECT_DB_PORT:-5433}:5432"
     volumes:
       - prefect-db-data:/var/lib/postgresql/data
+      # Allow non-SSL connections so Prefect (asyncpg) can connect; init runs only on first init
+      - ./infrastructure/prefect-db/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U prefect"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 600s
     networks:
       - hub-net
 
   # Prefect Workers
   prefect-worker:
-    image: prefecthq/prefect:2-python3.12
+    image: prefecthq/prefect:3-python3.12
     container_name: hub-prefect-worker
     command: prefect worker start --pool ${PREFECT_WORKER_POOL:-default} --type process
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
       PREFECT_LOGGING_LEVEL: ${PREFECT_LOGGING_LEVEL:-INFO}
       PREFECT_API_KEY: ${PREFECT_API_KEY:-}
+      # Hub API configuration for scheduled ingestion worker API
+      HUB_BASE_URL: ${HUB_BASE_URL:-http://api-service:8000}
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-}
     volumes:
       - ./services/prefect-integration:/app:ro
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+      api-service:
+        condition: service_healthy
+    networks:
+      - hub-net
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import sys; sys.exit(0)
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Docker work pool worker: runs flow.deploy(image=...) deployments
+  prefect-worker-docker:
+    build:
+      context: .
+      dockerfile: services/prefect-integration/Dockerfile.worker-docker
+    image: hub-prefect-worker-docker:latest
+    container_name: hub-prefect-worker-docker
+    command: sh -c "prefect work-pool create --type docker docker-pool 2>/dev/null || true; exec prefect worker start --pool docker-pool --type docker --limit ${PREFECT_WORKER_LIMIT:-2}"
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_LOGGING_LEVEL: ${PREFECT_LOGGING_LEVEL:-INFO}
+      PREFECT_API_KEY: ${PREFECT_API_KEY:-}
+      # Docker socket timeout optimizations (in seconds)
+      # Increase timeouts to handle slow Docker daemon operations
+      DOCKER_CLIENT_TIMEOUT: ${DOCKER_CLIENT_TIMEOUT:-120}
+      DOCKER_READ_TIMEOUT: ${DOCKER_READ_TIMEOUT:-120}
+      # Limit concurrent flow runs to reduce Docker daemon load
+      PREFECT_WORKER_LIMIT: ${PREFECT_WORKER_LIMIT:-2}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       prefect-server:
         condition: service_healthy
@@ -661,18 +757,39 @@ services:
       retries: 3
       start_period: 30s
 
-  # Prefect Integration Service
+  # Prefect Integration Service (uses Django ORM; needs project root and hub)
   prefect-integration-service:
     build:
       context: .
       dockerfile: services/prefect-integration/Dockerfile
     container_name: hub-prefect-integration
+    command: sh -c "cd /app/services/prefect-integration && PYTHONPATH=/app python -m uvicorn main:app --host 0.0.0.0 --port 8084"
     ports:
-      - "${PREFECT_INTEGRATION_PORT:-8093}:8084"
+      - "${PREFECT_INTEGRATION_PORT:-8084}:8084"
+    volumes:
+      - .:/app
+    env_file:
+      - .env.dev
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
       PREFECT_API_KEY: ${PREFECT_API_KEY:-}
       DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
+      DJANGO_SETTINGS_MODULE: hub.settings
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      REDIS_CACHE_URL: redis://redis-cache:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue:6379/0
+      REDIS_EVENTS_URL: redis://redis-events:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels:6379/0
+      REDIS_URL: redis://redis-cache:6379/0
+      # Hub Worker API configuration (for scheduled ingestion/export flows)
+      # Note: HUB_BASE_URL should be base URL without /api/v1 (HubClient adds paths)
+      HUB_BASE_URL: http://api-service:8000
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-H0QBuCJZpGEohZNSqkW-bHvAASgAwhf60UEDLe6XQtg}
+      # Prefect deployment image (required for creating deployments)
+      PREFECT_DEPLOYMENT_IMAGE: ${PREFECT_DEPLOYMENT_IMAGE:-hub-dev-prefect-integration:latest}
+      # Prefect work pool (use docker-pool for Docker image deployments)
+      PREFECT_WORK_POOL_NAME: ${PREFECT_WORK_POOL_NAME:-docker-pool}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
@@ -680,14 +797,16 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      redis-cache:
+        condition: service_healthy
     networks:
       - hub-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8084/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 90s
 
   # Search Service
   search-service:
@@ -776,8 +895,9 @@ services:
       context: .
       dockerfile: services/api-gateway/Dockerfile
     container_name: hub-api-gateway
+    command: ["sh", "-c", "cd /app/services/api-gateway && PYTHONPATH=/app uvicorn main:app --host 0.0.0.0 --port 8088"]
     ports:
-      - "${API_GATEWAY_PORT:-8088}:8088"
+      - "${API_GATEWAY_PORT:-8094}:8088"
     environment:
       # Database configuration (for Django ORM access)
       - DATABASE_URL=postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:-hub}@postgres:5432/${POSTGRES_DB:-hub}
@@ -842,10 +962,12 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-hub}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-hub}
       - POSTGRES_DB=${POSTGRES_DB:-hub}
-      # Redis configuration
-      - REDIS_URL=redis://redis:6379/0
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      # Redis configuration (use same service names as api-service)
+      - REDIS_CACHE_URL=redis://redis-cache:6379/0
+      - REDIS_QUEUE_URL=redis://redis-queue:6379/0
+      - REDIS_EVENTS_URL=redis://redis-events:6379/0
+      - REDIS_CHANNELS_URL=redis://redis-channels:6379/0
+      - REDIS_URL=redis://redis-cache:6379/0
       # Event bus configuration
       - EVENT_BUS_REDIS_POOL_SIZE=${EVENT_BUS_REDIS_POOL_SIZE:-50}
       - EVENT_BUS_REDIS_MAX_CONNECTIONS=${EVENT_BUS_REDIS_MAX_CONNECTIONS:-100}
@@ -1046,10 +1168,10 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_SERVER_ROOT_URL=http://localhost:3001
       - GF_INSTALL_PLUGINS=
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "${GRAFANA_PORT:-3001}:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -1176,7 +1298,8 @@ services:
     volumes:
       - ckan-test-solr-data:/var/solr
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8983/solr/admin/ping"]
+      # Solr 9: use node health API; /solr/admin/ping is per-core and may be disabled
+      test: ["CMD", "curl", "-f", "http://localhost:8983/api/node/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -1203,6 +1326,8 @@ services:
 
   # Mock Server - HTTP mock server for testing marketplace connectors
   # Provides REST API endpoints for testing without external dependencies
+  # MockServer image is distroless (no shell/curl), so no in-container healthcheck.
+  # API and worker use condition: service_started so stack comes up without blocking.
   mock-server:
     image: mockserver/mockserver:latest
     container_name: hub-mock-server
@@ -1211,12 +1336,6 @@ services:
       - "${MOCK_SERVER_PORT:-8095}:8080"
     networks:
       - hub-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/mockserver/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 10s
 
   # ODH Training Operator Service
   odh-training-operator:
@@ -1279,9 +1398,9 @@ services:
       - "--accesslog.format=json"
       - "--metrics.prometheus=true"
     ports:
-      - "${TRAEFIK_PORT:-8080}:80"
-      - "${TRAEFIK_SECURE_PORT:-8443}:443"
-      - "${TRAEFIK_DASHBOARD_PORT:-8081}:8080"  # Dashboard
+      - "${TRAEFIK_PORT:-80}:80"
+      - "${TRAEFIK_SECURE_PORT:-443}:443"
+      - "${TRAEFIK_DASHBOARD_PORT:-8099}:8080"  # Dashboard (8099 to avoid conflict with semantic on 8081 when merged with dev)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./infrastructure/traefik/traefik.yml:/etc/traefik/traefik.yml:ro

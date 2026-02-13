@@ -1,0 +1,202 @@
+"""
+Phase 2 integration tests: Prefect full flow with real hub (no mocks).
+
+Uses LiveServerTestCase so the flow can call the hub via HTTP.
+Creates ScheduledIngestion with HTTP source (test-data view), runs
+scheduled_ingestion_full_flow in a subprocess (to avoid same-process Prefect
+ephemeral server deadlock and 600s timeouts), asserts run created and updated.
+
+Requires PREFECT_API_URL pointing at a running Prefect server (e.g. prefect-server-test).
+"""
+
+import os
+import subprocess
+import sys
+import urllib.request
+
+import pytest
+from django.test import LiveServerTestCase
+
+from hub.apps.auth.models import APIKey
+from hub.apps.scheduled_ingestion.internal_auth import SCOPE_SCHEDULED_INGESTION_INTERNAL
+from hub.apps.scheduled_ingestion.models import (
+    ScheduledIngestion,
+    ScheduledIngestionRun,
+    ScheduledIngestionRunStatus,
+    ScheduleType,
+    SourceType,
+)
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+
+# Integration test; bounded timeout (subprocess 120s + setup/teardown)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.integration,
+    pytest.mark.timeout(180),
+]
+
+# Subprocess timeout for the flow (must complete within this or test fails)
+FLOW_SUBPROCESS_TIMEOUT = 120
+
+
+def _prefect_integration_path():
+    """Return services/prefect-integration absolute path."""
+    here = os.path.abspath(__file__)
+    for _ in range(5):
+        here = os.path.dirname(here)
+    return os.path.join(here, "services", "prefect-integration")
+
+
+def _prefect_server_reachable(prefect_api_url: str, timeout_seconds: float = 5.0) -> bool:
+    """Return True if Prefect API health endpoint is reachable."""
+    try:
+        health = prefect_api_url.rstrip("/").replace("/api", "") + "/api/health"
+        req = urllib.request.Request(health)
+        urllib.request.urlopen(req, timeout=timeout_seconds)
+        return True
+    except Exception:
+        return False
+
+
+class TestPrefectFullFlowIntegration(LiveServerTestCase):
+    """
+    Run scheduled_ingestion_full_flow against live hub; assert run created and updated.
+
+    No mocks: real hub (live server), real flow in subprocess, real DB.
+    Flow runs in subprocess to avoid same-process Prefect client/server deadlock
+    and to enforce a bounded timeout (120s).
+    """
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Prefect Flow Test Tenant",
+            slug="prefect-flow-test-tenant",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email="prefect-flow-test@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        plaintext = APIKey.generate_key()
+        APIKey.objects.create(
+            tenant=self.tenant,
+            user=self.user,
+            key_hash=APIKey.hash_key(plaintext),
+            name="Worker API Key",
+            scopes=[SCOPE_SCHEDULED_INGESTION_INTERNAL],
+        )
+        self.worker_api_key = plaintext
+
+        base_url = f"{self.live_server_url}/api/v1/scheduled-ingestions/internal/test-data/"
+        self.scheduled_ingestion = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="Prefect Full Flow Test",
+            source_type=SourceType.HTTP,
+            source_config={
+                "base_url": base_url,
+                "paths": ["sample.csv"],
+                "headers": {"X-Internal-Test-Data": "1"},
+            },
+            schedule_type=ScheduleType.DAILY,
+            schedule_config={"time": "00:00"},
+            file_pattern=r".*\.csv",
+            created_by=self.user,
+        )
+
+    def test_full_flow_creates_run_and_processes_file(self):
+        """Run full flow in subprocess; assert hub run created, updated, and process-file called."""
+        prefect_api_url = os.environ.get(
+            "PREFECT_API_URL", "http://prefect-server-test:4200/api"
+        ).rstrip("/")
+        if not _prefect_server_reachable(prefect_api_url):
+            pytest.skip(
+                "Prefect server not reachable at PREFECT_API_URL. "
+                "Start prefect-server-test (and prefect-db-test) for full flow integration."
+            )
+
+        prefect_integration = _prefect_integration_path()
+        if not os.path.isdir(prefect_integration):
+            pytest.skip(
+                "prefect-integration service path not found. "
+                f"Expected directory: {prefect_integration}"
+            )
+
+        env = {
+            **os.environ,
+            "HUB_BASE_URL": self.live_server_url,
+            "HUB_WORKER_API_KEY": self.worker_api_key,
+            "PREFECT_API_URL": prefect_api_url,
+            "SCHEDULED_INGESTION_ID": str(self.scheduled_ingestion.id),
+            "TENANT_ID": str(self.tenant.id),
+            "PYTHONPATH": prefect_integration + os.pathsep + os.environ.get("PYTHONPATH", ""),
+        }
+
+        script = """
+import os
+import sys
+from uuid import UUID
+from workflows.scheduled_ingestion_full_flow import scheduled_ingestion_full_flow
+scheduled_ingestion_full_flow(
+    UUID(os.environ["SCHEDULED_INGESTION_ID"]),
+    UUID(os.environ["TENANT_ID"]),
+    None,
+)
+"""
+
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-c", script],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=FLOW_SUBPROCESS_TIMEOUT,
+                cwd=prefect_integration,
+            )
+        except subprocess.TimeoutExpired:
+            self.fail(
+                f"Flow did not complete within {FLOW_SUBPROCESS_TIMEOUT}s. "
+                "Ensure Prefect server is healthy and test-data endpoint is fast."
+            )
+        except FileNotFoundError:
+            pytest.skip("Python executable not found for subprocess")
+
+        if proc.returncode != 0:
+            self.fail(
+                f"Flow subprocess exited with code {proc.returncode}. "
+                f"stderr: {proc.stderr or '(none)'}. stdout: {proc.stdout or '(none)'}"
+            )
+
+        runs = list(
+            ScheduledIngestionRun.objects.filter(
+                scheduled_ingestion=self.scheduled_ingestion
+            ).order_by("-started_at")[:1]
+        )
+        self.assertGreaterEqual(len(runs), 1, "At least one run should exist")
+        run = runs[0]
+        self.assertIn(
+            run.status,
+            (ScheduledIngestionRunStatus.COMPLETED, ScheduledIngestionRunStatus.FAILED),
+            f"Run should reach terminal status, got {run.status}",
+        )
+        self.assertGreaterEqual(
+            run.files_found,
+            0,
+            "files_found should be set",
+        )
+        if run.status == ScheduledIngestionRunStatus.COMPLETED:
+            self.assertGreaterEqual(
+                run.files_processed,
+                1,
+                "At least one file should be processed on success",
+            )
+        else:
+            self.assertIsNotNone(
+                run.error_message or (run.result_json or {}).get("errors"),
+                "Failed run should have error info",
+            )
+        self.assertIsNotNone(run.completed_at, "Run should have completed_at set")
+        self.assertIsNotNone(run.started_at, "Run should have started_at set")

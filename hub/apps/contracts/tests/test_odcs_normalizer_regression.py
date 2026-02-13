@@ -5,14 +5,15 @@ These tests ensure that the refactoring of ODCSNormalizer into ODCSNormalizerBas
 does not change the existing normalization behavior. All existing ODCS normalization
 should produce identical results after the refactoring.
 """
+
 import json
 from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import (
+    NormalizationResult,
     ODCSNormalizer,
     normalize_contract,
-    NormalizationResult,
 )
 
 
@@ -39,23 +40,19 @@ class ODCSNormalizerRegressionTest(TestCase):
             "id": "test-1",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         # Check that result is a NormalizationResult
-        assert hasattr(result, 'hub_contract')
-        assert hasattr(result, 'status')
-        assert hasattr(result, 'errors')
-        assert hasattr(result, 'warnings')
-        assert hasattr(result, 'spec_type')
-        assert hasattr(result, 'spec_version')
-        assert hasattr(result, 'coverage')
+        assert hasattr(result, "hub_contract")
+        assert hasattr(result, "status")
+        assert hasattr(result, "errors")
+        assert hasattr(result, "warnings")
+        assert hasattr(result, "spec_type")
+        assert hasattr(result, "spec_version")
+        assert hasattr(result, "coverage")
 
         # Check that spec_type and spec_version are correct
         assert result.spec_type == OriginalSpecType.ODCS
@@ -74,17 +71,11 @@ class ODCSNormalizerRegressionTest(TestCase):
             "id": "test-1",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(contract_data),
-            format="JSON",
-            spec_type="ODCS"
+            raw_contract=json.dumps(contract_data), format="JSON", spec_type="ODCS"
         )
 
         # Check that return format is correct
@@ -94,7 +85,10 @@ class ODCSNormalizerRegressionTest(TestCase):
         assert isinstance(warnings, list)
 
         # Check that normalization succeeded
-        assert status in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+        assert status in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]
         assert hub_contract["id"] == "test-1"
         assert hub_contract["info"]["name"] == "Test Contract"
 
@@ -109,26 +103,16 @@ class ODCSNormalizerRegressionTest(TestCase):
             "schema": {
                 "fields": [
                     {"name": "id", "type": "string", "nullable": False},
-                    {"name": "name", "type": "string", "nullable": False}
+                    {"name": "name", "type": "string", "nullable": False},
                 ]
             },
-            "info": {
-                "owners": ["owner1", "owner2"],
-                "tags": ["tag1", "tag2"]
-            },
-            "quality": {
-                "default_profile_key": "profile1"
-            },
-            "lifecycle": {
-                "data_source": "database",
-                "refresh_cadence": "daily"
-            }
+            "info": {"owners": ["owner1", "owner2"], "tags": ["tag1", "tag2"]},
+            "quality": {"default_profile_key": "profile1"},
+            "lifecycle": {"data_source": "database", "refresh_cadence": "daily"},
         }
 
         hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
-            raw_contract=json.dumps(contract_data),
-            format="JSON",
-            spec_type="ODCS"
+            raw_contract=json.dumps(contract_data), format="JSON", spec_type="ODCS"
         )
 
         # Check that all expected fields are present
@@ -161,11 +145,7 @@ class ODCSNormalizerRegressionTest(TestCase):
             "kind": "DataContract",
             "id": "test-1",
             # Missing 'name' field
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
@@ -184,9 +164,7 @@ class ODCSNormalizerRegressionTest(TestCase):
             "kind": "DataContract",
             "id": "test-1",
             "name": "Test Contract",
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
@@ -203,13 +181,9 @@ class ODCSNormalizerRegressionTest(TestCase):
             "kind": "DataContract",
             "id": "test-1",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            },
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
             "custom_field": "custom_value",
-            "another_custom": {"nested": "value"}
+            "another_custom": {"nested": "value"},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
@@ -232,7 +206,7 @@ class ODCSNormalizerRegressionTest(TestCase):
             "kind": "DataContract",
             "id": "test-1",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
         result1 = normalizer.normalize(contract_data1, spec_version=None)
         assert result1.spec_version == "3.0.2"
@@ -242,7 +216,7 @@ class ODCSNormalizerRegressionTest(TestCase):
             "id": "test-2",
             "name": "Test Contract",
             "version": "3.0.1",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
         result2 = normalizer.normalize(contract_data2, spec_version=None)
         assert result2.spec_version == "3.0.1"
@@ -251,7 +225,7 @@ class ODCSNormalizerRegressionTest(TestCase):
         contract_data3 = {
             "id": "test-3",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
         result3 = normalizer.normalize(contract_data3, spec_version=None)
         assert result3.spec_version == "3.0.2"  # Default
@@ -265,17 +239,9 @@ class ODCSNormalizerRegressionTest(TestCase):
             "id": "test-1",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            },
-            "quality": {
-                "default_profile_key": "profile1"
-            },
-            "lifecycle": {
-                "data_source": "database"
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+            "quality": {"default_profile_key": "profile1"},
+            "lifecycle": {"data_source": "database"},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
@@ -290,4 +256,106 @@ class ODCSNormalizerRegressionTest(TestCase):
         assert "original_spec_version" in result.hub_contract["normalization"]
         assert result.hub_contract["normalization"]["original_spec_version"] == "3.0.2"
 
+    def test_regression_handles_unicode_characters(self):
+        """Test that regression tests handle unicode characters correctly."""
+        normalizer = ODCSNormalizer()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-unicode",
+            "name": "测试合同",
+            "version": "1.0.0",
+            "description": "测试描述",
+            "schema": {"fields": [{"name": "字段名称", "type": "string"}]},
+        }
 
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle unicode characters
+        assert result.hub_contract is not None
+        if result.hub_contract and "info" in result.hub_contract:
+            assert result.hub_contract["info"] is not None
+
+    def test_regression_handles_special_characters(self):
+        """Test that regression tests handle special characters correctly."""
+        normalizer = ODCSNormalizer()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-special",
+            "name": "Test & Co. (Special)",
+            "version": "1.0.0",
+            "description": "Test <description> & more",
+            "schema": {"fields": [{"name": "field-name", "type": "string"}]},
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle special characters
+        assert result.hub_contract is not None
+        if result.hub_contract and "info" in result.hub_contract:
+            assert result.hub_contract["info"] is not None
+
+    def test_regression_handles_very_large_documents(self):
+        """Test that regression tests handle very large documents correctly."""
+        normalizer = ODCSNormalizer()
+        large_description = "A" * 100000  # 100KB string
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-large",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": large_description,
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle very large documents
+        assert result.hub_contract is not None
+
+    def test_regression_handles_none_values(self):
+        """Test that regression tests handle None values correctly."""
+        normalizer = ODCSNormalizer()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-none",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": None,  # None value
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle None values gracefully
+        assert result.hub_contract is not None
+
+    def test_regression_handles_nested_structures(self):
+        """Test that regression tests handle nested structures correctly."""
+        normalizer = ODCSNormalizer()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-nested",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                ]
+            },
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle nested structures
+        assert result.hub_contract is not None
+        if result.hub_contract and "schema" in result.hub_contract:
+            assert result.hub_contract["schema"] is not None

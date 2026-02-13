@@ -13,27 +13,24 @@ Tests verify complete workflows, version detection, normalization, and state con
 
 import json
 import uuid
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+
 from rest_framework import status
 
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
     NormalizationStatus,
-    OriginalSpecType,
     OriginalFormat,
+    OriginalSpecType,
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import UserStatus
-from hub.apps.contracts.odps_version_detection import detect_odps_version
+from hub.apps.contracts.normalization import get_normalizer, normalize_contract
 from hub.apps.contracts.odcs_version_detection import detect_odcs_version
-from hub.apps.contracts.spec_detection import detect_spec_type
-from hub.apps.contracts.normalization import normalize_contract, get_normalizer
 from hub.apps.contracts.odps_parser import ODPSParser
-
-User = get_user_model()
+from hub.apps.contracts.odps_version_detection import detect_odps_version
+from hub.apps.contracts.spec_detection import detect_spec_type
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import UserStatus
 
 # Supported versions
 ODPS_VERSIONS = ["4.1", "4.0", "3.x", "2.x", "1.x"]
@@ -73,10 +70,10 @@ def create_odps_contract(version: str, product_id: str = None) -> dict:
                 "en": {
                     "productID": product_id,
                     "name": f"Test Product {version}",
-                    "description": f"Test description for ODPS {version}"
+                    "description": f"Test description for ODPS {version}",
                 }
             }
-        }
+        },
     }
 
     # Version-specific fields
@@ -91,10 +88,20 @@ def create_odps_contract(version: str, product_id: str = None) -> dict:
                 "version": "1.0.0",
                 "schema": {
                     "fields": [
-                        {"name": "id", "type": "string", "nullable": False, "description": "Unique identifier"},
-                        {"name": "name", "type": "string", "nullable": True, "description": "Name field"}
+                        {
+                            "name": "id",
+                            "type": "string",
+                            "nullable": False,
+                            "description": "Unique identifier",
+                        },
+                        {
+                            "name": "name",
+                            "type": "string",
+                            "nullable": True,
+                            "description": "Name field",
+                        },
                     ]
-                }
+                },
             }
         }
         contract["product"]["dataQuality"] = {"declarative": []}
@@ -105,7 +112,7 @@ def create_odps_contract(version: str, product_id: str = None) -> dict:
         contract["product"]["dataSchema"] = {
             "fields": [
                 {"name": "id", "type": "string", "description": "Unique identifier"},
-                {"name": "name", "type": "string", "description": "Name field"}
+                {"name": "name", "type": "string", "description": "Name field"},
             ]
         }
 
@@ -141,45 +148,48 @@ def create_odcs_contract(version: str, contract_id: str = None) -> dict:
         "description": f"Test ODCS contract for version {version}",
         "schema": {
             "fields": [
-                {"name": "id", "type": "string", "nullable": False, "description": "Unique identifier"},
+                {
+                    "name": "id",
+                    "type": "string",
+                    "nullable": False,
+                    "description": "Unique identifier",
+                },
                 {"name": "name", "type": "string", "nullable": True, "description": "Name field"},
-                {"name": "value", "type": "number", "nullable": True, "description": "Numeric value"}
+                {
+                    "name": "value",
+                    "type": "number",
+                    "nullable": True,
+                    "description": "Numeric value",
+                },
             ]
-        }
+        },
     }
 
     # Add version-specific fields
     if version in ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview"]:
         contract["info"] = {
-            "owners": [
-                {"name": "Test Owner", "email": "owner@example.com"}
-            ],
+            "owners": [{"name": "Test Owner", "email": "owner@example.com"}],
             "tags": ["test", "compatibility"],
-            "domain": "test"
+            "domain": "test",
         }
-        contract["support"] = [
-            {"name": "Support Team", "email": "support@example.com"}
-        ]
+        contract["support"] = [{"name": "Support Team", "email": "support@example.com"}]
         contract["servers"] = [
             {
                 "type": "postgres",
                 "url": "postgresql://localhost:5432/testdb",
-                "description": "Test database"
+                "description": "Test database",
             }
         ]
 
         # Add 3.0.2+ specific fields
         if version == "3.0.2":
             contract["quality"] = {"default_profile_key": "test_profile"}
-            contract["lifecycle"] = {
-                "data_source": "database",
-                "refresh_cadence": "daily"
-            }
+            contract["lifecycle"] = {"data_source": "database", "refresh_cadence": "daily"}
 
     return contract
 
 
-class BackwardCompatibilityE2EComprehensiveTest(TestCase):
+class BackwardCompatibilityE2EComprehensiveTest(ContractsAPITestBase):
     """
     Comprehensive E2E tests for backward compatibility (Task 10.1.5).
 
@@ -192,25 +202,7 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-        unique_id = str(uuid.uuid4())[:8]
-
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant Compatibility {unique_id}",
-            slug=f"test-tenant-compat-{unique_id}",
-            status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.VERIFIED.value,
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email=f"test-compat-{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE.value,
-        )
-        self.user.refresh_from_db()
+        super().setUp()
 
     # ========== ODPS VERSION TESTS ==========
 
@@ -239,23 +231,26 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
         result = normalizer.normalize(odps_doc, spec_version="4.1")
         self.assertIsNotNone(result.hub_contract, "Normalization should succeed for ODPS 4.1")
-        self.assertIn(result.status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            result.status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0, f"No errors expected for ODPS 4.1: {result.errors}")
 
         # Step 5: API creation
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(odps_doc),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('odps_contract', response.data)
+        self.assertIn("odps_contract", response.data)
 
         # Step 6: Verify contract was created
-        odps_contract_id = response.data['odps_contract']['id']
+        odps_contract_id = response.data["odps_contract"]["id"]
         contract = Contract.objects.get(id=odps_contract_id, tenant=self.tenant)
         self.assertEqual(contract.original_spec_type, OriginalSpecType.ODPS)
         self.assertEqual(contract.original_spec_version, "4.1")
@@ -285,17 +280,20 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
         result = normalizer.normalize(odps_doc, spec_version="4.0")
         self.assertIsNotNone(result.hub_contract, "Normalization should succeed for ODPS 4.0")
-        self.assertIn(result.status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            result.status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0, f"No errors expected for ODPS 4.0: {result.errors}")
 
         # API creation
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(odps_doc),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -321,17 +319,20 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
         result = normalizer.normalize(odps_doc, spec_version="3.x")
         self.assertIsNotNone(result.hub_contract, "Normalization should succeed for ODPS 3.x")
-        self.assertIn(result.status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            result.status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0, f"No errors expected for ODPS 3.x: {result.errors}")
 
         # API creation
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": json.dumps(odps_doc),
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
         # May succeed or fail depending on validation strictness for older versions
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
@@ -352,7 +353,10 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
         result = normalizer.normalize(odps_doc, spec_version="2.x")
         self.assertIsNotNone(result.hub_contract, "Normalization should succeed for ODPS 2.x")
-        self.assertIn(result.status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            result.status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
 
     def test_odps_version_1_x_complete_flow(self):
         """Test ODPS 1.x complete flow: detection, validation, normalization"""
@@ -370,7 +374,10 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
         result = normalizer.normalize(odps_doc, spec_version="1.x")
         self.assertIsNotNone(result.hub_contract, "Normalization should succeed for ODPS 1.x")
-        self.assertIn(result.status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            result.status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
 
     def test_odps_all_versions_detection(self):
         """Test that all ODPS versions are detected correctly"""
@@ -379,8 +386,9 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                 odps_doc = create_odps_contract(version)
                 detected_version = detect_odps_version(odps_doc)
                 self.assertNotEqual(
-                    detected_version, "unknown",
-                    f"ODPS version {version} should be detected, got {detected_version}"
+                    detected_version,
+                    "unknown",
+                    f"ODPS version {version} should be detected, got {detected_version}",
                 )
 
     def test_odps_all_versions_normalization(self):
@@ -391,19 +399,20 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                 detected_version = detect_odps_version(odps_doc)
                 normalizer = get_normalizer(OriginalSpecType.ODPS, detected_version, odps_doc)
                 self.assertIsNotNone(
-                    normalizer,
-                    f"Normalizer should be found for ODPS version {version}"
+                    normalizer, f"Normalizer should be found for ODPS version {version}"
                 )
 
                 result = normalizer.normalize(odps_doc, spec_version=detected_version)
                 self.assertIsNotNone(
-                    result.hub_contract,
-                    f"Normalization should succeed for ODPS version {version}"
+                    result.hub_contract, f"Normalization should succeed for ODPS version {version}"
                 )
                 self.assertIn(
                     result.status,
-                    [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
-                    f"Status should be OK or WARNINGS for version {version}"
+                    [
+                        NormalizationStatus.NORMALIZED_OK,
+                        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    ],
+                    f"Status should be OK or WARNINGS for version {version}",
                 )
 
     # ========== ODCS VERSION TESTS ==========
@@ -424,33 +433,36 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
         self.assertEqual(spec_version, "3.0.2")
 
         # Step 3: Normalization
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_doc),
-            format="JSON",
-            spec_type="ODCS"
-        )
+        (
+            hub_contract,
+            detected_spec_type,
+            detected_spec_version,
+            norm_status,
+            norm_errors,
+            norm_warnings,
+        ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 3.0.2")
         self.assertIn(
             norm_status,
-            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
         )
         self.assertEqual(len(norm_errors), 0, f"No errors expected for ODCS 3.0.2: {norm_errors}")
 
         # Step 4: API creation
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(odcs_doc),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
                 "original_spec_version": "3.0.2",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         # Step 5: Verify contract was created
-        contract_id = response.data['id']
+        contract_id = response.data["id"]
         contract = Contract.objects.get(id=contract_id, tenant=self.tenant)
         self.assertEqual(contract.original_spec_type, OriginalSpecType.ODCS)
         self.assertEqual(contract.original_spec_version, "3.0.2")
@@ -466,27 +478,30 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
         self.assertEqual(detected_version, "3.0.1", "ODCS 3.0.1 should be detected correctly")
 
         # Normalization
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_doc),
-            format="JSON",
-            spec_type="ODCS"
-        )
+        (
+            hub_contract,
+            detected_spec_type,
+            detected_spec_version,
+            norm_status,
+            norm_errors,
+            norm_warnings,
+        ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 3.0.1")
         self.assertIn(
             norm_status,
-            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
         )
 
         # API creation
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(odcs_doc),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
                 "original_spec_version": "3.0.1",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -501,27 +516,30 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
         self.assertEqual(detected_version, "3.0.0", "ODCS 3.0.0 should be detected correctly")
 
         # Normalization
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_doc),
-            format="JSON",
-            spec_type="ODCS"
-        )
+        (
+            hub_contract,
+            detected_spec_type,
+            detected_spec_version,
+            norm_status,
+            norm_errors,
+            norm_warnings,
+        ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 3.0.0")
         self.assertIn(
             norm_status,
-            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
         )
 
         # API creation
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(odcs_doc),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
                 "original_spec_version": "3.0.0",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -533,30 +551,35 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
         # Version detection
         detected_version = detect_odcs_version(odcs_doc)
-        self.assertEqual(detected_version, "3.0.0-preview", "ODCS 3.0.0-preview should be detected correctly")
+        self.assertEqual(
+            detected_version, "3.0.0-preview", "ODCS 3.0.0-preview should be detected correctly"
+        )
 
         # Normalization
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_doc),
-            format="JSON",
-            spec_type="ODCS"
-        )
+        (
+            hub_contract,
+            detected_spec_type,
+            detected_spec_version,
+            norm_status,
+            norm_errors,
+            norm_warnings,
+        ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 3.0.0-preview")
         self.assertIn(
             norm_status,
-            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
         )
 
         # API creation
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(odcs_doc),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
                 "original_spec_version": "3.0.0-preview",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -571,27 +594,30 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
         self.assertEqual(detected_version, "2.2.2", "ODCS 2.2.2 should be detected correctly")
 
         # Normalization
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=json.dumps(odcs_doc),
-            format="JSON",
-            spec_type="ODCS"
-        )
+        (
+            hub_contract,
+            detected_spec_type,
+            detected_spec_version,
+            norm_status,
+            norm_errors,
+            norm_warnings,
+        ) = normalize_contract(raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS")
         self.assertIsNotNone(hub_contract, "Normalization should succeed for ODCS 2.2.2")
         self.assertIn(
             norm_status,
-            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
         )
 
         # API creation
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": json.dumps(odcs_doc),
                 "original_format": "JSON",
                 "original_spec_type": "ODCS",
                 "original_spec_version": "2.2.2",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -602,8 +628,9 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                 odcs_doc = create_odcs_contract(version)
                 detected_version = detect_odcs_version(odcs_doc)
                 self.assertEqual(
-                    detected_version, version,
-                    f"ODCS version {version} should be detected correctly, got {detected_version}"
+                    detected_version,
+                    version,
+                    f"ODCS version {version} should be detected correctly, got {detected_version}",
                 )
 
     def test_odcs_all_versions_normalization(self):
@@ -611,23 +638,29 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
         for version in ODCS_VERSIONS:
             with self.subTest(version=version):
                 odcs_doc = create_odcs_contract(version)
-                hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-                    raw_contract=json.dumps(odcs_doc),
-                    format="JSON",
-                    spec_type="ODCS"
+                (
+                    hub_contract,
+                    detected_spec_type,
+                    detected_spec_version,
+                    norm_status,
+                    norm_errors,
+                    norm_warnings,
+                ) = normalize_contract(
+                    raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS"
                 )
                 self.assertIsNotNone(
-                    hub_contract,
-                    f"Normalization should succeed for ODCS version {version}"
+                    hub_contract, f"Normalization should succeed for ODCS version {version}"
                 )
                 self.assertIn(
                     norm_status,
-                    [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
-                    f"Status should be OK or WARNINGS for version {version}"
+                    [
+                        NormalizationStatus.NORMALIZED_OK,
+                        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    ],
+                    f"Status should be OK or WARNINGS for version {version}",
                 )
                 self.assertEqual(
-                    len(norm_errors), 0,
-                    f"No errors expected for version {version}: {norm_errors}"
+                    len(norm_errors), 0, f"No errors expected for version {version}: {norm_errors}"
                 )
 
     # ========== GRACEFUL DEGRADATION TESTS ==========
@@ -638,9 +671,7 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
             with self.subTest(version=version):
                 odps_doc = create_odps_contract(version)
                 # Add 4.1-specific feature (productStrategy)
-                odps_doc["productStrategy"] = {
-                    "objectives": ["Should be gracefully handled"]
-                }
+                odps_doc["productStrategy"] = {"objectives": ["Should be gracefully handled"]}
 
                 detected_version = detect_odps_version(odps_doc)
                 normalizer = get_normalizer(OriginalSpecType.ODPS, detected_version, odps_doc)
@@ -649,16 +680,20 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                 # Should succeed with warnings, not errors
                 self.assertIsNotNone(
                     result.hub_contract,
-                    f"Normalization should succeed with graceful degradation for ODPS {version}"
+                    f"Normalization should succeed with graceful degradation for ODPS {version}",
                 )
                 self.assertIn(
                     result.status,
-                    [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+                    [
+                        NormalizationStatus.NORMALIZED_OK,
+                        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    ],
                 )
                 # May have warnings but should not have errors
                 self.assertEqual(
-                    len(result.errors), 0,
-                    f"No errors expected for graceful degradation in ODPS {version}: {result.errors}"
+                    len(result.errors),
+                    0,
+                    f"No errors expected for graceful degradation in ODPS {version}: {result.errors}",
                 )
 
     def test_odcs_graceful_degradation_newer_features_in_older_versions(self):
@@ -669,30 +704,36 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                 # Add 3.0.2-specific feature (quality.default_profile_key)
                 odcs_doc["quality"] = {"default_profile_key": "test_profile"}
                 # Add lifecycle (3.0.2+ feature)
-                odcs_doc["lifecycle"] = {
-                    "data_source": "database",
-                    "refresh_cadence": "daily"
-                }
+                odcs_doc["lifecycle"] = {"data_source": "database", "refresh_cadence": "daily"}
 
-                hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-                    raw_contract=json.dumps(odcs_doc),
-                    format="JSON",
-                    spec_type="ODCS"
+                (
+                    hub_contract,
+                    detected_spec_type,
+                    detected_spec_version,
+                    norm_status,
+                    norm_errors,
+                    norm_warnings,
+                ) = normalize_contract(
+                    raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS"
                 )
 
                 # Should succeed with warnings, not errors
                 self.assertIsNotNone(
                     hub_contract,
-                    f"Normalization should succeed with graceful degradation for ODCS {version}"
+                    f"Normalization should succeed with graceful degradation for ODCS {version}",
                 )
                 self.assertIn(
                     norm_status,
-                    [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+                    [
+                        NormalizationStatus.NORMALIZED_OK,
+                        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    ],
                 )
                 # May have warnings but should not have errors
                 self.assertEqual(
-                    len(norm_errors), 0,
-                    f"No errors expected for graceful degradation in ODCS {version}: {norm_errors}"
+                    len(norm_errors),
+                    0,
+                    f"No errors expected for graceful degradation in ODCS {version}: {norm_errors}",
                 )
 
     def test_odps_graceful_degradation_missing_optional_fields(self):
@@ -711,7 +752,7 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
                 self.assertIsNotNone(
                     result.hub_contract,
-                    f"Normalization should succeed with missing optional fields for ODPS {version}"
+                    f"Normalization should succeed with missing optional fields for ODPS {version}",
                 )
 
     def test_odcs_graceful_degradation_missing_optional_fields(self):
@@ -729,28 +770,32 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                     "kind": "DataContract",
                     "id": f"minimal-{version}",
                     "name": f"Minimal Contract {version}",  # Required field
-                    "schema": {
-                        "fields": [
-                            {"name": "id", "type": "string", "nullable": False}
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                     # Missing optional fields: description, info, support, servers, quality, lifecycle, etc.
                 }
 
-                hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-                    raw_contract=json.dumps(minimal_odcs),
-                    format="JSON",
-                    spec_type="ODCS"
+                (
+                    hub_contract,
+                    detected_spec_type,
+                    detected_spec_version,
+                    norm_status,
+                    norm_errors,
+                    norm_warnings,
+                ) = normalize_contract(
+                    raw_contract=json.dumps(minimal_odcs), format="JSON", spec_type="ODCS"
                 )
 
                 self.assertIsNotNone(
                     hub_contract,
-                    f"Normalization should succeed with missing optional fields for ODCS {version}"
+                    f"Normalization should succeed with missing optional fields for ODCS {version}",
                 )
                 self.assertIn(
                     norm_status,
-                    [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
-                    f"Status should be OK or WARNINGS for minimal contract (version {version}), got {norm_status}. Errors: {norm_errors}"
+                    [
+                        NormalizationStatus.NORMALIZED_OK,
+                        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    ],
+                    f"Status should be OK or WARNINGS for minimal contract (version {version}), got {norm_status}. Errors: {norm_errors}",
                 )
 
     # ========== NO REGRESSION TESTS ==========
@@ -763,15 +808,22 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
         baseline_contract = create_odcs_contract("3.0.2", "baseline-3-0-2")
 
         # Normalize baseline
-        baseline_hub_contract, baseline_detected_spec_type, baseline_detected_spec_version, baseline_norm_status, baseline_norm_errors, baseline_norm_warnings = normalize_contract(
-            raw_contract=json.dumps(baseline_contract),
-            format="JSON",
-            spec_type="ODCS"
+        (
+            baseline_hub_contract,
+            baseline_detected_spec_type,
+            baseline_detected_spec_version,
+            baseline_norm_status,
+            baseline_norm_errors,
+            baseline_norm_warnings,
+        ) = normalize_contract(
+            raw_contract=json.dumps(baseline_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(baseline_hub_contract, "Baseline ODCS 3.0.2 should normalize")
         self.assertEqual(len(baseline_norm_errors), 0, "Baseline should have no errors")
-        self.assertEqual(baseline_hub_contract["id"], "baseline-3-0-2", "Contract ID should be preserved")
+        self.assertEqual(
+            baseline_hub_contract["id"], "baseline-3-0-2", "Contract ID should be preserved"
+        )
 
         # Verify baseline contract structure
         self.assertIn("schema", baseline_hub_contract)
@@ -783,10 +835,15 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
         # Create baseline (3.0.2)
         baseline_contract = create_odcs_contract("3.0.2", "baseline-regression")
-        baseline_hub_contract, baseline_detected_spec_type, baseline_detected_spec_version, baseline_norm_status, baseline_norm_errors, baseline_norm_warnings = normalize_contract(
-            raw_contract=json.dumps(baseline_contract),
-            format="JSON",
-            spec_type="ODCS"
+        (
+            baseline_hub_contract,
+            baseline_detected_spec_type,
+            baseline_detected_spec_version,
+            baseline_norm_status,
+            baseline_norm_errors,
+            baseline_norm_warnings,
+        ) = normalize_contract(
+            raw_contract=json.dumps(baseline_contract), format="JSON", spec_type="ODCS"
         )
 
         self.assertIsNotNone(baseline_hub_contract, "Baseline should normalize")
@@ -798,33 +855,38 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
             with self.subTest(version=version):
                 contract = create_odcs_contract(version, f"regression-test-{version}")
 
-                hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-                    raw_contract=json.dumps(contract),
-                    format="JSON",
-                    spec_type="ODCS"
+                (
+                    hub_contract,
+                    detected_spec_type,
+                    detected_spec_version,
+                    norm_status,
+                    norm_errors,
+                    norm_warnings,
+                ) = normalize_contract(
+                    raw_contract=json.dumps(contract), format="JSON", spec_type="ODCS"
                 )
 
                 # Verify normalization succeeds
                 self.assertIsNotNone(
-                    hub_contract,
-                    f"ODCS version {version} should normalize without regression"
+                    hub_contract, f"ODCS version {version} should normalize without regression"
                 )
                 self.assertEqual(
-                    len(norm_errors), 0,
-                    f"No errors expected for version {version}: {norm_errors}"
+                    len(norm_errors), 0, f"No errors expected for version {version}: {norm_errors}"
                 )
 
                 # Verify contract ID is preserved
                 self.assertEqual(
-                    hub_contract["id"], f"regression-test-{version}",
-                    f"Contract ID should be preserved for version {version}"
+                    hub_contract["id"],
+                    f"regression-test-{version}",
+                    f"Contract ID should be preserved for version {version}",
                 )
 
                 # Verify schema fields are preserved
                 result_schema_fields = hub_contract.get("schema", {}).get("fields", [])
                 self.assertGreater(
-                    len(result_schema_fields), 0,
-                    f"Schema fields should be preserved for version {version}"
+                    len(result_schema_fields),
+                    0,
+                    f"Schema fields should be preserved for version {version}",
                 )
 
     def test_odps_all_versions_no_regression(self):
@@ -841,18 +903,20 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                 # Verify normalization succeeds
                 self.assertIsNotNone(
                     result.hub_contract,
-                    f"ODPS version {version} should normalize without regression"
+                    f"ODPS version {version} should normalize without regression",
                 )
                 self.assertEqual(
-                    len(result.errors), 0,
-                    f"No errors expected for version {version}: {result.errors}"
+                    len(result.errors),
+                    0,
+                    f"No errors expected for version {version}: {result.errors}",
                 )
 
                 # Verify product ID is preserved
                 expected_id = f"regression-test-{version}"
                 self.assertEqual(
-                    result.hub_contract["id"], expected_id,
-                    f"Product ID should be preserved for version {version}"
+                    result.hub_contract["id"],
+                    expected_id,
+                    f"Product ID should be preserved for version {version}",
                 )
 
     def test_odcs_normalization_consistency_across_versions(self):
@@ -866,10 +930,15 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
             contract = create_odcs_contract(version, contract_id)
             contracts[version] = contract
 
-            hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-                raw_contract=json.dumps(contract),
-                format="JSON",
-                spec_type="ODCS"
+            (
+                hub_contract,
+                detected_spec_type,
+                detected_spec_version,
+                norm_status,
+                norm_errors,
+                norm_warnings,
+            ) = normalize_contract(
+                raw_contract=json.dumps(contract), format="JSON", spec_type="ODCS"
             )
             results[version] = {
                 "hub_contract": hub_contract,
@@ -877,24 +946,23 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                 "detected_spec_version": detected_spec_version,
                 "norm_status": norm_status,
                 "norm_errors": norm_errors,
-                "norm_warnings": norm_warnings
+                "norm_warnings": norm_warnings,
             }
 
             # All should succeed
             self.assertIsNotNone(
-                hub_contract,
-                f"ODCS version {version} should normalize for consistency test"
+                hub_contract, f"ODCS version {version} should normalize for consistency test"
             )
             self.assertEqual(
-                len(norm_errors), 0,
-                f"No errors expected for version {version}: {norm_errors}"
+                len(norm_errors), 0, f"No errors expected for version {version}: {norm_errors}"
             )
 
         # Verify all produce valid HubContract with same ID
         for version in ODCS_VERSIONS:
             self.assertEqual(
-                results[version]["hub_contract"]["id"], "consistency-test",
-                f"Contract ID should be consistent across versions for {version}"
+                results[version]["hub_contract"]["id"],
+                "consistency-test",
+                f"Contract ID should be consistent across versions for {version}",
             )
             # Verify schema is preserved
             self.assertIn("schema", results[version]["hub_contract"])
@@ -920,20 +988,20 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
 
                 # Test Product-First flow (creates both ODPS and ODCS)
                 response = self.client.post(
-                    '/api/v1/contracts/products/',
+                    "/api/v1/contracts/products/",
                     {
                         "original_raw": json.dumps(odps_doc),
                         "original_format": "JSON",
                     },
-                    format='json'
+                    format="json",
                 )
 
                 # Should succeed for 4.1 and 4.0
                 if odps_version in ["4.1", "4.0"]:
                     self.assertEqual(response.status_code, status.HTTP_201_CREATED)
                     if response.status_code == status.HTTP_201_CREATED:
-                        self.assertIn('odps_contract', response.data)
-                        self.assertIn('odcs_contract', response.data)
+                        self.assertIn("odps_contract", response.data)
+                        self.assertIn("odcs_contract", response.data)
 
     def test_comprehensive_version_detection_accuracy(self):
         """Comprehensive test: Verify version detection accuracy for all versions"""
@@ -973,25 +1041,36 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                 # All should normalize successfully (OK or WARNINGS, not FAILED)
                 self.assertIn(
                     result.status,
-                    [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
-                    f"ODPS {version} should normalize successfully"
+                    [
+                        NormalizationStatus.NORMALIZED_OK,
+                        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    ],
+                    f"ODPS {version} should normalize successfully",
                 )
 
         # Test all ODCS versions
         for version in ODCS_VERSIONS:
             with self.subTest(format="ODCS", version=version):
                 odcs_doc = create_odcs_contract(version)
-                hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-                    raw_contract=json.dumps(odcs_doc),
-                    format="JSON",
-                    spec_type="ODCS"
+                (
+                    hub_contract,
+                    detected_spec_type,
+                    detected_spec_version,
+                    norm_status,
+                    norm_errors,
+                    norm_warnings,
+                ) = normalize_contract(
+                    raw_contract=json.dumps(odcs_doc), format="JSON", spec_type="ODCS"
                 )
 
                 # All should normalize successfully
                 self.assertIn(
                     norm_status,
-                    [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
-                    f"ODCS {version} should normalize successfully"
+                    [
+                        NormalizationStatus.NORMALIZED_OK,
+                        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    ],
+                    f"ODCS {version} should normalize successfully",
                 )
 
     def test_comprehensive_api_creation_all_versions(self):
@@ -1003,16 +1082,17 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
             with self.subTest(format="ODPS", version=version):
                 odps_doc = create_odps_contract(version, f"api-test-{version}")
                 response = self.client.post(
-                    '/api/v1/contracts/products/',
+                    "/api/v1/contracts/products/",
                     {
                         "original_raw": json.dumps(odps_doc),
                         "original_format": "JSON",
                     },
-                    format='json'
+                    format="json",
                 )
                 self.assertEqual(
-                    response.status_code, status.HTTP_201_CREATED,
-                    f"ODPS {version} should be creatable via API"
+                    response.status_code,
+                    status.HTTP_201_CREATED,
+                    f"ODPS {version} should be creatable via API",
                 )
 
         # Test ODCS versions via Contract endpoint
@@ -1020,22 +1100,23 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
             with self.subTest(format="ODCS", version=version):
                 odcs_doc = create_odcs_contract(version, f"api-test-{version}")
                 response = self.client.post(
-                    '/api/v1/contracts/',
+                    "/api/v1/contracts/",
                     {
                         "original_raw": json.dumps(odcs_doc),
                         "original_format": "JSON",
                         "original_spec_type": "ODCS",
                     },
-                    format='json'
+                    format="json",
                 )
                 self.assertEqual(
-                    response.status_code, status.HTTP_201_CREATED,
-                    f"ODCS {version} should be creatable via API"
+                    response.status_code,
+                    status.HTTP_201_CREATED,
+                    f"ODCS {version} should be creatable via API",
                 )
 
                 # Verify contract was created with correct version
                 if response.status_code == status.HTTP_201_CREATED:
-                    contract_id = response.data['id']
+                    contract_id = response.data["id"]
                     contract = Contract.objects.get(id=contract_id, tenant=self.tenant)
                     self.assertEqual(contract.original_spec_type, OriginalSpecType.ODCS)
                     # Version may be normalized by API (especially older versions may default to 3.0.2)
@@ -1044,7 +1125,7 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                     self.assertIn(
                         contract.original_spec_version,
                         ODCS_VERSIONS + ["3.0.0"],  # Allow any valid version
-                        f"Version should be a valid ODCS version, got {contract.original_spec_version}"
+                        f"Version should be a valid ODCS version, got {contract.original_spec_version}",
                     )
 
     def test_comprehensive_state_consistency_all_versions(self):
@@ -1058,17 +1139,17 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
             with self.subTest(version=version):
                 odcs_doc = create_odcs_contract(version, f"state-test-{version}")
                 response = self.client.post(
-                    '/api/v1/contracts/',
+                    "/api/v1/contracts/",
                     {
                         "original_raw": json.dumps(odcs_doc),
                         "original_format": "JSON",
                         "original_spec_type": "ODCS",
                     },
-                    format='json'
+                    format="json",
                 )
 
                 if response.status_code == status.HTTP_201_CREATED:
-                    contract_id = response.data['id']
+                    contract_id = response.data["id"]
                     created_contracts[version] = contract_id
 
                     # Verify database state
@@ -1080,16 +1161,197 @@ class BackwardCompatibilityE2EComprehensiveTest(TestCase):
                     self.assertIn(
                         contract.original_spec_version,
                         ODCS_VERSIONS + ["3.0.0"],  # Allow any valid version
-                        f"Version should be a valid ODCS version, got {contract.original_spec_version}"
+                        f"Version should be a valid ODCS version, got {contract.original_spec_version}",
                     )
                     self.assertIn(
                         contract.normalization_status,
-                        [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+                        [
+                            NormalizationStatus.NORMALIZED_OK,
+                            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                        ],
                     )
 
                     # Verify API state
-                    get_response = self.client.get(f'/api/v1/contracts/{contract_id}/')
+                    get_response = self.client.get(f"/api/v1/contracts/{contract_id}/")
                     self.assertEqual(get_response.status_code, status.HTTP_200_OK)
                     # API may normalize versions, so check it's a valid version
-                    api_version = get_response.data['original_spec_version']
-                    self.assertIn(api_version, ODCS_VERSIONS + ["3.0.0"], "API should return a valid version")
+                    api_version = get_response.data["original_spec_version"]
+                    self.assertIn(
+                        api_version, ODCS_VERSIONS + ["3.0.0"], "API should return a valid version"
+                    )
+
+    def test_backward_compatibility_unicode_characters(self):
+        """Test backward compatibility with unicode characters."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODCS contract with unicode characters
+        odcs_doc = create_odcs_contract("3.0.2", "测试合同")
+        odcs_doc["name"] = "测试合同 🏢"
+        odcs_doc["description"] = "测试描述"
+
+        response = self.client.post(
+            "/api/v1/contracts/",
+            {
+                "original_raw": json.dumps(odcs_doc),
+                "original_format": "JSON",
+                "original_spec_type": "ODCS",
+            },
+            format="json",
+        )
+
+        # Should succeed
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Verify unicode characters are preserved
+        contract_id = response.data["id"]
+        contract = Contract.objects.get(id=contract_id)
+        hub_contract = contract.hub_contract_json
+        if hub_contract and "info" in hub_contract and "name" in hub_contract["info"]:
+            self.assertEqual(
+                hub_contract["info"]["name"],
+                "测试合同 🏢",
+                "Unicode characters should be preserved",
+            )
+
+    def test_backward_compatibility_special_characters(self):
+        """Test backward compatibility with special characters."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODCS contract with special characters
+        odcs_doc = create_odcs_contract("3.0.2", "test&co")
+        odcs_doc["name"] = "Test & Co. (Special)"
+
+        response = self.client.post(
+            "/api/v1/contracts/",
+            {
+                "original_raw": json.dumps(odcs_doc),
+                "original_format": "JSON",
+                "original_spec_type": "ODCS",
+            },
+            format="json",
+        )
+
+        # Should succeed
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Verify special characters are preserved
+        contract_id = response.data["id"]
+        contract = Contract.objects.get(id=contract_id)
+        hub_contract = contract.hub_contract_json
+        if hub_contract and "info" in hub_contract and "name" in hub_contract["info"]:
+            self.assertEqual(
+                hub_contract["info"]["name"],
+                "Test & Co. (Special)",
+                "Special characters should be preserved",
+            )
+
+    def test_backward_compatibility_very_large_documents(self):
+        """Test backward compatibility with very large documents."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODCS contract with very large field
+        odcs_doc = create_odcs_contract("3.0.2", "large-test")
+        odcs_doc["large_field"] = "A" * 100000  # 100KB string
+
+        response = self.client.post(
+            "/api/v1/contracts/",
+            {
+                "original_raw": json.dumps(odcs_doc),
+                "original_format": "JSON",
+                "original_spec_type": "ODCS",
+            },
+            format="json",
+        )
+
+        # Should either succeed or fail gracefully
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+
+    def test_backward_compatibility_none_values(self):
+        """Test backward compatibility with None values."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODCS contract with None values
+        odcs_doc = create_odcs_contract("3.0.2", "none-test")
+        odcs_doc["optional_field"] = None
+
+        response = self.client.post(
+            "/api/v1/contracts/",
+            {
+                "original_raw": json.dumps(odcs_doc),
+                "original_format": "JSON",
+                "original_spec_type": "ODCS",
+            },
+            format="json",
+        )
+
+        # Should handle None values gracefully
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+
+    def test_backward_compatibility_nested_structures(self):
+        """Test backward compatibility with nested structures."""
+        self.client.force_authenticate(user=self.user)
+
+        # Create ODCS contract with deeply nested structure
+        odcs_doc = create_odcs_contract("3.0.2", "nested-test")
+        odcs_doc["nested"] = {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}}
+
+        response = self.client.post(
+            "/api/v1/contracts/",
+            {
+                "original_raw": json.dumps(odcs_doc),
+                "original_format": "JSON",
+                "original_spec_type": "ODCS",
+            },
+            format="json",
+        )
+
+        # Should succeed
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Verify nested structure is preserved
+        contract_id = response.data["id"]
+        contract = Contract.objects.get(id=contract_id)
+        hub_contract = contract.hub_contract_json
+        if hub_contract and "nested" in hub_contract:
+            self.assertIn("level1", hub_contract["nested"], "Nested structures should be preserved")
+
+    def test_backward_compatibility_cross_tenant_isolation(self):
+        """Test that backward compatibility maintains cross-tenant isolation."""
+        # Create second tenant
+        tenant2 = Tenant.objects.create(
+            name="Backward Compatibility Test Tenant 2",
+            slug="backward-compat-test-2",
+            status=TenantStatus.ACTIVE,
+            kyc_status=KYCStatus.VERIFIED,
+        )
+
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        user2 = User.objects.create_user(
+            email="backward-compat-test-2@example.com",
+            password="testpass123",
+            tenant=tenant2,
+            status=UserStatus.ACTIVE,
+        )
+
+        # Authenticate as user2
+        self.client.force_authenticate(user=user2)
+
+        # Create ODCS contract for tenant2
+        odcs_doc = create_odcs_contract("3.0.2", "tenant2-test")
+        response = self.client.post(
+            "/api/v1/contracts/",
+            {
+                "original_raw": json.dumps(odcs_doc),
+                "original_format": "JSON",
+                "original_spec_type": "ODCS",
+            },
+            format="json",
+        )
+
+        # Should succeed
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        contract_id = response.data["id"]
+        contract = Contract.objects.get(id=contract_id)
+
+        # Verify tenant isolation
+        self.assertEqual(contract.tenant, tenant2, "Contract should belong to tenant2")
+        self.assertNotEqual(contract.tenant, self.tenant, "Contract should not belong to tenant1")

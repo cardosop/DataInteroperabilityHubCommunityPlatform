@@ -3,17 +3,19 @@ Unit tests for ODCS Format Converter.
 
 Tests format conversion utilities (JSON/YAML) following engineering best practices.
 """
-import pytest
+
 import json
+
+import pytest
 from django.test import TestCase
 
+from hub.apps.contracts.odcs_errors import ODCSExportError
 from hub.apps.contracts.odcs_format_converter import (
-    convert_yaml_to_json,
     convert_json_to_yaml,
+    convert_yaml_to_json,
     format_odcs_as_json,
     format_odcs_as_yaml,
 )
-from hub.apps.contracts.odcs_errors import ODCSExportError
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -42,12 +44,15 @@ version: 1.0.0
 
     def test_convert_json_to_yaml_success(self):
         """Test successful JSON to YAML conversion"""
-        json_content = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-contract",
-            "name": "Test Contract"
-        }, indent=2)
+        json_content = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-contract",
+                "name": "Test Contract",
+            },
+            indent=2,
+        )
 
         yaml_result = convert_json_to_yaml(json_content)
 
@@ -105,13 +110,16 @@ kind: DataContract
 
     def test_round_trip_conversion(self):
         """Test round-trip conversion (JSON -> YAML -> JSON)"""
-        original_json = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-contract",
-            "name": "Test Contract",
-            "version": "1.0.0"
-        }, indent=2)
+        original_json = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-contract",
+                "name": "Test Contract",
+                "version": "1.0.0",
+            },
+            indent=2,
+        )
 
         # Convert JSON to YAML
         yaml_result = convert_json_to_yaml(original_json)
@@ -144,7 +152,7 @@ class ODCSFormatJSONTest(TestCase):
             "kind": "DataContract",
             "id": "test-contract",
             "name": "Test Contract",
-            "version": "1.0.0"
+            "version": "1.0.0",
         }
 
         result = format_odcs_as_json(odcs_doc)
@@ -170,7 +178,7 @@ class ODCSFormatJSONTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "name": "Test Contract"
+            "name": "Test Contract",
         }
 
         result = format_odcs_as_json(odcs_doc, indent=4)
@@ -183,10 +191,10 @@ class ODCSFormatJSONTest(TestCase):
         self.assertEqual(parsed["apiVersion"], "odcs.io/v3.0.2")
 
         # Verify indentation (should have 4 spaces)
-        lines = result.split('\n')
+        lines = result.split("\n")
         if len(lines) > 1:
             # Second line should start with 4 spaces
-            self.assertTrue(lines[1].startswith('    '))
+            self.assertTrue(lines[1].startswith("    "))
 
     def test_format_odcs_as_json_with_unicode(self):
         """
@@ -199,7 +207,7 @@ class ODCSFormatJSONTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "name": "Test Contract with émojis 🚀 and 中文"
+            "name": "Test Contract with émojis 🚀 and 中文",
         }
 
         result = format_odcs_as_json(odcs_doc, ensure_ascii=False)
@@ -226,7 +234,7 @@ class ODCSFormatJSONTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "description": "Line 1\nLine 2\tTabbed\rCarriage return\"Quote"
+            "description": 'Line 1\nLine 2\tTabbed\rCarriage return"Quote',
         }
 
         result = format_odcs_as_json(odcs_doc)
@@ -252,16 +260,9 @@ class ODCSFormatJSONTest(TestCase):
             "name": "Test Contract",
             "version": "1.0.0",
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
             },
-            "quality": {
-                "rules": [
-                    {"name": "not_null", "type": "not_null", "field": "id"}
-                ]
-            }
+            "quality": {"rules": [{"name": "not_null", "type": "not_null", "field": "id"}]},
         }
 
         result = format_odcs_as_json(odcs_doc)
@@ -305,6 +306,7 @@ class ODCSFormatJSONTest(TestCase):
         Scenario: Format document with non-serializable object
         Expected: ODCSExportError with error context
         """
+
         class NonSerializable:
             pass
 
@@ -313,7 +315,7 @@ class ODCSFormatJSONTest(TestCase):
             "kind": "DataContract",
             "id": "test-contract",
             "name": "Test Contract",
-            "custom": NonSerializable()  # Non-serializable
+            "custom": NonSerializable(),  # Non-serializable
         }
 
         with self.assertRaises(ODCSExportError) as context:
@@ -335,7 +337,7 @@ class ODCSFormatJSONTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "name": "Test Contract"
+            "name": "Test Contract",
         }
 
         result = format_odcs_as_json(odcs_doc)
@@ -375,7 +377,7 @@ class ODCSFormatYAMLTest(TestCase):
             "kind": "DataContract",
             "id": "test-contract",
             "name": "Test Contract",
-            "version": "1.0.0"
+            "version": "1.0.0",
         }
 
         result = format_odcs_as_yaml(odcs_doc)
@@ -406,7 +408,7 @@ class ODCSFormatYAMLTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "name": "Test Contract with émojis 🚀 and 中文"
+            "name": "Test Contract with émojis 🚀 and 中文",
         }
 
         result = format_odcs_as_yaml(odcs_doc, allow_unicode=True)
@@ -438,7 +440,7 @@ class ODCSFormatYAMLTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "description": "Line 1\nLine 2\tTabbed\rCarriage return\"Quote"
+            "description": 'Line 1\nLine 2\tTabbed\rCarriage return"Quote',
         }
 
         result = format_odcs_as_yaml(odcs_doc)
@@ -467,16 +469,9 @@ class ODCSFormatYAMLTest(TestCase):
             "name": "Test Contract",
             "version": "1.0.0",
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
             },
-            "quality": {
-                "rules": [
-                    {"name": "not_null", "type": "not_null", "field": "id"}
-                ]
-            }
+            "quality": {"rules": [{"name": "not_null", "type": "not_null", "field": "id"}]},
         }
 
         result = format_odcs_as_yaml(odcs_doc)
@@ -529,7 +524,7 @@ class ODCSFormatYAMLTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "name": "Test Contract"
+            "name": "Test Contract",
         }
 
         result = format_odcs_as_yaml(odcs_doc)
@@ -579,11 +574,8 @@ class ODCSFormatRoundTripTest(TestCase):
             "name": "Test Contract",
             "version": "1.0.0",
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
         }
 
         # Format as JSON
@@ -621,7 +613,7 @@ class ODCSFormatRoundTripTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "name": "Test Contract with émojis 🚀 and 中文"
+            "name": "Test Contract with émojis 🚀 and 中文",
         }
 
         # Format as JSON
@@ -657,7 +649,7 @@ class ODCSFormatRoundTripTest(TestCase):
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
-            "description": "Line 1\nLine 2\tTabbed"
+            "description": "Line 1\nLine 2\tTabbed",
         }
 
         # Format as JSON
@@ -676,3 +668,154 @@ class ODCSFormatRoundTripTest(TestCase):
         self.assertIn("\n", json_parsed_2["description"])
         self.assertIn("\t", json_parsed_2["description"])
 
+
+class ODCSFormatConverterEdgeCasesTest(TestCase):
+    """Test edge cases for ODCS format converter"""
+
+    def test_convert_yaml_to_json_handles_very_large_documents(self):
+        """Test that YAML to JSON conversion handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        yaml_content = f"""
+apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: test-contract
+name: Test Contract
+description: {large_description}
+"""
+        # Should handle large documents gracefully
+        try:
+            result = convert_yaml_to_json(yaml_content)
+            parsed = json.loads(result)
+            # If conversion succeeds, verify structure
+            self.assertIn("apiVersion", parsed)
+        except Exception as e:
+            # If conversion fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSExportError, "Should raise ODCSExportError for very large documents"
+            )
+
+    def test_convert_json_to_yaml_handles_very_large_documents(self):
+        """Test that JSON to YAML conversion handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        json_content = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-contract",
+                "name": "Test Contract",
+                "description": large_description,
+            },
+            indent=2,
+        )
+
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not available")
+
+        # Should handle large documents gracefully
+        try:
+            result = convert_json_to_yaml(json_content)
+            parsed = yaml.safe_load(result)
+            # If conversion succeeds, verify structure
+            self.assertIn("apiVersion", parsed)
+        except Exception as e:
+            # If conversion fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSExportError, "Should raise ODCSExportError for very large documents"
+            )
+
+    def test_convert_yaml_to_json_handles_nested_structures(self):
+        """Test that YAML to JSON conversion handles deeply nested structures correctly."""
+        yaml_content = """
+apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: test-contract
+name: Test Contract
+nested:
+  level1:
+    level2:
+      level3:
+        level4:
+          value: deep
+"""
+        result = convert_yaml_to_json(yaml_content)
+
+        # Verify nested structure is preserved
+        parsed = json.loads(result)
+        self.assertIn("nested", parsed)
+        self.assertIn("level1", parsed["nested"], "Nested structures should be preserved")
+
+    def test_convert_json_to_yaml_handles_nested_structures(self):
+        """Test that JSON to YAML conversion handles deeply nested structures correctly."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not available")
+
+        json_content = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-contract",
+                "name": "Test Contract",
+                "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+            },
+            indent=2,
+        )
+
+        result = convert_json_to_yaml(json_content)
+
+        # Verify nested structure is preserved
+        parsed = yaml.safe_load(result)
+        self.assertIn("nested", parsed)
+        self.assertIn("level1", parsed["nested"], "Nested structures should be preserved")
+
+    def test_format_odcs_as_json_handles_none_values(self):
+        """Test that JSON formatting handles None values correctly."""
+        odcs_doc = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-contract",
+            "name": "Test Contract",
+            "description": None,  # None value
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = format_odcs_as_json(odcs_doc)
+            parsed = json.loads(result)
+            # None values may be omitted or converted to null
+            self.assertIsNotNone(parsed)
+        except Exception as e:
+            # If formatting fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSExportError, "Should raise ODCSExportError for None values"
+            )
+
+    def test_format_odcs_as_yaml_handles_none_values(self):
+        """Test that YAML formatting handles None values correctly."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not available")
+
+        odcs_doc = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-contract",
+            "name": "Test Contract",
+            "description": None,  # None value
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = format_odcs_as_yaml(odcs_doc)
+            parsed = yaml.safe_load(result)
+            # None values may be omitted or converted to null
+            self.assertIsNotNone(parsed)
+        except Exception as e:
+            # If formatting fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSExportError, "Should raise ODCSExportError for None values"
+            )

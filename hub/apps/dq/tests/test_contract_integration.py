@@ -69,7 +69,7 @@ class ContractQualityRulesExtractionTest(TestCase):
         # Create contract with quality rules
         self.contract_with_rules = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',
@@ -107,7 +107,7 @@ class ContractQualityRulesExtractionTest(TestCase):
         # Create contract without quality rules
         self.contract_without_rules = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',
@@ -251,7 +251,7 @@ class DQServiceContractIntegrationTest(TestCase):
         
         self.contract = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',
@@ -354,7 +354,7 @@ class DQServiceContractIntegrationTest(TestCase):
         # Test with contract without default profile
         contract_no_profile = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',

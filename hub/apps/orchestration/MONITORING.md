@@ -305,6 +305,27 @@ workflow.execute.{workflow_name}
 - Default minimum failures: 10
 - Default time window: 60 minutes
 
+#### 6. Validation Failure Rate Alert (Task 5.3.1)
+
+**Condition**: High validation-related failure rate for a workflow (DB-based; complements Prometheus validation metrics)
+
+**Severity**: Medium or High (High when rate ≥ 25%)
+
+**Alert Fields**:
+- `alert_type`: "validation_failure_rate"
+- `workflow_name`, `workflow_version`: Workflow identifier
+- `validation_failed_count`: Number of failures with validation context
+- `total_failed_count`, `started_count`: Counts in window
+- `validation_failure_rate`: Rate (0.0–1.0)
+- `time_window_minutes`: Time window checked
+
+**Configuration**:
+- Default minimum validation failures: 5
+- Default minimum failure rate: 0.1 (10%)
+- Default time window: 60 minutes (or use `failure_rate_window_minutes` in `check_all_alerts`)
+
+**Usage**: `alerting.check_validation_failure_rate(...)` or included in `alerting.check_all_alerts()` under key `"validation_failures"`.
+
 ### Using the Alerting Service
 
 ```python
@@ -326,6 +347,9 @@ failure_alerts = alerting.check_failed_workflows(min_failure_count=5)
 retry_alerts = alerting.check_retry_exhaustion()
 stuck_alerts = alerting.check_stuck_workflows(stuck_threshold_minutes=30)
 step_alerts = alerting.check_step_failure_rate(min_failure_rate=0.5)
+validation_alerts = alerting.check_validation_failure_rate(
+    min_validation_failures=5, min_failure_rate=0.1
+)
 
 # Send individual alert
 alert = {
@@ -363,6 +387,60 @@ def send_alert(self, alert: Dict[str, Any]) -> bool:
     
     return True
 ```
+
+---
+
+## Post-Deployment Monitoring (Task 5.3)
+
+After deploying workflow business rules validation, use the following to monitor validation metrics, workflow execution, and optimize based on metrics.
+
+### 5.3.1 Monitor Validation Metrics
+
+- **Validation success/failure rates**: Prometheus metric `workflow_business_rules_validations_total` with label `status=valid` or `status=invalid`. View in Grafana panel "Business Rules Validation Success Rate" and "Business Rules Validation Failures by Rule".
+- **Validation duration**: `workflow_business_rules_validation_duration_seconds` (histogram). View P95 in "Business Rules Validation Duration (P95)".
+- **Cache hit rates**: `workflow_business_rules_validation_cache_hits_total` and `_cache_misses_total`. View in "Business Rules Validation Cache Hit Rate" and "Cache Hits vs Misses".
+- **DB-based report**: Run `python manage.py report_workflow_post_deployment_metrics --window 60` to get validation-related failure counts from the database (workflows/steps that failed with validation in error message/details).
+
+### 5.3.2 Monitor Workflow Execution
+
+- **Workflow success/failure rates**: Prometheus `workflow_instances_started_total`, `workflow_instances_completed_total`, `workflow_instances_failed_total`. View in "Workflow Success Rate" and "Workflow Failure Rate".
+- **Workflow duration**: `workflow_execution_duration_seconds`. View P95 in "Workflow Execution Duration (P95)".
+- **Error rates**: Same report command outputs success_rate, failure_rate, and avg_duration per workflow from the DB.
+
+### 5.3.3 Optimize Based on Metrics
+
+- **Management command**: `report_workflow_post_deployment_metrics` prints recommendations when:
+  - Workflow success rate is below 95% (DoD-5.5 target).
+  - Workflow failure rate exceeds 5%.
+  - Validation-related failure rate exceeds 10% (review rules) or 25% (critical).
+  - Step failure rate exceeds 10%.
+- **Actions**: Review business rules and input data; tune validation logic or cache TTL; use Grafana for live validation/cache metrics.
+
+### Report Command
+
+```bash
+# Default 60-minute window
+python manage.py report_workflow_post_deployment_metrics
+
+# Custom window (minutes)
+python manage.py report_workflow_post_deployment_metrics --window 120
+
+# JSON output
+python manage.py report_workflow_post_deployment_metrics --json
+```
+
+Implementation: `hub.apps.orchestration.post_deployment.PostDeploymentMetricsCollector` and management command `report_workflow_post_deployment_metrics`.
+
+---
+
+## Phase 5 Definition of Done (Workflow Business Rules)
+
+- **DoD-5.1 Feature flag configured and tested**: `ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION`, `WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE`, per-workflow and per-tenant settings. Test with `report_workflow_validation_rollout` and `hub.apps.orchestration.tests.test_feature_flags`.
+- **DoD-5.2 Monitoring and alerts configured**: Prometheus rules in `monitoring/prometheus/alerts/workflow-alerts.yml` (workflow and business rules validation alerts). Grafana dashboard `workflow-orchestration.json`. Application-level alerts via `WorkflowAlerting.check_all_alerts()` (includes `validation_failures`). See Alerting section above.
+- **DoD-5.3 Gradual rollout completed successfully**: Use feature flag rollout percentage and per-workflow lists; verify with `report_workflow_validation_rollout`.
+- **DoD-5.4 All workflows using business rules validation**: Workflow engine runs validation in `_execute_task_step()` when feature flag is enabled; all workflows that use the engine use business rules validation when enabled.
+- **DoD-5.5 Performance metrics meet criteria**: Success rate target ≥ 95%, error rate ≤ 5%, validation failure rate thresholds (10% review, 25% critical). Report command and alerts flag when criteria are not met.
+- **DoD-5.6 Documentation updated with deployment experience**: This MONITORING.md (post-deployment, alerts, DoD), WORKFLOW_ORCHESTRATION.md, and runbooks (e.g. gradual rollout, rollback) document deployment and operations.
 
 ---
 

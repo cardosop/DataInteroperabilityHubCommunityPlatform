@@ -39,6 +39,15 @@ if HAS_PYTEST:
 class SimpleAssetCreationTest(TransactionTestCase):
     """Simple test to verify basic infrastructure"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    @classmethod
+    def _fixture_teardown(cls):
+        """Override to skip database flush for integration tests."""
+        # Don't flush - transactions are rolled back which provides isolation
+        pass
+
     def setUp(self):
         super().setUp()
         # Disconnect signals
@@ -48,10 +57,12 @@ class SimpleAssetCreationTest(TransactionTestCase):
 
         self.client = APIClient()
 
-        # Create tenant
+        # Create tenant (use unique name/slug to avoid conflicts)
+        import uuid
+        unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
-            name="Simple Test Tenant",
-            slug="simple-test-tenant",
+            name=f"Simple Test Tenant {unique_id}",
+            slug=f"simple-test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -63,10 +74,10 @@ class SimpleAssetCreationTest(TransactionTestCase):
             defaults={"description": "Data Provider"},
         )
 
-        # Create user
+        # Create user (use unique email to avoid conflicts)
         self.user = UserFactory.create_user(
             tenant=self.tenant,
-            email="simple@test.com",
+            email=f"simple-{unique_id}@test.com",
         )
         UserRole.objects.get_or_create(user=self.user, role=self.role)
 

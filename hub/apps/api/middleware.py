@@ -3,9 +3,11 @@ API Middleware
 
 Middleware for request ID generation, rate limiting, and request validation.
 """
-import uuid
-import time
+
 import logging
+import time
+import uuid
+
 import structlog
 from django.core.cache import cache
 from django.http import JsonResponse
@@ -18,239 +20,263 @@ class RequestIDMiddleware:
     """
     Middleware to generate and attach request ID to each request.
     """
-    
+
     def __init__(self, get_response):
         """Initialize middleware with get_response callable."""
         self.get_response = get_response
-    
+
     def __call__(self, request):
         """Process request and return response."""
         # Process request
         self.process_request(request)
-        
+
         # Get response
         response = self.get_response(request)
-        
+
         # Process response
         response = self.process_response(request, response)
-        
+
         return response
-    
+
     def process_request(self, request):
         """Generate request ID if not present"""
-        request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.id = request_id
         request.request_id = request_id
-        
+
         # Add request_id to structlog context
         structlog.contextvars.bind_contextvars(
             request_id=request_id,
             route=request.path,
             method=request.method,
         )
-        
+
         # Add tenant_id and user_id if available (will be set later by auth middleware)
         return None
-    
+
     def process_response(self, request, response):
         """Add request ID to response headers"""
-        if hasattr(request, 'request_id'):
-            response['X-Request-ID'] = request.request_id
-        
+        if hasattr(request, "request_id"):
+            response["X-Request-ID"] = request.request_id
+
         # Add tenant_id and user_id to context if available
-        if hasattr(request, 'tenant') and request.tenant:
+        if hasattr(request, "tenant") and request.tenant:
             structlog.contextvars.bind_contextvars(tenant_id=str(request.tenant.id))
-        
-        if hasattr(request, 'user') and request.user.is_authenticated:
+
+        if hasattr(request, "user") and request.user.is_authenticated:
             structlog.contextvars.bind_contextvars(user_id=str(request.user.id))
-        
+
         return response
 
 
 class SecurityHeadersMiddleware:
     """
     Middleware to add security headers (Django 6 enhancements).
-    
+
     Adds additional security headers beyond Django's built-in SecurityMiddleware:
     - X-Content-Type-Options (if not already set)
     - Referrer-Policy
     - Permissions-Policy (optional)
     """
-    
+
     def __init__(self, get_response):
         """Initialize middleware with get_response callable."""
         self.get_response = get_response
-    
+
     def __call__(self, request):
         """Process request and return response."""
         response = self.get_response(request)
         return self.process_response(request, response)
-    
+
     def process_response(self, request, response):
         """Add security headers to response."""
         from django.conf import settings
-        
+
         # X-Content-Type-Options (if not already set by SecurityMiddleware)
-        if 'X-Content-Type-Options' not in response:
-            if getattr(settings, 'SECURE_CONTENT_TYPE_NOSNIFF', True):
-                response['X-Content-Type-Options'] = 'nosniff'
-        
+        if "X-Content-Type-Options" not in response:
+            if getattr(settings, "SECURE_CONTENT_TYPE_NOSNIFF", True):
+                response["X-Content-Type-Options"] = "nosniff"
+
         # Referrer-Policy
-        referrer_policy = getattr(settings, 'SECURE_REFERRER_POLICY', 'strict-origin-when-cross-origin')
+        referrer_policy = getattr(
+            settings, "SECURE_REFERRER_POLICY", "strict-origin-when-cross-origin"
+        )
         if referrer_policy:
-            response['Referrer-Policy'] = referrer_policy
-        
+            response["Referrer-Policy"] = referrer_policy
+
         # Permissions-Policy (optional, configure as needed)
-        permissions_policy = getattr(settings, 'SECURE_PERMISSIONS_POLICY', None)
+        permissions_policy = getattr(settings, "SECURE_PERMISSIONS_POLICY", None)
         if permissions_policy:
             # Convert dict to header format: "geolocation=(), camera=()"
             policy_parts = [f"{key}={value}" for key, value in permissions_policy.items()]
-            response['Permissions-Policy'] = ', '.join(policy_parts)
-        
+            response["Permissions-Policy"] = ", ".join(policy_parts)
+
         return response
 
 
 class RateLimitMiddleware:
     """
+    DEPRECATED: This middleware is deprecated. Use hub.apps.rate_limiting.middleware.RateLimitMiddleware instead.
+
+    This middleware is kept for backward compatibility but should not be used in new code.
+    It is not included in MIDDLEWARE settings and will be removed in a future version.
+
     Middleware for rate limiting per tenant, per user, and per endpoint.
     """
-    
+
     def __init__(self, get_response):
         """Initialize middleware with get_response callable."""
         self.get_response = get_response
-    
+
     def __call__(self, request):
         """Process request and return response."""
         # Process request (may return early response)
         response = self.process_request(request)
         if response is not None:
             return response
-        
+
         # Get response
         response = self.get_response(request)
-        
+
         # Process response
         response = self.process_response(request, response)
-        
+
         return response
-    
+
     def process_request(self, request):
         """Check rate limits before processing request"""
         # Skip rate limiting for health checks and admin
-        if request.path.startswith('/health/') or request.path.startswith('/admin/'):
+        if request.path.startswith("/health/") or request.path.startswith("/admin/"):
             return None
-        
+
         # Skip rate limiting for non-API endpoints
-        if not request.path.startswith('/api/v1/'):
+        if not request.path.startswith("/api/v1/"):
             return None
-        
+
         # Get tenant and user from request
-        tenant = getattr(request, 'tenant', None)
-        tenant_id = str(tenant.id) if tenant and hasattr(tenant, 'id') else (str(tenant) if tenant else None)
-        user_id = getattr(request.user, 'id', None) if hasattr(request, 'user') and request.user.is_authenticated else None
-        
+        tenant = getattr(request, "tenant", None)
+        tenant_id = (
+            str(tenant.id)
+            if tenant and hasattr(tenant, "id")
+            else (str(tenant) if tenant else None)
+        )
+        user_id = (
+            getattr(request.user, "id", None)
+            if hasattr(request, "user") and request.user.is_authenticated
+            else None
+        )
+
         # Rate limit key components
         endpoint = request.path
         method = request.method
-        
+
         # Build rate limit keys
         keys = []
         if tenant_id:
-            keys.append(f'rate_limit:tenant:{tenant_id}:{method}:{endpoint}')
+            keys.append(f"rate_limit:tenant:{tenant_id}:{method}:{endpoint}")
         if user_id:
-            keys.append(f'rate_limit:user:{user_id}:{method}:{endpoint}')
-        
+            keys.append(f"rate_limit:user:{user_id}:{method}:{endpoint}")
+
         # Check rate limits
         for key in keys:
             if not self._check_rate_limit(key, request):
                 return JsonResponse(
                     {
-                        'error': {
-                            'code': 'RATE_LIMIT_EXCEEDED',
-                            'message': 'Rate limit exceeded for this endpoint',
-                            'http_status': 429,
-                            'request_id': getattr(request, 'id', str(uuid.uuid4())),
-                            'timestamp': timezone.now().isoformat(),
-                            'details': {
-                                'limit_type': 'tenant' if 'tenant' in key else 'user',
-                                'retry_after': 60
-                            }
+                        "error": {
+                            "code": "RATE_LIMIT_EXCEEDED",
+                            "message": "Rate limit exceeded for this endpoint",
+                            "http_status": 429,
+                            "request_id": getattr(request, "id", str(uuid.uuid4())),
+                            "timestamp": timezone.now().isoformat(),
+                            "details": {
+                                "limit_type": "tenant" if "tenant" in key else "user",
+                                "retry_after": 60,
+                            },
                         }
                     },
-                    status=429
+                    status=429,
                 )
-        
+
         return None
-    
+
     def _check_rate_limit(self, key, request):
         """
         Check if rate limit is exceeded.
-        
+
         Args:
             key: Rate limit cache key
             request: HTTP request object
-            
+
         Returns:
             True if within limit, False if exceeded
         """
         # Get rate limit configuration from settings
         from django.conf import settings
-        limit = getattr(settings, 'RATE_LIMIT_PER_TENANT', 100) if 'tenant' in key else getattr(settings, 'RATE_LIMIT_PER_USER', 100)
-        window = getattr(settings, 'RATE_LIMIT_WINDOW', 60)
-        
+
+        limit = (
+            getattr(settings, "RATE_LIMIT_PER_TENANT", 100)
+            if "tenant" in key
+            else getattr(settings, "RATE_LIMIT_PER_USER", 100)
+        )
+        window = getattr(settings, "RATE_LIMIT_WINDOW", 60)
+
         # Check if rate limiting is enabled
-        if not getattr(settings, 'RATE_LIMIT_ENABLED', True):
+        if not getattr(settings, "RATE_LIMIT_ENABLED", True):
             return True
-        
+
         # Get current count
         count = cache.get(key, 0)
-        
+
         if count >= limit:
             # Rate limit exceeded
             ttl = cache.ttl(key)
             if ttl is None:
                 ttl = window
-            
+
             # Add retry-after header
             request.retry_after = ttl
             return False
-        
+
         # Increment counter
         cache.set(key, count + 1, window)
         return True
-    
+
     def process_response(self, request, response):
         """Add rate limit headers to response"""
-        if hasattr(request, 'retry_after'):
-            response['Retry-After'] = str(request.retry_after)
-        
+        if hasattr(request, "retry_after"):
+            response["Retry-After"] = str(request.retry_after)
+
         # Add rate limit headers
-        if request.path.startswith('/api/v1/'):
+        if request.path.startswith("/api/v1/"):
             from django.conf import settings
-            
-            tenant_id = getattr(request, 'tenant', None)
+
+            tenant_id = getattr(request, "tenant", None)
             if tenant_id:
-                tenant_id = str(tenant_id.id) if hasattr(tenant_id, 'id') else str(tenant_id)
-            
-            user_id = getattr(request.user, 'id', None) if hasattr(request, 'user') and request.user.is_authenticated else None
-            
+                tenant_id = str(tenant_id.id) if hasattr(tenant_id, "id") else str(tenant_id)
+
+            user_id = (
+                getattr(request.user, "id", None)
+                if hasattr(request, "user") and request.user.is_authenticated
+                else None
+            )
+
             # Always add tenant-level rate limit headers (use default if no tenant)
-            limit = getattr(settings, 'RATE_LIMIT_PER_TENANT', 100)
+            limit = getattr(settings, "RATE_LIMIT_PER_TENANT", 100)
             if tenant_id:
-                key = f'rate_limit:tenant:{tenant_id}:{request.method}:{request.path}'
+                key = f"rate_limit:tenant:{tenant_id}:{request.method}:{request.path}"
                 count = cache.get(key, 0)
             else:
                 # Default limit when no tenant (for unauthenticated or system requests)
                 count = 0
-            response['X-RateLimit-Limit'] = str(limit)
-            response['X-RateLimit-Remaining'] = str(max(0, limit - count))
-            
+            response["X-RateLimit-Limit"] = str(limit)
+            response["X-RateLimit-Remaining"] = str(max(0, limit - count))
+
             # Add user-level rate limit headers if user is authenticated
             if user_id:
-                key = f'rate_limit:user:{user_id}:{request.method}:{request.path}'
+                key = f"rate_limit:user:{user_id}:{request.method}:{request.path}"
                 count = cache.get(key, 0)
-                limit = getattr(settings, 'RATE_LIMIT_PER_USER', 100)
-                response['X-RateLimit-User-Limit'] = str(limit)
-                response['X-RateLimit-User-Remaining'] = str(max(0, limit - count))
-        
+                limit = getattr(settings, "RATE_LIMIT_PER_USER", 100)
+                response["X-RateLimit-User-Limit"] = str(limit)
+                response["X-RateLimit-User-Remaining"] = str(max(0, limit - count))
+
         return response

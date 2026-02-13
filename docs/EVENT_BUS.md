@@ -303,9 +303,23 @@ EVENT_BUS_ENABLE_PERSISTENCE = True
 EVENT_BUS_MAX_RETRIES = 3
 ```
 
+## Publishers by service
+
+Which services publish to the event bus (Redis Pub/Sub + PostgreSQL persistence):
+
+| Service | Publishes to event bus? | Notes |
+|--------|---------------------------|-------|
+| **api-service** (Django) | **Yes** | All event publishing is done from the Hub Django app. Services (ContractService, AssetService, etc.) use publisher mixins from `hub/apps/core/events/service_publishers.py` and publish via `hub/apps/core/events` (bus, publisher). Event types include: `contract.*`, `asset.*`, `dataset.*`, `file.*`, `workflow.*`, `odps.*`, `marketplace.*`, `mesh.*`, `virtualization.*`, `ingestion.*`, `quality.*`, `compliance.*`, `version.*`, `access.*`, `lineage.*`, `search.*`, `payment.*`, `tenant.*`, `normalization.*`, `observability.*`, `integration.*`, `baas.*`, `ml.*`, and others. |
+| **semantic-service** | **N/A** | Does not publish to the event bus. Invoked by api-service (e.g. semantic mapping); outcomes are published by api-service (e.g. `odps.semantic.mapped`). |
+| **dq-service** | **Not yet** | Does not publish to the event bus. DQ runs are triggered from api-service/worker; results could be published from api-service when product requires it. |
+| **compliance-service** | **Not yet** | Does not publish to the event bus. Compliance checks are triggered from api-service; results could be published from api-service when product requires it. |
+| **webhook-service** | **N/A** | Consumes events (subscriber/delivery). Does not publish domain events to the bus; delivery status could be published from api-service if required. |
+
+If product requirements later need events published directly from microservices (e.g. semantic-service or dq-service), add publishing to the same bus (Redis + schema) from those services and document in this section.
+
 ## Event Publishers
 
-The Event Bus provides **23 service-specific event publisher mixins** that enable services to publish events in a standardized, type-safe manner. All publishers follow the same pattern and are located in `hub/apps/core/events/service_publishers.py`.
+The Event Bus provides **25 service-specific event publisher mixins** that enable services to publish events in a standardized, type-safe manner. All publishers follow the same pattern and are located in `hub/apps/core/events/service_publishers.py`.
 
 ### Event Publisher Pattern
 
@@ -592,6 +606,21 @@ class ContractService(BaseService, ContractEventPublisher):
 - `observability.log.created` - Log created
 - `observability.alert.triggered` - Alert triggered
 
+#### 24. IntegrationEventPublisher
+**Location**: `hub/apps/core/events/service_publishers.py`
+**Service**: `IntegrationService`
+**Events Published**: Integration and connector events (e.g. sync, harvest, marketplace integration).
+
+#### 25. BaaSEventPublisher
+**Location**: `hub/apps/core/events/service_publishers.py`
+**Service**: BaaS platform services
+**Events Published**: BaaS usage, tier, API key, and developer portal events.
+
+#### 26. MLEventPublisher
+**Location**: `hub/apps/core/events/service_publishers.py`
+**Service**: ML/ODH services
+**Events Published**: Training, inference, model registry events.
+
 ### Event Publisher Pattern Implementation
 
 #### Creating a Service with Event Publishing
@@ -819,6 +848,317 @@ For a complete reference of all event types, see **[Event Types Reference](EVENT
 
 **Total Event Types**: 120+ unique event types across 23 publishers
 
+## ODPS Event Publishing Examples
+
+### Publishing ODPS Events
+
+#### Using ODPSEventPublisher
+
+```python
+from hub.apps.core.services.base import BaseService
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
+
+class ODPSService(BaseService, ODPSEventPublisher):
+    def __init__(self, tenant_id=None, user_id=None):
+        BaseService.__init__(self, tenant_id=tenant_id, user_id=user_id)
+        ODPSEventPublisher.__init__(self, tenant_id=tenant_id, user_id=user_id)
+
+    def create_odps_contract(self, odps_data):
+        """Create ODPS contract and publish events."""
+        contract = Contract.objects.create(**odps_data)
+        
+        # Publish ODPS created event
+        self.publish_odps_created(
+            contract_id=str(contract.id),
+            odps_version="4.1",
+            status="DRAFT",
+            tenant_id=self.tenant_id,
+            user_id=self.user_id
+        )
+        
+        return contract
+
+    def normalize_odps_contract(self, contract_id):
+        """Normalize ODPS contract and publish events."""
+        contract = Contract.objects.get(id=contract_id)
+        
+        # Perform normalization...
+        normalization_status = "NORMALIZED_OK"
+        
+        # Publish normalization completed event
+        self.publish_odps_normalized(
+            contract_id=str(contract_id),
+            normalization_status=normalization_status,
+            tenant_id=self.tenant_id
+        )
+        
+        return contract
+
+    def export_odps_contract(self, contract_id, export_format="JSON"):
+        """Export ODPS contract and publish events."""
+        # Publish export started event
+        self.publish_odps_export_started(
+            contract_id=str(contract_id),
+            export_format=export_format,
+            tenant_id=self.tenant_id
+        )
+        
+        try:
+            # Perform export...
+            export_data = {...}
+            
+            # Publish export completed event
+            self.publish_odps_export_completed(
+                contract_id=str(contract_id),
+                export_format=export_format,
+                export_size=len(export_data),
+                tenant_id=self.tenant_id
+            )
+            
+            return export_data
+        except Exception as e:
+            # Publish export failed event
+            self.publish_odps_export_failed(
+                contract_id=str(contract_id),
+                export_format=export_format,
+                error_message=str(e),
+                tenant_id=self.tenant_id
+            )
+            raise
+```
+
+#### Publishing ODPS Workflow Events
+
+```python
+from hub.apps.core.events.service_publishers import ODPSEventPublisher
+
+class ODPSWorkflowService(ODPSEventPublisher):
+    def execute_odps_creation_workflow(self, workflow_instance_id, contract_id):
+        """Execute ODPS creation workflow and publish progress events."""
+        
+        # Publish workflow started event
+        self.publish_odps_workflow_started(
+            contract_id=str(contract_id),
+            workflow_name="odps_creation",
+            workflow_version="1.0.0",
+            tenant_id=self.tenant_id
+        )
+        
+        try:
+            # Step 1: Parse ODPS document
+            self.publish_odps_creation_progress(
+                contract_id=str(contract_id),
+                progress_percent=25,
+                current_step="parse_document",
+                tenant_id=self.tenant_id
+            )
+            
+            # Step 2: Resolve external references
+            self.publish_odps_ref_progress(
+                contract_id=str(contract_id),
+                progress_percent=50,
+                resolved_refs_count=5,
+                total_refs_count=10,
+                tenant_id=self.tenant_id
+            )
+            
+            # Step 3: Normalize contract
+            self.publish_odps_normalization_progress(
+                contract_id=str(contract_id),
+                progress_percent=75,
+                current_step="normalize_contract",
+                tenant_id=self.tenant_id
+            )
+            
+            # Step 4: Complete workflow
+            self.publish_odps_workflow_completed(
+                contract_id=str(contract_id),
+                workflow_name="odps_creation",
+                duration_ms=5000,
+                tenant_id=self.tenant_id
+            )
+            
+        except Exception as e:
+            # Publish workflow failed event
+            self.publish_odps_workflow_failed(
+                contract_id=str(contract_id),
+                workflow_name="odps_creation",
+                error_message=str(e),
+                tenant_id=self.tenant_id
+            )
+            raise
+```
+
+## ODPS Event Subscription Examples
+
+### Subscribing to ODPS Events
+
+#### Using EventSubscriber
+
+```python
+from hub.apps.core.events.subscriber import EventSubscriber
+
+def handle_odps_created(event):
+    """Handle ODPS created event."""
+    contract_id = event["data"]["contract_id"]
+    odps_version = event["data"].get("odps_version")
+    
+    # Process ODPS creation...
+    logger.info(f"ODPS contract {contract_id} created (version: {odps_version})")
+
+def handle_odps_normalized(event):
+    """Handle ODPS normalized event."""
+    contract_id = event["data"]["contract_id"]
+    normalization_status = event["data"]["normalization_status"]
+    
+    # Update search index, send notifications, etc.
+    logger.info(f"ODPS contract {contract_id} normalized: {normalization_status}")
+
+def handle_odps_export_completed(event):
+    """Handle ODPS export completed event."""
+    contract_id = event["data"]["contract_id"]
+    export_format = event["data"]["export_format"]
+    export_size = event["data"].get("export_size")
+    
+    # Process export completion...
+    logger.info(f"ODPS contract {contract_id} exported as {export_format} ({export_size} bytes)")
+
+# Create subscriber
+subscriber = EventSubscriber("odps_service")
+
+# Subscribe to ODPS lifecycle events
+subscriber.subscribe("odps.created", handle_odps_created)
+subscriber.subscribe("odps.normalized", handle_odps_normalized)
+subscriber.subscribe("odps.export.completed", handle_odps_export_completed)
+
+# Subscribe to all ODPS events using wildcard
+subscriber.subscribe("odps.*", lambda event: logger.info(f"ODPS event: {event['event_type']}"))
+
+# Start listening
+subscriber.start()
+```
+
+#### Using Decorator-Based Subscribers
+
+```python
+from hub.apps.core.events.subscriber import event_subscriber
+
+@event_subscriber("odps_service", "odps.created")
+def handle_odps_created(event):
+    """Handle ODPS created event."""
+    contract_id = event["data"]["contract_id"]
+    # Process creation...
+
+@event_subscriber("odps_service", "odps.normalized")
+def handle_odps_normalized(event):
+    """Handle ODPS normalized event."""
+    contract_id = event["data"]["contract_id"]
+    # Process normalization...
+
+@event_subscriber("odps_service", "odps.export.*")
+def handle_odps_export_events(event):
+    """Handle all ODPS export events."""
+    event_type = event["event_type"]
+    contract_id = event["data"]["contract_id"]
+    
+    if event_type == "odps.export.started":
+        logger.info(f"ODPS export started for contract {contract_id}")
+    elif event_type == "odps.export.completed":
+        logger.info(f"ODPS export completed for contract {contract_id}")
+    elif event_type == "odps.export.failed":
+        error_message = event["data"]["error_message"]
+        logger.error(f"ODPS export failed for contract {contract_id}: {error_message}")
+```
+
+## ODPS Event Replay Examples
+
+### Replaying ODPS Events
+
+#### Using API Endpoint
+
+```bash
+# Replay ODPS created events from last 24 hours
+curl -X POST https://api.example.com/api/v1/events/replay/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "odps.created",
+    "tenant_id": "550e8400-e29b-41d4-a716-446655440000",
+    "start_time": "2025-01-14T00:00:00Z",
+    "limit": 100
+  }'
+
+# Replay ODPS normalization events for specific contract
+curl -X POST https://api.example.com/api/v1/events/replay/ \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "odps.normalized",
+    "tenant_id": "550e8400-e29b-41d4-a716-446655440000",
+    "start_time": "2025-01-15T00:00:00Z",
+    "end_time": "2025-01-15T23:59:59Z",
+    "limit": 50
+  }'
+```
+
+#### Using Management Command
+
+```bash
+# Replay ODPS created events
+python manage.py replay_events \
+  --event-type odps.created \
+  --tenant-id 550e8400-e29b-41d4-a716-446655440000 \
+  --start-time 2025-01-14T00:00:00Z \
+  --limit 100
+
+# Dry run to see what would be replayed
+python manage.py replay_events \
+  --event-type odps.normalized \
+  --tenant-id 550e8400-e29b-41d4-a716-446655440000 \
+  --dry-run
+
+# Replay ODPS export events in batches
+python manage.py replay_events \
+  --event-type odps.export.completed \
+  --tenant-id 550e8400-e29b-41d4-a716-446655440000 \
+  --batch-size 50 \
+  --limit 500
+```
+
+#### Programmatic Event Replay
+
+```python
+from hub.apps.core.events import get_event_bus
+from datetime import datetime, timedelta
+
+event_bus = get_event_bus()
+
+# Replay ODPS created events from last hour
+events = event_bus.replay_events(
+    event_type="odps.created",
+    start_time=datetime.utcnow() - timedelta(hours=1),
+    limit=1000
+)
+
+# Process replayed events
+for event in events:
+    contract_id = event["data"]["contract_id"]
+    # Reprocess ODPS creation...
+    print(f"Replayed ODPS creation for contract {contract_id}")
+
+# Replay ODPS normalization events for specific time range
+events = event_bus.replay_events(
+    event_type="odps.normalized",
+    start_time=datetime(2025, 1, 15, 0, 0, 0),
+    end_time=datetime(2025, 1, 15, 23, 59, 59),
+    limit=500
+)
+
+# Republish events
+for event in events:
+    event_bus.publish(**event)
+```
+
 ## Best Practices
 
 1. **Event Naming**: Use consistent naming convention (`domain.entity.action`)
@@ -828,6 +1168,9 @@ For a complete reference of all event types, see **[Event Types Reference](EVENT
 5. **Transaction Management**: Use transactions for event handlers
 6. **Monitoring**: Monitor dead letter queue regularly
 7. **Replay Safety**: Ensure replay handlers are idempotent
+8. **ODPS Progress Events**: Publish progress events for long-running ODPS operations (normalization, export, $ref resolution)
+9. **ODPS Error Events**: Always publish error events when ODPS operations fail
+10. **ODPS Workflow Events**: Publish workflow events at each step of ODPS creation/processing workflows
 
 ## Testing
 

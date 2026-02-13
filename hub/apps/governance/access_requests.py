@@ -85,7 +85,8 @@ class AccessRequestWorkflow:
                 file_id=file_id,
                 reason=reason or "",
                 requested_access_type=requested_access_type,
-                expires_at=expires_at_str
+                expires_at=expires_at_str,
+                requires_approval=requires_approval,
             )
             
             # Get access request ID from workflow output

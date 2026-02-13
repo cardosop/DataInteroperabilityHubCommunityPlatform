@@ -47,49 +47,97 @@ class VersioningService(BaseService, VersioningEventPublisher):
         semantic_version: Optional[str] = None,
         version_tags: Optional[List[str]] = None,
         snapshot_metadata: Optional[Dict[str, Any]] = None,
-        is_current: bool = True
+        is_current: bool = True,
+        is_initial: bool = False,
     ) -> Dataset:
         """
         Create a new dataset version.
 
         Args:
-            dataset_id: Dataset ID
+            dataset_id: Source dataset ID (used to determine parent if parent_version_id not provided)
             tenant_id: Tenant ID
-            parent_version_id: Optional parent version ID
+            parent_version_id: Optional parent version ID (if not provided, uses dataset_id as parent)
             semantic_version: Optional semantic version string
             version_tags: Optional version tags
             snapshot_metadata: Optional snapshot metadata
             is_current: Whether this is the current version
+            is_initial: If True, initialize version history on the existing dataset (no new row).
+                Used by DatasetService when creating the first version.
 
         Returns:
-            Updated Dataset instance
+            New Dataset instance with incremented version, or updated dataset when is_initial=True
 
         Raises:
             NotFoundError: If dataset or parent version not found
         """
-        dataset = self.get_resource_or_raise(
+        source_dataset = self.get_resource_or_raise(
             Dataset,
             dataset_id,
             tenant_id=tenant_id
         )
 
-        parent_version = None
+        # Determine parent version
         if parent_version_id:
             parent_version = self.get_resource_or_raise(
                 Dataset,
                 parent_version_id,
                 tenant_id=tenant_id
             )
+        else:
+            # Use source dataset as parent
+            parent_version = source_dataset
 
-        # Create version using VersionHistoryManager
-        updated_dataset = VersionHistoryManager.create_version(
-            dataset=dataset,
-            parent_version=parent_version,
-            semantic_version=semantic_version,
-            version_tags=version_tags,
-            snapshot_metadata=snapshot_metadata,
-            is_current=is_current
-        )
+        # Check if we need to create a new dataset row or only update version history.
+        # - is_initial=True (DatasetService first version): update existing row in place.
+        # - Next version (source is the parent we're creating from): create a new dataset row.
+        #   Do not require source_dataset.parent_version_id is None: when creating v3 from v2,
+        #   v2 already has parent_version_id set (to v1), but we still need to create a new row.
+        source_is_parent = source_dataset.id == parent_version.id
+        should_create_new = not is_initial and source_is_parent
+
+        if should_create_new:
+            # Create new dataset version from parent
+            # Calculate new version number
+            latest_version = Dataset.objects.filter(
+                tenant_id=tenant_id,
+                asset=parent_version.asset
+            ).order_by('-version').first()
+
+            new_version_number = (latest_version.version + 1) if latest_version else (parent_version.version + 1)
+
+            # Create new dataset version
+            new_dataset = Dataset.objects.create(
+                tenant=parent_version.tenant,
+                asset=parent_version.asset,
+                file=parent_version.file,
+                schema_json=parent_version.schema_json,
+                sample_data_json=parent_version.sample_data_json,
+                row_count=parent_version.row_count,
+                format=parent_version.format,
+                version=new_version_number,
+                created_by_id=self.user_id,
+            )
+
+            # Create version using VersionHistoryManager
+            updated_dataset = VersionHistoryManager.create_version(
+                dataset=new_dataset,
+                parent_version=parent_version,
+                semantic_version=semantic_version,
+                version_tags=version_tags,
+                snapshot_metadata=snapshot_metadata,
+                is_current=is_current
+            )
+        else:
+            # Source dataset is already a versioned dataset (created by DatasetService)
+            # Just update version history fields
+            updated_dataset = VersionHistoryManager.create_version(
+                dataset=source_dataset,
+                parent_version=parent_version if parent_version_id else source_dataset.parent_version,
+                semantic_version=semantic_version,
+                version_tags=version_tags,
+                snapshot_metadata=snapshot_metadata,
+                is_current=is_current
+            )
 
         # Publish version.created event
         try:
@@ -150,7 +198,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
             new_version=dataset2,
             include_data_diff=True
         )
-        
+
         # Convert VersionComparison dataclass to dict for API compatibility
         return VersionComparisonService.visualize_version_diff(
             comparison,
@@ -355,7 +403,7 @@ class VersioningService(BaseService, VersioningEventPublisher):
 
         # Get version tree (all versions in the history)
         versions = VersionHistoryManager.get_version_tree(dataset)
-        
+
         # Convert to list of dictionaries if snapshots are requested, otherwise return Dataset objects
         if include_snapshots:
             return [

@@ -9,8 +9,25 @@ from typing import Optional
 
 import structlog
 from asgiref.sync import sync_to_async
-from channels.db import database_sync_to_async
-from channels.middleware import BaseMiddleware
+
+# Optional channels imports
+try:
+    from channels.db import database_sync_to_async
+    from channels.middleware import BaseMiddleware
+
+    CHANNELS_AVAILABLE = True
+except ImportError:
+    # Fallback if channels not available
+    database_sync_to_async = sync_to_async
+
+    # Create a stub BaseMiddleware
+    class BaseMiddleware:
+        """Stub for BaseMiddleware when channels is not available."""
+
+        pass
+
+    CHANNELS_AVAILABLE = False
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.db import close_old_connections
@@ -357,7 +374,7 @@ def _get_user_from_token_sync(token: str) -> Optional[User]:
     return None
 
 
-from channels.db import database_sync_to_async
+# database_sync_to_async is already imported at the top of the file with optional handling
 
 
 @database_sync_to_async
@@ -505,6 +522,7 @@ class WebSocketAuthMiddleware(BaseMiddleware):
                     key, value = param.split("=", 1)
                     # URL decode the value
                     import urllib.parse
+
                     query_params[key] = urllib.parse.unquote(value)
         return query_params
 
@@ -529,9 +547,9 @@ class WebSocketAuthMiddleware(BaseMiddleware):
 
         # Try JWT token authentication (prefer query params, then headers)
         token = (
-            query_params.get("token") or
-            query_params.get("access_token") or
-            self._extract_token_from_headers(headers)
+            query_params.get("token")
+            or query_params.get("access_token")
+            or self._extract_token_from_headers(headers)
         )
 
         if token:
@@ -542,9 +560,9 @@ class WebSocketAuthMiddleware(BaseMiddleware):
         # Try API key authentication if JWT failed
         if not user:
             api_key = (
-                query_params.get("api_key") or
-                query_params.get("X-API-Key") or
-                self._extract_api_key_from_headers(headers)
+                query_params.get("api_key")
+                or query_params.get("X-API-Key")
+                or self._extract_api_key_from_headers(headers)
             )
 
             if api_key:
@@ -561,7 +579,7 @@ class WebSocketAuthMiddleware(BaseMiddleware):
                 "websocket_authenticated",
                 user_id=str(user.id),
                 tenant_id=str(scope["tenant"].id) if scope["tenant"] else None,
-                auth_method=auth_method
+                auth_method=auth_method,
             )
 
             return await super().__call__(scope, receive, send)
@@ -571,16 +589,18 @@ class WebSocketAuthMiddleware(BaseMiddleware):
                 "websocket_auth_failed",
                 path=scope.get("path"),
                 query_string=query_string.decode("utf-8") if query_string else "",
-                message="WebSocket connection rejected due to authentication failure"
+                message="WebSocket connection rejected due to authentication failure",
             )
 
             # Send close message to reject connection
             # WebSocket close code 4001 = Unauthorized
-            await send({
-                "type": "websocket.close",
-                "code": 4001,  # Unauthorized
-                "reason": "Authentication required"
-            })
+            await send(
+                {
+                    "type": "websocket.close",
+                    "code": 4001,  # Unauthorized
+                    "reason": "Authentication required",
+                }
+            )
 
             # Don't call next middleware/consumer - connection is rejected
             return

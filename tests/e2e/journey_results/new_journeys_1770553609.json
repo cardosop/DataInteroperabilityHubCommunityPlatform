@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.026317119598388672
+  },
+  "journeys": [
+    {
+      "journey_id": "MPA-006-37427c3c",
+      "journey_name": "Configure Advanced Marketplace Features",
+      "persona": "Platform Admin",
+      "status": "completed",
+      "start_time": 1770553609.9128494,
+      "end_time": 1770553609.9391665,
+      "duration": 0.026317119598388672,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Pricing Models Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553609.9197814,
+          "end_time": 1770553609.9197903,
+          "duration": 8.821487426757812e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Configure Trust Signals",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553609.9307098,
+          "end_time": 1770553609.9307206,
+          "duration": 1.0728836059570312e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        },
+        {
+          "step_name": "Note: Recommendations Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553609.9391527,
+          "end_time": 1770553609.9391642,
+          "duration": 1.1444091796875e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:26:49.939284"
+}

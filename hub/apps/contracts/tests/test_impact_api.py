@@ -3,41 +3,24 @@ Integration tests for Impact Analysis API
 
 Tests for impact analysis API endpoints.
 """
+
 import pytest
-from django.test import TestCase
 from django.urls import reverse
-from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.contracts.models import Contract
-from hub.apps.tenants.models import Tenant
-from hub.apps.users.models import User, UserStatus
-
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class ImpactAPITest(TestCase):
+class ImpactAPITest(ContractsAPITestBase):
     """Test Impact Analysis API"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-        
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED"
-        )
-        
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
-        
+        super().setUp()
+
         self.contract = Contract.objects.create(
             tenant=self.tenant,
             name="Test Contract",
@@ -45,67 +28,249 @@ class ImpactAPITest(TestCase):
             original_spec_version="3.0.2",
             original_format="JSON",
             original_raw='{"apiVersion": "v1", "kind": "DataContract", "info": {"name": "Test Contract"}}',
-            hub_contract_json={
-                "info": {
-                    "name": "Test Contract",
-                    "title": "Test Contract"
-                }
-            },
-            created_by=self.user
+            hub_contract_json={"info": {"name": "Test Contract", "title": "Test Contract"}},
+            created_by=self.user,
         )
-        
+
         # Authenticate
         self.client.force_authenticate(user=self.user)
-    
+
     def test_impact_analysis_endpoint(self):
         """Test impact analysis endpoint"""
-        url = reverse('contract-impact-analysis', kwargs={'pk': self.contract.id})
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
         response = self.client.get(url)
-        
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("nodes", response.data)
         self.assertIn("links", response.data)
         self.assertIn("summary", response.data)
-    
+
     def test_impact_analysis_with_depth(self):
         """Test impact analysis with depth parameter"""
-        url = reverse('contract-impact-analysis', kwargs={'pk': self.contract.id})
-        response = self.client.get(url, {'depth': 5})
-        
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"depth": 5})
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-    
+
     def test_impact_analysis_csv_format(self):
         """Test impact analysis CSV format"""
-        url = reverse('contract-impact-analysis', kwargs={'pk': self.contract.id})
-        response = self.client.get(url, {'format': 'csv'})
-        
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "csv"})
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response['content-type'], 'text/csv')
-    
+        self.assertEqual(response["content-type"], "text/csv")
+
     def test_impact_analysis_dot_format(self):
         """Test impact analysis DOT format"""
-        url = reverse('contract-impact-analysis', kwargs={'pk': self.contract.id})
-        response = self.client.get(url, {'format': 'dot'})
-        
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "dot"})
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response['content-type'], 'text/plain')
+        self.assertEqual(response["content-type"], "text/plain")
         self.assertIn("digraph ImpactAnalysis", response.content.decode())
-    
+
     def test_impact_analysis_mermaid_format(self):
         """Test impact analysis Mermaid format"""
-        url = reverse('contract-impact-analysis', kwargs={'pk': self.contract.id})
-        response = self.client.get(url, {'format': 'mermaid'})
-        
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "mermaid"})
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response['content-type'], 'text/plain')
+        self.assertEqual(response["content-type"], "text/plain")
         self.assertIn("graph LR", response.content.decode())
-    
+
     def test_impact_analysis_paths_format(self):
         """Test impact analysis paths format"""
-        url = reverse('contract-impact-analysis', kwargs={'pk': self.contract.id})
-        response = self.client.get(url, {'format': 'paths'})
-        
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "paths"})
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("paths", response.data)
         self.assertIn("total_paths", response.data)
 
+    # Edge cases and error handling tests
+    def test_impact_analysis_contract_not_found(self):
+        """Test impact analysis endpoint with non-existent contract."""
+        import uuid
+
+        fake_id = str(uuid.uuid4())
+        url = reverse("contract-impact-analysis", kwargs={"pk": fake_id})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_impact_analysis_unauthenticated(self):
+        """Test impact analysis endpoint without authentication."""
+        client = APIClient()  # Not authenticated
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = client.get(url)
+
+        # Should require authentication
+        self.assertIn(
+            response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+        )
+
+    def test_impact_analysis_cross_tenant_isolation(self):
+        """Test that impact analysis respects tenant isolation."""
+        # Create another tenant
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant", slug="other-tenant-api", status="ACTIVE", kyc_status="UNVERIFIED"
+        )
+
+        other_user = User.objects.create_user(
+            email="other@example.com",
+            password="testpass123",
+            tenant=other_tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        # Authenticate as other user
+        client = APIClient()
+        client.force_authenticate(user=other_user)
+
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = client.get(url)
+
+        # Should not access contract from other tenant
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_impact_analysis_with_invalid_depth(self):
+        """Test impact analysis with invalid depth parameter."""
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+
+        # Test with negative depth
+        response = self.client.get(url, {"depth": -1})
+        # May return 200 with default depth or 400 for bad request
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+
+        # Test with very large depth
+        response = self.client.get(url, {"depth": 10000})
+        # May return 200 or 400
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+
+        # Test with non-numeric depth
+        response = self.client.get(url, {"depth": "invalid"})
+        # Should return 400 for bad request
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+
+    def test_impact_analysis_with_invalid_format(self):
+        """Test impact analysis with invalid format parameter."""
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "invalid-format"})
+
+        # May return 200 with default format or 400 for bad request
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+
+    def test_impact_analysis_with_missing_contract_hub_json(self):
+        """Test impact analysis with contract missing hub_contract_json."""
+        contract_no_hub = Contract.objects.create(
+            tenant=self.tenant,
+            name="No Hub Contract",
+            original_spec_type="ODCS",
+            original_spec_version="3.0.2",
+            original_format="JSON",
+            original_raw='{"apiVersion": "v1", "kind": "DataContract"}',
+            # hub_contract_json is None
+            created_by=self.user,
+        )
+
+        url = reverse("contract-impact-analysis", kwargs={"pk": contract_no_hub.id})
+        response = self.client.get(url)
+
+        # Should handle gracefully - may return 200 with empty result or 400/500
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_200_OK,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ],
+        )
+
+    def test_impact_analysis_json_format_structure(self):
+        """Test that JSON format returns proper structure."""
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "json"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("nodes", response.data)
+        self.assertIn("links", response.data)
+        self.assertIn("summary", response.data)
+
+        # Verify structure
+        self.assertIsInstance(response.data["nodes"], list)
+        self.assertIsInstance(response.data["links"], list)
+        self.assertIsInstance(response.data["summary"], dict)
+
+    def test_impact_analysis_csv_format_content(self):
+        """Test that CSV format returns valid CSV content."""
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "csv"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["content-type"], "text/csv")
+
+        # Verify CSV content
+        content = response.content.decode()
+        self.assertIn("Resource Type", content)
+        self.assertIn("Contract ID", content)
+        # Should have at least header row
+        lines = content.split("\n")
+        self.assertGreater(len(lines), 0)
+
+    def test_impact_analysis_dot_format_content(self):
+        """Test that DOT format returns valid DOT content."""
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "dot"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode()
+        self.assertIn("digraph", content.lower())
+        self.assertIn("{", content)
+        self.assertIn("}", content)
+
+    def test_impact_analysis_mermaid_format_content(self):
+        """Test that Mermaid format returns valid Mermaid content."""
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "mermaid"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode()
+        self.assertIn("graph", content.lower())
+        # Should have valid Mermaid syntax
+
+    def test_impact_analysis_paths_format_structure(self):
+        """Test that paths format returns proper structure."""
+        url = reverse("contract-impact-analysis", kwargs={"pk": self.contract.id})
+        response = self.client.get(url, {"format": "paths"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("paths", response.data)
+        self.assertIn("total_paths", response.data)
+
+        # Verify structure
+        self.assertIsInstance(response.data["paths"], list)
+        self.assertIsInstance(response.data["total_paths"], int)
+
+    def test_impact_analysis_with_empty_lineage(self):
+        """Test impact analysis with contract that has no lineage."""
+        contract_no_lineage = Contract.objects.create(
+            tenant=self.tenant,
+            name="No Lineage Contract",
+            original_spec_type="ODCS",
+            original_spec_version="3.0.2",
+            original_format="JSON",
+            original_raw='{"apiVersion": "v1", "kind": "DataContract"}',
+            hub_contract_json={
+                "info": {"name": "No Lineage Contract"},
+                # No lineage field
+            },
+            created_by=self.user,
+        )
+
+        url = reverse("contract-impact-analysis", kwargs={"pk": contract_no_lineage.id})
+        response = self.client.get(url)
+
+        # Should handle gracefully
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("nodes", response.data)
+        self.assertIn("links", response.data)

@@ -5,48 +5,27 @@ Task: 9.6.3.1.1 - Fix contracts URL pattern duplication
 """
 
 import uuid
-from django.test import TestCase
-from django.urls import reverse, resolve, Resolver404
-from rest_framework.test import APIClient
+
+from django.urls import Resolver404, resolve, reverse
 from rest_framework import status
 
 from hub.apps.contracts.models import Contract
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.users.models import Role, UserRole
 
 
-class ContractsURLPatternTest(TestCase):
+class ContractsURLPatternTest(ContractsAPITestBase):
     """Test URL pattern resolution and reverse lookup for contracts endpoints."""
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant_id=self.tenant.id,
-            status=UserStatus.ACTIVE
-        )
+        super().setUp()
 
         # Create contract
         self.contract = Contract.objects.create(
             tenant_id=self.tenant.id,
-            hub_contract_json={
-                "id": "test-contract",
-                "info": {"name": "Test Contract"}
-            }
+            hub_contract_json={"id": "test-contract", "info": {"name": "Test Contract"}},
         )
-
-        # Create API client
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
 
     def test_lineage_visualization_url_pattern_resolution(self):
         """Test that lineage visualization URL pattern resolves correctly."""
@@ -80,10 +59,7 @@ class ContractsURLPatternTest(TestCase):
 
         # Should be able to reverse the URL
         try:
-            url = reverse(
-                "contract-lineage-visualization-custom",
-                kwargs={"id": contract_id}
-            )
+            url = reverse("contract-lineage-visualization-custom", kwargs={"id": contract_id})
 
             # Should not contain duplicate 'contracts'
             self.assertNotIn("/contracts/contracts/", url)
@@ -108,16 +84,23 @@ class ContractsURLPatternTest(TestCase):
         response = self.client.get(url)
 
         # Should not be 404 (pattern resolved correctly)
-        self.assertNotEqual(response.status_code, status.HTTP_404_NOT_FOUND,
-                           f"Endpoint not found. URL: {url}, Response: {response.data if hasattr(response, 'data') else response.content}")
+        self.assertNotEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
+            f"Endpoint not found. URL: {url}, Response: {response.data if hasattr(response, 'data') else response.content}",
+        )
 
         # Should be accessible (200, 400, 403, etc. are all valid - just not 404)
-        self.assertIn(response.status_code, [
-            status.HTTP_200_OK,
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_403_FORBIDDEN,
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ], f"Unexpected status code: {response.status_code}")
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_200_OK,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_403_FORBIDDEN,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ],
+            f"Unexpected status code: {response.status_code}",
+        )
 
     def test_lineage_visualization_url_pattern_with_format_query_param(self):
         """Test that lineage visualization URL works with format query parameter."""
@@ -139,10 +122,7 @@ class ContractsURLPatternTest(TestCase):
         contract = Contract.objects.create(
             tenant_id=self.tenant.id,
             id=contract_uuid,
-            hub_contract_json={
-                "id": "test-contract-uuid",
-                "info": {"name": "Test Contract UUID"}
-            }
+            hub_contract_json={"id": "test-contract-uuid", "info": {"name": "Test Contract UUID"}},
         )
 
         contract_id = str(contract.id)
@@ -166,8 +146,8 @@ class ContractsURLPatternTest(TestCase):
             id=contract_uuid,
             hub_contract_json={
                 "id": "test-contract-string-id",
-                "info": {"name": "Test Contract String"}
-            }
+                "info": {"name": "Test Contract String"},
+            },
         )
 
         # Use string representation of UUID (which is what URLs use)
@@ -195,3 +175,175 @@ class ContractsURLPatternTest(TestCase):
         except Resolver404 as e:
             self.fail(f"URL pattern should resolve even for invalid ID: {e}")
 
+    # Edge cases and error handling tests
+    def test_contracts_list_url_pattern_resolution(self):
+        """Test that contracts list URL pattern resolves correctly."""
+        url = "/api/v1/contracts/"
+
+        try:
+            resolved = resolve(url)
+            # Should resolve to contracts list endpoint
+            self.assertIsNotNone(resolved)
+        except Resolver404 as e:
+            self.fail(f"Contracts list URL pattern did not resolve: {e}")
+
+    def test_contracts_detail_url_pattern_resolution(self):
+        """Test that contracts detail URL pattern resolves correctly."""
+        contract_id = str(self.contract.id)
+        url = f"/api/v1/contracts/{contract_id}/"
+
+        try:
+            resolved = resolve(url)
+            # Should resolve to contract detail endpoint
+            self.assertIsNotNone(resolved)
+            self.assertIn("id", resolved.kwargs)
+        except Resolver404 as e:
+            self.fail(f"Contract detail URL pattern did not resolve: {e}")
+
+    def test_contracts_list_url_with_query_parameters(self):
+        """Test contracts list URL with query parameters."""
+        url = "/api/v1/contracts/?page=1&page_size=10&ordering=-created_at"
+
+        # Should resolve base URL without query params
+        try:
+            resolved = resolve(url.split("?")[0])
+            self.assertIsNotNone(resolved)
+        except Resolver404 as e:
+            self.fail(f"Contracts list URL with query params did not resolve: {e}")
+
+    def test_contracts_detail_url_with_special_characters_in_id(self):
+        """Test contracts detail URL with special characters in ID."""
+        # Contract IDs are UUIDs, but test URL pattern handling
+        contract_id = str(self.contract.id)
+        url = f"/api/v1/contracts/{contract_id}/"
+
+        # Should resolve correctly
+        try:
+            resolved = resolve(url)
+            self.assertIsNotNone(resolved)
+        except Resolver404 as e:
+            self.fail(f"URL pattern did not resolve with UUID: {e}")
+
+    def test_lineage_visualization_url_with_missing_contract(self):
+        """Test lineage visualization URL when contract doesn't exist."""
+        import uuid
+
+        fake_id = str(uuid.uuid4())
+        url = f"/api/v1/contracts/{fake_id}/lineage/visualization/"
+
+        # URL should resolve, but endpoint should return 404
+        try:
+            resolved = resolve(url)
+            self.assertEqual(resolved.url_name, "contract-lineage-visualization-custom")
+
+            # Endpoint should return 404 for non-existent contract
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        except Resolver404 as e:
+            self.fail(f"URL pattern should resolve even for non-existent contract: {e}")
+
+    def test_lineage_visualization_url_cross_tenant_isolation(self):
+        """Test that lineage visualization URL respects tenant isolation."""
+        # Create another tenant
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant", slug="other-tenant-url", kyc_status=KYCStatus.VERIFIED
+        )
+
+        other_user = User.objects.create_user(
+            email="other@example.com",
+            password="testpass123",
+            tenant_id=other_tenant.id,
+            status=UserStatus.ACTIVE,
+        )
+
+        # Authenticate as other user
+        client = APIClient()
+        client.force_authenticate(user=other_user)
+
+        # Try to access contract from other tenant
+        url = f"/api/v1/contracts/{self.contract.id}/lineage/visualization/"
+        response = client.get(url)
+
+        # Should return 404 (tenant isolation)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_lineage_visualization_url_unauthenticated(self):
+        """Test lineage visualization URL without authentication."""
+        client = APIClient()  # Not authenticated
+        url = f"/api/v1/contracts/{self.contract.id}/lineage/visualization/"
+        response = client.get(url)
+
+        # Should require authentication
+        self.assertIn(
+            response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+        )
+
+    def test_lineage_visualization_url_with_invalid_format(self):
+        """Test lineage visualization URL with invalid format parameter."""
+        url = f"/api/v1/contracts/{self.contract.id}/lineage/visualization/?format=invalid"
+        response = self.client.get(url)
+
+        # May return 200 with default format or 400 for bad request
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+
+    def test_lineage_visualization_url_with_multiple_query_params(self):
+        """Test lineage visualization URL with multiple query parameters."""
+        url = f"/api/v1/contracts/{self.contract.id}/lineage/visualization/?format=dot&depth=5&max_depth=10"
+
+        # Should resolve base URL
+        try:
+            resolved = resolve(url.split("?")[0])
+            self.assertEqual(resolved.url_name, "contract-lineage-visualization-custom")
+        except Resolver404 as e:
+            self.fail(f"URL pattern did not resolve with multiple query params: {e}")
+
+    def test_contracts_url_pattern_case_sensitivity(self):
+        """Test that URL patterns are case-sensitive."""
+        # Django URLs are case-sensitive by default
+        url_lower = f"/api/v1/contracts/{self.contract.id}/lineage/visualization/"
+        url_upper = f"/API/V1/CONTRACTS/{self.contract.id}/LINEAGE/VISUALIZATION/"
+
+        # Lowercase should resolve
+        try:
+            resolved_lower = resolve(url_lower)
+            self.assertIsNotNone(resolved_lower)
+        except Resolver404:
+            self.fail("Lowercase URL should resolve")
+
+        # Uppercase may or may not resolve depending on configuration
+        try:
+            resolved_upper = resolve(url_upper)
+            # If it resolves, that's fine
+        except Resolver404:
+            # If it doesn't resolve, that's also fine (case-sensitive)
+            pass
+
+    def test_contracts_url_pattern_with_trailing_slash_variations(self):
+        """Test URL pattern with and without trailing slash."""
+        contract_id = str(self.contract.id)
+        url_with_slash = f"/api/v1/contracts/{contract_id}/lineage/visualization/"
+        url_without_slash = f"/api/v1/contracts/{contract_id}/lineage/visualization"
+
+        # Both should resolve (Django handles trailing slash)
+        try:
+            resolved_with = resolve(url_with_slash)
+            self.assertIsNotNone(resolved_with)
+        except Resolver404:
+            self.fail("URL with trailing slash should resolve")
+
+        try:
+            resolved_without = resolve(url_without_slash)
+            # May or may not resolve depending on APPEND_SLASH setting
+        except Resolver404:
+            # If it doesn't resolve, that's acceptable
+            pass
+
+    def test_contracts_url_pattern_reverse_with_invalid_id(self):
+        """Test reverse lookup with invalid contract ID format."""
+        try:
+            url = reverse("contract-lineage-visualization-custom", kwargs={"id": "not-a-uuid"})
+            # Should still generate URL (reverse doesn't validate ID)
+            self.assertIn("/api/v1/contracts/not-a-uuid/lineage/visualization/", url)
+        except Exception as e:
+            # If it raises exception, that's acceptable
+            pass

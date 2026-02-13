@@ -7,6 +7,8 @@ from .models import Asset, AssetStatus, AssetVisibility, DQStatus, ComplianceSta
 
 class AssetSerializer(serializers.ModelSerializer):
     """Serializer for Asset model"""
+    contract_id = serializers.SerializerMethodField()
+    dataset_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Asset
@@ -24,7 +26,9 @@ class AssetSerializer(serializers.ModelSerializer):
             'version',
             'created_by',
             'created_at',
-            'updated_at'
+            'updated_at',
+            'contract_id',
+            'dataset_id',
         ]
         read_only_fields = [
             'id',
@@ -34,8 +38,35 @@ class AssetSerializer(serializers.ModelSerializer):
             'compliance_status',
             'created_by',
             'created_at',
-            'updated_at'
+            'updated_at',
+            'contract_id',
+            'dataset_id',
         ]
+
+    def get_contract_id(self, obj):
+        """Get the ID of the active contract for this asset"""
+        try:
+            active_contract = obj.contracts.filter(status="ACTIVE").first()
+            if active_contract:
+                return str(active_contract.id)
+            # If no active contract, return the latest contract
+            latest_contract = obj.contracts.order_by('-created_at').first()
+            if latest_contract:
+                return str(latest_contract.id)
+        except Exception:
+            pass
+        return None
+
+    def get_dataset_id(self, obj):
+        """Get the ID of the latest dataset for this asset"""
+        try:
+            # Get latest dataset by version (or created_at if version not set)
+            latest_dataset = obj.datasets.order_by('-version', '-created_at').first()
+            if latest_dataset:
+                return str(latest_dataset.id)
+        except Exception:
+            pass
+        return None
 
 
 class AssetCreateSerializer(serializers.Serializer):

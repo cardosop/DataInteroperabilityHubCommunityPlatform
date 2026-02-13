@@ -1,42 +1,51 @@
 # Use Cases
 
-**Last Updated**: 2025-12-13
-**Version**: 2.0.0
+**Last Updated**: 2026-02-07
+**Version**: 2.2.0
 
 ---
 
 ## Overview
 
-This document provides a comprehensive catalog of use cases for the Data Interoperability Hub platform. The platform now supports **~105 total use cases** (~50 original + ~55 new) covering all features including the 10 strategic differentiators.
+This document provides a comprehensive catalog of use cases for the Data Interoperability Hub platform. The platform supports **~109 total use cases** including authentication and access for unauthenticated and non-registered users, plus all features and strategic differentiators.
+
+**Note on Scheduled Ingestion Execution Model**: Scheduled ingestion runs are executed by **Prefect workers** via the **Internal Worker API** (`/api/v1/scheduled-ingestions/internal/*`). The execution model is **Prefect worker → Hub API**, where Prefect workers execute `scheduled_ingestion_full_flow` (HTTP-only, no Django) and communicate with the Hub API via internal endpoints. Authentication uses worker API keys (`HUB_WORKER_API_KEY` or API key with scope `scheduled_ingestion:internal`), and internal worker endpoints have **no rate limit**. See [Scheduled Ingestion Worker API](SCHEDULED_INGESTION_WORKER_API.md) and [Services Architecture](SERVICES_ARCHITECTURE.md#prefect-integration-service-prefect-integration-service) for details.
+
+**Note on Scheduled Export Execution Model**: Scheduled export runs are executed by **Prefect workers** via the **Internal Worker API** (`/api/v1/scheduled-exports/internal/*`). The execution model is **Prefect worker → Hub API**, where Prefect workers execute `scheduled_export_full_flow` (HTTP-only, no Django) and communicate with the Hub API via internal endpoints. Authentication uses worker API keys (`HUB_WORKER_API_KEY` or API key with scope `scheduled_export:internal`), and internal worker endpoints have **no rate limit**. Destination connectors (S3, GCS, Azure Blob) are implemented in the Prefect worker. Hub serves as the source of truth for configuration and state. See [Scheduled Export API Reference](API_ENDPOINTS_REFERENCE_SCHEDULED_EXPORT.md) and [Services Architecture](SERVICES_ARCHITECTURE.md#scheduled-export-execution-model) for details.
 
 **Use Case Statistics**:
-- **Total Use Cases**: ~105
-- **High Priority**: ~60
-- **Medium Priority**: ~30
-- **Low Priority**: ~15
-- **MVP Status**: ~70
+- **Total Use Cases**: ~109
+- **High Priority**: ~64
+- **Medium Priority**: ~32
+- **Low Priority**: ~13
+- **MVP Status**: ~74
 - **Post-MVP Status**: ~35
+
+**Cross-References**:
+- **[Marketplace Use Cases](MARKETPLACE_USE_CASES.md)** - External marketplace integration use cases (publish to external marketplace, discover and import, sync, federated assets, semantic discovery).
 
 ---
 
 ## Table of Contents
 
 1. [Use Case Categories](#use-case-categories)
-2. [Asset Management Use Cases](#asset-management-use-cases)
-3. [Contract Management Use Cases](#contract-management-use-cases)
-4. [Data Quality Use Cases](#data-quality-use-cases)
-5. [Compliance Use Cases](#compliance-use-cases)
-6. [Marketplace Use Cases](#marketplace-use-cases)
-7. [AI/ML Use Cases](#aiml-use-cases) **NEW**
-8. [Social Feature Use Cases](#social-feature-use-cases) **NEW**
-10. [Data Mesh Use Cases](#data-mesh-use-cases) **NEW**
-11. [Virtualization Use Cases](#virtualization-use-cases) **NEW**
-12. [Advanced Marketplace Use Cases](#advanced-marketplace-use-cases) **NEW**
-13. [Advanced Governance Use Cases](#advanced-governance-use-cases) **NEW**
-14. [Advanced Observability Use Cases](#advanced-observability-use-cases) **NEW**
-15. [Integration Ecosystem Use Cases](#integration-ecosystem-use-cases) **NEW**
-16. [Developer Experience Use Cases](#developer-experience-use-cases) **NEW**
-17. [Use Case Matrix](#use-case-matrix)
+2. [Authentication & Access Use Cases](#authentication--access-use-cases)
+3. [Asset Management Use Cases](#asset-management-use-cases)
+4. [Contract Management Use Cases](#contract-management-use-cases)
+5. [Data Quality Use Cases](#data-quality-use-cases)
+6. [Compliance Use Cases](#compliance-use-cases)
+7. [Marketplace Use Cases](#marketplace-use-cases)
+8. [AI/ML Use Cases](#aiml-use-cases)
+9. [Social Feature Use Cases](#social-feature-use-cases)
+10. [Data Mesh Use Cases](#data-mesh-use-cases)
+11. [Virtualization Use Cases](#virtualization-use-cases)
+12. [Advanced Marketplace Use Cases](#advanced-marketplace-use-cases)
+13. [Advanced Governance Use Cases](#advanced-governance-use-cases)
+14. [Advanced Observability Use Cases](#advanced-observability-use-cases)
+15. [Integration Ecosystem Use Cases](#integration-ecosystem-use-cases)
+16. [Developer Experience Use Cases](#developer-experience-use-cases)
+17. [Use Cases Previously Referenced Only (Documentation Completeness)](#use-cases-previously-referenced-only-documentation-completeness)
+18. [Use Case Matrix](#use-case-matrix)
 
 ---
 
@@ -83,6 +92,171 @@ Use cases related to connectors, BI integration, and reverse ETL.
 
 ### Category 15: Developer Experience **NEW**
 Use cases related to plugins, SDKs, CLI, and developer portal.
+
+### Category 0: Authentication & Access
+Use cases related to unauthenticated visitors, registration, login, session management, and public access. These flows apply to **non-registered** and **unauthenticated** users before they assume a role-based persona.
+
+---
+
+## Authentication & Access Use Cases
+
+### UC-AUTH-001: User Registers (Self-Service Sign-Up)
+
+**ID**: UC-AUTH-001
+**Title**: User Registers (Self-Service Sign-Up)
+**Persona**: Visitor, Prospect
+**Priority**: High
+**Status**: MVP
+
+**Description**:
+A first-time visitor creates an account via the registration endpoint. Registration may be enabled or disabled per deployment; when disabled, users are created by Tenant Admin or Platform Admin only.
+
+**Preconditions**:
+- User **not authenticated**
+- Registration feature enabled (if deployment supports self-signup)
+- Valid email and password meeting policy (e.g. complexity, length)
+
+**Main Flow**:
+1. User navigates to registration page or invokes `POST /api/v1/auth/register/`
+2. User provides email, password, and optional display name
+3. System validates email format and password policy
+4. System checks email is not already registered
+5. System creates user in default tenant (or tenant selected if multiple)
+6. System sets user status (e.g. ACTIVE or PENDING_VERIFICATION per configuration)
+7. User receives confirmation (e.g. email or success response)
+8. User can log in (UC-AUTH-002)
+
+**Alternate Flows**:
+- **A1**: Registration disabled → system returns 403 or UI shows "Contact administrator"
+- **A2**: Email already exists → system returns 400 with clear message
+- **A3**: Password policy not met → system returns 400 with policy description
+- **A4**: Invalid tenant or invitation required → system returns 400
+
+**Postconditions**:
+- User account created
+- User can authenticate (UC-AUTH-002)
+
+**Related Use Cases**: UC-AUTH-002, JOURNEY-TA-001 (admin invite flow)
+
+**Test Traceability**: [TEST_TRACEABILITY.md#uc-auth-001-user-registers-self-service-sign-up](TEST_TRACEABILITY.md#uc-auth-001-user-registers-self-service-sign-up)
+
+---
+
+### UC-AUTH-002: User Logs In
+
+**ID**: UC-AUTH-002
+**Title**: User Logs In
+**Persona**: Visitor (becomes authenticated user), any registered persona
+**Priority**: High
+**Status**: MVP
+
+**Description**:
+User authenticates with email and password and receives a session or token to access protected resources.
+
+**Preconditions**:
+- User **not authenticated** (or re-authenticating)
+- User has an existing account (created via UC-AUTH-001 or admin invite)
+- Account is active (not disabled or pending verification, per policy)
+
+**Main Flow**:
+1. User navigates to login page or invokes `POST /api/v1/auth/login/`
+2. User provides email and password
+3. System validates credentials
+4. System returns access token (and optionally refresh token)
+5. Client stores token and uses it for subsequent API requests
+6. User is redirected to application home or requested resource
+7. User assumes role-based persona (Data Consumer, Data Product Owner, etc.) for further use cases
+
+**Alternate Flows**:
+- **A1**: Invalid credentials → system returns 401, user can retry or use "Forgot password" (UC-AUTH-003)
+- **A2**: Account disabled or locked → system returns 403 with reason
+- **A3**: Multi-factor required → system challenges for MFA then completes login
+
+**Postconditions**:
+- User authenticated
+- Session/token valid for configured period
+- User can perform role-scoped use cases
+
+**Related Use Cases**: UC-AUTH-001, UC-AUTH-003, all persona-specific use cases
+
+**Test Traceability**: [TEST_TRACEABILITY.md#uc-auth-002-user-logs-in](TEST_TRACEABILITY.md#uc-auth-002-user-logs-in)
+
+---
+
+### UC-AUTH-003: User Resets Password
+
+**ID**: UC-AUTH-003
+**Title**: User Resets Password
+**Persona**: Visitor, any registered user
+**Priority**: Medium
+**Status**: MVP (if implemented)
+
+**Description**:
+User requests a password reset (e.g. via "Forgot password" link), receives a secure link or code, and sets a new password.
+
+**Preconditions**:
+- User **not authenticated** (or authenticated and changing password)
+- User account exists and is identifiable (e.g. by email)
+- Password reset feature enabled (e.g. email delivery configured)
+
+**Main Flow**:
+1. User navigates to "Forgot password" or equivalent
+2. User submits email (or username) for account
+3. System validates that account exists (no disclosure of existence if not)
+4. System generates time-limited reset token and sends link/code to registered email
+5. User opens link or enters code and is presented with new password form
+6. User submits new password meeting policy
+7. System invalidates reset token and updates password
+8. User can log in with new password (UC-AUTH-002)
+
+**Alternate Flows**:
+- **A1**: Reset not enabled → system returns 501 or UI shows "Contact administrator"
+- **A2**: Token expired or invalid → user must request reset again
+- **A3**: New password does not meet policy → system returns 400
+
+**Postconditions**:
+- Password updated
+- Previous sessions/tokens optionally invalidated (per policy)
+
+**Related Use Cases**: UC-AUTH-002
+
+**Test Traceability**: [TEST_TRACEABILITY.md#uc-auth-003-user-resets-password](TEST_TRACEABILITY.md#uc-auth-003-user-resets-password)
+
+---
+
+### UC-AUTH-004: Unauthenticated User Accesses Public Resources
+
+**ID**: UC-AUTH-004
+**Title**: Unauthenticated User Accesses Public Resources
+**Persona**: Visitor
+**Priority**: Medium
+**Status**: MVP
+
+**Description**:
+A user who is not logged in accesses resources that do not require authentication, such as health checks, public API documentation, or (if configured) a public landing or catalog view.
+
+**Preconditions**:
+- User **not authenticated**
+- Resource is designated as public (no auth required)
+
+**Main Flow**:
+1. User opens public URL (e.g. health endpoint, developer docs, or landing page)
+2. System serves resource without requiring authentication
+3. User may browse public information and optionally navigate to login (UC-AUTH-002) or register (UC-AUTH-001)
+
+**Alternate Flows**:
+- **A1**: Resource requires auth → system returns 401 and may redirect to login
+- **A2**: No public landing → root redirects to login; documented as intentional
+
+**Postconditions**:
+- User has accessed public content only
+- No session or token issued unless user completes login or registration
+
+**Related Use Cases**: UC-AUTH-001, UC-AUTH-002
+
+**Test Traceability**: [TEST_TRACEABILITY.md#uc-auth-004-unauthenticated-user-accesses-public-resources](TEST_TRACEABILITY.md#uc-auth-004-unauthenticated-user-accesses-public-resources)
+
+**Note**: Many deployments restrict all application UI to authenticated users; public access is typically limited to health checks and API docs. See [API Reference](API_REFERENCE.md) for public endpoints.
 
 ---
 
@@ -718,6 +892,7 @@ User joins a data community for collaboration.
 **Persona**: Data Consumer, Data Product Owner, Community Manager
 **Priority**: Low
 **Status**: New
+**Backend status**: **Not implemented.** No activity feed API or model in `hub/apps/social`; UI SHALL NOT implement until backend exists. See `artifacts/SOCIAL_ENDPOINTS_VERIFICATION.md` in frontdev1.
 
 **Description**:
 User views and manages activity feed.
@@ -1391,34 +1566,46 @@ User configures automated compliance detection and enforcement.
 
 ---
 
-### UC-GOV-ADV-002: Set Up GDPR Right to be Forgotten
+### UC-GOV-ADV-002: GDPR Right to be Forgotten (Phase 25.5)
 
 **ID**: UC-GOV-ADV-002
-**Title**: Set Up GDPR Right to be Forgotten
-**Persona**: Compliance Officer
+**Title**: GDPR Right to be Forgotten (Data Erasure)
+**Persona**: User, Compliance Officer, Platform Admin
 **Priority**: High
-**Status**: New
+**Status**: **Implemented (Phase 25.5.2)**
 
 **Description**:
-User configures GDPR deletion workflows.
+Users can request deletion or anonymization of their personal data (GDPR Article 17). The platform provides an erasure workflow that handles PII deletion/anonymization while respecting legal and compliance retention requirements.
 
 **Preconditions**:
-- User authenticated with `AUDITOR` or `TENANT_ADMIN` role
-- GDPR feature enabled
+- User is authenticated (for self-service)
+- Platform admin authentication (for admin-initiated erasure)
 
 **Main Flow**:
-1. User navigates to GDPR configuration
-2. User configures deletion request workflow
-3. User sets up data deletion service
-4. User configures deletion verification
-5. System validates configuration
-6. System tests deletion workflow
-7. System deploys workflow
-8. System monitors deletion requests
+1. User requests erasure via **POST** `/api/v1/users/me/request-erasure/`
+2. System creates erasure request with status `PENDING`
+3. System executes erasure:
+   - Anonymizes user profile (email, display name)
+   - Revokes all user sessions
+   - Deactivates all API keys
+   - Anonymizes actor references in audit events
+4. System sets request status to `COMPLETED`
+5. System logs audit event: `ERASURE_COMPLETED`
 
-**Alternate Flows**:
-- **A1**: Configuration validation fails → user fixes
-- **A2**: Test fails → user adjusts workflow
+**API Endpoints**:
+- **POST** `/api/v1/users/me/request-erasure/` - User self-service erasure request
+- **GET** `/api/v1/users/me/erasure-requests/{id}/` - Check erasure request status
+- **POST** `/api/v1/platform/users/{id}/request-erasure/` - Platform admin erasure request
+- **POST** `/api/v1/platform/users/{id}/erasure-requests/{request_id}/execute/` - Execute erasure (admin)
+
+**What is Deleted vs Anonymized**:
+- **Deleted**: Sessions, API keys (deactivated)
+- **Anonymized**: User profile (email, display name), audit event actor references
+- **Retained**: Audit events (with anonymized references), compliance records, legal holds
+
+**Related Documentation**:
+- `docs/GDPR_ERASURE.md` - Complete erasure workflow documentation
+- `docs/DATA_PORTABILITY.md` - Right to data portability (Article 20)
 
 **Postconditions**:
 - Workflow configured
@@ -1427,6 +1614,63 @@ User configures GDPR deletion workflows.
 - Workflow operational
 
 **Related Use Cases**: UC-GOV-ADV-001, UC-CPO-007
+
+---
+
+### UC-GOV-ADV-002A: GDPR Data Portability (Phase 25.5)
+
+**ID**: UC-GOV-ADV-002A
+**Title**: GDPR Data Portability (Right to Data Portability)
+**Persona**: User
+**Priority**: High
+**Status**: **Implemented (Phase 25.5.1)**
+
+**Description**:
+Users can request a copy of their personal data in a machine-readable format (GDPR Article 20). The platform provides a data export feature that collects user data and provides it as a downloadable archive.
+
+**Preconditions**:
+- User is authenticated
+
+**Main Flow**:
+1. User requests data export via **POST** `/api/v1/users/me/export-data/`
+2. System creates data export job with status `PENDING`
+3. System processes export job:
+   - Collects user profile data
+   - Collects audit events (last 1000)
+   - Collects asset metadata (created by user)
+   - Collects dataset metadata (created by user)
+   - Collects contract metadata (created by user)
+4. System builds ZIP archive with JSON data
+5. System uploads archive to storage (S3/MinIO)
+6. System generates signed download URL (24 hour expiry)
+7. System sets job status to `COMPLETED`
+8. User downloads export archive
+
+**API Endpoints**:
+- **POST** `/api/v1/users/me/export-data/` - Request data export
+- **GET** `/api/v1/users/me/export-jobs/{job_id}/` - Check export job status
+
+**Export Contents**:
+- **user_data.json**: Complete user profile and metadata
+- **README.txt**: Export information and format description
+
+**Data Included**:
+- User profile (email, display name, status, timestamps)
+- Audit events (recent 1000 events)
+- Asset metadata (name, description, status)
+- Dataset metadata (name, description, status)
+- Contract metadata (name, status)
+
+**Note**: Actual file contents are not included for privacy and storage reasons.
+
+**Related Documentation**:
+- `docs/DATA_PORTABILITY.md` - Complete data portability documentation
+- `docs/GDPR_ERASURE.md` - Right to be Forgotten (Article 17)
+
+**Postconditions**:
+- Export job created
+- Export archive available for download
+- Download URL provided (24 hour expiry)
 
 ---
 
@@ -2033,6 +2277,918 @@ User accesses developer portal for documentation and resources.
 
 ---
 
+## Use Cases Previously Referenced Only (Documentation Completeness)
+
+This section closes documentation gaps for use case IDs that were referenced in "Related Use Cases" but did not have a dedicated `### UC-XXX:` block. Each is classified as **implemented (backend)** or **not implemented (backend)** so that frontend and E2E planning can rely on a single source of truth.
+
+### Deferred — Transformation Pipeline (Phase 5)
+
+The following **transformation pipeline** use cases and user journeys are **Deferred** (Phase 5 Option A). No public transformation-pipeline API is implemented; they are documented for future scope. See [Gap Remediation Plan](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md).
+
+**Related user journeys** (all **Deferred**): JOURNEY-DPO-008 (Create Transformation Pipeline for Asset), JOURNEY-DE-007 (Create Transformation Pipeline), JOURNEY-DC-007 (Create Transformation Pipeline for Data), JOURNEY-DEV-006 (Integrate Transformation Pipeline API), JOURNEY-AUD-005 (Audit Transformation Pipelines), JOURNEY-DA-001 (Create Transformation Pipeline). Any use case that would map to a dedicated "Create/Execute/Validate Transformation Pipeline" API is deferred with these journeys.
+
+### Implemented (Backend)
+
+The following use cases have backend support (OpenAPI/runtime). Frontend and E2E SHALL provide or extend UI and tests per `openspec/changes/frontdev1` (ROUTE_MAP, JOURNEY_COVERAGE_MATRIX, USE_CASE_COVERAGE_MATRIX).
+
+#### UC-AM-002: Publish Asset to Marketplace
+
+**ID**: UC-AM-002
+**Title**: Publish Asset to Marketplace
+**Persona**: Data Product Owner
+**Priority**: High
+**Status**: MVP
+**Backend status**: Implemented. `hub/apps/marketplace` — listings create/update/retrieve.
+
+**Description**: User publishes an asset as a marketplace listing with metadata, pricing (if supported), and eligibility.
+
+**Preconditions**: User authenticated with DATA_PROVIDER role; asset exists and is activated; tenant/marketplace enabled.
+
+**Main Flow**: 1. User navigates to marketplace publish flow (e.g. `/marketplace/publish`). 2. User selects asset and configures listing (title, description, pricing). 3. System creates or updates listing via API. 4. Listing is visible in marketplace.
+
+**Postconditions**: Listing created/updated; entitlement and purchase flows available per UC-DC-001.
+
+**API Endpoints**: `marketplace_listings_create`, `marketplace_listings_update`, `marketplace_listings_retrieve`
+
+**Related Use Cases**: UC-AM-001, UC-DC-001, UC-DPO-002
+
+---
+
+#### UC-CM-001: Manage Data Community
+
+**ID**: UC-CM-001
+**Title**: Manage Data Community
+**Persona**: Community Manager, Data Product Owner, Data Consumer
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/social` — CommunityViewSet, `create_or_join_community`.
+
+**Description**: User creates or joins a data community; community membership and metadata are managed.
+
+**Preconditions**: User authenticated; social/communities feature enabled.
+
+**Main Flow**: 1. User navigates to communities (e.g. `/social/communities`). 2. User creates a new community or joins existing via API. 3. System creates/updates community and membership.
+
+**Postconditions**: Community exists; user is member; community discoverable per UC-SOCIAL-004.
+
+**API Endpoints**: `create_or_join_community` (POST); community list/detail per OpenAPI.
+
+**Related Use Cases**: UC-SOCIAL-004, UC-CM-002, UC-CM-003
+
+---
+
+#### UC-CM-002: Moderate Reviews and Ratings
+
+**ID**: UC-CM-002
+**Title**: Moderate Reviews and Ratings
+**Persona**: Community Manager
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/social` — Review model with status (PENDING, APPROVED, REJECTED); review list/update per OpenAPI.
+
+**Description**: User moderates asset reviews and ratings (approve/reject; optional edit).
+
+**Preconditions**: User with moderation permission; reviews exist.
+
+**Main Flow**: 1. User navigates to reviews or asset detail. 2. User views pending reviews. 3. User approves or rejects; system updates status.
+
+**Postconditions**: Review status updated; approved reviews visible to consumers.
+
+**API Endpoints**: Review list/retrieve/update per `hub/apps/social/urls.py`.
+
+**Related Use Cases**: UC-SOCIAL-002, UC-DC-008, UC-CM-001
+
+---
+
+#### UC-CM-003: Assign Data Steward
+
+**ID**: UC-CM-003
+**Title**: Assign Data Steward
+**Persona**: Community Manager, Data Product Owner
+**Priority**: Medium
+**Status**: New
+**Backend status**: Partially implemented. `users_list`, `users_roles_list`; asset steward assignment may be limited — gate UI by endpoint availability.
+
+**Description**: User assigns data stewards to assets; stewardship is visible and auditable.
+
+**Preconditions**: User with steward-assignment permission; users and roles available.
+
+**Main Flow**: 1. User opens asset detail (stewardship panel). 2. User selects user(s) and role(s). 3. System assigns steward where endpoint exists.
+
+**Postconditions**: Steward assignment recorded or limitation clearly shown in UI.
+
+**API Endpoints**: `users_list`, `users_roles_list`; asset steward endpoint if present (see JOURNEY-DPO-011, JOURNEY-CM-003).
+
+**Related Use Cases**: UC-SOCIAL-006, UC-AM-001, UC-CM-001
+
+---
+
+#### UC-COMP-001: Run Compliance Scan / Review Compliance for Asset
+
+**ID**: UC-COMP-001
+**Title**: Run Compliance Scan / Review Compliance for Asset
+**Persona**: Compliance Officer, Data Product Owner
+**Priority**: High
+**Status**: MVP
+**Backend status**: Implemented. `hub/apps/compliance` — ComplianceRun, compliance runs list/detail/results; scan execution via job.
+
+**Description**: User triggers a compliance run for an asset/file or reviews existing compliance run results.
+
+**Preconditions**: User authenticated; compliance feature enabled; asset or file available.
+
+**Main Flow**: 1. User navigates to compliance runs (e.g. `/compliance/runs`). 2. User creates a run (asset/file, regulations) or opens existing run. 3. System executes scan; user views results and remediation guidance.
+
+**Postconditions**: Compliance run recorded; results and risk level visible; fail-closed guidance when applicable.
+
+**API Endpoints**: `compliance_runs_list`, `compliance_runs_create`, `get_compliance_run_results`
+
+**Related Use Cases**: UC-AM-001, UC-CPO-001, UC-DQ-001, UC-AI-005
+
+---
+
+#### UC-CPO-009: Configure Automated Retention Policies
+
+**ID**: UC-CPO-009
+**Title**: Configure Automated Retention Policies
+**Persona**: Compliance Officer
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/governance` — RetentionPolicy, RetentionPolicyEnforcer, retention_views; CRUD via OpenAPI.
+
+**Description**: User creates or updates retention policies (time-based or event-based); system enforces retention.
+
+**Preconditions**: User with governance/admin permission; governance feature enabled.
+
+**Main Flow**: 1. User navigates to governance (e.g. `/governance`). 2. User lists retention policies; creates or updates policy. 3. System validates and stores; enforcer runs per schedule.
+
+**Postconditions**: Policy active; retention actions (soft delete, archive, etc.) applied per policy.
+
+**API Endpoints**: `governance_retention_policies_list`, `governance_retention_policies_create`, `governance_retention_policies_update`
+
+**Related Use Cases**: UC-GOV-ADV-004, UC-CPO-003, JOURNEY-CPO-003
+
+---
+
+#### UC-DA-003: Query Virtual Dataset
+
+**ID**: UC-DA-003
+**Title**: Query Virtual Dataset
+**Persona**: Data Analyst
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/virtualization` — query create, progress, result.
+
+**Description**: User runs a query against a virtual dataset and views results.
+
+**Preconditions**: User authenticated; virtual dataset exists; virtualization enabled.
+
+**Main Flow**: 1. User navigates to virtualization query (e.g. `/virtualization/query`). 2. User selects dataset and enters/submits query. 3. System executes; user sees progress and results.
+
+**Postconditions**: Query executed; results displayed and optionally exported.
+
+**API Endpoints**: `virtualization_datasets_queries_create`, `virtualization_queries_result_retrieve`, `virtualization_queries_progress_retrieve`
+
+**Related Use Cases**: UC-VIRT-002, UC-DA-004, JOURNEY-DA-003
+
+---
+
+#### UC-DA-004: Execute Federated Query
+
+**ID**: UC-DA-004
+**Title**: Execute Federated Query
+**Persona**: Data Analyst, Data Engineer
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. Same as UC-DA-003; virtualization backend supports federated execution.
+
+**Description**: User executes a federated query across sources; system runs and returns combined results.
+
+**Preconditions**: As UC-DA-003; federated topology configured.
+
+**Main Flow**: 1. User composes federated query. 2. System executes across sources. 3. User sees results or partial results and errors.
+
+**Postconditions**: Federated query completed or failure clearly reported.
+
+**API Endpoints**: As UC-DA-003; topology endpoints if exposed.
+
+**Related Use Cases**: UC-VIRT-002, UC-DA-003, JOURNEY-DA-004
+
+---
+
+#### UC-DC-001: Discover and Purchase Marketplace Asset
+
+**ID**: UC-DC-001
+**Title**: Discover and Purchase Marketplace Asset
+**Persona**: Data Consumer
+**Priority**: High
+**Status**: MVP
+**Backend status**: Implemented. `hub/apps/marketplace` — listings list, purchase, entitlements.
+
+**Description**: User discovers a listing, purchases (or requests access), and sees entitlement.
+
+**Preconditions**: User authenticated; marketplace enabled; listing available.
+
+**Main Flow**: 1. User browses/search listings. 2. User opens listing detail; optionally preview (UC-DC-012). 3. User purchases or requests access. 4. Entitlement visible in entitlements list.
+
+**Postconditions**: Order placed; entitlement active; user can access per contract.
+
+**API Endpoints**: `marketplace_listings_list`, `marketplace_listings_retrieve`, `marketplace_orders_purchase_create`, `marketplace_entitlements_list`
+
+**Related Use Cases**: UC-AI-001, UC-DC-012, UC-DC-013, UC-AM-002
+
+---
+
+#### UC-DC-006: Use Natural Language Search
+
+**ID**: UC-DC-006
+**Title**: Use Natural Language Search
+**Persona**: Data Consumer, Data Scientist
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/ai` — `natural_language_search`; `hub/apps/search` — `search_search_retrieve`.
+
+**Description**: User searches for data using natural language; system returns results (and optionally query interpretation).
+
+**Preconditions**: User authenticated; NL search enabled; LLM/service available when required.
+
+**Main Flow**: 1. User navigates to search (e.g. `/search`, `/ai/search`). 2. User enters natural language query. 3. System returns results or interpretation.
+
+**Postconditions**: Results displayed; user can navigate to assets/listings.
+
+**API Endpoints**: `natural_language_search`, `search_search_retrieve`
+
+**Related Use Cases**: UC-AI-001, UC-AI-008, JOURNEY-DC-006, JOURNEY-DS-001
+
+---
+
+#### UC-DC-008: Rate and Review Asset
+
+**ID**: UC-DC-008
+**Title**: Rate and Review Asset
+**Persona**: Data Consumer, Data Product Owner
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/social` — submit_rating, submit_review; Rating, Review models.
+
+**Description**: User submits a rating and/or review for an asset; moderation may apply.
+
+**Preconditions**: User authenticated; asset exists; social feature enabled.
+
+**Main Flow**: 1. User opens asset detail (social panel). 2. User submits rating (1–5) and/or review text. 3. System stores; status PENDING or APPROVED per config.
+
+**Postconditions**: Rating/review stored; visible to others after moderation if applicable.
+
+**API Endpoints**: `submit_rating`, `submit_review`
+
+**Related Use Cases**: UC-SOCIAL-001, UC-SOCIAL-002, UC-CM-002
+
+---
+
+#### UC-DC-011: Purchase Asset with Usage-Based Pricing
+
+**ID**: UC-DC-011
+**Title**: Purchase Asset with Usage-Based Pricing
+**Persona**: Data Consumer
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. Marketplace listing/order schema supports usage-based pricing; UI gated by schema.
+
+**Description**: User selects usage-based pricing option when purchasing and completes order.
+
+**Preconditions**: Listing supports usage-based pricing; user eligible.
+
+**Main Flow**: 1. User selects listing with usage-based plan. 2. User confirms pricing and purchases. 3. Entitlement reflects usage-based terms.
+
+**Postconditions**: Order completed; entitlement active; metering/usage per contract.
+
+**API Endpoints**: `marketplace_orders_purchase_create`, listing schema for pricing
+
+**Related Use Cases**: UC-DC-001, UC-MKT-ADV-001, UC-DPO-010
+
+---
+
+#### UC-DC-012: Preview Data Before Purchase
+
+**ID**: UC-DC-012
+**Title**: Preview Data Before Purchase
+**Persona**: Data Consumer
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/marketplace` — preview_marketplace_listing (or equivalent per OpenAPI).
+
+**Description**: User previews data or sample before purchasing a listing.
+
+**Preconditions**: Listing supports preview; user authenticated.
+
+**Main Flow**: 1. User opens listing detail. 2. User triggers preview. 3. System returns sample or preview payload; user reviews.
+
+**Postconditions**: Preview displayed; user can proceed to purchase (UC-DC-001).
+
+**API Endpoints**: `preview_marketplace_listing` (or per OpenAPI)
+
+**Related Use Cases**: UC-DC-001, UC-MKT-ADV-002
+
+---
+
+#### UC-DC-013: Use Asset Recommendations
+
+**ID**: UC-DC-013
+**Title**: Use Asset Recommendations
+**Persona**: Data Consumer, Data Product Owner
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented or fallback. `assets_recommendations_retrieve` where available; otherwise UI shows empty or non-ML recommendations.
+
+**Description**: User sees recommended assets (e.g. on home or catalog); recommendations may be ML-based or rule-based.
+
+**Preconditions**: User authenticated; recommendation endpoint or fallback available.
+
+**Main Flow**: 1. User navigates to catalog/home. 2. System fetches recommendations. 3. User sees list; can open asset detail.
+
+**Postconditions**: Recommendations displayed; safe empty state when none.
+
+**API Endpoints**: `assets_recommendations_retrieve` (or per OpenAPI)
+
+**Related Use Cases**: UC-AI-004, UC-DC-001, UC-AM-001
+
+---
+
+#### UC-DE-005: CI/CD Integration
+
+**ID**: UC-DE-005
+**Title**: CI/CD Integration
+**Persona**: Data Engineer, External Developer
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/developer` — SDK docs; `hub/apps/baas` — API keys. UI provides runnable snippets.
+
+**Description**: User integrates platform with CI/CD using SDK docs and API keys; runs automated flows.
+
+**Preconditions**: User authenticated; developer/BaaS access.
+
+**Main Flow**: 1. User opens developer portal and SDK docs. 2. User creates/manages API keys (BaaS). 3. User copies snippets and configures pipeline.
+
+**Postconditions**: CI/CD pipeline can call APIs; docs and keys current.
+
+**API Endpoints**: `get_sdk_documentation`, `baas_api_keys_list`, `baas_api_keys_create`
+
+**Related Use Cases**: UC-DEV-009, UC-INT-005, JOURNEY-DE-005
+
+---
+
+#### UC-DE-009: Set Up Data Virtualization
+
+**ID**: UC-DE-009
+**Title**: Set Up Data Virtualization
+**Persona**: Data Engineer
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/virtualization` — datasets create/validate, queries create/progress/result.
+
+**Description**: User creates and configures virtual datasets; runs queries and views results.
+
+**Preconditions**: User authenticated; virtualization enabled.
+
+**Main Flow**: 1. User creates virtual dataset (sources, schema). 2. User validates and saves. 3. User runs queries; views progress and results.
+
+**Postconditions**: Virtual dataset available; query execution reliable (cancel/progress/result).
+
+**API Endpoints**: `virtualization_datasets_create`, `virtualization_datasets_validate_create`, `virtualization_datasets_queries_create`, `virtualization_queries_result_retrieve`, `virtualization_queries_progress_retrieve`
+
+**Related Use Cases**: UC-VIRT-001, UC-VIRT-002, UC-DA-003, JOURNEY-DE-009
+
+---
+
+#### UC-DE-010: Configure Connector for Data Source
+
+**ID**: UC-DE-010
+**Title**: Configure Connector for Data Source
+**Persona**: Data Engineer, Tenant Admin
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/integrations` — connections create/list/test; connectors retrieve.
+
+**Description**: User configures a connector to an external data source; tests connection.
+
+**Preconditions**: User authenticated; integrations enabled; connector type available.
+
+**Main Flow**: 1. User navigates to integrations connections. 2. User creates connection (credentials, config). 3. User runs connection test; fixes failures if any.
+
+**Postconditions**: Connection created and tested; sync/jobs can use it (JOURNEY-MP-001–007).
+
+**API Endpoints**: `integrations_marketplace_connections_create`, `integrations_marketplace_connections_test_create`, `integrations_marketplace_connectors_retrieve`
+
+**Related Use Cases**: UC-INT-001, JOURNEY-DE-010, JOURNEY-MP-001
+
+---
+
+#### UC-DE-012: Create or Browse Custom Plugin
+
+**ID**: UC-DE-012
+**Title**: Create or Browse Custom Plugin
+**Persona**: Data Engineer, External Developer
+**Priority**: Medium
+**Status**: New
+**Backend status**: Partially implemented. `hub/apps/developer` — plugins list/retrieve; create not in OpenAPI — UI gate "create" or document external process.
+
+**Description**: User browses available plugins; optionally creates custom plugin where backend supports.
+
+**Preconditions**: User authenticated; developer portal enabled.
+
+**Main Flow**: 1. User navigates to developer plugins. 2. User lists/inspects plugins. 3. Create flow only if endpoint exists; otherwise docs/external.
+
+**Postconditions**: Plugins discoverable; creation path clear or explicitly limited.
+
+**API Endpoints**: `developer_plugins_list`, `developer_plugins_retrieve`
+
+**Related Use Cases**: UC-DEV-001, UC-DEV-002, JOURNEY-DE-012
+
+---
+
+#### UC-DEV-007: Build Custom Connector
+
+**ID**: UC-DEV-007
+**Title**: Build Custom Connector
+**Persona**: External Developer, Data Engineer
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented (framework/docs). `hub/apps/integrations` — connectors retrieve; framework docs and examples; custom build may be external.
+
+**Description**: User builds a custom connector using platform framework and docs; registers or deploys per capability.
+
+**Preconditions**: User has developer/integration access; connector framework documented.
+
+**Main Flow**: 1. User reads connector framework docs (integrations/developer). 2. User implements connector; tests against API if available. 3. User deploys or registers per process.
+
+**Postconditions**: Custom connector available or process clearly documented.
+
+**API Endpoints**: `integrations_marketplace_connectors_retrieve`; docs per developer portal.
+
+**Related Use Cases**: UC-INT-002, UC-DE-010, JOURNEY-DEV-007
+
+---
+
+#### UC-DEV-008: Use Plugin System
+
+**ID**: UC-DEV-008
+**Title**: Use Plugin System
+**Persona**: External Developer, Data Engineer
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/developer` — plugins list/retrieve; plugin usage per runtime.
+
+**Description**: User discovers and uses plugins from the developer portal; installs or configures per platform.
+
+**Preconditions**: User authenticated; plugins available.
+
+**Main Flow**: 1. User navigates to developer plugins. 2. User lists and selects plugin. 3. User follows install/configure steps.
+
+**Postconditions**: Plugin available for use; docs and limits clear.
+
+**API Endpoints**: `developer_plugins_list`, `developer_plugins_retrieve`
+
+**Related Use Cases**: UC-DEV-001, UC-DEV-009, JOURNEY-DEV-008
+
+---
+
+#### UC-DEV-009: Integrate with Developer Portal
+
+**ID**: UC-DEV-009
+**Title**: Integrate with Developer Portal
+**Persona**: External Developer
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/developer` — SDK docs, plugins; portal UI at `/developer`.
+
+**Description**: User accesses developer portal for SDK docs, plugins, and examples; builds integration.
+
+**Preconditions**: User authenticated; developer portal enabled.
+
+**Main Flow**: 1. User navigates to `/developer`. 2. User browses SDK docs and plugins. 3. User uses examples and API keys (BaaS) to integrate.
+
+**Postconditions**: Portal navigable; docs and runnable examples available.
+
+**API Endpoints**: `get_sdk_documentation`, `developer_plugins_list`
+
+**Related Use Cases**: UC-DEV-001, UC-DEV-003, UC-DEV-004, UC-DE-005, JOURNEY-DEV-009
+
+---
+
+#### UC-DMO-001: Create Data Mesh Domain
+
+**ID**: UC-DMO-001
+**Title**: Create Data Mesh Domain
+**Persona**: Data Mesh Domain Owner, Tenant Admin
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. Same as UC-MESH-001. `hub/apps/mesh` — mesh_domains_create, mesh_domains_list.
+
+**Description**: User creates a data mesh domain; domain is available for assignment and topology.
+
+**Preconditions**: User with mesh/admin permission; mesh feature enabled.
+
+**Main Flow**: 1. User navigates to mesh domains. 2. User creates domain (name, scope). 3. System creates domain; visible in list and topology.
+
+**Postconditions**: Domain created; can be used in UC-MESH-002, UC-MESH-003.
+
+**API Endpoints**: `mesh_domains_create`, `mesh_domains_list`, `mesh_domains_retrieve`
+
+**Related Use Cases**: UC-MESH-001, UC-MESH-002, UC-MESH-003
+
+---
+
+#### UC-DMO-002: Configure Federated Governance
+
+**ID**: UC-DMO-002
+**Title**: Configure Federated Governance
+**Persona**: Data Mesh Domain Owner, Compliance Officer
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. Same as UC-MESH-002. `hub/apps/mesh` — domain policies list/apply.
+
+**Description**: User configures federated governance policies for a mesh domain.
+
+**Preconditions**: Domain exists; user with governance permission.
+
+**Main Flow**: 1. User opens domain detail/policies. 2. User defines or applies policies. 3. System stores and applies per mesh engine.
+
+**Postconditions**: Policies active; governance auditable.
+
+**API Endpoints**: `mesh_domains_policies_list`, `mesh_domains_policies_apply_create`
+
+**Related Use Cases**: UC-MESH-002, UC-DMO-001, UC-DMO-003
+
+---
+
+#### UC-DMO-003: Manage Domain Topology
+
+**ID**: UC-DMO-003
+**Title**: Manage Domain Topology
+**Persona**: Data Mesh Domain Owner, Platform Admin
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. Same as UC-MESH-003. `hub/apps/mesh` — topology list, relationships.
+
+**Description**: User views and manages domain topology (graph of domains, assets, relationships).
+
+**Preconditions**: Mesh enabled; topology data available.
+
+**Main Flow**: 1. User navigates to topology view. 2. System displays graph. 3. User explores and optionally updates where supported.
+
+**Postconditions**: Topology visible and performant; relationships clear.
+
+**API Endpoints**: `mesh_topology_list`, `mesh_topology_relationships_retrieve`
+
+**Related Use Cases**: UC-MESH-003, UC-DMO-001, UC-DMO-005, JOURNEY-MPA-007
+
+---
+
+#### UC-DMO-005: Monitor Domain Health
+
+**ID**: UC-DMO-005
+**Title**: Monitor Domain Health
+**Persona**: Data Mesh Domain Owner, Platform Admin
+**Priority**: Medium
+**Status**: New
+**Backend status**: Partially implemented. `mesh_topology_health_retrieve` where available; observability metrics may be limited — gate UI by endpoint.
+
+**Description**: User monitors health of mesh domains and related resources.
+
+**Preconditions**: Mesh and optionally observability enabled.
+
+**Main Flow**: 1. User opens topology or observability. 2. User views health metrics per domain. 3. Alerts or degradation visible when supported.
+
+**Postconditions**: Health view usable; limits documented when advanced metrics absent.
+
+**API Endpoints**: `mesh_topology_health_retrieve`; `observability_metrics_create` if exposed.
+
+**Related Use Cases**: UC-MESH-005, UC-DMO-003, JOURNEY-DPO-014
+
+---
+
+#### UC-DPO-002: Publish Asset to Marketplace
+
+**ID**: UC-DPO-002
+**Title**: Publish Asset to Marketplace
+**Persona**: Data Product Owner
+**Priority**: High
+**Status**: MVP
+**Backend status**: Implemented. Same capability as UC-AM-002; marketplace listings create/update.
+
+**Description**: User publishes an asset as a marketplace listing.
+
+**Preconditions**: Asset activated; user DATA_PROVIDER; marketplace enabled.
+
+**Main Flow**: 1. User selects asset and navigates to publish. 2. User configures listing. 3. Listing created/updated; visible in marketplace.
+
+**Postconditions**: Listing live; consumers can discover and purchase (UC-DC-001).
+
+**API Endpoints**: `marketplace_listings_create`, `marketplace_listings_update`, `marketplace_listings_retrieve`
+
+**Related Use Cases**: UC-AM-002, UC-DC-001, JOURNEY-DPO-002
+
+---
+
+#### UC-DPO-010: Publish Asset with Usage-Based Pricing
+
+**ID**: UC-DPO-010
+**Title**: Publish Asset with Usage-Based Pricing
+**Persona**: Data Product Owner
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. Marketplace listing schema supports usage-based pricing; UI derives knobs from schema.
+
+**Description**: User configures usage-based pricing when publishing a listing.
+
+**Preconditions**: Marketplace supports pricing schema; user publishing listing.
+
+**Main Flow**: 1. User in publish flow selects usage-based pricing. 2. User configures tiers/limits. 3. Listing saved with pricing; consumers see it (UC-DC-011).
+
+**Postconditions**: Listing has usage-based terms; purchase flow supports it.
+
+**API Endpoints**: `marketplace_listings_update` (schema-driven pricing fields)
+
+**Related Use Cases**: UC-DPO-002, UC-DC-011, UC-MKT-ADV-001
+
+---
+
+#### UC-DPO-014: Create ODPS Product (Product-First Flow)
+
+**ID**: UC-DPO-014
+**Title**: Create ODPS Product (Product-First Flow)
+**Persona**: Data Product Owner
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/contracts` — contracts_products_create, contracts_products_status_retrieve; ODPS upload/workflow.
+
+**Description**: User creates an ODPS product via product-first flow (upload, workflow, link to ODCS).
+
+**Preconditions**: User authenticated; contracts/ODPS enabled.
+
+**Main Flow**: 1. User uploads ODPS product (e.g. `/odps/upload`). 2. System runs workflow; user sees status. 3. User links to ODCS contract where required; exports if supported.
+
+**Postconditions**: ODPS product created; workflow traceable; link/export available per JOURNEY-DPO-015–017.
+
+**API Endpoints**: `contracts_products_create`, `contracts_products_status_retrieve`, `contracts_retrieve`
+
+**Related Use Cases**: UC-DMO-005, JOURNEY-DPO-015, JOURNEY-DPO-016, JOURNEY-DPO-017
+
+---
+
+#### UC-DQ-001: Run Data Quality Check / Monitor Asset Quality
+
+**ID**: UC-DQ-001
+**Title**: Run Data Quality Check / Monitor Asset Quality
+**Persona**: Data Product Owner, Data Engineer, Compliance Officer
+**Priority**: High
+**Status**: MVP
+**Backend status**: Implemented. `hub/apps/dq` — DQ runs create/list/results; assets health score where available.
+
+**Description**: User runs a data quality check (e.g. on intake or ad hoc) or monitors asset quality results.
+
+**Preconditions**: User authenticated; DQ feature enabled; asset or dataset available.
+
+**Main Flow**: 1. User navigates to DQ runs (e.g. `/dq/runs`). 2. User creates run or opens existing. 3. User views results and remediation guidance.
+
+**Postconditions**: DQ run recorded; results and pass/fail visible; asset health usable when endpoint exists.
+
+**API Endpoints**: `dq_runs_list`, `dq_runs_create`, `get_dq_run_results`; `assets_health_score_retrieve` for health
+
+**Related Use Cases**: UC-AM-001, UC-COMP-001, UC-AI-006, UC-AI-007, JOURNEY-DPO-004
+
+---
+
+### Category: Scheduled Export / Data Operations
+
+#### UC-EXPORT-001: Schedule Recurring Export
+
+**ID**: UC-EXPORT-001
+**Title**: Schedule Recurring Export
+**Persona**: Data Engineer, Data Product Owner
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/scheduled_export` — scheduled_exports_create, scheduled_exports_list, scheduled_exports_retrieve; Prefect integration.
+
+**Description**: Tenant configures a scheduled export (source scope, destination, schedule) and runs are executed by Prefect workers.
+
+**Preconditions**: User authenticated; assets/datasets/files exist for export scope.
+
+**Main Flow**:
+1. User navigates to scheduled exports page
+2. User creates scheduled export with source scope (asset_ids, dataset_ids, file_ids, or contract_id)
+3. User configures destination (S3/GCS/Azure Blob) and credentials
+4. User sets schedule (cron expression)
+5. System syncs export to Prefect deployment
+6. Prefect worker executes exports according to schedule
+
+**Postconditions**: Scheduled export created; Prefect deployment synced; exports run automatically.
+
+**API Endpoints**: `scheduled_exports_create`, `scheduled_exports_list`, `scheduled_exports_retrieve`
+
+**Related Use Cases**: UC-EXPORT-002, UC-EXPORT-003, UC-EXPORT-004, JOURNEY-EXPORT-001
+
+---
+
+#### UC-EXPORT-002: Configure Export Destination
+
+**ID**: UC-EXPORT-002
+**Title**: Configure Export Destination
+**Persona**: Data Engineer, Data Product Owner
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/scheduled_export` — scheduled_exports_update; destination configuration stored in hub.
+
+**Description**: Tenant sets destination type (S3/GCS/Azure Blob) and path/prefix. Credentials configured via Prefect Blocks or environment variables.
+
+**Preconditions**: Scheduled export exists or being created.
+
+**Main Flow**:
+1. User selects destination type (S3, GCS, Azure Blob)
+2. User configures bucket/container name and prefix/path
+3. User configures credentials (via Prefect Blocks or environment variables)
+4. System validates destination configuration
+5. Configuration stored in hub (credentials masked in API responses)
+
+**Postconditions**: Export destination configured; credentials stored securely.
+
+**API Endpoints**: `scheduled_exports_create`, `scheduled_exports_update`
+
+**Related Use Cases**: UC-EXPORT-001, UC-EXPORT-003, JOURNEY-EXPORT-001
+
+---
+
+#### UC-EXPORT-003: Monitor Export Runs
+
+**ID**: UC-EXPORT-003
+**Title**: Monitor Export Runs
+**Persona**: Data Engineer, Data Product Owner
+**Priority**: High
+**Status**: New
+**Backend status**: Implemented. `hub/apps/scheduled_export` — scheduled_export_runs_list, scheduled_export_runs_retrieve; run status tracking.
+
+**Description**: Tenant views run history, status, counts (items_exported, items_failed), and optional Prefect link.
+
+**Preconditions**: Scheduled export exists; at least one run has been executed.
+
+**Main Flow**:
+1. User navigates to scheduled export detail page
+2. User views run list with status, timestamps, counts
+3. User opens run detail to see full information
+4. User optionally clicks "View in Prefect" to see Prefect flow run details
+5. User interprets status (RUNNING, COMPLETED, FAILED, CANCELLED)
+
+**Postconditions**: User understands export run status and history.
+
+**API Endpoints**: `scheduled_export_runs_list`, `scheduled_export_runs_retrieve`
+
+**Related Use Cases**: UC-EXPORT-001, UC-EXPORT-004, JOURNEY-EXPORT-001, JOURNEY-EXPORT-002
+
+---
+
+#### UC-EXPORT-004: Manual Trigger of Scheduled Export
+
+**ID**: UC-EXPORT-004
+**Title**: Manual Trigger of Scheduled Export
+**Persona**: Data Engineer, Data Product Owner
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/scheduled_export` — scheduled_exports_trigger; triggers Prefect flow run.
+
+**Description**: Tenant triggers a one-off run of a scheduled export.
+
+**Preconditions**: Scheduled export exists and is ACTIVE.
+
+**Main Flow**:
+1. User navigates to scheduled export detail page
+2. User clicks "Trigger Export" button
+3. System creates Prefect flow run
+4. System creates hub run record (status RUNNING)
+5. Prefect worker executes export
+6. User can monitor run status
+
+**Postconditions**: Export run triggered; run visible in run history.
+
+**API Endpoints**: `scheduled_exports_trigger`
+
+**Related Use Cases**: UC-EXPORT-001, UC-EXPORT-003, JOURNEY-EXPORT-001
+
+---
+
+#### UC-TA-008: Configure Integration Ecosystem
+
+**ID**: UC-TA-008
+**Title**: Configure Integration Ecosystem
+**Persona**: Tenant Admin
+**Priority**: Medium
+**Status**: New
+**Backend status**: Implemented. `hub/apps/integrations` — connections, sync jobs, mappings; tenant-scoped.
+
+**Description**: Tenant admin configures integrations (connections, sync jobs, mappings) for the tenant.
+
+**Preconditions**: User TENANT_ADMIN; integrations enabled.
+
+**Main Flow**: 1. User navigates to integrations. 2. User manages connections, sync jobs, mappings. 3. System applies config; jobs run per schedule or trigger.
+
+**Postconditions**: Integrations configured; failures actionable; JOURNEY-MP-001–007 supported.
+
+**API Endpoints**: `integrations_marketplace_connections_create/list`, `integrations_marketplace_sync_create/list`, `integrations_marketplace_mappings_list`
+
+**Related Use Cases**: UC-DE-010, UC-INT-001, JOURNEY-TA-008, JOURNEY-MP-007
+
+---
+
+### Not Implemented (Backend)
+
+The following use case IDs are referenced in the doc but **have no backend implementation** (no OpenAPI endpoints or runtime support). UI SHALL NOT implement these flows until backend exists; show `/unavailable` or clear "not available" message. See `openspec/changes/frontdev1/artifacts/JOURNEY_COVERAGE_MATRIX.md` (Red journeys) and `USE_CASE_COVERAGE_MATRIX.md`.
+
+#### UC-CM-004: Manage Activity Feed
+
+**ID**: UC-CM-004
+**Title**: Manage Activity Feed
+**Persona**: Community Manager
+**Backend status**: **Not implemented.** Same as UC-SOCIAL-005; no activity feed API in `hub/apps/social`. UI: N/A or `/unavailable`.
+
+**Related Use Cases**: UC-SOCIAL-005, UC-SOCIAL-004
+
+---
+
+#### UC-CPO-006: Configure Automated Compliance
+
+**ID**: UC-CPO-006
+**Title**: Configure Automated Compliance
+**Persona**: Compliance Officer
+**Backend status**: **Not implemented.** No dedicated automated-compliance configuration API in OpenAPI. (UC-GOV-ADV-001 describes the capability; backend not evidenced.) UI: `/unavailable`.
+
+**Related Use Cases**: UC-GOV-ADV-001, UC-CPO-007
+
+---
+
+#### UC-CPO-007: Set Up GDPR Right to be Forgotten
+
+**ID**: UC-CPO-007
+**Title**: Set Up GDPR Right to be Forgotten
+**Persona**: Compliance Officer
+**Backend status**: ✅ **Implemented (Phase 25.5.2)**. GDPR erasure workflow API available. See UC-GOV-ADV-002 for details.
+
+**Related Use Cases**: UC-GOV-ADV-002, UC-CPO-006
+
+---
+
+#### UC-CPO-008: Manage Consent Tracking
+
+**ID**: UC-CPO-008
+**Title**: Manage Consent Tracking
+**Persona**: Compliance Officer
+**Backend status**: **Not implemented.** No consent model or consent-tracking API; only legal_basis (e.g. CONSENT) in contracts. UI: `/unavailable`.
+
+**Related Use Cases**: UC-GOV-ADV-003, UC-CPO-007
+
+---
+
+#### UC-CPO-010: Review AI Auto-Classification Results
+
+**ID**: UC-CPO-010
+**Title**: Review AI Auto-Classification Results
+**Persona**: Compliance Officer
+**Backend status**: **Not implemented.** AI classification endpoints not evidenced in OpenAPI. See `artifacts/AI_ENDPOINTS_VERIFICATION.md`. UI: `/unavailable`; DPO flow unblocked via manual classification where supported.
+
+**Related Use Cases**: UC-AI-005, UC-AM-001
+
+---
+
+#### UC-DE-011: Set Up Reverse ETL
+
+**ID**: UC-DE-011
+**Title**: Set Up Reverse ETL
+**Persona**: Data Engineer
+**Backend status**: **Not implemented.** No reverse ETL endpoints in OpenAPI. UI: `/unavailable`.
+
+**Related Use Cases**: UC-INT-004, JOURNEY-DE-011
+
+---
+
+#### UC-DEV-002: Create Custom Plugin
+
+**ID**: UC-DEV-002
+**Title**: Create Custom Plugin
+**Persona**: External Developer, Data Engineer
+**Backend status**: **Not implemented.** Only plugin list/retrieve exist; no plugin creation API. UI: browse only; create path external or `/unavailable`.
+
+**Related Use Cases**: UC-DEV-001, UC-DEV-008, JOURNEY-DE-012
+
+---
+
+#### UC-TA-007: Monitor Cost Tracking
+
+**ID**: UC-TA-007
+**Title**: Monitor Cost Tracking
+**Persona**: Tenant Admin
+**Backend status**: **Not implemented.** No tenant cost-tracking endpoints evidenced (except scheduled-ingestion costs where applicable). UI: `/unavailable`.
+
+**Related Use Cases**: UC-OBS-ADV-002, JOURNEY-TA-007
+
+---
+
 ## Use Case Matrix
 
 | Use Case ID | Title | Persona | Priority | Status | Category | New Feature |
@@ -2084,11 +3240,34 @@ User accesses developer portal for documentation and resources.
 | UC-DEV-002 | Create Custom Plugin | External Developer, Data Engineer | Medium | New | Developer Experience | **NEW** |
 | UC-DEV-003 | Use CLI Tool | External Developer, Data Engineer | Medium | New | Developer Experience | **NEW** |
 | UC-DEV-004 | Access Developer Portal | External Developer | Medium | New | Developer Experience | **NEW** |
+| UC-EXPORT-001 | Schedule Recurring Export | Data Engineer, Data Product Owner | High | New | Scheduled Export | **NEW** |
+| UC-EXPORT-002 | Configure Export Destination | Data Engineer, Data Product Owner | High | New | Scheduled Export | **NEW** |
+| UC-EXPORT-003 | Monitor Export Runs | Data Engineer, Data Product Owner | High | New | Scheduled Export | **NEW** |
+| UC-EXPORT-004 | Manual Trigger of Scheduled Export | Data Engineer, Data Product Owner | Medium | New | Scheduled Export | **NEW** |
+| UC-AUTH-001 | User Registers (Self-Service Sign-Up) | Visitor, Prospect | High | MVP | Authentication & Access | **NEW** |
+| UC-AUTH-002 | User Logs In | Visitor, any persona | High | MVP | Authentication & Access | **NEW** |
+| UC-AUTH-003 | User Resets Password | Visitor, any persona | Medium | MVP | Authentication & Access | **NEW** |
+| UC-AUTH-004 | Unauthenticated User Accesses Public Resources | Visitor | Medium | MVP | Authentication & Access | **NEW** |
 
-**Total**: ~105 use cases (~50 original + ~55 new)
+**Total**: ~113 use cases (~50 original + ~59 new + 4 authentication & access)
 
 ---
 
-**Last Updated**: 2025-12-13
-**Version**: 2.0.0 (Added ~55 new use cases for all new features)
+**Last Updated**: 2026-02-03
+**Version**: 2.3.0 (Added Scheduled Export use cases UC-EXPORT-001–004; ~113 total use cases)
 
+## Related Documentation
+
+- **[User Journeys](USER_JOURNEYS.md)** - Detailed user journey maps including Visitor/Authentication (JOURNEY-AUTH-001–004) and marketplace flows
+- **[User Personas](USER_PERSONAS.md)** - Personas including Visitor/Prospect and role-based personas
+- **[Features](FEATURES.md)** - Feature documentation including Auth and Capabilities ↔ Use Cases matrix
+- **[Test Traceability](TEST_TRACEABILITY.md)** - Comprehensive test traceability matrix mapping features, use cases, and journeys to tests
+- **[Gap Remediation Plan](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md)** - Versioning API (Phase 2), Observability lineage (Phase 1), Workflows API (Phase 3), Transformation pipeline (Deferred, Phase 5); traceability aligned with this plan
+- **[Marketplace Use Cases](MARKETPLACE_USE_CASES.md)** - External marketplace integration use cases
+- **[Marketplace User Journeys](MARKETPLACE_USER_JOURNEYS.md)** - Marketplace user journeys
+- **[Architecture](ARCHITECTURE.md)** - BaaS Platform and ODH Integration architecture
+- **[API Reference](API_REFERENCE.md)** - BaaS Platform and ODH Integration APIs
+- **[BaaS Platform CLI Usage Guide](../cli/docs/BAAS_USAGE.md)** - BaaS Platform CLI commands
+- **[BaaS Platform SDK Usage Guide](../sdk/python/docs/BAAS_USAGE.md)** - BaaS Platform SDK APIs
+- **[ODH Integration CLI Usage Guide](../cli/docs/ODH_USAGE.md)** - ODH Integration CLI commands
+- **[ODH Integration SDK Usage Guide](../sdk/python/docs/ODH_USAGE.md)** - ODH Integration SDK APIs

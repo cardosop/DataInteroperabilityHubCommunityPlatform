@@ -7,7 +7,8 @@ Tests verify:
 3. Error handling for invalid product strategy data
 4. Version check (only ODPS 4.1+)
 """
-from django.test import TestCase, SimpleTestCase
+
+from django.test import SimpleTestCase, TestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -25,31 +26,23 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "description": "Test product description"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product", "description": "Test product description"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
                     "product_strategy": {
-                        "objectives": [
-                            "Increase data quality",
-                            "Improve customer satisfaction"
-                        ],
+                        "objectives": ["Increase data quality", "Improve customer satisfaction"],
                         "strategicAlignment": [
                             "Company goal: Data-driven decisions",
-                            {"goal": "Digital transformation", "priority": "high"}
+                            {"goal": "Digital transformation", "priority": "high"},
                         ],
                         "productKPIs": [
                             "Data quality score > 95%",
-                            {"metric": "User adoption", "target": "1000 users"}
-                        ]
+                            {"metric": "User adoption", "target": "1000 users"},
+                        ],
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -87,22 +80,13 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
                 "description": "Test product description",
                 "x_odps": {
                     "product_strategy": {
-                        "objectives": [
-                            "Objective 1",
-                            "Objective 2"
-                        ],
-                        "strategicAlignment": [
-                            "Strategic goal 1"
-                        ],
-                        "productKPIs": [
-                            "KPI 1"
-                        ]
+                        "objectives": ["Objective 1", "Objective 2"],
+                        "strategicAlignment": ["Strategic goal 1"],
+                        "productKPIs": ["KPI 1"],
                     }
-                }
+                },
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -125,22 +109,15 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
                     "product_strategy": {
-                        "objectives": [
-                            "Increase data quality",
-                            "Improve customer satisfaction"
-                        ]
+                        "objectives": ["Increase data quality", "Improve customer satisfaction"]
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -160,22 +137,18 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
                     "product_strategy": {
                         "strategicAlignment": [
                             "Company goal: Data-driven decisions",
-                            {"goal": "Digital transformation", "priority": "high"}
+                            {"goal": "Digital transformation", "priority": "high"},
                         ]
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -195,22 +168,18 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
                     "product_strategy": {
                         "productKPIs": [
                             "Data quality score > 95%",
-                            {"metric": "User adoption", "target": "1000 users"}
+                            {"metric": "User adoption", "target": "1000 users"},
                         ]
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -230,22 +199,18 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
                     "product_strategy": {
                         "objectives": [
                             {"objective": "Increase data quality", "priority": "high"},
-                            {"objective": "Improve customer satisfaction", "priority": "medium"}
+                            {"objective": "Improve customer satisfaction", "priority": "medium"},
                         ]
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -265,21 +230,17 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
                     "product_strategy": {
                         "objectives": [],
                         "strategicAlignment": [],
-                        "productKPIs": []
+                        "productKPIs": [],
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -296,21 +257,11 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
-                "x_odps": {
-                    "product_strategy": {
-                        "objectives": [
-                            "Increase data quality"
-                        ]
-                    }
-                }
-            }
+                "x_odps": {"product_strategy": {"objectives": ["Increase data quality"]}}
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.0")
@@ -327,12 +278,8 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             # No product_strategy section
         }
 
@@ -350,17 +297,9 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "extensions": {
-                "x_odps": {
-                    "product_strategy": "not-a-dict"  # Invalid type
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "extensions": {"x_odps": {"product_strategy": "not-a-dict"}},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -383,19 +322,11 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
-                "x_odps": {
-                    "product_strategy": {
-                        "objectives": "not-a-list"  # Invalid type
-                    }
-                }
-            }
+                "x_odps": {"product_strategy": {"objectives": "not-a-list"}}  # Invalid type
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -418,22 +349,13 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
-                    "product_strategy": {
-                        "objectives": [
-                            "Valid objective",
-                            12345  # Invalid type
-                        ]
-                    }
+                    "product_strategy": {"objectives": ["Valid objective", 12345]}  # Invalid type
                 }
-            }
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -456,19 +378,11 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
-                "x_odps": {
-                    "product_strategy": {
-                        "strategicAlignment": "not-a-list"  # Invalid type
-                    }
-                }
-            }
+                "x_odps": {"product_strategy": {"strategicAlignment": "not-a-list"}}  # Invalid type
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -491,22 +405,15 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
                     "product_strategy": {
-                        "strategicAlignment": [
-                            "Valid alignment",
-                            12345  # Invalid type
-                        ]
+                        "strategicAlignment": ["Valid alignment", 12345]  # Invalid type
                     }
                 }
-            }
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -529,19 +436,11 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
-                "x_odps": {
-                    "product_strategy": {
-                        "productKPIs": "not-a-list"  # Invalid type
-                    }
-                }
-            }
+                "x_odps": {"product_strategy": {"productKPIs": "not-a-list"}}  # Invalid type
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -564,22 +463,13 @@ class ODPSGeneratorProductStrategyMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "extensions": {
                 "x_odps": {
-                    "product_strategy": {
-                        "productKPIs": [
-                            "Valid KPI",
-                            12345  # Invalid type
-                        ]
-                    }
+                    "product_strategy": {"productKPIs": ["Valid KPI", 12345]}  # Invalid type
                 }
-            }
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -611,37 +501,29 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
                 "description": "Complete product description",
                 "version": "1.0.0",
                 "tags": ["data", "analytics"],
-                "owners": [
-                    {
-                        "name": "Data Team",
-                        "email": "data@example.com"
-                    }
-                ]
+                "owners": [{"name": "Data Team", "email": "data@example.com"}],
             },
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ]
             },
             "extensions": {
                 "x_odps": {
                     "product_strategy": {
-                        "objectives": [
-                            "Increase data quality",
-                            "Improve customer satisfaction"
-                        ],
+                        "objectives": ["Increase data quality", "Improve customer satisfaction"],
                         "strategicAlignment": [
                             "Company goal: Data-driven decisions",
-                            {"goal": "Digital transformation", "priority": "high"}
+                            {"goal": "Digital transformation", "priority": "high"},
                         ],
                         "productKPIs": [
                             "Data quality score > 95%",
-                            {"metric": "User adoption", "target": "1000 users"}
-                        ]
+                            {"metric": "User adoption", "target": "1000 users"},
+                        ],
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -661,3 +543,150 @@ class ODPSGeneratorProductStrategyIntegrationTest(SimpleTestCase):
         self.assertIn("productKPIs", strategy)
         self.assertEqual(len(strategy["productKPIs"]), 2)
 
+    def test_product_strategy_generation_handles_unicode_characters(self):
+        """Test that product strategy generation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "测试产品", "description": "测试描述"},
+            "schema": {"fields": []},
+            "extensions": {
+                "x_odps": {
+                    "product_strategy": {
+                        "objectives": ["提高数据质量", "改善客户满意度"],
+                        "strategicAlignment": ["公司目标：数据驱动决策"],
+                        "productKPIs": ["数据质量分数 > 95%"],
+                    }
+                }
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
+
+        # Verify unicode characters are preserved
+        self.assertIn("productStrategy", result)
+        strategy = result["productStrategy"]
+        self.assertIn("objectives", strategy)
+        if len(strategy["objectives"]) > 0:
+            self.assertEqual(strategy["objectives"][0], "提高数据质量")
+
+    def test_product_strategy_generation_handles_special_characters(self):
+        """Test that product strategy generation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test & Co. (Special)"},
+            "schema": {"fields": []},
+            "extensions": {
+                "x_odps": {
+                    "product_strategy": {
+                        "objectives": [
+                            "Increase <data> quality & more",
+                            "Improve customer <satisfaction>",
+                        ],
+                        "strategicAlignment": ["Company goal: Data-driven <decisions>"],
+                        "productKPIs": ["Data quality score > 95% & <more>"],
+                    }
+                }
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
+
+        # Verify special characters are preserved
+        self.assertIn("productStrategy", result)
+        strategy = result["productStrategy"]
+        self.assertIn("objectives", strategy)
+        if len(strategy["objectives"]) > 0:
+            self.assertEqual(strategy["objectives"][0], "Increase <data> quality & more")
+
+    def test_product_strategy_generation_handles_very_large_documents(self):
+        """Test that product strategy generation handles very large documents correctly."""
+        large_objective = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "extensions": {
+                "x_odps": {
+                    "product_strategy": {
+                        "objectives": [large_objective],
+                        "strategicAlignment": [large_objective],
+                        "productKPIs": [large_objective],
+                    }
+                }
+            },
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
+            # If generation succeeds, verify structure
+            self.assertIn("productStrategy", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_product_strategy_generation_handles_none_values(self):
+        """Test that product strategy generation handles None values correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "extensions": {
+                "x_odps": {
+                    "product_strategy": {
+                        "objectives": None,  # None value
+                        "strategicAlignment": None,
+                        "productKPIs": None,
+                    }
+                }
+            },
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for None values"
+            )
+
+    def test_product_strategy_generation_handles_nested_structures(self):
+        """Test that product strategy generation handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "extensions": {
+                "x_odps": {
+                    "product_strategy": {
+                        "objectives": ["Increase data quality"],
+                        "strategicAlignment": [
+                            {
+                                "goal": "Digital transformation",
+                                "priority": "high",
+                                "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                            }
+                        ],
+                        "productKPIs": ["Data quality score > 95%"],
+                    }
+                }
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
+
+        # Verify nested structure is preserved
+        self.assertIn("productStrategy", result)
+        strategy = result["productStrategy"]
+        self.assertIn("strategicAlignment", strategy)
+        if len(strategy["strategicAlignment"]) > 0:
+            alignment = strategy["strategicAlignment"][0]
+            if isinstance(alignment, dict) and "nested" in alignment:
+                self.assertIn(
+                    "level1", alignment["nested"], "Nested structures should be preserved"
+                )

@@ -669,9 +669,12 @@ datahub ml serving get <serving-id>
 
 ## Additional Resources
 
+- **[CLI README](../README.md)** - Complete CLI documentation
+- **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management
+- **[Marketplace Usage Guide](MARKETPLACE_USAGE.md)** - Marketplace integration
+- **[BaaS Usage Guide](BAAS_USAGE.md)** - BaaS platform commands
 - **[ODH Usage Guide](ODH_USAGE.md)** - Complete guide for ML/ODH commands
-- **[CLI README](../README.md)** - General CLI documentation
-- **[API Documentation](https://api.hub.example.com/docs)** - API reference documentation
+- **[API Reference](../../docs/API_REFERENCE.md)** - Complete API documentation
 
 ## Command Reference
 

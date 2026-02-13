@@ -1,86 +1,73 @@
 """
 Unit tests for tenant permissions.
-"""
-import pytest
-from django.test import TestCase, RequestFactory
-from django.contrib.auth import get_user_model
-from hub.apps.tenants.models import Tenant, KYCStatus, TenantStatus
-from hub.apps.tenants.permissions import IsPlatformAdmin, CanPublishToMarketplace
 
+Uses real User model (no mocks/stubs).
+"""
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import RequestFactory, TestCase
+
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.tenants.permissions import CanPublishToMarketplace, IsPlatformAdmin
+from hub.apps.users.models import UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
-try:
-    User = get_user_model()
-    HAS_USER_MODEL = True
-except:
-    # Mock user for testing
-    class MockUser:
-        def __init__(self, email, is_platform_admin=False):
-            self.email = email
-            self.is_platform_admin = is_platform_admin
-            self.is_authenticated = True
-    
-    User = MockUser
-    HAS_USER_MODEL = False
+User = get_user_model()
 
 
 class TenantPermissionsTest(TestCase):
-    """Test tenant permission classes"""
-    
+    """Test tenant permission classes with real User."""
+
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures."""
         self.factory = RequestFactory()
         self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
-    
+        self.other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
+        self.admin_user = User.objects.create_user(
+            email="admin@example.com",
+            password="test",
+            tenant=None,
+            is_platform_admin=True,
+            status=UserStatus.ACTIVE,
+        )
+        self.regular_user = User.objects.create_user(
+            email="user@example.com",
+            password="test",
+            tenant=self.tenant,
+            is_platform_admin=False,
+            status=UserStatus.ACTIVE,
+        )
+
     def test_is_platform_admin_permission(self):
-        """Test IsPlatformAdmin permission"""
+        """IsPlatformAdmin: platform admin has permission, regular user does not."""
         permission = IsPlatformAdmin()
-        
-        # Platform admin user
-        if HAS_USER_MODEL:
-            admin_user = User.objects.create_user(
-                email="admin@example.com",
-                password="test",
-                is_platform_admin=True
-            )
-            regular_user = User.objects.create_user(
-                email="user@example.com",
-                password="test",
-                is_platform_admin=False
-            )
-        else:
-            admin_user = User(email="admin@example.com", is_platform_admin=True)
-            regular_user = User(email="user@example.com", is_platform_admin=False)
-        
         request = self.factory.get("/api/v1/tenants/")
-        request.user = admin_user
-        
+        request.user = self.admin_user
         self.assertTrue(permission.has_permission(request, None))
-        
-        request.user = regular_user
-        
+        request.user = self.regular_user
         self.assertFalse(permission.has_permission(request, None))
-    
+
     def test_can_publish_to_marketplace_permission(self):
         """Test CanPublishToMarketplace permission"""
         permission = CanPublishToMarketplace()
-        
+
         # Unverified tenant
         request = self.factory.get("/api/v1/marketplace/listings/")
         request.tenant = self.tenant
-        
+
         self.assertFalse(permission.has_permission(request, None))
-        
+
         # Verified tenant
         self.tenant.kyc_status = KYCStatus.VERIFIED
         self.tenant.save()
         request.tenant = self.tenant
-        
+
         self.assertTrue(permission.has_permission(request, None))
-        
+
         # Suspended verified tenant
         self.tenant.status = TenantStatus.SUSPENDED
         self.tenant.save()
         request.tenant = self.tenant
-        
+
         self.assertFalse(permission.has_permission(request, None))

@@ -11,6 +11,7 @@ from hub.apps.governance.access_analytics import AccessAnalyticsService
 from hub.apps.governance.abac import ABACEngine
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+from hub.apps.assets.models import Asset
 
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -34,24 +35,29 @@ class AccessAnalyticsIntegrationTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE
         )
+        self.asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="test-asset",
+            name="Test Asset",
+            description="For access analytics integration test",
+        )
     
     def test_abac_evaluation_with_logging(self):
         """Test ABAC evaluation with automatic logging"""
-        # Evaluate access
+        resource_id = str(self.asset.id)
         result = ABACEngine.evaluate_access(
             user_id=str(self.user.id),
             tenant_id=str(self.tenant.id),
             resource_type="ASSET",
-            resource_id="test-id",
+            resource_id=resource_id,
             access_type="READ"
         )
         
-        # Log access
         AccessAnalyticsService.log_access(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             resource_type="ASSET",
-            resource_id="test-id",
+            resource_id=resource_id,
             action="READ",
             result="ALLOWED" if result.allowed else "DENIED",
             policy_evaluation={
@@ -60,7 +66,6 @@ class AccessAnalyticsIntegrationTest(TestCase):
             }
         )
         
-        # Verify log was created
         from hub.apps.governance.access_analytics import AccessLog
         log = AccessLog.objects.filter(tenant=self.tenant).first()
         self.assertIsNotNone(log)

@@ -5,22 +5,32 @@ Core workflow execution engine with step execution, retry logic, and error handl
 Includes metrics and tracing for observability.
 """
 
+import hashlib
 import json
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
+import structlog
+from django.conf import settings
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from hub.apps.core.events.service_publishers import WorkflowEventPublisher, ODPSEventPublisher
+from hub.apps.core.events.service_publishers import ODPSEventPublisher, WorkflowEventPublisher
 
+from .business_rules import OrchestrationBusinessRules, OrchestrationRuleExecutionContext
 from .compensation import WorkflowCompensation
 from .dsl_parser import WorkflowDSLParser
+from .feature_flags import is_business_rules_validation_enabled
 from .metrics import (
     get_error_type,
     get_tenant_id,
+    workflow_business_rules_validation_cache_hits_total,
+    workflow_business_rules_validation_cache_misses_total,
+    workflow_business_rules_validation_duration_seconds,
+    workflow_business_rules_validations_total,
     workflow_compensation_duration_seconds,
     workflow_compensations_completed_total,
     workflow_compensations_triggered_total,
@@ -47,7 +57,9 @@ from .models import StepStatus, WorkflowDefinition, WorkflowInstance, WorkflowSt
 from .state_machine import WorkflowStateMachine
 from .versioning import WorkflowVersionManager
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+
+# === CHECKPOINT: Business-rules validation caching + warnings persistence (2026-01-28) ===
 
 # Try to import OpenTelemetry tracing
 try:
@@ -77,20 +89,28 @@ class WorkflowEngine(WorkflowEventPublisher):
         self.version_manager = WorkflowVersionManager()
         self.task_registry: Dict[str, Callable] = {}
         self.compensation = WorkflowCompensation(task_registry=self.task_registry)
+        # Track registered task names to avoid duplicate registrations
+        self._registered_task_names: Set[str] = set()
 
         # ODPS workflows that should publish ODPS-specific events (Task 7.1.4)
         self._odps_workflow_names = {"product_creation"}
 
     def register_task(self, task_name: str, task_func: Callable):
         """
-        Register a task function for workflow execution.
+        Register a task function for workflow execution (idempotent).
 
         Args:
             task_name: Task identifier (matches 'task' field in workflow DSL)
             task_func: Task function to execute
         """
+        # Skip if already registered (idempotent)
+        if task_name in self._registered_task_names:
+            logger.debug("Task already registered, skipping", task_name=task_name)
+            return
+
         self.task_registry[task_name] = task_func
-        logger.info(f"Registered task: {task_name}")
+        self._registered_task_names.add(task_name)
+        logger.info("Registered task", task_name=task_name)
 
     @transaction.atomic
     def create_instance(
@@ -131,7 +151,9 @@ class WorkflowEngine(WorkflowEventPublisher):
             try:
                 tenant_obj = Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
-                logger.warning(f"Tenant {tenant_id} not found, creating workflow without tenant")
+                logger.warning(
+                    "Tenant not found, creating workflow without tenant", tenant_id=tenant_id
+                )
 
         instance = WorkflowInstance.objects.create(
             workflow_definition=workflow_def,
@@ -172,7 +194,11 @@ class WorkflowEngine(WorkflowEventPublisher):
             tenant_id=tenant_id_str,
         ).observe(len(steps))
 
-        logger.info(f"Created workflow instance: {instance.id} ({workflow_name})")
+        logger.info(
+            "Created workflow instance",
+            workflow_instance_id=str(instance.id),
+            workflow_name=workflow_name,
+        )
 
         # Publish workflow.created event
         try:
@@ -187,7 +213,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                 user_id=user_id_str,
             )
         except Exception as e:
-            logger.warning(f"Failed to publish workflow.created event: {e}")
+            logger.warning("Failed to publish workflow.created event", error=str(e), exc_info=True)
 
         return instance
 
@@ -202,7 +228,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         Returns:
             Updated WorkflowInstance
         """
-        instance = WorkflowInstance.objects.select_for_update().get(id=instance_id)
+        # Use skip_locked to avoid blocking on concurrent access attempts
+        instance = WorkflowInstance.objects.select_for_update(skip_locked=True).get(id=instance_id)
 
         # Validate state transition
         WorkflowStateMachine.validate_transition(
@@ -246,16 +273,19 @@ class WorkflowEngine(WorkflowEventPublisher):
                 user_id=user_id_str,
             )
         except Exception as e:
-            logger.warning(f"Failed to publish workflow.started event: {e}")
+            logger.warning("Failed to publish workflow.started event", error=str(e), exc_info=True)
 
         # Publish ODPS workflow.started event if this is an ODPS workflow (Task 7.1.4)
         self._publish_odps_workflow_event_if_applicable(
-            instance, "started",
+            instance,
+            "started",
             odps_version=self._extract_odps_version_from_input(instance.input_data),
-            progress_percentage=instance.state_data.get("progress_percentage") if instance.state_data else None
+            progress_percentage=(
+                instance.state_data.get("progress_percentage") if instance.state_data else None
+            ),
         )
 
-        logger.info(f"Started workflow instance: {instance.id}")
+        logger.info("Started workflow instance", workflow_instance_id=str(instance.id))
         return instance
 
     @transaction.atomic
@@ -269,7 +299,9 @@ class WorkflowEngine(WorkflowEventPublisher):
         Returns:
             Updated WorkflowInstance
         """
-        instance = WorkflowInstance.objects.select_for_update().get(id=instance_id)
+        # Use skip_locked to avoid blocking on concurrent access attempts
+        # This allows multiple workers to process different workflows concurrently
+        instance = WorkflowInstance.objects.select_for_update(skip_locked=True).get(id=instance_id)
 
         # Ensure instance is running
         if instance.status != WorkflowStatus.RUNNING:
@@ -277,7 +309,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                 f"Cannot execute workflow instance {instance_id}: status is {instance.status}"
             )
 
-        # Start tracing span
+        # Start tracing span and set as current so child spans (step, validation) share trace_id
         span = None
         if _tracer:
             span = _tracer.start_span(
@@ -295,131 +327,183 @@ class WorkflowEngine(WorkflowEventPublisher):
         execution_start_time = time.time()
         tenant_id_str = get_tenant_id(instance.tenant_id)
 
+        def _optional_span_context(active_span):
+            """Context manager that sets span as current when non-None (so child spans share trace)."""
+            if active_span is None:
+                from contextlib import nullcontext
+
+                return nullcontext()
+            from opentelemetry import trace
+
+            return trace.use_span(active_span, end_on_exit=False)
+
         try:
-            # Execute steps sequentially
-            dsl = instance.workflow_definition.dsl_json
-            steps = dsl.get("steps", [])
+            with _optional_span_context(span):
+                # Execute steps sequentially
+                dsl = instance.workflow_definition.dsl_json
+                steps = dsl.get("steps", [])
 
-            for i in range(instance.current_step_index, len(steps)):
-                step_def = steps[i]
-                step = instance.steps.get(step_index=i)
-                step_name = step_def.get("name", "unknown")
+                for i in range(instance.current_step_index, len(steps)):
+                    # Note: We don't refresh_from_db() here because:
+                    # 1. We're already in a transaction with select_for_update lock
+                    # 2. We merge step outputs into state_data in memory (lines 342-355)
+                    # 3. We save state_data after each step (line 363)
+                    # 4. Refreshing inside a locked transaction can cause deadlocks
+                    # The instance.state_data is already up-to-date from previous step's merge
 
-                # Publish ODPS creation progress event if this is an ODPS workflow (Task 7.3.2)
-                if self._is_odps_workflow(instance.workflow_name):
-                    self._publish_odps_creation_progress_if_applicable(
-                        instance=instance,
-                        step_index=i,
-                        step_name=step_name,
-                        total_steps=len(steps)
-                    )
+                    step_def = steps[i]
+                    step = instance.steps.get(step_index=i)
+                    step_name = step_def.get("name", "unknown")
 
-                # Execute step
-                step_output = self._execute_step(instance, step, step_def)
+                    # Publish ODPS creation progress event if this is an ODPS workflow (Task 7.3.2)
+                    if self._is_odps_workflow(instance.workflow_name):
+                        self._publish_odps_creation_progress_if_applicable(
+                            instance=instance,
+                            step_index=i,
+                            step_name=step_name,
+                            total_steps=len(steps),
+                        )
 
-                # Update workflow state with step output
-                # Merge step output into state_data (excluding 'state' key which is for nested state)
-                step_state = step_output.get("state", {})
-                if step_state:
-                    instance.state_data.update(step_state)
-                # Also merge top-level step output keys into state_data
-                for key, value in step_output.items():
-                    if key != "state" and key != "output":
-                        instance.state_data[key] = value
+                    # Execute step
+                    step_output = self._execute_step(instance, step, step_def)
 
-                instance.current_step_index = i + 1
-                instance.save(update_fields=["current_step_index", "state_data", "updated_at"])
+                    # Update workflow state with step output
+                    # Merge step output into state_data (excluding 'state' key which is for nested state)
+                    step_state = step_output.get("state", {})
+                    if step_state:
+                        instance.state_data.update(step_state)
+                    # Also merge top-level step output keys into state_data
+                    for key, value in step_output.items():
+                        if key != "state" and key != "output":
+                            instance.state_data[key] = value
+                    # Merge keys from inside 'output' dict if present (task return values)
+                    step_output_dict = step_output.get("output", {})
+                    if isinstance(step_output_dict, dict):
+                        for key, value in step_output_dict.items():
+                            instance.state_data[key] = value
 
-                # Publish ODPS creation progress event after step completion (Task 7.3.2)
-                if self._is_odps_workflow(instance.workflow_name):
-                    self._publish_odps_creation_progress_if_applicable(
-                        instance=instance,
-                        step_index=i + 1,
-                        step_name=step_def.get("name", "unknown"),
-                        total_steps=len(steps),
-                        status_message=f"Step {step_def.get('name', 'unknown')} completed"
-                    )
+                    # Update step index and batch all state updates into single save
+                    instance.current_step_index = i + 1
+                    # Recalculate progress after step completion (state_data already updated in _execute_step)
+                    if instance.state_data:
+                        instance.state_data["progress_percentage"] = self._calculate_progress(
+                            instance
+                        )
+                    # Single save for all state updates (batched)
+                    instance.save(update_fields=["current_step_index", "state_data", "updated_at"])
 
-                # Check if step failed
-                if step.status == StepStatus.FAILED:
-                    # Handle step failure
-                    result = self._handle_step_failure(instance, step)
-                    self._record_execution_metrics(
-                        instance, execution_start_time, tenant_id_str, span
-                    )
-                    return result
+                    # Publish ODPS creation progress event after step completion (Task 7.3.2)
+                    if self._is_odps_workflow(instance.workflow_name):
+                        self._publish_odps_creation_progress_if_applicable(
+                            instance=instance,
+                            step_index=i + 1,
+                            step_name=step_def.get("name", "unknown"),
+                            total_steps=len(steps),
+                            status_message=f"Step {step_def.get('name', 'unknown')} completed",
+                        )
 
-            # All steps completed successfully
-            # Store final state in output_data
-            instance.output_data = instance.state_data.copy()
-            instance.mark_completed(output_data=instance.output_data)
+                    # Check if step failed
+                    if step.status == StepStatus.FAILED:
+                        # Handle step failure
+                        result = self._handle_step_failure(instance, step)
+                        self._record_execution_metrics(
+                            instance, execution_start_time, tenant_id_str, span
+                        )
+                        return result
 
-            # Record success metrics
-            execution_duration = time.time() - execution_start_time
-            execution_duration_ms = int(execution_duration * 1000)
-            workflow_instances_completed_total.labels(
-                workflow_name=instance.workflow_name,
-                workflow_version=instance.workflow_version,
-                status="COMPLETED",
-                tenant_id=tenant_id_str,
-            ).inc()
+                # All steps completed successfully
+                # Store final state in output_data
+                instance.output_data = instance.state_data.copy()
+                instance.mark_completed(output_data=instance.output_data)
 
-            workflow_execution_duration_seconds.labels(
-                workflow_name=instance.workflow_name,
-                workflow_version=instance.workflow_version,
-                status="COMPLETED",
-                tenant_id=tenant_id_str,
-            ).observe(execution_duration)
-
-            # Update gauge metrics
-            workflow_instances_running.labels(
-                workflow_name=instance.workflow_name,
-                workflow_version=instance.workflow_version,
-                tenant_id=tenant_id_str,
-            ).dec()
-
-            # Record state size
-            state_size = len(json.dumps(instance.state_data).encode("utf-8"))
-            workflow_state_size_bytes.labels(
-                workflow_name=instance.workflow_name,
-                workflow_version=instance.workflow_version,
-                tenant_id=tenant_id_str,
-            ).observe(state_size)
-
-            # Publish workflow.completed event
-            try:
-                tenant_id_str_for_event = str(instance.tenant_id) if instance.tenant_id else None
-                user_id_str = str(instance.created_by_id) if instance.created_by_id else None
-                self.publish_workflow_completed(
-                    workflow_instance_id=str(instance.id),
+                # Record success metrics
+                execution_duration = time.time() - execution_start_time
+                execution_duration_ms = int(execution_duration * 1000)
+                workflow_instances_completed_total.labels(
                     workflow_name=instance.workflow_name,
+                    workflow_version=instance.workflow_version,
+                    status="COMPLETED",
+                    tenant_id=tenant_id_str,
+                ).inc()
+
+                workflow_execution_duration_seconds.labels(
+                    workflow_name=instance.workflow_name,
+                    workflow_version=instance.workflow_version,
+                    status="COMPLETED",
+                    tenant_id=tenant_id_str,
+                ).observe(execution_duration)
+
+                # Update gauge metrics
+                workflow_instances_running.labels(
+                    workflow_name=instance.workflow_name,
+                    workflow_version=instance.workflow_version,
+                    tenant_id=tenant_id_str,
+                ).dec()
+
+                # Record state size
+                state_size = len(json.dumps(instance.state_data).encode("utf-8"))
+                workflow_state_size_bytes.labels(
+                    workflow_name=instance.workflow_name,
+                    workflow_version=instance.workflow_version,
+                    tenant_id=tenant_id_str,
+                ).observe(state_size)
+
+                # Publish workflow.completed event (non-blocking - fire and forget)
+                try:
+                    tenant_id_str_for_event = (
+                        str(instance.tenant_id) if instance.tenant_id else None
+                    )
+                    user_id_str = str(instance.created_by_id) if instance.created_by_id else None
+                    # Use fire-and-forget pattern to avoid blocking workflow execution
+                    try:
+                        self.publish_workflow_completed(
+                            workflow_instance_id=str(instance.id),
+                            workflow_name=instance.workflow_name,
+                            output_data=instance.output_data,
+                            duration_ms=execution_duration_ms,
+                            tenant_id=tenant_id_str_for_event,
+                            user_id=user_id_str,
+                        )
+                    except Exception as publish_error:
+                        # Log but don't fail - events are best-effort
+                        logger.debug(
+                            "Event publish failed (non-blocking)", error=str(publish_error)
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to publish workflow.completed event", error=str(e), exc_info=True
+                    )
+
+                # Publish ODPS workflow.completed event if this is an ODPS workflow (Task 7.1.4)
+                self._publish_odps_workflow_event_if_applicable(
+                    instance,
+                    "completed",
                     output_data=instance.output_data,
                     duration_ms=execution_duration_ms,
-                    tenant_id=tenant_id_str_for_event,
-                    user_id=user_id_str,
+                    odps_contract_id=(
+                        instance.state_data.get("odps_contract_id") if instance.state_data else None
+                    ),
+                    odcs_contract_id=(
+                        instance.state_data.get("odcs_contract_id") if instance.state_data else None
+                    ),
+                    progress_percentage=(
+                        instance.state_data.get("progress_percentage")
+                        if instance.state_data
+                        else 100.0
+                    ),
                 )
-            except Exception as e:
-                logger.warning(f"Failed to publish workflow.completed event: {e}")
 
-            # Publish ODPS workflow.completed event if this is an ODPS workflow (Task 7.1.4)
-            self._publish_odps_workflow_event_if_applicable(
-                instance, "completed",
-                output_data=instance.output_data,
-                duration_ms=execution_duration_ms,
-                odps_contract_id=instance.state_data.get("odps_contract_id") if instance.state_data else None,
-                odcs_contract_id=instance.state_data.get("odcs_contract_id") if instance.state_data else None,
-                progress_percentage=instance.state_data.get("progress_percentage") if instance.state_data else 100.0
-            )
+                if span:
+                    span.set_attribute("workflow.status", "COMPLETED")
+                    span.set_attribute("workflow.duration_seconds", execution_duration)
+                    span.set_attribute("workflow.steps_completed", instance.current_step_index)
 
-            if span:
-                span.set_attribute("workflow.status", "COMPLETED")
-                span.set_attribute("workflow.duration_seconds", execution_duration)
-                span.set_attribute("workflow.steps_completed", instance.current_step_index)
-
-            logger.info(f"Workflow instance completed: {instance.id}")
+                logger.info("Workflow instance completed", workflow_instance_id=str(instance.id))
 
         except Exception as e:
-            logger.exception(f"Error executing workflow instance {instance_id}: {str(e)}")
+            logger.exception(
+                "Error executing workflow instance", workflow_instance_id=instance_id, error=str(e)
+            )
             instance.mark_failed(
                 error_message=str(e), error_details={"exception_type": type(e).__name__}
             )
@@ -441,16 +525,23 @@ class WorkflowEngine(WorkflowEventPublisher):
                     user_id=user_id_str,
                 )
             except Exception as e2:
-                logger.warning(f"Failed to publish workflow.failed event: {e2}")
+                logger.warning(
+                    "Failed to publish workflow.failed event", error=str(e2), exc_info=True
+                )
 
             # Publish ODPS workflow.failed event if this is an ODPS workflow (Task 7.1.4)
             self._publish_odps_workflow_event_if_applicable(
-                instance, "failed",
+                instance,
+                "failed",
                 error_message=str(e),
                 error_details={"exception_type": type(e).__name__},
                 failed_step_index=instance.current_step_index,
-                failed_step_name=instance.state_data.get("current_step_name") if instance.state_data else None,
-                progress_percentage=instance.state_data.get("progress_percentage") if instance.state_data else None
+                failed_step_name=(
+                    instance.state_data.get("current_step_name") if instance.state_data else None
+                ),
+                progress_percentage=(
+                    instance.state_data.get("progress_percentage") if instance.state_data else None
+                ),
             )
         finally:
             if span:
@@ -522,36 +613,65 @@ class WorkflowEngine(WorkflowEventPublisher):
         # Check if step has a condition - if so, evaluate it before executing
         condition = step_def.get("condition")
         if condition:
-            # Refresh instance to get latest state_data before evaluating condition
-            instance.refresh_from_db()
+            # Use in-memory instance data - no need to refresh unless we suspect concurrent modification
             # Merge input_data and state_data for condition evaluation
             # (conditions may reference values from either)
-            condition_context = {
-                **instance.input_data,
-                **instance.state_data
-            }
+            condition_context = {**instance.input_data, **instance.state_data}
             condition_result = self._evaluate_condition(condition, condition_context)
             logger.debug(
-                f"Condition evaluation for step {step.step_name}: "
-                f"condition={condition}, result={condition_result}, "
-                f"context_keys={list(condition_context.keys())}, "
-                f"auto_activate={condition_context.get('auto_activate')}, "
-                f"auto_activate_type={type(condition_context.get('auto_activate'))}"
+                "Condition evaluation for step",
+                step_name=step.step_name,
+                condition=condition,
+                result=condition_result,
+                context_keys=list(condition_context.keys()),
+                auto_activate=condition_context.get("auto_activate"),
+                auto_activate_type=str(type(condition_context.get("auto_activate"))),
             )
             if not condition_result:
                 # Condition is false - skip this step
                 logger.info(
-                    f"Skipping step {step.step_name} - condition evaluated to False "
-                    f"(workflow_instance_id={instance.id}, condition={condition}, "
-                    f"auto_activate={condition_context.get('auto_activate')}, "
-                    f"auto_activate_type={type(condition_context.get('auto_activate'))})"
+                    "Skipping step - condition evaluated to False",
+                    step_name=step.step_name,
+                    workflow_instance_id=str(instance.id),
+                    condition=condition,
+                    auto_activate=condition_context.get("auto_activate"),
+                    auto_activate_type=str(type(condition_context.get("auto_activate"))),
                 )
                 step.mark_skipped(reason="Condition evaluated to False")
                 return {
                     "skipped": True,
                     "reason": "Condition evaluated to False",
-                    "condition": condition
+                    "condition": condition,
                 }
+
+        # Validate step is executable (PENDING or RUNNING) before marking started.
+        # If step is already COMPLETED/FAILED/SKIPPED, fail the workflow with validation context
+        # so we don't overwrite step status and silently proceed.
+        if step.status not in (StepStatus.PENDING, StepStatus.RUNNING):
+            tenant = instance.tenant
+            user = instance.created_by
+            tenant_id_str = str(tenant.id) if tenant else None
+            if is_business_rules_validation_enabled(
+                workflow_name=instance.workflow_name,
+                tenant_id=tenant_id_str,
+                workflow_instance_id=str(instance.id),
+            ):
+                business_rules = OrchestrationBusinessRules(
+                    tenant_id=tenant_id_str,
+                    user_id=str(user.id) if user else None,
+                )
+                step_execution_result = business_rules.validate_workflow_step_execution(
+                    instance, step, tenant=tenant, user=user
+                )
+                if not step_execution_result.is_valid:
+                    error_msg = self._format_validation_error(
+                        "step_execution", step_execution_result, instance, step
+                    )
+                    raise WorkflowExecutionError(error_msg)
+            raise WorkflowExecutionError(
+                f"Workflow step cannot execute: step status is {step.status}, "
+                f"expected {StepStatus.PENDING} or {StepStatus.RUNNING}"
+            )
 
         step.mark_started()
 
@@ -559,14 +679,13 @@ class WorkflowEngine(WorkflowEventPublisher):
         # Use a temporary instance state to calculate progress at this step index
         progress_percentage = self._calculate_progress(instance)
 
-        # Store progress in WorkflowInstance.state_data
+        # Store progress in WorkflowInstance.state_data (will be saved after step execution)
         if instance.state_data is None:
             instance.state_data = {}
         instance.state_data["progress_percentage"] = progress_percentage
         instance.state_data["current_step_index"] = step.step_index
         instance.state_data["current_step_name"] = step.step_name
-        # Save the instance to persist progress in state_data
-        instance.save(update_fields=["state_data"])
+        # Don't save here - batch with step completion save
 
         # Publish ODPS workflow progress event if this is an ODPS workflow (Task 7.1.4)
         self._publish_odps_workflow_progress_if_applicable(instance, progress_percentage)
@@ -581,21 +700,55 @@ class WorkflowEngine(WorkflowEventPublisher):
             tenant_id=tenant_id_str,
         ).inc()
 
-        # Publish workflow.step.started event
+        # Publish workflow.step.started event (non-blocking - fire and forget)
+        # Note: Validation results are not available yet at step start, so we'll include
+        # validation status as "pending" and update in step.completed event
         try:
             tenant_id_str_for_event = str(instance.tenant_id) if instance.tenant_id else None
             user_id_str = str(instance.created_by_id) if instance.created_by_id else None
-            self.publish_workflow_step_started(
-                workflow_instance_id=str(instance.id),
-                step_index=step.step_index,
-                step_name=step.step_name,
-                step_type=step.step_type,
-                progress_percentage=progress_percentage,
-                tenant_id=tenant_id_str_for_event,
-                user_id=user_id_str,
-            )
+            # Use fire-and-forget pattern to avoid blocking workflow execution
+            # Event publishing failures should not block workflow progress
+            try:
+                # Get validation results if available (from instance state_data)
+                validation_status = "pending"
+                validation_context = None
+                validation_results_data = (
+                    instance.state_data.get("_validation_results") if instance.state_data else None
+                )
+                if validation_results_data:
+                    # Pre-validation results available
+                    pre_validation = validation_results_data.get(
+                        "workflow_state"
+                    ) or validation_results_data.get("step_execution")
+                    if pre_validation:
+                        validation_status = (
+                            "valid" if pre_validation.get("valid", False) else "invalid"
+                        )
+                        validation_context = {
+                            "rule_name": "OrchestrationBusinessRules",
+                            "validation_type": "pre_step",
+                            "duration_seconds": pre_validation.get("duration", 0.0),
+                            "cached": pre_validation.get("cached", False),
+                        }
+
+                self.publish_workflow_step_started(
+                    workflow_instance_id=str(instance.id),
+                    step_index=step.step_index,
+                    step_name=step.step_name,
+                    step_type=step.step_type,
+                    progress_percentage=progress_percentage,
+                    tenant_id=tenant_id_str_for_event,
+                    user_id=user_id_str,
+                    validation_status=validation_status,
+                    validation_context=validation_context,
+                )
+            except Exception as publish_error:
+                # Log but don't fail - events are best-effort
+                logger.debug(f"Event publish failed (non-blocking): {publish_error}")
         except Exception as e:
-            logger.warning(f"Failed to publish workflow.step.started event: {e}")
+            logger.warning(
+                "Failed to publish workflow.step.started event", error=str(e), exc_info=True
+            )
 
         # Start tracing span for step
         step_span = None
@@ -653,44 +806,97 @@ class WorkflowEngine(WorkflowEventPublisher):
             ).observe(step_duration)
 
             # Calculate progress percentage after step completion
-            # Refresh instance to get updated current_step_index after step completion
-            instance.refresh_from_db()
+            # Use in-memory instance - current_step_index is updated in main loop
             progress_percentage_after = self._calculate_progress(instance)
 
-            # Update progress in WorkflowInstance.state_data
+            # Update progress in WorkflowInstance.state_data (will be saved in main loop)
             if instance.state_data is None:
                 instance.state_data = {}
             instance.state_data["progress_percentage"] = progress_percentage_after
             instance.state_data["current_step_index"] = instance.current_step_index
             instance.state_data["current_step_name"] = step.step_name
-            instance.save(update_fields=["state_data"])
+            # Don't save here - batch with main loop save
 
             # Publish ODPS workflow progress event if this is an ODPS workflow (Task 7.1.4)
             self._publish_odps_workflow_progress_if_applicable(instance, progress_percentage_after)
 
-            # Publish workflow.step.completed event
+            # Publish workflow.step.completed event (non-blocking - fire and forget)
             try:
                 tenant_id_str_for_event = str(instance.tenant_id) if instance.tenant_id else None
                 user_id_str = str(instance.created_by_id) if instance.created_by_id else None
-                self.publish_workflow_step_completed(
-                    workflow_instance_id=str(instance.id),
-                    step_index=step.step_index,
-                    step_name=step.step_name,
-                    output_data=output,
-                    duration_ms=step_duration_ms,
-                    progress_percentage=progress_percentage_after,
-                    tenant_id=tenant_id_str_for_event,
-                    user_id=user_id_str,
-                )
+                # Use fire-and-forget pattern to avoid blocking workflow execution
+                try:
+                    # Get validation results from instance state_data
+                    validation_status = "unknown"
+                    validation_context = None
+                    validation_results_data = (
+                        instance.state_data.get("_validation_results")
+                        if instance.state_data
+                        else None
+                    )
+                    if validation_results_data:
+                        # Determine overall validation status
+                        all_valid = all(
+                            v.get("valid", False) for v in validation_results_data.values() if v
+                        )
+                        validation_status = "valid" if all_valid else "invalid"
+
+                        # Build validation context
+                        validation_context = {
+                            "rule_name": "OrchestrationBusinessRules",
+                            "validations": {},
+                            "total_duration_seconds": 0.0,
+                            "cache_hits": 0,
+                            "cache_misses": 0,
+                        }
+
+                        for val_type, val_data in validation_results_data.items():
+                            if val_data:
+                                validation_context["validations"][val_type] = {
+                                    "valid": val_data.get("valid", False),
+                                    "duration_seconds": val_data.get("duration", 0.0),
+                                    "cached": val_data.get("cached", False),
+                                    "error_count": val_data.get("error_count", 0),
+                                    "warning_count": val_data.get("warning_count", 0),
+                                    "errors": val_data.get("errors", []),
+                                    "warnings": val_data.get("warnings", []),
+                                }
+                                validation_context["total_duration_seconds"] += val_data.get(
+                                    "duration", 0.0
+                                )
+                                if val_data.get("cached", False):
+                                    validation_context["cache_hits"] += 1
+                                else:
+                                    validation_context["cache_misses"] += 1
+
+                    self.publish_workflow_step_completed(
+                        workflow_instance_id=str(instance.id),
+                        step_index=step.step_index,
+                        step_name=step.step_name,
+                        output_data=output,
+                        duration_ms=step_duration_ms,
+                        progress_percentage=progress_percentage_after,
+                        tenant_id=tenant_id_str_for_event,
+                        user_id=user_id_str,
+                        validation_status=validation_status,
+                        validation_context=validation_context,
+                    )
+                except Exception as publish_error:
+                    # Log but don't fail - events are best-effort
+                    logger.debug("Event publish failed (non-blocking)", error=str(publish_error))
             except Exception as e:
-                logger.warning(f"Failed to publish workflow.step.completed event: {e}")
+                logger.warning(
+                    "Failed to publish workflow.step.completed event", error=str(e), exc_info=True
+                )
 
             # Publish ODPS workflow.step.completed event if this is an ODPS workflow (Task 7.1.4)
             self._publish_odps_workflow_step_event_if_applicable(
-                instance, step, "completed",
+                instance,
+                step,
+                "completed",
                 output_data=output,
                 duration_ms=step_duration_ms,
-                progress_percentage=progress_percentage_after
+                progress_percentage=progress_percentage_after,
             )
 
             if step_span:
@@ -700,7 +906,7 @@ class WorkflowEngine(WorkflowEventPublisher):
             return {"output": output, "state": output.get("state", {})}
 
         except Exception as e:
-            logger.exception(f"Error executing step {step.step_name}: {str(e)}")
+            logger.exception("Error executing step", step_name=step.step_name, error=str(e))
             step.mark_failed(
                 error_message=str(e), error_details={"exception_type": type(e).__name__}
             )
@@ -728,8 +934,7 @@ class WorkflowEngine(WorkflowEventPublisher):
             ).observe(step_duration)
 
             # Calculate progress percentage at failure point
-            # Refresh instance to get current state
-            instance.refresh_from_db()
+            # Use in-memory instance - we have the current state
             progress_percentage_at_failure = self._calculate_progress(instance)
 
             # Update progress in WorkflowInstance.state_data
@@ -745,6 +950,48 @@ class WorkflowEngine(WorkflowEventPublisher):
             try:
                 tenant_id_str_for_event = str(instance.tenant_id) if instance.tenant_id else None
                 user_id_str = str(instance.created_by_id) if instance.created_by_id else None
+
+                # Get validation results from instance state_data if available
+                validation_status = "unknown"
+                validation_context = None
+                validation_results_data = (
+                    instance.state_data.get("_validation_results") if instance.state_data else None
+                )
+                if validation_results_data:
+                    # Determine overall validation status
+                    all_valid = all(
+                        v.get("valid", False) for v in validation_results_data.values() if v
+                    )
+                    validation_status = "valid" if all_valid else "invalid"
+
+                    # Build validation context
+                    validation_context = {
+                        "rule_name": "OrchestrationBusinessRules",
+                        "validations": {},
+                        "total_duration_seconds": 0.0,
+                        "cache_hits": 0,
+                        "cache_misses": 0,
+                    }
+
+                    for val_type, val_data in validation_results_data.items():
+                        if val_data:
+                            validation_context["validations"][val_type] = {
+                                "valid": val_data.get("valid", False),
+                                "duration_seconds": val_data.get("duration", 0.0),
+                                "cached": val_data.get("cached", False),
+                                "error_count": val_data.get("error_count", 0),
+                                "warning_count": val_data.get("warning_count", 0),
+                                "errors": val_data.get("errors", []),
+                                "warnings": val_data.get("warnings", []),
+                            }
+                            validation_context["total_duration_seconds"] += val_data.get(
+                                "duration", 0.0
+                            )
+                            if val_data.get("cached", False):
+                                validation_context["cache_hits"] += 1
+                            else:
+                                validation_context["cache_misses"] += 1
+
                 self.publish_workflow_step_failed(
                     workflow_instance_id=str(instance.id),
                     step_index=step.step_index,
@@ -756,18 +1003,24 @@ class WorkflowEngine(WorkflowEventPublisher):
                     progress_percentage=progress_percentage_at_failure,
                     tenant_id=tenant_id_str_for_event,
                     user_id=user_id_str,
+                    validation_status=validation_status,
+                    validation_context=validation_context,
                 )
             except Exception as e2:
-                logger.warning(f"Failed to publish workflow.step.failed event: {e2}")
+                logger.warning(
+                    "Failed to publish workflow.step.failed event", error=str(e2), exc_info=True
+                )
 
             # Publish ODPS workflow.step.failed event if this is an ODPS workflow (Task 7.1.4)
             self._publish_odps_workflow_step_event_if_applicable(
-                instance, step, "failed",
+                instance,
+                step,
+                "failed",
                 error_message=str(e),
                 error_details={"exception_type": type(e).__name__},
                 retry_count=step.retry_count,
                 duration_ms=step_duration_ms,
-                progress_percentage=progress_percentage_at_failure
+                progress_percentage=progress_percentage_at_failure,
             )
 
             if step_span:
@@ -776,15 +1029,89 @@ class WorkflowEngine(WorkflowEventPublisher):
                 step_span.set_attribute("workflow.step.duration_seconds", step_duration)
                 step_span.record_exception(e)
 
-            raise
+            # When compensation is enabled, do not re-raise so the execute loop can
+            # call _handle_step_failure(instance, step) and run compensation.
+            # Re-raising would be caught by the outer handler and mark workflow FAILED
+            # without ever triggering rollback.
+            dsl = instance.workflow_definition.dsl_json
+            compensation_enabled = dsl.get("compensation", {}).get("enabled", False)
+            if not compensation_enabled:
+                raise
+            return {"state": {}}
         finally:
             if step_span:
                 step_span.end()
 
+    # === CHECKPOINT: Validation caching helper methods (2026-01-28) ===
+    def _validation_cache_ttl_seconds(self) -> int:
+        """
+        Cache TTL for workflow validation results.
+
+        Uses the same TTL as core business rules caching to keep behavior consistent.
+        """
+        return getattr(settings, "CACHE_TTL_BUSINESS_RULES", 300)
+
+    def _validation_cache_key(
+        self,
+        *,
+        instance: WorkflowInstance,
+        step: WorkflowStep,
+        validation_type: str,
+        fingerprint_hash: str,
+    ) -> str:
+        return f"workflow:validation:{instance.id}:{step.id}:{validation_type}:{fingerprint_hash}"
+
+    def _fingerprint_hash(self, payload_fingerprint: Dict[str, Any]) -> str:
+        """
+        Stable hash for cache keys.
+
+        Uses JSON canonicalization so key changes when state/input changes.
+        """
+        fingerprint_json = json.dumps(payload_fingerprint, sort_keys=True, default=str)
+        return hashlib.sha256(fingerprint_json.encode("utf-8")).hexdigest()
+
+    def _cached_orchestration_validation(
+        self,
+        *,
+        validation_type: str,
+        instance: WorkflowInstance,
+        step: WorkflowStep,
+        payload_fingerprint: Dict[str, Any],
+        compute: Callable[[], Any],
+    ):
+        """
+        Execute a validation function with per-workflow-instance caching.
+
+        Returns:
+            (ValidationResult, cached_bool)
+
+        Notes:
+        - Only *valid* results are cached (mirrors BusinessRules.execute()).
+        - Cache invalidation is achieved by including a fingerprint of the relevant
+          workflow/step state in the cache key.
+        """
+        ttl = self._validation_cache_ttl_seconds()
+        fingerprint_hash = self._fingerprint_hash(payload_fingerprint)
+        cache_key = self._validation_cache_key(
+            instance=instance,
+            step=step,
+            validation_type=validation_type,
+            fingerprint_hash=fingerprint_hash,
+        )
+
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            return cached_result, True
+
+        result = compute()
+        if getattr(result, "is_valid", False):
+            cache.set(cache_key, result, ttl)
+        return result, False
+
     def _execute_task_step(
         self, instance: WorkflowInstance, step: WorkflowStep, step_def: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute a task step"""
+        """Execute a task step with business rules validation"""
         task_name = step_def.get("task")
         if not task_name:
             raise WorkflowExecutionError(f"Step {step.step_name} missing 'task' field")
@@ -799,8 +1126,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         # 2. Workflow state_data (accumulated state from previous steps)
         # 3. Step-specific input_data (from step model)
         # 4. Step definition input (from DSL)
-        # Refresh instance to get latest state_data
-        instance.refresh_from_db()
+        # Use in-memory instance - state_data is already up-to-date
         task_input = {
             **instance.input_data,
             **instance.state_data,
@@ -808,10 +1134,783 @@ class WorkflowEngine(WorkflowEventPublisher):
             **step_def.get("input", {}),
         }
 
+        # Get tenant and user for business rules validation
+        tenant = instance.tenant
+        user = instance.created_by
+
+        # Check if business rules validation is enabled for this workflow
+        tenant_id_str = str(tenant.id) if tenant else None
+        validation_enabled = is_business_rules_validation_enabled(
+            workflow_name=instance.workflow_name,
+            tenant_id=tenant_id_str,
+            workflow_instance_id=str(instance.id),
+        )
+
+        if not validation_enabled:
+            # Skip validation if feature flag is disabled
+            logger.debug(
+                "Business rules validation disabled for workflow",
+                workflow_instance_id=str(instance.id),
+                workflow_name=instance.workflow_name,
+                tenant_id=tenant_id_str,
+            )
+            # Execute task without validation
+            result = task_func(task_input, instance, step)
+            return result if isinstance(result, dict) else {"result": result}
+
+        # Create business rules instance with tenant/user context
+        business_rules = OrchestrationBusinessRules(
+            tenant_id=tenant_id_str, user_id=str(user.id) if user else None
+        )
+
+        # Get tenant ID for metrics
+        tenant_id_str = get_tenant_id(tenant_id_str)
+        rule_name = business_rules.get_rule_name()
+
+        # Track validation results for observability
+        validation_results = {
+            "workflow_state": None,
+            "step_input": None,
+            "step_execution": None,
+            "step_output": None,
+            "post_workflow_state": None,
+        }
+
+        # Pre-step validation: Validate workflow state before step execution
+        validation_start = time.time()
+
+        # Create validation trace span
+        validation_span = None
+        if _tracer:
+            validation_span = _tracer.start_span(
+                name=f"workflow.validation.workflow_state",
+                attributes={
+                    "workflow.instance_id": str(instance.id),
+                    "workflow.name": instance.workflow_name,
+                    "workflow.step.name": step.step_name,
+                    "workflow.step.index": step.step_index,
+                    "business_rules.rule_name": rule_name,
+                    "business_rules.validation_type": "workflow_state",
+                },
+            )
+
+        workflow_state_cached = False
+        try:
+            # CRITICAL: Prefetch steps to avoid N+1 queries and potential database locks
+            # This prevents hanging on workflow.steps.all() calls in validate_workflow_state.
+            # Use a separate variable so we do not replace `instance`; _validation_results must
+            # be written to the caller's instance so the main loop persists it.
+            from django.db.models import Prefetch
+
+            from hub.apps.orchestration.models import WorkflowStep
+
+            instance_for_validation = instance
+            if (
+                not hasattr(instance, "_prefetched_objects_cache")
+                or "steps" not in instance._prefetched_objects_cache
+            ):
+                try:
+                    instance_for_validation = WorkflowInstance.objects.prefetch_related(
+                        Prefetch(
+                            "steps",
+                            queryset=WorkflowStep.objects.only(
+                                "step_index",
+                                "step_name",
+                                "output_data",
+                                "status",
+                                "workflow_instance_id",
+                            ).order_by("step_index"),
+                        )
+                    ).get(id=instance.id)
+                except Exception as prefetch_error:
+                    logger.warning(
+                        "Failed to prefetch workflow steps for validation",
+                        workflow_instance_id=str(instance.id),
+                        error=str(prefetch_error),
+                    )
+
+            # Validate workflow state (now with prefetched steps to avoid hanging)
+            steps_signature = []
+            try:
+                if (
+                    hasattr(instance_for_validation, "_prefetched_objects_cache")
+                    and "steps" in instance_for_validation._prefetched_objects_cache
+                ):
+                    prefetched_steps = instance_for_validation._prefetched_objects_cache["steps"]
+                    steps_signature = [
+                        {
+                            "step_index": s.step_index,
+                            "step_name": s.step_name,
+                            "status": s.status,
+                            "updated_at": str(getattr(s, "updated_at", "")),
+                        }
+                        for s in prefetched_steps
+                    ]
+            except Exception:
+                steps_signature = []
+
+            workflow_state_result, workflow_state_cached = self._cached_orchestration_validation(
+                validation_type="workflow_state",
+                instance=instance,
+                step=step,
+                payload_fingerprint={
+                    "workflow_id": str(instance.id),
+                    "workflow_status": instance_for_validation.status,
+                    "current_step_index": instance_for_validation.current_step_index,
+                    "state_data": instance_for_validation.state_data,
+                    "steps": steps_signature,
+                },
+                compute=lambda: business_rules.validate_workflow_state(
+                    instance_for_validation, tenant, user
+                ),
+            )
+        finally:
+            validation_duration = time.time() - validation_start
+            if validation_span:
+                validation_span.set_attribute(
+                    "business_rules.is_valid", workflow_state_result.is_valid
+                )
+                validation_span.set_attribute(
+                    "business_rules.error_count", len(workflow_state_result.errors)
+                )
+                validation_span.set_attribute(
+                    "business_rules.warning_count", len(workflow_state_result.warnings)
+                )
+                validation_span.set_attribute(
+                    "business_rules.duration_seconds", validation_duration
+                )
+                validation_span.set_attribute("business_rules.cached", workflow_state_cached)
+                validation_span.end()
+
+        validation_results["workflow_state"] = {
+            "result": workflow_state_result,
+            "duration": validation_duration,
+            "cached": workflow_state_cached,
+        }
+
+        # Record validation metrics
+        self._record_validation_metrics(
+            instance,
+            step,
+            rule_name,
+            "workflow_state",
+            workflow_state_result,
+            validation_duration,
+            workflow_state_cached,
+            tenant_id_str,
+        )
+        logger.debug(
+            "Business rules validation completed (duration_seconds=%s, validation_type=%s)",
+            validation_duration,
+            "workflow_state",
+            extra={
+                "workflow_instance_id": str(instance.id),
+                "workflow_name": instance.workflow_name,
+                "step_name": step.step_name,
+                "rule_name": rule_name,
+                "validation_type": "workflow_state",
+                "duration_seconds": validation_duration,
+                "is_valid": workflow_state_result.is_valid,
+                "cached": workflow_state_cached,
+            },
+        )
+
+        if not workflow_state_result.is_valid:
+            error_message = self._format_validation_error(
+                "workflow state validation", workflow_state_result, instance, step
+            )
+            raise WorkflowExecutionError(error_message)
+
+        # Pre-step validation: Validate step input data
+        validation_start = time.time()
+
+        # Create validation trace span
+        validation_span = None
+        if _tracer:
+            validation_span = _tracer.start_span(
+                name=f"workflow.validation.step_input",
+                attributes={
+                    "workflow.instance_id": str(instance.id),
+                    "workflow.name": instance.workflow_name,
+                    "workflow.step.name": step.step_name,
+                    "workflow.step.index": step.step_index,
+                    "business_rules.rule_name": rule_name,
+                    "business_rules.validation_type": "step_input",
+                },
+            )
+
+        step_input_cached = False
+        try:
+            step_input_result, step_input_cached = self._cached_orchestration_validation(
+                validation_type="step_input",
+                instance=instance,
+                step=step,
+                payload_fingerprint={
+                    "workflow_id": str(instance.id),
+                    "step_id": str(step.id),
+                    "step_index": step.step_index,
+                    "step_status": step.status,
+                    "task_input": task_input,
+                },
+                compute=lambda: business_rules.validate_step_input(
+                    instance, step, task_input, tenant, user
+                ),
+            )
+        finally:
+            validation_duration = time.time() - validation_start
+            if validation_span:
+                validation_span.set_attribute("business_rules.is_valid", step_input_result.is_valid)
+                validation_span.set_attribute(
+                    "business_rules.error_count", len(step_input_result.errors)
+                )
+                validation_span.set_attribute(
+                    "business_rules.warning_count", len(step_input_result.warnings)
+                )
+                validation_span.set_attribute(
+                    "business_rules.duration_seconds", validation_duration
+                )
+                validation_span.set_attribute("business_rules.cached", step_input_cached)
+                validation_span.end()
+
+        validation_results["step_input"] = {
+            "result": step_input_result,
+            "duration": validation_duration,
+            "cached": step_input_cached,
+        }
+
+        # Record validation metrics
+        self._record_validation_metrics(
+            instance,
+            step,
+            rule_name,
+            "step_input",
+            step_input_result,
+            validation_duration,
+            step_input_cached,
+            tenant_id_str,
+        )
+
+        if not step_input_result.is_valid:
+            error_message = self._format_validation_error(
+                "step input validation", step_input_result, instance, step
+            )
+            raise WorkflowExecutionError(error_message)
+
+        # Pre-step validation: Validate step can execute in current workflow state
+        validation_start = time.time()
+
+        # Create validation trace span
+        validation_span = None
+        if _tracer:
+            validation_span = _tracer.start_span(
+                name=f"workflow.validation.step_execution",
+                attributes={
+                    "workflow.instance_id": str(instance.id),
+                    "workflow.name": instance.workflow_name,
+                    "workflow.step.name": step.step_name,
+                    "workflow.step.index": step.step_index,
+                    "business_rules.rule_name": rule_name,
+                    "business_rules.validation_type": "step_execution",
+                },
+            )
+
+        step_execution_cached = False
+        try:
+            step_execution_result, step_execution_cached = self._cached_orchestration_validation(
+                validation_type="step_execution",
+                instance=instance,
+                step=step,
+                payload_fingerprint={
+                    "workflow_id": str(instance.id),
+                    "workflow_status": instance.status,
+                    "workflow_current_step_index": instance.current_step_index,
+                    "step_id": str(step.id),
+                    "step_index": step.step_index,
+                    "step_status": step.status,
+                },
+                compute=lambda: business_rules.validate_workflow_step_execution(
+                    instance, step, tenant, user
+                ),
+            )
+        finally:
+            validation_duration = time.time() - validation_start
+            if validation_span:
+                validation_span.set_attribute(
+                    "business_rules.is_valid", step_execution_result.is_valid
+                )
+                validation_span.set_attribute(
+                    "business_rules.error_count", len(step_execution_result.errors)
+                )
+                validation_span.set_attribute(
+                    "business_rules.warning_count", len(step_execution_result.warnings)
+                )
+                validation_span.set_attribute(
+                    "business_rules.duration_seconds", validation_duration
+                )
+                validation_span.set_attribute("business_rules.cached", step_execution_cached)
+                validation_span.end()
+
+        validation_results["step_execution"] = {
+            "result": step_execution_result,
+            "duration": validation_duration,
+            "cached": step_execution_cached,
+        }
+
+        # Record validation metrics
+        self._record_validation_metrics(
+            instance,
+            step,
+            rule_name,
+            "step_execution",
+            step_execution_result,
+            validation_duration,
+            step_execution_cached,
+            tenant_id_str,
+        )
+
+        if not step_execution_result.is_valid:
+            error_message = self._format_validation_error(
+                "step execution validation", step_execution_result, instance, step
+            )
+            raise WorkflowExecutionError(error_message)
+
+        # Log validation warnings (don't block execution) with structured logging
+        if workflow_state_result.warnings:
+            logger.warning(
+                "Workflow state validation warnings",
+                workflow_instance_id=str(instance.id),
+                workflow_name=instance.workflow_name,
+                step_name=step.step_name,
+                step_index=step.step_index,
+                rule_name=rule_name,
+                validation_type="workflow_state",
+                warnings=workflow_state_result.warnings,
+                tenant_id=tenant_id_str,
+            )
+        if step_input_result.warnings:
+            logger.warning(
+                "Step input validation warnings",
+                workflow_instance_id=str(instance.id),
+                workflow_name=instance.workflow_name,
+                step_name=step.step_name,
+                step_index=step.step_index,
+                rule_name=rule_name,
+                validation_type="step_input",
+                warnings=step_input_result.warnings,
+                tenant_id=tenant_id_str,
+            )
+        if step_execution_result.warnings:
+            logger.warning(
+                "Step execution validation warnings",
+                workflow_instance_id=str(instance.id),
+                workflow_name=instance.workflow_name,
+                step_name=step.step_name,
+                step_index=step.step_index,
+                rule_name=rule_name,
+                validation_type="step_execution",
+                warnings=step_execution_result.warnings,
+                tenant_id=tenant_id_str,
+            )
+
         # Execute task
         result = task_func(task_input, instance, step)
 
-        return result if isinstance(result, dict) else {"result": result}
+        # Ensure result is a dictionary
+        result = result if isinstance(result, dict) else {"result": result}
+
+        # Post-step validation: Validate step output data
+        validation_start = time.time()
+
+        # Create validation trace span
+        validation_span = None
+        if _tracer:
+            validation_span = _tracer.start_span(
+                name=f"workflow.validation.step_output",
+                attributes={
+                    "workflow.instance_id": str(instance.id),
+                    "workflow.name": instance.workflow_name,
+                    "workflow.step.name": step.step_name,
+                    "workflow.step.index": step.step_index,
+                    "business_rules.rule_name": rule_name,
+                    "business_rules.validation_type": "step_output",
+                },
+            )
+
+        step_output_cached = False
+        try:
+            step_output_result, step_output_cached = self._cached_orchestration_validation(
+                validation_type="step_output",
+                instance=instance,
+                step=step,
+                payload_fingerprint={
+                    "workflow_id": str(instance.id),
+                    "step_id": str(step.id),
+                    "step_index": step.step_index,
+                    "step_status": step.status,
+                    "result": result,
+                },
+                compute=lambda: business_rules.validate_step_output(
+                    instance, step, result, tenant, user
+                ),
+            )
+        finally:
+            validation_duration = time.time() - validation_start
+            if validation_span:
+                validation_span.set_attribute(
+                    "business_rules.is_valid", step_output_result.is_valid
+                )
+                validation_span.set_attribute(
+                    "business_rules.error_count", len(step_output_result.errors)
+                )
+                validation_span.set_attribute(
+                    "business_rules.warning_count", len(step_output_result.warnings)
+                )
+                validation_span.set_attribute(
+                    "business_rules.duration_seconds", validation_duration
+                )
+                validation_span.set_attribute("business_rules.cached", step_output_cached)
+                validation_span.end()
+
+        validation_results["step_output"] = {
+            "result": step_output_result,
+            "duration": validation_duration,
+            "cached": step_output_cached,
+        }
+
+        # Record validation metrics
+        self._record_validation_metrics(
+            instance,
+            step,
+            rule_name,
+            "step_output",
+            step_output_result,
+            validation_duration,
+            step_output_cached,
+            tenant_id_str,
+        )
+
+        if not step_output_result.is_valid:
+            error_message = self._format_validation_error(
+                "step output validation", step_output_result, instance, step
+            )
+            raise WorkflowExecutionError(error_message)
+
+        # Post-step validation: Validate workflow state after step
+        validation_start = time.time()
+
+        # Create validation trace span
+        validation_span = None
+        if _tracer:
+            validation_span = _tracer.start_span(
+                name=f"workflow.validation.post_workflow_state",
+                attributes={
+                    "workflow.instance_id": str(instance.id),
+                    "workflow.name": instance.workflow_name,
+                    "workflow.step.name": step.step_name,
+                    "workflow.step.index": step.step_index,
+                    "business_rules.rule_name": rule_name,
+                    "business_rules.validation_type": "post_workflow_state",
+                },
+            )
+
+        post_workflow_state_cached = False
+        try:
+            post_workflow_state_result, post_workflow_state_cached = (
+                self._cached_orchestration_validation(
+                    validation_type="post_workflow_state",
+                    instance=instance,
+                    step=step,
+                    payload_fingerprint={
+                        "workflow_id": str(instance.id),
+                        "workflow_status": instance.status,
+                        "current_step_index": instance.current_step_index,
+                        "state_data": instance.state_data,
+                    },
+                    compute=lambda: business_rules.validate_workflow_state(instance, tenant, user),
+                )
+            )
+        finally:
+            validation_duration = time.time() - validation_start
+            if validation_span:
+                validation_span.set_attribute(
+                    "business_rules.is_valid", post_workflow_state_result.is_valid
+                )
+                validation_span.set_attribute(
+                    "business_rules.error_count", len(post_workflow_state_result.errors)
+                )
+                validation_span.set_attribute(
+                    "business_rules.warning_count", len(post_workflow_state_result.warnings)
+                )
+                validation_span.set_attribute(
+                    "business_rules.duration_seconds", validation_duration
+                )
+                validation_span.set_attribute("business_rules.cached", post_workflow_state_cached)
+                validation_span.end()
+
+        validation_results["post_workflow_state"] = {
+            "result": post_workflow_state_result,
+            "duration": validation_duration,
+            "cached": post_workflow_state_cached,
+        }
+
+        # Record validation metrics
+        self._record_validation_metrics(
+            instance,
+            step,
+            rule_name,
+            "post_workflow_state",
+            post_workflow_state_result,
+            validation_duration,
+            post_workflow_state_cached,
+            tenant_id_str,
+        )
+
+        if not post_workflow_state_result.is_valid:
+            error_message = self._format_validation_error(
+                "post-step workflow state validation", post_workflow_state_result, instance, step
+            )
+            raise WorkflowExecutionError(error_message)
+
+        # Log post-validation warnings with structured logging
+        if step_output_result.warnings:
+            logger.warning(
+                "Step output validation warnings",
+                workflow_instance_id=str(instance.id),
+                workflow_name=instance.workflow_name,
+                step_name=step.step_name,
+                step_index=step.step_index,
+                rule_name=rule_name,
+                validation_type="step_output",
+                warnings=step_output_result.warnings,
+                tenant_id=tenant_id_str,
+            )
+        if post_workflow_state_result.warnings:
+            logger.warning(
+                "Post-step workflow state validation warnings",
+                workflow_instance_id=str(instance.id),
+                workflow_name=instance.workflow_name,
+                step_name=step.step_name,
+                step_index=step.step_index,
+                rule_name=rule_name,
+                validation_type="post_workflow_state",
+                warnings=post_workflow_state_result.warnings,
+                tenant_id=tenant_id_str,
+            )
+
+        # Log validation results with structured logging
+        logger.info(
+            "Step validation completed",
+            workflow_instance_id=str(instance.id),
+            workflow_name=instance.workflow_name,
+            step_name=step.step_name,
+            step_index=step.step_index,
+            rule_name=rule_name,
+            pre_validation_valid=step_execution_result.is_valid,
+            post_validation_valid=step_output_result.is_valid,
+            validation_results={
+                "workflow_state": {
+                    "valid": workflow_state_result.is_valid,
+                    "duration": validation_results["workflow_state"]["duration"],
+                },
+                "step_input": {
+                    "valid": step_input_result.is_valid,
+                    "duration": validation_results["step_input"]["duration"],
+                },
+                "step_execution": {
+                    "valid": step_execution_result.is_valid,
+                    "duration": validation_results["step_execution"]["duration"],
+                },
+                "step_output": {
+                    "valid": step_output_result.is_valid,
+                    "duration": validation_results["step_output"]["duration"],
+                },
+                "post_workflow_state": {
+                    "valid": post_workflow_state_result.is_valid,
+                    "duration": validation_results["post_workflow_state"]["duration"],
+                },
+            },
+            tenant_id=tenant_id_str,
+        )
+
+        # Store validation results in instance state_data for event publishing
+        if instance.state_data is None:
+            instance.state_data = {}
+        instance.state_data["_validation_results"] = {
+            "workflow_state": {
+                "valid": workflow_state_result.is_valid,
+                "duration": validation_results["workflow_state"]["duration"],
+                "cached": validation_results["workflow_state"].get("cached", False),
+                "error_count": len(workflow_state_result.errors),
+                "warning_count": len(workflow_state_result.warnings),
+                "errors": workflow_state_result.errors,
+                "warnings": workflow_state_result.warnings,
+            },
+            "step_input": {
+                "valid": step_input_result.is_valid,
+                "duration": validation_results["step_input"]["duration"],
+                "cached": validation_results["step_input"].get("cached", False),
+                "error_count": len(step_input_result.errors),
+                "warning_count": len(step_input_result.warnings),
+                "errors": step_input_result.errors,
+                "warnings": step_input_result.warnings,
+            },
+            "step_execution": {
+                "valid": step_execution_result.is_valid,
+                "duration": validation_results["step_execution"]["duration"],
+                "cached": validation_results["step_execution"].get("cached", False),
+                "error_count": len(step_execution_result.errors),
+                "warning_count": len(step_execution_result.warnings),
+                "errors": step_execution_result.errors,
+                "warnings": step_execution_result.warnings,
+            },
+            "step_output": {
+                "valid": step_output_result.is_valid,
+                "duration": validation_results["step_output"]["duration"],
+                "cached": validation_results["step_output"].get("cached", False),
+                "error_count": len(step_output_result.errors),
+                "warning_count": len(step_output_result.warnings),
+                "errors": step_output_result.errors,
+                "warnings": step_output_result.warnings,
+            },
+            "post_workflow_state": {
+                "valid": post_workflow_state_result.is_valid,
+                "duration": validation_results["post_workflow_state"]["duration"],
+                "cached": validation_results["post_workflow_state"].get("cached", False),
+                "error_count": len(post_workflow_state_result.errors),
+                "warning_count": len(post_workflow_state_result.warnings),
+                "errors": post_workflow_state_result.errors,
+                "warnings": post_workflow_state_result.warnings,
+            },
+        }
+
+        return result
+
+    def _record_validation_metrics(
+        self,
+        instance: WorkflowInstance,
+        step: WorkflowStep,
+        rule_name: str,
+        validation_type: str,
+        validation_result: Any,
+        duration: float,
+        cached: bool,
+        tenant_id_str: str,
+    ):
+        """
+        Record business rules validation metrics.
+
+        Args:
+            instance: Workflow instance
+            step: Workflow step
+            rule_name: Business rule name
+            validation_type: Type of validation (workflow_state, step_input, etc.)
+            validation_result: ValidationResult instance
+            duration: Validation duration in seconds
+            cached: Whether result was from cache
+            tenant_id_str: Tenant ID string for metrics
+        """
+        try:
+            status = "valid" if validation_result.is_valid else "invalid"
+
+            # Record validation counter
+            workflow_business_rules_validations_total.labels(
+                workflow_name=instance.workflow_name,
+                workflow_version=instance.workflow_version,
+                step_name=step.step_name,
+                rule_name=rule_name,
+                status=status,
+                tenant_id=tenant_id_str,
+            ).inc()
+
+            # Record validation duration
+            workflow_business_rules_validation_duration_seconds.labels(
+                workflow_name=instance.workflow_name,
+                workflow_version=instance.workflow_version,
+                step_name=step.step_name,
+                rule_name=rule_name,
+                tenant_id=tenant_id_str,
+            ).observe(duration)
+
+            # Record cache hit/miss
+            if cached:
+                workflow_business_rules_validation_cache_hits_total.labels(
+                    workflow_name=instance.workflow_name,
+                    workflow_version=instance.workflow_version,
+                    step_name=step.step_name,
+                    rule_name=rule_name,
+                    tenant_id=tenant_id_str,
+                ).inc()
+            else:
+                workflow_business_rules_validation_cache_misses_total.labels(
+                    workflow_name=instance.workflow_name,
+                    workflow_version=instance.workflow_version,
+                    step_name=step.step_name,
+                    rule_name=rule_name,
+                    tenant_id=tenant_id_str,
+                ).inc()
+        except Exception as e:
+            logger.warning(
+                "Failed to record validation metrics",
+                error=str(e),
+                workflow_instance_id=str(instance.id),
+                step_name=step.step_name,
+                rule_name=rule_name,
+                validation_type=validation_type,
+                exc_info=True,
+            )
+
+    def _format_validation_error(
+        self,
+        validation_type: str,
+        validation_result: Any,
+        instance: WorkflowInstance,
+        step: WorkflowStep,
+    ) -> str:
+        """
+        Format validation error message with context.
+
+        Args:
+            validation_type: Type of validation that failed
+            validation_result: ValidationResult with errors
+            instance: WorkflowInstance context
+            step: WorkflowStep context
+
+        Returns:
+            Formatted error message with validation context
+        """
+        rule_name = "OrchestrationBusinessRules"
+        tenant_id_str = get_tenant_id(str(instance.tenant_id) if instance.tenant_id else None)
+
+        # Log validation error with structured logging
+        logger.error(
+            "Workflow validation failed",
+            workflow_instance_id=str(instance.id),
+            workflow_name=instance.workflow_name,
+            workflow_version=instance.workflow_version,
+            step_name=step.step_name,
+            step_index=step.step_index,
+            rule_name=rule_name,
+            validation_type=validation_type,
+            errors=validation_result.errors,
+            warnings=validation_result.warnings,
+            validation_details=validation_result.details,
+            tenant_id=tenant_id_str,
+        )
+
+        error_parts = [
+            f"Business rules validation failed ({validation_type})",
+            f"Rule: {rule_name}",
+            f"Workflow: {instance.workflow_name} (id: {instance.id})",
+            f"Step: {step.step_name} (index: {step.step_index})",
+        ]
+
+        if validation_result.errors:
+            error_parts.append(f"Errors: {', '.join(validation_result.errors)}")
+
+        if validation_result.warnings:
+            error_parts.append(f"Warnings: {', '.join(validation_result.warnings)}")
+
+        return " | ".join(error_parts)
 
     def _execute_parallel_step(
         self, instance: WorkflowInstance, step: WorkflowStep, step_def: Dict[str, Any]
@@ -857,10 +1956,10 @@ class WorkflowEngine(WorkflowEventPublisher):
                     workflow_instance=instance,
                     step_index=temp_step_index,
                     defaults={
-                        'step_name': then_step_def.get("name", "then_step"),
-                        'step_type': then_step_def.get("type", "task"),
-                        'status': StepStatus.PENDING,
-                    }
+                        "step_name": then_step_def.get("name", "then_step"),
+                        "step_type": then_step_def.get("type", "task"),
+                        "status": StepStatus.PENDING,
+                    },
                 )
                 # If step already exists and is completed/failed, skip it
                 if not created and temp_step.is_terminal():
@@ -877,10 +1976,10 @@ class WorkflowEngine(WorkflowEventPublisher):
                     workflow_instance=instance,
                     step_index=temp_step_index,
                     defaults={
-                        'step_name': else_step_def.get("name", "else_step"),
-                        'step_type': else_step_def.get("type", "task"),
-                        'status': StepStatus.PENDING,
-                    }
+                        "step_name": else_step_def.get("name", "else_step"),
+                        "step_type": else_step_def.get("type", "task"),
+                        "status": StepStatus.PENDING,
+                    },
                 )
                 # If step already exists and is completed/failed, skip it
                 if not created and temp_step.is_terminal():
@@ -908,9 +2007,8 @@ class WorkflowEngine(WorkflowEventPublisher):
                 )
 
         for loop_index, item in enumerate(items):
-            # Add item to state for loop steps
+            # Add item to state for loop steps (don't save here - will be saved in main loop)
             instance.state_data["loop_item"] = item
-            instance.save(update_fields=["state_data"])
 
             for sub_index, loop_step_def in enumerate(loop_steps):
                 # Use a unique sub-index to avoid unique constraint violations
@@ -921,16 +2019,60 @@ class WorkflowEngine(WorkflowEventPublisher):
                     workflow_instance=instance,
                     step_index=temp_step_index,
                     defaults={
-                        'step_name': loop_step_def.get("name", "loop_step"),
-                        'step_type': loop_step_def.get("type", "task"),
-                        'status': StepStatus.PENDING,
-                    }
+                        "step_name": loop_step_def.get("name", "loop_step"),
+                        "step_type": loop_step_def.get("type", "task"),
+                        "status": StepStatus.PENDING,
+                    },
                 )
                 # If step already exists and is completed/failed, skip it
                 if not created and temp_step.is_terminal():
                     continue
-                result = self._execute_step(instance, temp_step, loop_step_def)
+                try:
+                    result = self._execute_step(instance, temp_step, loop_step_def)
+                except Exception as e:
+                    # Per-item failure: run this step's compensation then continue to next item
+                    if instance.state_data is None:
+                        instance.state_data = {}
+                    instance.state_data["last_error"] = str(e)
+                    comp_def = loop_step_def.get("compensation", {})
+                    comp_task_name = comp_def.get("task") if isinstance(comp_def, dict) else None
+                    if comp_task_name and self.task_registry:
+                        task_func = self.task_registry.get(comp_task_name)
+                        if task_func:
+                            task_input = {
+                                **instance.input_data,
+                                **instance.state_data,
+                                **temp_step.input_data,
+                                **comp_def.get("input", {}),
+                            }
+                            try:
+                                comp_result = task_func(task_input, instance, temp_step)
+                                if isinstance(comp_result, dict):
+                                    for key, value in comp_result.items():
+                                        if key not in ("state", "output"):
+                                            instance.state_data[key] = value
+                            except Exception as comp_e:
+                                logger.warning(
+                                    "Loop step compensation failed",
+                                    step_name=temp_step.step_name,
+                                    error=str(comp_e),
+                                )
+                    results.append({"error": str(e), "step": temp_step.step_name})
+                    break  # Skip remaining steps for this item, continue to next iteration
                 results.append(result)
+                # Merge this inner step's output into state_data so next inner step
+                # (e.g. validate_file after download_file) receives file_path, temp_path, etc.
+                step_output = result if isinstance(result, dict) else {"result": result}
+                step_state = step_output.get("state", {})
+                if step_state:
+                    instance.state_data.update(step_state)
+                for key, value in step_output.items():
+                    if key not in ("state", "output"):
+                        instance.state_data[key] = value
+                step_output_dict = step_output.get("output", {})
+                if isinstance(step_output_dict, dict):
+                    for key, value in step_output_dict.items():
+                        instance.state_data[key] = value
 
         return {"results": results}
 
@@ -989,7 +2131,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                 import re
 
                 # Pattern 1: Equality comparison: "{{ auto_activate == true }}"
-                match = re.match(r'\{\{\s*(\w+)\s*==\s*(\w+)\s*\}\}', if_str)
+                match = re.match(r"\{\{\s*(\w+)\s*==\s*(\w+)\s*\}\}", if_str)
                 if match:
                     field_name = match.group(1)
                     value_str = match.group(2)
@@ -1012,7 +2154,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                     return field_value == value
 
                 # Pattern 2: Not null check: "{{ field != null }}" or "{{ field != null && ... }}"
-                match = re.match(r'\{\{\s*(\w+)\s*!=\s*null\s*\}\}', if_str)
+                match = re.match(r"\{\{\s*(\w+)\s*!=\s*null\s*\}\}", if_str)
                 if match:
                     field_name = match.group(1)
                     field_value = state_data.get(field_name)
@@ -1020,26 +2162,26 @@ class WorkflowEngine(WorkflowEventPublisher):
 
                 # Pattern 3: Complex condition with &&: "{{ field1 != null && field2 != 'VALUE' }}"
                 # Handle && conditions by extracting field names and operators from template syntax
-                if '&&' in if_str:
+                if "&&" in if_str:
                     # Remove outer {{ }} and split by &&
                     inner = if_str.strip()
-                    if inner.startswith('{{'):
+                    if inner.startswith("{{"):
                         inner = inner[2:].strip()
-                    if inner.endswith('}}'):
+                    if inner.endswith("}}"):
                         inner = inner[:-2].strip()
 
-                    parts = [p.strip() for p in inner.split('&&')]
+                    parts = [p.strip() for p in inner.split("&&")]
                     results = []
                     for part in parts:
                         # Check for != null (without {{ }} wrapper since we already removed it)
-                        match = re.match(r'(\w+)\s*!=\s*null', part)
+                        match = re.match(r"(\w+)\s*!=\s*null", part)
                         if match:
                             field_name = match.group(1)
                             field_value = state_data.get(field_name)
                             results.append(field_value is not None and field_value != "")
                             continue
                         # Check for == null
-                        match = re.match(r'(\w+)\s*==\s*null', part)
+                        match = re.match(r"(\w+)\s*==\s*null", part)
                         if match:
                             field_name = match.group(1)
                             field_value = state_data.get(field_name)
@@ -1054,7 +2196,7 @@ class WorkflowEngine(WorkflowEventPublisher):
                             results.append(str(field_value) != expected_value)
                             continue
                         # Check for == comparison
-                        match = re.match(r'(\w+)\s*==\s*(\w+)', part)
+                        match = re.match(r"(\w+)\s*==\s*(\w+)", part)
                         if match:
                             field_name = match.group(1)
                             expected_value = match.group(2)
@@ -1209,7 +2351,8 @@ class WorkflowEngine(WorkflowEventPublisher):
         Returns:
             Updated WorkflowInstance
         """
-        instance = WorkflowInstance.objects.select_for_update().get(id=instance_id)
+        # Use skip_locked to avoid blocking on concurrent access attempts
+        instance = WorkflowInstance.objects.select_for_update(skip_locked=True).get(id=instance_id)
 
         if not instance.can_retry():
             raise WorkflowExecutionError(
@@ -1249,13 +2392,32 @@ class WorkflowEngine(WorkflowEventPublisher):
             update_fields=["status", "retry_count", "error_message", "error_details", "updated_at"]
         )
 
-        # Reset failed steps
-        failed_steps = instance.steps.filter(status=StepStatus.FAILED)
-        for step in failed_steps:
+        # Reset failed and compensated steps so we re-run from the first affected step
+        steps_to_reset = instance.steps.filter(
+            status__in=(StepStatus.FAILED, StepStatus.COMPENSATED)
+        )
+        min_index = None
+        for step in steps_to_reset:
+            if min_index is None or step.step_index < min_index:
+                min_index = step.step_index
+        if min_index is not None:
+            instance.current_step_index = min_index
+            instance.save(update_fields=["current_step_index", "updated_at"])
+
+        for step in steps_to_reset:
             step.status = StepStatus.PENDING
             step.error_message = None
             step.error_details = None
-            step.save(update_fields=["status", "error_message", "error_details"])
+            step.compensation_data = None
+            step.save(
+                update_fields=[
+                    "status",
+                    "error_message",
+                    "error_details",
+                    "compensation_data",
+                    "updated_at",
+                ]
+            )
 
             # Record step retry metric
             workflow_steps_retried_total.labels(
@@ -1270,9 +2432,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         logger.info(f"Retrying workflow instance: {instance.id} (attempt {instance.retry_count})")
         return self.execute_instance(instance_id)
 
-    def _calculate_progress(
-        self, instance: WorkflowInstance
-    ) -> float:
+    def _calculate_progress(self, instance: WorkflowInstance) -> float:
         """
         Calculate workflow execution progress percentage.
 
@@ -1364,6 +2524,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         if "original_raw" in input_data:
             try:
                 import json
+
                 raw_content = input_data["original_raw"]
                 if isinstance(raw_content, str):
                     doc = json.loads(raw_content)
@@ -1401,6 +2562,7 @@ class WorkflowEngine(WorkflowEventPublisher):
 
             # Initialize event publisher with correct tenant/user
             from hub.apps.core.events.publisher import EventPublisher
+
             odps_publisher._event_publisher = EventPublisher(
                 service_name="workflow_engine",
                 tenant_id=tenant_id_str,
@@ -1413,10 +2575,7 @@ class WorkflowEngine(WorkflowEventPublisher):
             return None
 
     def _publish_odps_workflow_event_if_applicable(
-        self,
-        instance: WorkflowInstance,
-        event_type: str,
-        **kwargs
+        self, instance: WorkflowInstance, event_type: str, **kwargs
     ) -> None:
         """
         Publish ODPS workflow event if this is an ODPS workflow (Task 7.1.4).
@@ -1478,11 +2637,7 @@ class WorkflowEngine(WorkflowEventPublisher):
             logger.warning(f"Failed to publish ODPS workflow.{event_type} event: {e}")
 
     def _publish_odps_workflow_step_event_if_applicable(
-        self,
-        instance: WorkflowInstance,
-        step: WorkflowStep,
-        event_type: str,
-        **kwargs
+        self, instance: WorkflowInstance, step: WorkflowStep, event_type: str, **kwargs
     ) -> None:
         """
         Publish ODPS workflow step event if this is an ODPS workflow (Task 7.1.4).
@@ -1541,9 +2696,7 @@ class WorkflowEngine(WorkflowEventPublisher):
             logger.warning(f"Failed to publish ODPS workflow.step.{event_type} event: {e}")
 
     def _publish_odps_workflow_progress_if_applicable(
-        self,
-        instance: WorkflowInstance,
-        progress_percentage: float
+        self, instance: WorkflowInstance, progress_percentage: float
     ) -> None:
         """
         Publish ODPS workflow progress event if this is an ODPS workflow (Task 7.1.4).
@@ -1574,7 +2727,9 @@ class WorkflowEngine(WorkflowEventPublisher):
                 progress_percentage=progress_percentage,
                 workflow_version=instance.workflow_version,
                 current_step_index=instance.current_step_index,
-                current_step_name=instance.state_data.get("current_step_name") if instance.state_data else None,
+                current_step_name=(
+                    instance.state_data.get("current_step_name") if instance.state_data else None
+                ),
                 total_steps=total_steps,
                 tenant_id=tenant_id_str,
                 user_id=user_id_str,
@@ -1588,7 +2743,7 @@ class WorkflowEngine(WorkflowEventPublisher):
         step_index: int,
         step_name: str,
         total_steps: int,
-        status_message: Optional[str] = None
+        status_message: Optional[str] = None,
     ) -> None:
         """
         Publish ODPS creation progress event if this is an ODPS workflow (Task 7.3.2).
@@ -1612,12 +2767,16 @@ class WorkflowEngine(WorkflowEventPublisher):
             user_id_str = str(instance.created_by_id) if instance.created_by_id else None
 
             # Calculate progress percentage
-            progress_percentage = ((step_index + 1) / total_steps * 100.0) if total_steps > 0 else 0.0
+            progress_percentage = (
+                ((step_index + 1) / total_steps * 100.0) if total_steps > 0 else 0.0
+            )
 
             # Get contract ID from state if available
             contract_id = None
             if instance.state_data:
-                contract_id = instance.state_data.get("odps_contract_id") or instance.state_data.get("contract_id")
+                contract_id = instance.state_data.get(
+                    "odps_contract_id"
+                ) or instance.state_data.get("contract_id")
 
             odps_publisher.publish_odps_creation_progress(
                 contract_id=contract_id,

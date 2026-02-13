@@ -8,9 +8,13 @@ import logging
 import os
 import sys
 
-# Set up debug logging for patch verification
+# Set up logging for patch verification. Use WARNING by default to avoid I/O
+# during test DB setup (create_test_db + migrate), which is the main bottleneck.
+# Set DJANGO_PATCH_DEBUG=1 to enable DEBUG/INFO for diagnosing patch issues.
 _patch_logger = logging.getLogger("django_patches")
-_patch_logger.setLevel(logging.DEBUG)
+_patch_logger.setLevel(
+    logging.DEBUG if os.environ.get("DJANGO_PATCH_DEBUG") == "1" else logging.WARNING
+)
 _handler = logging.StreamHandler()
 _handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 _patch_logger.addHandler(_handler)
@@ -144,7 +148,9 @@ if True:  # Always apply patches
     try:
         import django.db.backends.base.base
 
-        _original_validate = django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing
+        _original_validate = (
+            django.db.backends.base.base.BaseDatabaseWrapper.validate_thread_sharing
+        )
 
         def _noop_validate(self):
             """Disable thread validation for tests - safe because pytest-django manages connections"""
@@ -225,7 +231,9 @@ if True:  # Always apply patches
     # CRITICAL: Patch table_names to return empty list ONLY when called from sync_apps
     # This prevents sync_apps from trying to query tables that don't exist yet
     # But allows Django's MigrationRecorder to check for django_migrations table
-    if pg_introspection and not hasattr(pg_introspection.DatabaseIntrospection.table_names, "_patched"):
+    if pg_introspection and not hasattr(
+        pg_introspection.DatabaseIntrospection.table_names, "_patched"
+    ):
         _original_table_names = pg_introspection.DatabaseIntrospection.table_names
 
         def _patched_table_names(self, cursor=None, include_views=False):
@@ -377,7 +385,9 @@ if True:  # Always apply patches
                 return
 
             # Patch at class level using MethodType
-            migrate_module.Command.sync_apps = types.MethodType(_patched_sync_apps, migrate_module.Command)
+            migrate_module.Command.sync_apps = types.MethodType(
+                _patched_sync_apps, migrate_module.Command
+            )
             _log_patch("Command.sync_apps (main - no-op)")
 
             # CRITICAL: Also patch Command.__init__ to ensure sync_apps is patched on all instances
@@ -428,7 +438,9 @@ if True:  # Always apply patches
                 original_sync_apps = getattr(self, "sync_apps", None)
                 if original_sync_apps is None:
                     original_sync_apps = getattr(
-                        migrate_module.Command, "_original_sync_apps", migrate_module.Command.sync_apps
+                        migrate_module.Command,
+                        "_original_sync_apps",
+                        migrate_module.Command.sync_apps,
                     )
 
                 # Create a no-op sync_apps that always returns immediately
@@ -447,10 +459,14 @@ if True:  # Always apply patches
                 # CRITICAL: Patch sync_apps on THIS instance using __dict__ to bypass method resolution
                 # This ensures that when handle calls self.sync_apps(), it calls our no-op
                 self.__dict__["sync_apps"] = types.MethodType(_noop_sync_apps, self)
-                _patch_logger.info(f"✓ Patched sync_apps on Command instance using __dict__: {id(self)}")
+                _patch_logger.info(
+                    f"✓ Patched sync_apps on Command instance using __dict__: {id(self)}"
+                )
 
                 # Also ensure class-level patch is active
-                migrate_module.Command.sync_apps = types.MethodType(_noop_sync_apps, migrate_module.Command)
+                migrate_module.Command.sync_apps = types.MethodType(
+                    _noop_sync_apps, migrate_module.Command
+                )
 
                 # CRITICAL: Patch MigrationLoader.load_disk() to prevent populating unmigrated_apps
                 # ROOT CAUSE FIX: unmigrated_apps is a SET that gets populated in load_disk()
@@ -476,7 +492,9 @@ if True:  # Always apply patches
 
                         _patched_load_disk._patched_for_unmigrated = True
                         MigrationLoader.load_disk = _patched_load_disk
-                        _patch_logger.info("✓ Patched MigrationLoader.load_disk to clear unmigrated_apps")
+                        _patch_logger.info(
+                            "✓ Patched MigrationLoader.load_disk to clear unmigrated_apps"
+                        )
                 except Exception as e:
                     _patch_logger.warning(f"✗ Could not patch MigrationLoader.load_disk: {e}")
                     import traceback
@@ -536,7 +554,9 @@ if True:  # Always apply patches
                                         "✓ Patched executor.loader.load_disk in handle to prevent repopulating unmigrated_apps"
                                     )
                             else:
-                                _patch_logger.warning("✗ executor.loader.unmigrated_apps not found!")
+                                _patch_logger.warning(
+                                    "✗ executor.loader.unmigrated_apps not found!"
+                                )
                             return result
 
                         _patched_executor_init._patched_for_unmigrated_in_handle = True
@@ -545,7 +565,9 @@ if True:  # Always apply patches
                             "✓ Patched MigrationExecutor.__init__ in handle to clear unmigrated_apps"
                         )
                 except Exception as e:
-                    _patch_logger.warning(f"✗ Could not patch MigrationExecutor.__init__ in handle: {e}")
+                    _patch_logger.warning(
+                        f"✗ Could not patch MigrationExecutor.__init__ in handle: {e}"
+                    )
                     import traceback
 
                     _patch_logger.debug(traceback.format_exc())
@@ -596,6 +618,7 @@ if True:  # Always apply patches
         except Exception as e:
             _patch_logger.debug(f"Could not patch migrate_module.Command: {e}")
             import traceback
+
             _patch_logger.debug(traceback.format_exc())
 
     # CRITICAL: Also patch call_command to ensure run_syncdb=False
@@ -660,77 +683,65 @@ if True:  # Always apply patches
             self, verbosity=1, autoclobber=False, keepdb=False, serialize=True, **kwargs
         ):
             """
-            Patched create_test_db that ensures run_syncdb=False when calling migrate.
-
-            ROOT CAUSE: Django's create_test_db calls migrate with run_syncdb=True (line 59-61), which causes
-            sync_apps to run and query tables that don't exist yet (because migrations haven't run).
-
-            SOLUTION: Intercept the migrate call and force run_syncdb=False.
-            This ensures migrations run first (creating all tables), then sync_apps is skipped
-            because all apps are already migrated (unmigrated_apps will be empty).
+            When keepdb=True (--reuse-db): fast path — skip migrate and serialize so setup
+            finishes in seconds. When keepdb=False: run full create_test_db with run_syncdb=False.
             """
-            import sys
-            import traceback
-
-            _patch_logger.info("=" * 80)
-            _patch_logger.info("✓ create_test_db: PATCHED VERSION CALLED!")
-            _patch_logger.info(f"✓ create_test_db: self = {self}, type = {type(self)}")
-            _patch_logger.info(f"✓ create_test_db: verbosity = {verbosity}, keepdb = {keepdb}")
-            _patch_logger.info(
-                f"✓ create_test_db: Call stack:\n{''.join(traceback.format_stack()[-5:-1])}"
-            )
-            _patch_logger.info("=" * 80)
-
-            # CRITICAL: Django's create_test_db imports call_command INSIDE the function
-            # So it gets a fresh reference each time. We need to patch it BEFORE calling original.
-            # The original code does: from django.core.management import call_command
-            # Then: call_command("migrate", ..., run_syncdb=True)
-
-            # Get the current call_command (which should be our global patch)
+            from django.conf import settings
             from django.core.management import call_command as current_call_command
 
-            # Create a local wrapper that forces run_syncdb=False for migrate
-            def _local_patched_call_command(command_name, *args, **call_options):
-                """
-                Local patch for call_command that forces run_syncdb=False for migrate command.
-                This is the ROOT CAUSE FIX - ensures sync_apps never runs.
-                """
-                _patch_logger.info(
-                    f"✓ create_test_db.call_command: CALLED with command='{command_name}'"
-                )
-                _patch_logger.info(f"✓ create_test_db.call_command: call_options = {call_options}")
-                if command_name == "migrate":
-                    # CRITICAL: Override Django's hardcoded run_syncdb=True with False
-                    original_run_syncdb = call_options.get("run_syncdb", None)
-                    call_options["run_syncdb"] = False
-                    _patch_logger.info(
-                        f"✓ create_test_db.call_command: Overriding run_syncdb={original_run_syncdb} -> False (ROOT CAUSE FIX)"
+            # Fast path: reusing DB (--reuse-db) only when DB is already migrated.
+            # Skip migrate and serialize only if django_migrations exists and has rows.
+            if keepdb:
+                test_database_name = self._get_test_db_name()
+                if verbosity >= 1:
+                    self.log(
+                        "Using existing test database for alias %s..."
+                        % (self._get_database_display_str(verbosity, test_database_name),)
                     )
-                # Call the current call_command (which may be our global patch or original)
-                result = current_call_command(command_name, *args, **call_options)
-                _patch_logger.info(
-                    f"✓ create_test_db.call_command: Completed command='{command_name}'"
+                self._create_test_db(verbosity, autoclobber, keepdb)
+                self.connection.close()
+                settings.DATABASES[self.connection.alias]["NAME"] = test_database_name
+                self.connection.settings_dict["NAME"] = test_database_name
+                self.connection.ensure_connection()
+                # Only skip migrate if DB is already migrated (django_migrations has rows).
+                try:
+                    with self.connection.cursor() as cursor:
+                        cursor.execute("SELECT 1 FROM django_migrations LIMIT 1")
+                        already_migrated = cursor.fetchone() is not None
+                except Exception:
+                    already_migrated = False
+                if already_migrated:
+                    _patch_logger.debug(
+                        "create_test_db: fast path (DB already migrated), skipping migrate and serialize"
+                    )
+                    current_call_command("createcachetable", database=self.connection.alias)
+                    self.connection.ensure_connection()
+                    return test_database_name
+                # DB exists but not migrated (e.g. empty); run migrate only (no serialize).
+                _patch_logger.debug("create_test_db: keepdb but DB not migrated, running migrate")
+                current_call_command(
+                    "migrate",
+                    verbosity=max(verbosity - 1, 0),
+                    interactive=False,
+                    database=self.connection.alias,
+                    run_syncdb=False,
                 )
-                return result
+                current_call_command("createcachetable", database=self.connection.alias)
+                self.connection.ensure_connection()
+                return test_database_name
 
-            # Patch call_command in django.core.management BEFORE calling original create_test_db
-            # This ensures that when create_test_db does "from django.core.management import call_command",
-            # it gets our patched version
+            # Full path: creating DB. Patch call_command so migrate uses run_syncdb=False.
+            def _local_patched_call_command(command_name, *args, **call_options):
+                if command_name == "migrate":
+                    call_options["run_syncdb"] = False
+                return current_call_command(command_name, *args, **call_options)
+
             import django.core.management
 
             original_call_command_backup = django.core.management.call_command
             django.core.management.call_command = _local_patched_call_command
-            _patch_logger.info(
-                f"✓ create_test_db: Patched django.core.management.call_command (id={id(django.core.management.call_command)})"
-            )
-
             try:
-                _patch_logger.info(
-                    "✓ create_test_db: Calling original create_test_db with patched call_command"
-                )
-                # Use the appropriate original based on which class this is
                 if isinstance(self, pg_creation_module.DatabaseCreation):
-                    _patch_logger.info("✓ create_test_db: Using PostgreSQL-specific create_test_db")
                     result = _original_create_test_db_pg(
                         self,
                         verbosity=verbosity,
@@ -740,7 +751,6 @@ if True:  # Always apply patches
                         **kwargs,
                     )
                 else:
-                    _patch_logger.info("✓ create_test_db: Using base create_test_db")
                     result = _original_create_test_db_base(
                         self,
                         verbosity=verbosity,
@@ -749,18 +759,9 @@ if True:  # Always apply patches
                         serialize=serialize,
                         **kwargs,
                     )
-                _patch_logger.info("✓ create_test_db: Test database created successfully")
                 return result
-            except Exception as e:
-                _patch_logger.error(f"✗ create_test_db: Error during test database creation: {e}")
-                import traceback
-
-                _patch_logger.error(f"✗ create_test_db: Traceback:\n{traceback.format_exc()}")
-                raise
             finally:
-                # Restore original call_command
                 django.core.management.call_command = original_call_command_backup
-                _patch_logger.info("✓ create_test_db: Restored original call_command")
 
         # CRITICAL: Patch BOTH base class and PostgreSQL-specific class
         # PostgreSQL's DatabaseCreation inherits from BaseDatabaseCreation, but we patch both
@@ -826,7 +827,9 @@ if True:  # Always apply patches
                 # Ensure sync_apps is patched on this instance (no-op version)
                 # Note: _patched_sync_apps is defined earlier in the file
                 if hasattr(migrate_module.Command, "_patched_sync_apps_func"):
-                    self.sync_apps = types.MethodType(migrate_module.Command._patched_sync_apps_func, self)
+                    self.sync_apps = types.MethodType(
+                        migrate_module.Command._patched_sync_apps_func, self
+                    )
 
                 return result
 
@@ -836,18 +839,23 @@ if True:  # Always apply patches
 
 import os
 import time
+import uuid
 
 import pytest
+
 
 # Import test environment validation (lazy import to avoid Django dependency)
 def _get_test_env_validator():
     """Lazy import of EnvironmentValidator"""
     from tests.utils.test_environment_validation import EnvironmentValidator
+
     return EnvironmentValidator
+
 
 def _get_validate_test_env():
     """Lazy import of validate_test_environment"""
     from tests.utils.test_environment_validation import validate_test_environment
+
     return validate_test_environment
 
 
@@ -885,6 +893,17 @@ def _get_settings():
 pytest_plugins = ["pytest_django"]
 
 
+# Command-line option for Docker Compose runtime (integration and E2E)
+def pytest_addoption(parser):
+    """Add --docker-compose-runtime so integration and E2E can use it when run from project root."""
+    parser.addoption(
+        "--docker-compose-runtime",
+        action="store_true",
+        default=False,
+        help="Run tests that require Docker Compose runtime (services must be started)",
+    )
+
+
 # Use pytest hooks to ensure migrations run before database setup
 def pytest_configure(config):
     """
@@ -893,7 +912,8 @@ def pytest_configure(config):
     """
     # Set TESTING environment variable early to help apps detect test mode
     import os
-    os.environ['TESTING'] = '1'
+
+    os.environ["TESTING"] = "1"
 
     _patch_logger.info("=" * 80)
     _patch_logger.info("pytest_configure: Applying Django patches...")
@@ -919,31 +939,58 @@ def pytest_configure(config):
             def _patched_create_test_db(
                 self, verbosity=1, autoclobber=False, keepdb=False, serialize=True, **kwargs
             ):
-                """Patched create_test_db - ROOT CAUSE FIX"""
-                _patch_logger.info("=" * 80)
-                _patch_logger.info("✓ create_test_db: PATCHED VERSION CALLED!")
-                _patch_logger.info("=" * 80)
-
-                # Patch call_command locally to override run_syncdb=True
+                """When keepdb and DB already migrated: fast path. Otherwise run full create_test_db with run_syncdb=False."""
+                from django.conf import settings
                 from django.core.management import call_command as original_call_command
 
+                if keepdb:
+                    test_database_name = self._get_test_db_name()
+                    if verbosity >= 1:
+                        self.log(
+                            "Using existing test database for alias %s..."
+                            % (self._get_database_display_str(verbosity, test_database_name),)
+                        )
+                    self._create_test_db(verbosity, autoclobber, keepdb)
+                    self.connection.close()
+                    settings.DATABASES[self.connection.alias]["NAME"] = test_database_name
+                    self.connection.settings_dict["NAME"] = test_database_name
+                    self.connection.ensure_connection()
+                    try:
+                        with self.connection.cursor() as cursor:
+                            cursor.execute("SELECT 1 FROM django_migrations LIMIT 1")
+                            already_migrated = cursor.fetchone() is not None
+                    except Exception:
+                        already_migrated = False
+                    if already_migrated:
+                        _patch_logger.debug("create_test_db: fast path (DB already migrated)")
+                        original_call_command("createcachetable", database=self.connection.alias)
+                        self.connection.ensure_connection()
+                        return test_database_name
+                    _patch_logger.debug(
+                        "create_test_db: keepdb but DB not migrated, running migrate"
+                    )
+                    original_call_command(
+                        "migrate",
+                        verbosity=max(verbosity - 1, 0),
+                        interactive=False,
+                        database=self.connection.alias,
+                        run_syncdb=False,
+                    )
+                    original_call_command("createcachetable", database=self.connection.alias)
+                    self.connection.ensure_connection()
+                    return test_database_name
+
                 def _local_patched_call_command(command_name, *args, **call_options):
-                    """Local patch for call_command that forces run_syncdb=False"""
                     if command_name == "migrate":
                         call_options["run_syncdb"] = False
-                        _patch_logger.info(f"✓ create_test_db: Overriding run_syncdb=True -> False")
-                        _patch_logger.info(f"✓ create_test_db: call_options = {call_options}")
-                    result = original_call_command(command_name, *args, **call_options)
-                    return result
+                    return original_call_command(command_name, *args, **call_options)
 
-                # Temporarily patch call_command
                 import django.core.management
 
                 original_call_command_global = django.core.management.call_command
                 django.core.management.call_command = _local_patched_call_command
-
                 try:
-                    result = _original_create_test_db(
+                    return _original_create_test_db(
                         self,
                         verbosity=verbosity,
                         autoclobber=autoclobber,
@@ -951,11 +998,6 @@ def pytest_configure(config):
                         serialize=serialize,
                         **kwargs,
                     )
-                    _patch_logger.info("✓ create_test_db: Test database created successfully")
-                    return result
-                except Exception as e:
-                    _patch_logger.error(f"✗ create_test_db: Error: {e}")
-                    raise
                 finally:
                     django.core.management.call_command = original_call_command_global
 
@@ -1414,7 +1456,9 @@ def _validate_service_connectivity(validator):
         if connected:
             _patch_logger.info(f"✓ {service_name} service connectivity: OK ({service_url})")
         else:
-            _patch_logger.warning(f"⚠ {service_name} service connectivity: FAILED - {error} ({service_url})")
+            _patch_logger.warning(
+                f"⚠ {service_name} service connectivity: FAILED - {error} ({service_url})"
+            )
 
 
 def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) -> bool:
@@ -1441,8 +1485,12 @@ def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) 
                 try:
                     response = requests.get(url, timeout=5.0)
                     if response.status_code == 200:
-                        data = response.json()
-                        if data.get("status") == "healthy":
+                        try:
+                            data = response.json()
+                            status = data.get("status") if isinstance(data, dict) else None
+                            if status in ("healthy", "ok"):
+                                return True
+                        except (ValueError, TypeError):
                             return True
                 except Exception:
                     pass
@@ -1456,8 +1504,13 @@ def wait_for_service_health(url: str, timeout: int = 30, interval: float = 1.0) 
         try:
             response = httpx.get(url, timeout=5.0)
             if response.status_code == 200:
-                data = response.json()
-                if data.get("status") == "healthy":
+                try:
+                    data = response.json()
+                    status = data.get("status") if isinstance(data, dict) else None
+                    if status in ("healthy", "ok"):
+                        return True
+                except (ValueError, TypeError):
+                    # 200 OK with no/invalid JSON still counts as healthy
                     return True
         except Exception:
             pass
@@ -1521,8 +1574,10 @@ def disable_semantic_service_in_tests():
     from unittest.mock import patch
 
     # Patch semantic mapping functions to prevent timeouts
-    semantic_patcher = patch('hub.apps.semantic.utils.map_contract_to_semantic', return_value=None)
-    asset_semantic_patcher = patch('hub.apps.semantic.utils.map_asset_to_semantic', return_value=None)
+    semantic_patcher = patch("hub.apps.semantic.utils.map_contract_to_semantic", return_value=None)
+    asset_semantic_patcher = patch(
+        "hub.apps.semantic.utils.map_asset_to_semantic", return_value=None
+    )
 
     semantic_patcher.start()
     asset_semantic_patcher.start()
@@ -1659,3 +1714,266 @@ def validate_service_connectivity(test_env_validator):
         pytest.skip(f"Service connectivity check failed: {'; '.join(failed_services)}")
 
     return True
+
+
+# ============================================================================
+# Centralized Fixtures for Phase 25 (SaaS Platform) and Phase 26 (CLI/SDK)
+# ============================================================================
+# These fixtures centralize common test setup to avoid duplication across
+# e2e/integration tests. All fixtures use real DB and real services (no mocks).
+
+
+@pytest.fixture
+def tenant_with_plan(db):
+    """
+    Create a tenant with a plan and subscription.
+
+    Returns:
+        Tenant instance with plan and active subscription
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    from hub.apps.tenants.models import PlanTier, Tenant, TenantPlan, TenantStatus
+    from tests.factories import TenantFactory, UserFactory
+
+    # Create plan
+    plan = TenantPlan.objects.create(
+        name="Test Plan",
+        slug="test-plan",
+        tier=PlanTier.FREE,
+        limits_json={
+            "max_assets": 10,
+            "max_api_calls_per_month": 1000,
+            "max_scheduled_exports": 5,
+            "max_export_runs_per_month": 100,
+            "max_scheduled_ingestions": 5,
+            "max_ingestion_runs_per_month": 100,
+        },
+        is_active=True,
+    )
+
+    # Create tenant with plan
+    tenant = Tenant.objects.create(
+        name=f"Test Tenant {uuid.uuid4().hex[:8]}",
+        slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
+        status=TenantStatus.ACTIVE,
+        plan=plan,
+    )
+
+    # Create active subscription
+    Subscription.objects.create(
+        tenant=tenant,
+        plan=plan,
+        status=SubscriptionStatus.ACTIVE,
+        current_period_start=timezone.now(),
+        current_period_end=timezone.now() + timedelta(days=30),
+    )
+
+    return tenant
+
+
+@pytest.fixture
+def subscription(db, tenant_with_plan):
+    """
+    Create a subscription for a tenant.
+
+    Args:
+        tenant_with_plan: Tenant fixture with plan
+
+    Returns:
+        Subscription instance
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from hub.apps.billing.models import Subscription, SubscriptionStatus
+
+    return Subscription.objects.create(
+        tenant=tenant_with_plan,
+        plan=tenant_with_plan.plan,
+        status=SubscriptionStatus.ACTIVE,
+        current_period_start=timezone.now(),
+        current_period_end=timezone.now() + timedelta(days=30),
+    )
+
+
+@pytest.fixture
+def erasure_request(db, tenant_with_plan):
+    """
+    Create an erasure request for a user.
+
+    Args:
+        tenant_with_plan: Tenant fixture
+
+    Returns:
+        ErasureRequest instance
+    """
+    from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
+    from hub.apps.users.models import UserStatus
+
+    User = _get_user_model()
+
+    # Create user to be erased
+    user = User.objects.create_user(
+        email=f"eraseme_{uuid.uuid4().hex[:8]}@example.com",
+        password="testpass123",
+        tenant=tenant_with_plan,
+        status=UserStatus.ACTIVE,
+        display_name="User To Erase",
+    )
+
+    # Create erasure request
+    return ErasureRequest.objects.create(
+        user=user,
+        tenant=tenant_with_plan,
+        status=ErasureRequestStatus.PENDING,
+    )
+
+
+@pytest.fixture
+def scheduled_ingestion_factory(db):
+    """
+    Factory function for creating ScheduledIngestion instances.
+
+    Returns:
+        Factory function that creates ScheduledIngestion instances
+    """
+    from hub.apps.assets.models import Asset
+    from hub.apps.assets.tests.factories import AssetFactory
+    from hub.apps.scheduled_ingestion.models import (
+        ScheduledIngestion,
+        ScheduledIngestionStatus,
+        ScheduleType,
+        SourceType,
+    )
+
+    def _create_scheduled_ingestion(
+        tenant=None,
+        asset=None,
+        name=None,
+        source_type=SourceType.S3,
+        source_config=None,
+        schedule_type=ScheduleType.DAILY,
+        schedule_config=None,
+        file_pattern="*.csv",
+        status=ScheduledIngestionStatus.ACTIVE,
+        created_by=None,
+        **kwargs,
+    ):
+        """Create a ScheduledIngestion instance"""
+        from tests.factories import TenantFactory, UserFactory
+
+        if tenant is None:
+            tenant = TenantFactory.create_tenant()
+
+        if created_by is None:
+            created_by = UserFactory.create_user(tenant=tenant)
+
+        if asset is None:
+            asset = AssetFactory.create_asset(tenant=tenant, created_by=created_by)
+
+        if name is None:
+            name = f"Test Scheduled Ingestion {uuid.uuid4().hex[:6]}"
+
+        if source_config is None:
+            source_config = {
+                "bucket": "test-bucket",
+                "prefix": "test-prefix/",
+                "aws_access_key_id": "test-key",
+                "aws_secret_access_key": "test-secret",
+            }
+
+        if schedule_config is None:
+            schedule_config = {
+                "cron": "0 0 * * *",
+                "timezone": "UTC",
+            }
+
+        return ScheduledIngestion.objects.create(
+            tenant=tenant,
+            name=name,
+            source_type=source_type,
+            source_config=source_config,
+            schedule_type=schedule_type,
+            schedule_config=schedule_config,
+            file_pattern=file_pattern,
+            asset=asset,
+            status=status,
+            created_by=created_by,
+            **kwargs,
+        )
+
+    return _create_scheduled_ingestion
+
+
+@pytest.fixture
+def scheduled_export_factory(db):
+    """
+    Factory function for creating ScheduledExport instances.
+
+    Returns:
+        Factory function that creates ScheduledExport instances
+    """
+    from hub.apps.assets.models import Asset
+    from hub.apps.assets.tests.factories import AssetFactory
+    from hub.apps.scheduled_export.models import (
+        DestinationType,
+        ScheduledExport,
+        ScheduledExportStatus,
+    )
+
+    def _create_scheduled_export(
+        tenant=None,
+        name=None,
+        destination_type=DestinationType.S3,
+        destination_config=None,
+        source_scope=None,
+        schedule_config=None,
+        status=ScheduledExportStatus.ACTIVE,
+        **kwargs,
+    ):
+        """Create a ScheduledExport instance"""
+        from tests.factories import TenantFactory, UserFactory
+
+        if tenant is None:
+            tenant = TenantFactory.create_tenant()
+
+        if name is None:
+            name = f"Test Scheduled Export {uuid.uuid4().hex[:6]}"
+
+        if destination_config is None:
+            destination_config = {
+                "bucket": "test-bucket",
+                "prefix": "test-prefix/",
+                "aws_access_key_id": "test-key",
+                "aws_secret_access_key": "test-secret",
+            }
+
+        if source_scope is None:
+            # Create an asset for source scope
+            created_by = UserFactory.create_user(tenant=tenant)
+            asset = AssetFactory.create_asset(tenant=tenant, created_by=created_by)
+            source_scope = {"asset_ids": [str(asset.id)]}
+
+        if schedule_config is None:
+            schedule_config = {
+                "cron": "0 0 * * *",
+                "timezone": "UTC",
+            }
+
+        return ScheduledExport.objects.create(
+            tenant=tenant,
+            name=name,
+            destination_type=destination_type,
+            destination_config=destination_config,
+            source_scope=source_scope,
+            schedule_config=schedule_config,
+            status=status,
+            **kwargs,
+        )
+
+    return _create_scheduled_export

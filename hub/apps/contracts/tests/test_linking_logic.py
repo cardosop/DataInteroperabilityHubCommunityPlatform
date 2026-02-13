@@ -7,49 +7,42 @@ Tests verify:
 3. Maintain referential integrity (bidirectional consistency)
 4. Comprehensive validation of all links
 """
+
 import json
-from django.test import TestCase
-from django.contrib.auth import get_user_model
 
 from hub.apps.contracts.linking_validation import (
-    validate_odps_to_odcs_link,
-    validate_odcs_to_odps_link,
-    validate_referential_integrity,
+    LinkingValidationError,
     validate_all_links,
-    LinkingValidationError
+    validate_odcs_to_odps_link,
+    validate_odps_to_odcs_link,
+    validate_referential_integrity,
 )
-from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, ContractStatus, NormalizationStatus
-from hub.apps.tenants.models import Tenant
-from hub.apps.assets.models import Asset
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
+)
+from hub.apps.contracts.tests.test_base import ContractsTestBase
 
 
-User = get_user_model()
-
-
-class ODPSToODCSLinkValidationTest(TestCase):
+class ODPSToODCSLinkValidationTest(ContractsTestBase):
     """Test ODPS → ODCS link validation"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
+        super().setUp()
 
         # Create ODCS contract
-        self.odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        self.odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         self.odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -61,32 +54,26 @@ class ODPSToODCSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_odps_to_odcs_link_success(self):
         """Test successful validation of ODPS → ODCS link"""
         # Create ODPS contract with valid ODCS link
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odps_hub_contract = {
             "id": "test-product",
-            "extensions": {
-                "x_odps": {
-                    "odcs_link": str(self.odcs_contract.id)
-                }
-            }
+            "extensions": {"x_odps": {"odcs_link": str(self.odcs_contract.id)}},
         }
 
         odps_contract = Contract.objects.create(
@@ -99,7 +86,7 @@ class ODPSToODCSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate link
@@ -113,18 +100,16 @@ class ODPSToODCSLinkValidationTest(TestCase):
     def test_validate_odps_to_odcs_link_no_link(self):
         """Test validation when ODPS has no ODCS link"""
         # Create ODPS contract without ODCS link
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odps_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -136,7 +121,7 @@ class ODPSToODCSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate link (should return None)
@@ -146,26 +131,22 @@ class ODPSToODCSLinkValidationTest(TestCase):
     def test_validate_odps_to_odcs_link_contract_not_found(self):
         """Test validation fails when linked ODCS contract doesn't exist"""
         # Create ODPS contract with invalid ODCS link
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odps_hub_contract = {
             "id": "test-product",
             "extensions": {
-                "x_odps": {
-                    "odcs_link": "00000000-0000-0000-0000-000000000000"  # Non-existent ID
-                }
-            }
+                "x_odps": {"odcs_link": "00000000-0000-0000-0000-000000000000"}  # Non-existent ID
+            },
         }
 
         odps_contract = Contract.objects.create(
@@ -178,7 +159,7 @@ class ODPSToODCSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate link (should raise error)
@@ -191,18 +172,16 @@ class ODPSToODCSLinkValidationTest(TestCase):
     def test_validate_odps_to_odcs_link_wrong_type(self):
         """Test validation fails when linked contract is not ODCS"""
         # Create another ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product-2",
-                        "name": "Test Product 2"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product-2", "name": "Test Product 2"}}
+                },
+            },
+            indent=2,
+        )
 
         odps_contract_2 = Contract.objects.create(
             tenant=self.tenant,
@@ -214,17 +193,15 @@ class ODPSToODCSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create ODPS contract linking to another ODPS (wrong type)
         odps_hub_contract = {
             "id": "test-product",
             "extensions": {
-                "x_odps": {
-                    "odcs_link": str(odps_contract_2.id)  # Linking to ODPS, not ODCS
-                }
-            }
+                "x_odps": {"odcs_link": str(odps_contract_2.id)}  # Linking to ODPS, not ODCS
+            },
         }
 
         odps_contract = Contract.objects.create(
@@ -237,7 +214,7 @@ class ODPSToODCSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate link (should raise error)
@@ -248,34 +225,24 @@ class ODPSToODCSLinkValidationTest(TestCase):
         self.assertIn("non-ODCS contract", context.exception.message)
 
 
-class ODCSToODPSLinkValidationTest(TestCase):
+class ODCSToODPSLinkValidationTest(ContractsTestBase):
     """Test ODCS → ODPS link validation"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
+        super().setUp()
 
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         self.odps_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -287,28 +254,24 @@ class ODCSToODPSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_validate_odcs_to_odps_link_success(self):
         """Test successful validation of ODCS → ODPS link"""
         # Create ODCS contract with valid ODPS link
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         odcs_hub_contract = {
             "id": "test-odcs",
-            "extensions": {
-                "x_odps": {
-                    "odps_link": str(self.odps_contract.id)
-                }
-            }
+            "extensions": {"x_odps": {"odps_link": str(self.odps_contract.id)}},
         }
 
         odcs_contract = Contract.objects.create(
@@ -321,7 +284,7 @@ class ODCSToODPSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate link
@@ -335,14 +298,14 @@ class ODCSToODPSLinkValidationTest(TestCase):
     def test_validate_odcs_to_odps_link_no_link(self):
         """Test validation when ODCS has no ODPS link"""
         # Create ODCS contract without ODPS link
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -354,7 +317,7 @@ class ODCSToODPSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate link (should return None)
@@ -364,22 +327,20 @@ class ODCSToODPSLinkValidationTest(TestCase):
     def test_validate_odcs_to_odps_link_contract_not_found(self):
         """Test validation fails when linked ODPS contract doesn't exist"""
         # Create ODCS contract with invalid ODPS link
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         odcs_hub_contract = {
             "id": "test-odcs",
             "extensions": {
-                "x_odps": {
-                    "odps_link": "00000000-0000-0000-0000-000000000000"  # Non-existent ID
-                }
-            }
+                "x_odps": {"odps_link": "00000000-0000-0000-0000-000000000000"}  # Non-existent ID
+            },
         }
 
         odcs_contract = Contract.objects.create(
@@ -392,7 +353,7 @@ class ODCSToODPSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate link (should raise error)
@@ -405,14 +366,14 @@ class ODCSToODPSLinkValidationTest(TestCase):
     def test_validate_odcs_to_odps_link_wrong_type(self):
         """Test validation fails when linked contract is not ODPS"""
         # Create another ODCS contract
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract 2",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract 2", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         odcs_contract_2 = Contract.objects.create(
             tenant=self.tenant,
@@ -424,17 +385,15 @@ class ODCSToODPSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create ODCS contract linking to another ODCS (wrong type)
         odcs_hub_contract = {
             "id": "test-odcs",
             "extensions": {
-                "x_odps": {
-                    "odps_link": str(odcs_contract_2.id)  # Linking to ODCS, not ODPS
-                }
-            }
+                "x_odps": {"odps_link": str(odcs_contract_2.id)}  # Linking to ODCS, not ODPS
+            },
         }
 
         odcs_contract = Contract.objects.create(
@@ -447,7 +406,7 @@ class ODCSToODPSLinkValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate link (should raise error)
@@ -458,46 +417,36 @@ class ODCSToODPSLinkValidationTest(TestCase):
         self.assertIn("non-ODPS contract", context.exception.message)
 
 
-class ReferentialIntegrityValidationTest(TestCase):
+class ReferentialIntegrityValidationTest(ContractsTestBase):
     """Test referential integrity validation"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
+        super().setUp()
 
     def test_validate_referential_integrity_bidirectional_success(self):
         """Test successful validation of bidirectional links"""
         # Create ODCS contract
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -509,7 +458,7 @@ class ReferentialIntegrityValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         odps_contract = Contract.objects.create(
@@ -522,27 +471,19 @@ class ReferentialIntegrityValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Establish bidirectional links
         odcs_contract.hub_contract_json = {
             "id": "test-odcs",
-            "extensions": {
-                "x_odps": {
-                    "odps_link": str(odps_contract.id)
-                }
-            }
+            "extensions": {"x_odps": {"odps_link": str(odps_contract.id)}},
         }
         odcs_contract.save(update_fields=["hub_contract_json"])
 
         odps_contract.hub_contract_json = {
             "id": "test-product",
-            "extensions": {
-                "x_odps": {
-                    "odcs_link": str(odcs_contract.id)
-                }
-            }
+            "extensions": {"x_odps": {"odcs_link": str(odcs_contract.id)}},
         }
         odps_contract.save(update_fields=["hub_contract_json"])
 
@@ -553,28 +494,26 @@ class ReferentialIntegrityValidationTest(TestCase):
     def test_validate_referential_integrity_violation_odps_to_odcs(self):
         """Test validation fails when ODPS links to ODCS but ODCS doesn't link back"""
         # Create ODCS contract
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -586,7 +525,7 @@ class ReferentialIntegrityValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create ODPS contract with link to ODCS, but ODCS doesn't link back
@@ -598,16 +537,12 @@ class ReferentialIntegrityValidationTest(TestCase):
             original_spec_version="4.1",
             hub_contract_json={
                 "id": "test-product",
-                "extensions": {
-                    "x_odps": {
-                        "odcs_link": str(odcs_contract.id)
-                    }
-                }
+                "extensions": {"x_odps": {"odcs_link": str(odcs_contract.id)}},
             },
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate referential integrity (should raise error)
@@ -620,28 +555,26 @@ class ReferentialIntegrityValidationTest(TestCase):
     def test_validate_referential_integrity_violation_odcs_to_odps(self):
         """Test validation fails when ODCS links to ODPS but ODPS doesn't link back"""
         # Create ODCS contract
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -655,12 +588,12 @@ class ReferentialIntegrityValidationTest(TestCase):
                     "x_odps": {
                         "odps_link": "00000000-0000-0000-0000-000000000000"  # Will be updated
                     }
-                }
+                },
             },
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         odps_contract = Contract.objects.create(
@@ -673,7 +606,7 @@ class ReferentialIntegrityValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Update ODCS to link to ODPS
@@ -690,14 +623,14 @@ class ReferentialIntegrityValidationTest(TestCase):
     def test_validate_referential_integrity_no_links(self):
         """Test validation succeeds when contract has no links"""
         # Create ODCS contract without links
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -709,53 +642,43 @@ class ReferentialIntegrityValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Validate referential integrity (should not raise)
         validate_referential_integrity(odcs_contract)
 
 
-class AllLinksValidationTest(TestCase):
+class AllLinksValidationTest(ContractsTestBase):
     """Test comprehensive validation of all links"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
+        super().setUp()
 
     def test_validate_all_links_odps_with_bidirectional_link(self):
         """Test comprehensive validation for ODPS contract with bidirectional link"""
         # Create ODCS contract
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -767,7 +690,7 @@ class AllLinksValidationTest(TestCase):
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         odps_contract = Contract.objects.create(
@@ -778,26 +701,18 @@ class AllLinksValidationTest(TestCase):
             original_spec_version="4.1",
             hub_contract_json={
                 "id": "test-product",
-                "extensions": {
-                    "x_odps": {
-                        "odcs_link": str(odcs_contract.id)
-                    }
-                }
+                "extensions": {"x_odps": {"odcs_link": str(odcs_contract.id)}},
             },
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Establish bidirectional link
         odcs_contract.hub_contract_json = {
             "id": "test-odcs",
-            "extensions": {
-                "x_odps": {
-                    "odps_link": str(odps_contract.id)
-                }
-            }
+            "extensions": {"x_odps": {"odps_link": str(odps_contract.id)}},
         }
         odcs_contract.save(update_fields=["hub_contract_json"])
 
@@ -813,28 +728,26 @@ class AllLinksValidationTest(TestCase):
     def test_validate_all_links_odcs_with_bidirectional_link(self):
         """Test comprehensive validation for ODCS contract with bidirectional link"""
         # Create ODCS contract
-        odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test ODCS Contract",
-                "version": "1.0.0"
-            }
-        }, indent=2)
+        odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test ODCS Contract", "version": "1.0.0"},
+            },
+            indent=2,
+        )
 
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -848,12 +761,12 @@ class AllLinksValidationTest(TestCase):
                     "x_odps": {
                         "odps_link": "00000000-0000-0000-0000-000000000000"  # Will be updated
                     }
-                }
+                },
             },
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         odps_contract = Contract.objects.create(
@@ -864,16 +777,12 @@ class AllLinksValidationTest(TestCase):
             original_spec_version="4.1",
             hub_contract_json={
                 "id": "test-product",
-                "extensions": {
-                    "x_odps": {
-                        "odcs_link": str(odcs_contract.id)
-                    }
-                }
+                "extensions": {"x_odps": {"odcs_link": str(odcs_contract.id)}},
             },
             hub_contract_version="1.0.0",
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Update ODCS to link to ODPS
@@ -888,4 +797,3 @@ class AllLinksValidationTest(TestCase):
         self.assertIsNotNone(result["odcs_to_odps"])
         self.assertEqual(result["odcs_to_odps"].id, odps_contract.id)
         self.assertTrue(result["referential_integrity"])
-

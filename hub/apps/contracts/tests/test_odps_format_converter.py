@@ -8,13 +8,15 @@ Tests verify:
 4. Error handling for invalid inputs
 5. Comment preservation (where possible)
 """
+
 import json
+
 from django.test import SimpleTestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_format_converter import (
-    convert_yaml_to_json,
     convert_json_to_yaml,
+    convert_yaml_to_json,
 )
 
 
@@ -60,8 +62,12 @@ product:
 
         # Verify result is valid JSON with nested structure
         parsed = json.loads(result)
-        self.assertEqual(parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["name"], "Basic Plan")
-        self.assertEqual(parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["price"], 10.00)
+        self.assertEqual(
+            parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["name"], "Basic Plan"
+        )
+        self.assertEqual(
+            parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["price"], 10.00
+        )
 
     def test_convert_yaml_to_json_with_arrays_succeeds(self):
         """Test converting YAML with arrays to JSON"""
@@ -200,23 +206,22 @@ class ODPSFormatConverterJSONToYAMLTest(SimpleTestCase):
 
     def test_convert_json_to_yaml_with_simple_structure_succeeds(self):
         """Test converting simple JSON structure to YAML"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "description": "Test description"
-                    }
-                }
-            }
-        }, indent=2)
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"name": "Test Product", "description": "Test description"}}
+                },
+            },
+            indent=2,
+        )
 
         result = convert_json_to_yaml(json_content)
 
         # Verify result is valid YAML
         import yaml
+
         parsed = yaml.safe_load(result)
         self.assertEqual(parsed["schema"], "https://opendataproducts.org/schema/v4.1")
         self.assertEqual(parsed["version"], "4.1")
@@ -224,125 +229,117 @@ class ODPSFormatConverterJSONToYAMLTest(SimpleTestCase):
 
     def test_convert_json_to_yaml_with_nested_structure_succeeds(self):
         """Test converting nested JSON structure to YAML"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product"
-                    }
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"name": "Test Product"}},
+                    "marketplace": {
+                        "pricingPlans": {
+                            "declarative": [
+                                {"name": "Basic Plan", "price": 10.00, "currency": "USD"}
+                            ]
+                        }
+                    },
                 },
-                "marketplace": {
-                    "pricingPlans": {
-                        "declarative": [
-                            {
-                                "name": "Basic Plan",
-                                "price": 10.00,
-                                "currency": "USD"
-                            }
-                        ]
-                    }
-                }
-            }
-        }, indent=2)
+            },
+            indent=2,
+        )
 
         result = convert_json_to_yaml(json_content)
 
         # Verify result is valid YAML with nested structure
         import yaml
+
         parsed = yaml.safe_load(result)
-        self.assertEqual(parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["name"], "Basic Plan")
-        self.assertEqual(parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["price"], 10.00)
+        self.assertEqual(
+            parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["name"], "Basic Plan"
+        )
+        self.assertEqual(
+            parsed["product"]["marketplace"]["pricingPlans"]["declarative"][0]["price"], 10.00
+        )
 
     def test_convert_json_to_yaml_with_arrays_succeeds(self):
         """Test converting JSON with arrays to YAML"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "tags": ["tag1", "tag2", "tag3"]
-                    }
-                }
-            }
-        }, indent=2)
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"name": "Test Product", "tags": ["tag1", "tag2", "tag3"]}}
+                },
+            },
+            indent=2,
+        )
 
         result = convert_json_to_yaml(json_content)
 
         # Verify arrays are preserved
         import yaml
+
         parsed = yaml.safe_load(result)
         self.assertEqual(parsed["product"]["details"]["en"]["tags"], ["tag1", "tag2", "tag3"])
 
     def test_convert_json_to_yaml_with_null_values_succeeds(self):
         """Test converting JSON with null values to YAML"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "description": None
-                    }
-                }
-            }
-        }, indent=2)
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {"details": {"en": {"name": "Test Product", "description": None}}},
+            },
+            indent=2,
+        )
 
         result = convert_json_to_yaml(json_content)
 
         # Verify null values are preserved
         import yaml
+
         parsed = yaml.safe_load(result)
         self.assertIsNone(parsed["product"]["details"]["en"]["description"])
 
     def test_convert_json_to_yaml_with_boolean_values_succeeds(self):
         """Test converting JSON with boolean values to YAML"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "active": True,
-                        "deprecated": False
-                    }
-                }
-            }
-        }, indent=2)
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"name": "Test Product", "active": True, "deprecated": False}}
+                },
+            },
+            indent=2,
+        )
 
         result = convert_json_to_yaml(json_content)
 
         # Verify boolean values are preserved
         import yaml
+
         parsed = yaml.safe_load(result)
         self.assertTrue(parsed["product"]["details"]["en"]["active"])
         self.assertFalse(parsed["product"]["details"]["en"]["deprecated"])
 
     def test_convert_json_to_yaml_with_numbers_succeeds(self):
         """Test converting JSON with numbers to YAML"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "price": 99.99,
-                        "quantity": 42
-                    }
-                }
-            }
-        }, indent=2)
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"name": "Test Product", "price": 99.99, "quantity": 42}}
+                },
+            },
+            indent=2,
+        )
 
         result = convert_json_to_yaml(json_content)
 
         # Verify numbers are preserved
         import yaml
+
         parsed = yaml.safe_load(result)
         self.assertEqual(parsed["product"]["details"]["en"]["price"], 99.99)
         self.assertEqual(parsed["product"]["details"]["en"]["quantity"], 42)
@@ -365,39 +362,30 @@ class ODPSFormatConverterJSONToYAMLTest(SimpleTestCase):
 
     def test_convert_json_to_yaml_preserves_structure(self):
         """Test that JSON → YAML conversion preserves data structure"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product"
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"name": "Test Product"}, "fr": {"name": "Produit de Test"}},
+                    "marketplace": {
+                        "pricingPlans": {
+                            "declarative": [
+                                {"name": "Plan A", "price": 10.00},
+                                {"name": "Plan B", "price": 20.00},
+                            ]
+                        }
                     },
-                    "fr": {
-                        "name": "Produit de Test"
-                    }
                 },
-                "marketplace": {
-                    "pricingPlans": {
-                        "declarative": [
-                            {
-                                "name": "Plan A",
-                                "price": 10.00
-                            },
-                            {
-                                "name": "Plan B",
-                                "price": 20.00
-                            }
-                        ]
-                    }
-                }
-            }
-        }, indent=2)
+            },
+            indent=2,
+        )
 
         result = convert_json_to_yaml(json_content)
 
         # Verify complete structure is preserved
         import yaml
+
         parsed = yaml.safe_load(result)
         self.assertIn("schema", parsed)
         self.assertIn("version", parsed)
@@ -441,49 +429,45 @@ product:
 
         # Parse both and compare structure
         import yaml
+
         original_parsed = yaml.safe_load(original_yaml)
         result_parsed = yaml.safe_load(yaml_result)
 
         # Verify structure is preserved (data should be equivalent)
         self.assertEqual(original_parsed["schema"], result_parsed["schema"])
         self.assertEqual(original_parsed["version"], result_parsed["version"])
-        self.assertEqual(original_parsed["product"]["details"]["en"]["name"], result_parsed["product"]["details"]["en"]["name"])
-        self.assertEqual(len(original_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
-                        len(result_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]))
+        self.assertEqual(
+            original_parsed["product"]["details"]["en"]["name"],
+            result_parsed["product"]["details"]["en"]["name"],
+        )
+        self.assertEqual(
+            len(original_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
+            len(result_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
+        )
 
     def test_round_trip_json_to_yaml_to_json_preserves_structure(self):
         """Test JSON → YAML → JSON round-trip preserves structure"""
-        original_json = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "description": "Test description"
+        original_json = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {"name": "Test Product", "description": "Test description"},
+                        "fr": {"name": "Produit de Test"},
                     },
-                    "fr": {
-                        "name": "Produit de Test"
-                    }
+                    "marketplace": {
+                        "pricingPlans": {
+                            "declarative": [
+                                {"name": "Plan A", "price": 10.00, "currency": "USD"},
+                                {"name": "Plan B", "price": 20.00, "currency": "EUR"},
+                            ]
+                        }
+                    },
                 },
-                "marketplace": {
-                    "pricingPlans": {
-                        "declarative": [
-                            {
-                                "name": "Plan A",
-                                "price": 10.00,
-                                "currency": "USD"
-                            },
-                            {
-                                "name": "Plan B",
-                                "price": 20.00,
-                                "currency": "EUR"
-                            }
-                        ]
-                    }
-                }
-            }
-        }, indent=2)
+            },
+            indent=2,
+        )
 
         # JSON → YAML
         yaml_result = convert_json_to_yaml(original_json)
@@ -497,7 +481,216 @@ product:
         # Verify structure is preserved (data should be equivalent)
         self.assertEqual(original_parsed["schema"], result_parsed["schema"])
         self.assertEqual(original_parsed["version"], result_parsed["version"])
-        self.assertEqual(original_parsed["product"]["details"]["en"]["name"], result_parsed["product"]["details"]["en"]["name"])
-        self.assertEqual(len(original_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
-                        len(result_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]))
+        self.assertEqual(
+            original_parsed["product"]["details"]["en"]["name"],
+            result_parsed["product"]["details"]["en"]["name"],
+        )
+        self.assertEqual(
+            len(original_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
+            len(result_parsed["product"]["marketplace"]["pricingPlans"]["declarative"]),
+        )
 
+
+class ODPSFormatConverterEdgeCasesTest(SimpleTestCase):
+    """Test edge cases for ODPS format converter"""
+
+    def test_convert_yaml_to_json_handles_unicode_characters(self):
+        """Test that YAML to JSON conversion handles unicode characters correctly."""
+        yaml_content = """
+schema: https://opendataproducts.org/schema/v4.1
+version: "4.1"
+product:
+  details:
+    en:
+      name: 测试产品 🏢
+      description: 测试描述
+"""
+        result = convert_yaml_to_json(yaml_content)
+
+        # Verify unicode characters are preserved
+        parsed = json.loads(result)
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "测试产品 🏢")
+        self.assertEqual(parsed["product"]["details"]["en"]["description"], "测试描述")
+
+    def test_convert_yaml_to_json_handles_special_characters(self):
+        """Test that YAML to JSON conversion handles special characters correctly."""
+        yaml_content = """
+schema: https://opendataproducts.org/schema/v4.1
+version: "4.1"
+product:
+  details:
+    en:
+      name: Test & Co. (Special)
+      description: Test <description> & more
+"""
+        result = convert_yaml_to_json(yaml_content)
+
+        # Verify special characters are preserved
+        parsed = json.loads(result)
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "Test & Co. (Special)")
+        self.assertEqual(
+            parsed["product"]["details"]["en"]["description"], "Test <description> & more"
+        )
+
+    def test_convert_yaml_to_json_handles_very_large_documents(self):
+        """Test that YAML to JSON conversion handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        yaml_content = f"""
+schema: https://opendataproducts.org/schema/v4.1
+version: "4.1"
+product:
+  details:
+    en:
+      name: Test Product
+      description: {large_description}
+"""
+        # Should handle large documents gracefully
+        try:
+            result = convert_yaml_to_json(yaml_content)
+            parsed = json.loads(result)
+            # If conversion succeeds, verify structure
+            self.assertIn("product", parsed)
+            self.assertIn("details", parsed["product"])
+        except Exception as e:
+            # If conversion fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_convert_json_to_yaml_handles_unicode_characters(self):
+        """Test that JSON to YAML conversion handles unicode characters correctly."""
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {"details": {"en": {"name": "测试产品 🏢", "description": "测试描述"}}},
+            },
+            indent=2,
+        )
+
+        result = convert_json_to_yaml(json_content)
+
+        # Verify unicode characters are preserved
+        import yaml
+
+        parsed = yaml.safe_load(result)
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "测试产品 🏢")
+        self.assertEqual(parsed["product"]["details"]["en"]["description"], "测试描述")
+
+    def test_convert_json_to_yaml_handles_special_characters(self):
+        """Test that JSON to YAML conversion handles special characters correctly."""
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "name": "Test & Co. (Special)",
+                            "description": "Test <description> & more",
+                        }
+                    }
+                },
+            },
+            indent=2,
+        )
+
+        result = convert_json_to_yaml(json_content)
+
+        # Verify special characters are preserved
+        import yaml
+
+        parsed = yaml.safe_load(result)
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "Test & Co. (Special)")
+        self.assertEqual(
+            parsed["product"]["details"]["en"]["description"], "Test <description> & more"
+        )
+
+    def test_convert_json_to_yaml_handles_very_large_documents(self):
+        """Test that JSON to YAML conversion handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"name": "Test Product", "description": large_description}}
+                },
+            },
+            indent=2,
+        )
+
+        # Should handle large documents gracefully
+        try:
+            result = convert_json_to_yaml(json_content)
+            import yaml
+
+            parsed = yaml.safe_load(result)
+            # If conversion succeeds, verify structure
+            self.assertIn("product", parsed)
+            self.assertIn("details", parsed["product"])
+        except Exception as e:
+            # If conversion fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_convert_yaml_to_json_handles_nested_structures(self):
+        """Test that YAML to JSON conversion handles deeply nested structures correctly."""
+        yaml_content = """
+schema: https://opendataproducts.org/schema/v4.1
+version: "4.1"
+product:
+  details:
+    en:
+      name: Test Product
+      nested:
+        level1:
+          level2:
+            level3:
+              level4:
+                value: deep
+"""
+        result = convert_yaml_to_json(yaml_content)
+
+        # Verify nested structure is preserved
+        parsed = json.loads(result)
+        self.assertIn("nested", parsed["product"]["details"]["en"])
+        self.assertIn(
+            "level1",
+            parsed["product"]["details"]["en"]["nested"],
+            "Nested structures should be preserved",
+        )
+
+    def test_convert_json_to_yaml_handles_nested_structures(self):
+        """Test that JSON to YAML conversion handles deeply nested structures correctly."""
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "name": "Test Product",
+                            "nested": {
+                                "level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}
+                            },
+                        }
+                    }
+                },
+            },
+            indent=2,
+        )
+
+        result = convert_json_to_yaml(json_content)
+
+        # Verify nested structure is preserved
+        import yaml
+
+        parsed = yaml.safe_load(result)
+        self.assertIn("nested", parsed["product"]["details"]["en"])
+        self.assertIn(
+            "level1",
+            parsed["product"]["details"]["en"]["nested"],
+            "Nested structures should be preserved",
+        )

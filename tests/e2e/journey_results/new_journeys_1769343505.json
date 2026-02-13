@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.007100820541381836
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-007-4320e4f2",
+      "journey_name": "Build Custom Connector",
+      "persona": "External Developer",
+      "status": "completed",
+      "start_time": 1769343505.93965,
+      "end_time": 1769343505.9467509,
+      "duration": 0.007100820541381836,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Design Connector",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769343505.939656,
+          "end_time": 1769343505.9396605,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Implement Connector Interface",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769343505.939663,
+          "end_time": 1769343505.9396646,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Note: Connector Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769343505.9439993,
+          "end_time": 1769343505.944003,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Marketplace Submission Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769343505.9467466,
+          "end_time": 1769343505.9467497,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-25T12:18:25.946857"
+}

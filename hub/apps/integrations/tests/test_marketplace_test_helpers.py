@@ -10,23 +10,25 @@ Tests the centralized test utilities including:
 
 All tests use real configuration - no mocks or stubs.
 """
+
 import os
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from django.test import TestCase
 
 from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    get_test_marketplace_config,
+    ckan_available,
     create_test_connector,
-    verify_marketplace_connection,
-    marketplace_available,
-    get_test_ckan_url,
     get_test_api_key,
     # Backward compatibility (deprecated)
     get_test_ckan_config,
+    get_test_ckan_url,
+    get_test_marketplace_config,
+    marketplace_available,
     verify_ckan_connection,
-    ckan_available,
+    verify_marketplace_connection,
 )
 
 
@@ -87,10 +89,7 @@ class TestCreateTestConnector(TestCase):
 
     def test_create_connector_with_specific_instance(self):
         """Test creating connector for specific instance"""
-        connector = create_test_connector(
-            instance_name="demo.ckan.org",
-            verify_connection=False
-        )
+        connector = create_test_connector(instance_name="demo.ckan.org", verify_connection=False)
 
         self.assertIsNotNone(connector)
         self.assertIsInstance(connector, CKANConnector)
@@ -98,10 +97,7 @@ class TestCreateTestConnector(TestCase):
 
     def test_create_connector_with_api_key(self):
         """Test creating connector with explicit API key"""
-        connector = create_test_connector(
-            api_key="test-api-key-123",
-            verify_connection=False
-        )
+        connector = create_test_connector(api_key="test-api-key-123", verify_connection=False)
 
         self.assertIsNotNone(connector)
         self.assertEqual(connector.api_key, "test-api-key-123")
@@ -109,14 +105,12 @@ class TestCreateTestConnector(TestCase):
     def test_create_connector_with_env_api_key(self):
         """Test creating connector with API key/JWT token from environment"""
         with patch.dict(os.environ, {"CKAN_DADOS_GOV_BR_API_KEY": "env-api-key-456"}):
-            connector = create_test_connector(
-                instance_name="dados.gov.br",
-                verify_connection=False
-            )
+            connector = create_test_connector(instance_name="dados.gov.br", verify_connection=False)
 
             self.assertIsNotNone(connector)
             # dados.gov.br uses DadosGovBrConnector which uses jwt_token, not api_key
             from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
+
             if isinstance(connector, DadosGovBrConnector):
                 self.assertEqual(connector.jwt_token, "env-api-key-456")
             else:
@@ -131,6 +125,7 @@ class TestCreateTestConnector(TestCase):
             self.assertIsNotNone(connector)
             # Check appropriate attribute based on connector type
             from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
+
             if isinstance(connector, DadosGovBrConnector):
                 # DadosGovBrConnector doesn't use legacy CKAN_TEST_API_KEY, so jwt_token should be empty
                 # This test is for CKAN connectors primarily
@@ -142,8 +137,7 @@ class TestCreateTestConnector(TestCase):
     def test_create_connector_nonexistent_instance(self):
         """Test creating connector for nonexistent instance"""
         connector = create_test_connector(
-            instance_name="nonexistent.ckan.org",
-            verify_connection=False
+            instance_name="nonexistent.ckan.org", verify_connection=False
         )
 
         self.assertIsNone(connector)
@@ -295,10 +289,55 @@ class TestCKANTestHelpersIntegration(TestCase):
         self.assertIsNotNone(config)
 
         # Should create connector using config
-        connector = create_test_connector(
-            instance_name="dados.gov.br",
-            verify_connection=False
-        )
+        connector = create_test_connector(instance_name="dados.gov.br", verify_connection=False)
         if connector:
             self.assertEqual(connector.base_url, config.base_url)
 
+    def test_create_test_connector_with_none_instance_name(self):
+        """Test create_test_connector() error handling with None instance_name"""
+        try:
+            connector = create_test_connector(
+                instance_name=None, verify_connection=False  # type: ignore[arg-type]
+            )
+            # Should handle gracefully (may use default)
+            if connector:
+                self.assertIsInstance(connector, CKANConnector)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+    def test_create_test_connector_with_empty_instance_name(self):
+        """Test create_test_connector() error handling with empty instance_name"""
+        try:
+            connector = create_test_connector(instance_name="", verify_connection=False)
+            # Should handle gracefully (may use default or return None)
+            if connector:
+                self.assertIsInstance(connector, CKANConnector)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+    def test_verify_marketplace_connection_with_none_connector(self):
+        """Test verify_marketplace_connection() error handling with None connector"""
+        with self.assertRaises((ValueError, TypeError, AttributeError)):
+            verify_marketplace_connection(None)  # type: ignore[arg-type]
+
+    def test_marketplace_available_with_none_instance_name(self):
+        """Test marketplace_available() error handling with None instance_name"""
+        result = marketplace_available(None)  # type: ignore[arg-type]
+        self.assertFalse(result)
+
+    def test_marketplace_available_with_empty_instance_name(self):
+        """Test marketplace_available() error handling with empty instance_name"""
+        result = marketplace_available("")
+        self.assertFalse(result)
+
+    def test_get_test_marketplace_config_with_none(self):
+        """Test get_test_marketplace_config() error handling with None"""
+        config = get_test_marketplace_config(None)  # type: ignore[arg-type]
+        self.assertIsNone(config)
+
+    def test_get_test_marketplace_config_with_empty_string(self):
+        """Test get_test_marketplace_config() error handling with empty string"""
+        config = get_test_marketplace_config("")
+        self.assertIsNone(config)

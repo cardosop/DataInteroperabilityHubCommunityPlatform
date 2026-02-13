@@ -4,15 +4,17 @@ Integration tests for DadosGovBrConnector with real dados.gov.br Swagger API.
 Tests use real dados.gov.br API endpoints - no mocks or stubs.
 Uses JWT Bearer token authentication.
 """
+
 import os
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
-from hub.apps.integrations.connectors.dados_gov_br_client import DadosGovBrAPIClient
-from hub.apps.integrations.base import MarketplaceType, SyncDirection
 from hub.apps.core.services.base import NotFoundError
+from hub.apps.integrations.base import MarketplaceType, SyncDirection
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
+from hub.apps.integrations.connectors.dados_gov_br_client import DadosGovBrAPIClient
+from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
 
 
 def handle_auth_failure(e: Exception) -> None:
@@ -26,9 +28,13 @@ def handle_auth_failure(e: Exception) -> None:
         pytest.skip: If exception indicates authentication failure
     """
     error_str = str(e).lower()
-    if ('authentication failed' in error_str or 'signin' in error_str or
-        'login' in error_str or 'jwt token' in error_str or
-        'redirected to signin' in error_str):
+    if (
+        "authentication failed" in error_str
+        or "signin" in error_str
+        or "login" in error_str
+        or "jwt token" in error_str
+        or "redirected to signin" in error_str
+    ):
         pytest.skip(f"JWT token authentication failed (token may be expired or invalid): {e}")
 
 
@@ -47,7 +53,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
         super().setUpClass()
 
         # Get JWT token from environment (check new name first, then deprecated name for backward compatibility)
-        cls.jwt_token = os.getenv('DADOS_GOV_BR_API_KEY') or os.getenv('CKAN_DADOS_GOV_BR_API_KEY')
+        cls.jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not cls.jwt_token:
             pytest.skip("CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests")
 
@@ -62,7 +68,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
         cls.connector = DadosGovBrConnector(
             base_url=cls.instance_config.base_url,
             jwt_token=cls.jwt_token,
-            swagger_spec_url=getattr(cls.instance_config, 'swagger_spec_url', None)
+            swagger_spec_url=getattr(cls.instance_config, "swagger_spec_url", None),
         )
 
     def test_connector_initialization(self):
@@ -88,8 +94,14 @@ class TestDadosGovBrConnectorIntegration(TestCase):
         except (ValueError, ConnectionError) as e:
             # Check if it's an authentication failure
             error_str = str(e).lower()
-            if 'authentication failed' in error_str or 'signin' in error_str or 'jwt token' in error_str:
-                pytest.skip(f"JWT token authentication failed (token may be expired or invalid): {e}")
+            if (
+                "authentication failed" in error_str
+                or "signin" in error_str
+                or "jwt token" in error_str
+            ):
+                pytest.skip(
+                    f"JWT token authentication failed (token may be expired or invalid): {e}"
+                )
             pytest.fail(f"Connection test failed: {e}")
         except Exception as e:
             pytest.fail(f"Connection test failed: {e}")
@@ -108,7 +120,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
                 assert listing.marketplace_type == MarketplaceType.CKAN_INSTANCE
         except ValueError as e:
             # Check if it's an authentication failure
-            if 'authentication failed' in str(e).lower() or 'signin' in str(e).lower():
+            if "authentication failed" in str(e).lower() or "signin" in str(e).lower():
                 pytest.skip(f"JWT token authentication failed (token may be expired): {e}")
             pytest.fail(f"list_listings failed: {e}")
         except Exception as e:
@@ -117,10 +129,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
     def test_list_listings_with_filters(self):
         """Test listing datasets with filters."""
         try:
-            listings = self.connector.list_listings(
-                filters={"q": "dados"},
-                limit=3
-            )
+            listings = self.connector.list_listings(filters={"q": "dados"}, limit=3)
             assert isinstance(listings, list)
             assert len(listings) <= 3
         except ValueError as e:
@@ -240,7 +249,7 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             assert listing.marketplace_id is not None
             assert listing.title is not None
             assert listing.marketplace_type == MarketplaceType.CKAN_INSTANCE
-            assert 'swagger_dataset' in listing.metadata
+            assert "swagger_dataset" in listing.metadata
         except ValueError as e:
             handle_auth_failure(e)
             pytest.fail(f"Dataset mapping failed: {e}")
@@ -278,8 +287,8 @@ class TestDadosGovBrConnectorIntegration(TestCase):
             # Verify mapping
             assert resource.resource_id is not None
             assert resource.name is not None
-            assert resource.resource_type in ['FILE', 'API']
-            assert 'swagger_resource' in resource.metadata
+            assert resource.resource_type in ["FILE", "API"]
+            assert "swagger_resource" in resource.metadata
         except ValueError as e:
             handle_auth_failure(e)
             pytest.fail(f"Resource mapping failed: {e}")
@@ -334,15 +343,16 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
         super().setUpClass()
 
         # Get JWT token from environment (check new name first, then deprecated name for backward compatibility)
-        cls.jwt_token = os.getenv('DADOS_GOV_BR_API_KEY') or os.getenv('CKAN_DADOS_GOV_BR_API_KEY')
+        cls.jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY")
         if not cls.jwt_token:
-            pytest.skip("DADOS_GOV_BR_API_KEY or CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests")
+            pytest.skip(
+                "DADOS_GOV_BR_API_KEY or CKAN_DADOS_GOV_BR_API_KEY not set - skipping integration tests"
+            )
 
         # Create API client (use api_client to avoid conflict with Django TestCase.client)
         assert cls.jwt_token is not None
         cls.api_client = DadosGovBrAPIClient(
-            base_url="https://dados.gov.br",
-            jwt_token=cls.jwt_token
+            base_url="https://dados.gov.br", jwt_token=cls.jwt_token
         )
 
     def test_client_initialization(self):
@@ -359,7 +369,7 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
             # This is acceptable - we have fallback endpoints
             if spec:
                 assert isinstance(spec, dict)
-                assert 'paths' in spec or 'openapi' in spec or 'swagger' in spec
+                assert "paths" in spec or "openapi" in spec or "swagger" in spec
         except Exception as e:
             # Swagger spec loading may fail - that's OK, we have fallbacks
             pytest.skip(f"Swagger spec loading failed (acceptable): {e}")
@@ -401,14 +411,14 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
                 results = search_response
             elif isinstance(search_response, dict):
                 # Fallback: try to extract array from dict (for backward compatibility)
-                if 'results' in search_response:
-                    results = search_response.get('results', [])
-                elif 'result' in search_response:
-                    result = search_response.get('result', {})
+                if "results" in search_response:
+                    results = search_response.get("results", [])
+                elif "result" in search_response:
+                    result = search_response.get("result", {})
                     if isinstance(result, list):
                         results = result
                     else:
-                        results = result.get('results', [])
+                        results = result.get("results", [])
 
             if not results:
                 pytest.skip("No datasets available for testing")
@@ -416,9 +426,9 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
             # Extract dataset ID (handle Portuguese: identificador, English: id, name)
             dataset_data = results[0]
             dataset_id = (
-                dataset_data.get('identificador') or
-                dataset_data.get('id') or
-                dataset_data.get('name')
+                dataset_data.get("identificador")
+                or dataset_data.get("id")
+                or dataset_data.get("name")
             )
             if not dataset_id:
                 pytest.skip("Dataset ID not found in search results")
@@ -449,7 +459,11 @@ class TestDadosGovBrAPIClientIntegration(TestCase):
             pytest.skip("Bearer token authentication failed - cannot test headers")
         except Exception as e:
             # If we get 401, token wasn't sent or was invalid
-            if "401" in str(e) or "Unauthorized" in str(e) or "authentication failed" in str(e).lower():
+            if (
+                "401" in str(e)
+                or "Unauthorized" in str(e)
+                or "authentication failed" in str(e).lower()
+            ):
                 handle_auth_failure(e)
                 pytest.skip("Bearer token not included in headers or invalid")
             raise
@@ -465,8 +479,8 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_demo_ckan_org_uses_ckan_connector(self):
         """Test that demo.ckan.org uses standard CKANConnector."""
-        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.connectors.ckan_connector import CKANConnector
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
         # Get instance config
         config = get_marketplace_instance_config("demo.ckan.org")
@@ -475,15 +489,17 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
         # Factory should create CKANConnector
         try:
-            connector = MarketplaceConnectorFactory.create_ckan_connector_from_instance("demo.ckan.org")
+            connector = MarketplaceConnectorFactory.create_ckan_connector_from_instance(
+                "demo.ckan.org"
+            )
             assert isinstance(connector, CKANConnector)
         except Exception as e:
             pytest.skip(f"CKANConnector not registered or demo.ckan.org unavailable: {e}")
 
     def test_data_gov_uses_ckan_connector(self):
         """Test that data.gov uses standard CKANConnector."""
-        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.connectors.ckan_connector import CKANConnector
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
         # Get instance config
         config = get_marketplace_instance_config("data.gov")
@@ -499,8 +515,8 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
 
     def test_dados_gov_br_uses_swagger_connector(self):
         """Test that dados.gov.br uses DadosGovBrConnector."""
-        from hub.apps.integrations.factory import MarketplaceConnectorFactory
         from hub.apps.integrations.connectors.dados_gov_br_connector import DadosGovBrConnector
+        from hub.apps.integrations.factory import MarketplaceConnectorFactory
 
         # Get instance config
         config = get_marketplace_instance_config("dados.gov.br")
@@ -508,13 +524,82 @@ class TestDadosGovBrBackwardCompatibility(TestCase):
         assert config.connector_type == "swagger"
 
         # Factory should create DadosGovBrConnector
-        jwt_token = os.getenv('DADOS_GOV_BR_API_KEY') or os.getenv('CKAN_DADOS_GOV_BR_API_KEY', '')
+        jwt_token = os.getenv("DADOS_GOV_BR_API_KEY") or os.getenv("CKAN_DADOS_GOV_BR_API_KEY", "")
         try:
             connector = MarketplaceConnectorFactory.create_ckan_connector_from_instance(
-                "dados.gov.br",
-                api_key=jwt_token
+                "dados.gov.br", api_key=jwt_token
             )
             assert isinstance(connector, DadosGovBrConnector)
         except Exception as e:
             pytest.skip(f"DadosGovBrConnector creation failed: {e}")
 
+    def test_list_listings_with_zero_limit(self):
+        """Test list_listings() edge case with zero limit"""
+        try:
+            listings = self.connector.list_listings(limit=0)
+            self.assertIsInstance(listings, list)
+            self.assertEqual(len(listings), 0)
+        except Exception as e:
+            handle_auth_failure(e)
+            raise
+
+    def test_list_listings_with_none_limit(self):
+        """Test list_listings() error handling with None limit"""
+        try:
+            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+            # Should handle None limit gracefully (may use default)
+            self.assertIsInstance(listings, list)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+        except Exception as e:
+            handle_auth_failure(e)
+            raise
+
+    def test_get_listing_with_empty_id(self):
+        """Test get_listing() error handling with empty ID"""
+        try:
+            with self.assertRaises((ValueError, NotFoundError)):
+                self.connector.get_listing("")
+        except Exception as e:
+            handle_auth_failure(e)
+            raise
+
+    def test_get_listing_with_none_id(self):
+        """Test get_listing() error handling with None ID"""
+        try:
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                self.connector.get_listing(None)  # type: ignore[arg-type]
+        except Exception as e:
+            handle_auth_failure(e)
+            raise
+
+    def test_list_resources_with_empty_package_id(self):
+        """Test list_resources() error handling with empty package ID"""
+        try:
+            with self.assertRaises((ValueError, NotFoundError)):
+                self.connector.list_resources("")
+        except Exception as e:
+            handle_auth_failure(e)
+            raise
+
+    def test_list_resources_with_none_package_id(self):
+        """Test list_resources() error handling with None package ID"""
+        try:
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                self.connector.list_resources(None)  # type: ignore[arg-type]
+        except Exception as e:
+            handle_auth_failure(e)
+            raise
+
+    def test_connector_initialization_with_empty_base_url(self):
+        """Test connector initialization error handling with empty base_url"""
+        with self.assertRaises((ValueError, TypeError)):
+            connector = DadosGovBrConnector(base_url="", jwt_token=self.jwt_token)
+
+    def test_connector_initialization_with_none_jwt_token(self):
+        """Test connector initialization error handling with None jwt_token"""
+        with self.assertRaises((ValueError, TypeError)):
+            connector = DadosGovBrConnector(
+                base_url=self.instance_config.base_url, jwt_token=None  # type: ignore[arg-type]
+            )

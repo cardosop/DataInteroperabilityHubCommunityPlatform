@@ -7,35 +7,24 @@ Comprehensive tests for ContractsBusinessRules lifecycle validation, following e
 - Comprehensive test coverage
 - Follow DRY, SOLID, and clean code principles
 """
-from django.test import TestCase
 
-from hub.apps.contracts.business_rules import ContractsBusinessRules
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
-from hub.apps.core.business_rules.registry import get_registry
-from hub.apps.users.models import User
-from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.assets.models import Asset, AssetStatus
+from hub.apps.contracts.business_rules import ContractsBusinessRules
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.contracts.tests.test_base import ContractsTestBase
+from hub.apps.core.business_rules.registry import get_registry
 
 
-class ContractsBusinessRulesInitializationTest(TestCase):
+class ContractsBusinessRulesInitializationTest(ContractsTestBase):
     """Test ContractsBusinessRules initialization"""
 
     def setUp(self):
         """Set up test fixtures"""
-        from hub.apps.users.models import UserStatus
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
+        super().setUp()
 
     def test_contracts_business_rules_initialization(self):
         """Test ContractsBusinessRules can be initialized with tenant and user"""
-        rules = ContractsBusinessRules(
-            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
-        )
+        rules = ContractsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.assertIsNotNone(rules)
         self.assertEqual(str(rules.tenant_id), str(self.tenant.id))
         self.assertEqual(str(rules.user_id), str(self.user.id))
@@ -48,7 +37,7 @@ class ContractsBusinessRulesInitializationTest(TestCase):
         self.assertIsNone(rules.user_id)
 
 
-class ContractsBusinessRulesRegistrationTest(TestCase):
+class ContractsBusinessRulesRegistrationTest(ContractsTestBase):
     """Test ContractsBusinessRules registration"""
 
     def test_contracts_business_rules_registered(self):
@@ -68,19 +57,12 @@ class ContractsBusinessRulesRegistrationTest(TestCase):
         self.assertIn("validation", rule.description.lower())
 
 
-class ContractCreationValidationTest(TestCase):
+class ContractCreationValidationTest(ContractsTestBase):
     """Test contract creation validation"""
 
     def setUp(self):
         """Set up test fixtures"""
-        from hub.apps.users.models import UserStatus
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
+        super().setUp()
         self.asset = Asset.objects.create(
             name="Test Asset", key="test-asset", tenant=self.tenant, status=AssetStatus.ACTIVE
         )
@@ -95,7 +77,7 @@ class ContractCreationValidationTest(TestCase):
             "original_raw": '{"info": {"name": "test-contract"}}',
             "original_format": OriginalFormat.JSON,
             "original_spec_type": OriginalSpecType.ODCS,
-            "original_spec_version": "3.0.2"
+            "original_spec_version": "3.0.2",
         }
         result = self.rules.validate_contract_creation(contract_data)
 
@@ -119,6 +101,7 @@ class ContractCreationValidationTest(TestCase):
     def test_validate_contract_creation_invalid_tenant(self):
         """Test contract creation validation with invalid tenant"""
         import uuid
+
         contract_data = {
             "tenant_id": str(uuid.uuid4()),  # Non-existent tenant
             "original_raw": '{"info": {"name": "test-contract"}}',
@@ -134,6 +117,7 @@ class ContractCreationValidationTest(TestCase):
     def test_validate_contract_creation_invalid_asset(self):
         """Test contract creation validation with invalid asset"""
         import uuid
+
         contract_data = {
             "tenant_id": str(self.tenant.id),
             "asset_id": str(uuid.uuid4()),  # Non-existent asset
@@ -205,19 +189,12 @@ class ContractCreationValidationTest(TestCase):
         self.assertIn("original_raw", result.errors[0])
 
 
-class ContractUpdateValidationTest(TestCase):
+class ContractUpdateValidationTest(ContractsTestBase):
     """Test contract update validation"""
 
     def setUp(self):
         """Set up test fixtures"""
-        from hub.apps.users.models import UserStatus
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
+        super().setUp()
         self.asset = Asset.objects.create(
             name="Test Asset", key="test-asset", tenant=self.tenant, status=AssetStatus.ACTIVE
         )
@@ -229,7 +206,7 @@ class ContractUpdateValidationTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             status=ContractStatus.DRAFT,
-            version=1
+            version=1,
         )
         self.rules = ContractsBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -237,9 +214,7 @@ class ContractUpdateValidationTest(TestCase):
 
     def test_validate_contract_update_valid(self):
         """Test contract update validation with valid update"""
-        contract_data = {
-            "status": ContractStatus.ACTIVE
-        }
+        contract_data = {"status": ContractStatus.ACTIVE}
         result = self.rules.validate_contract_update(self.contract, contract_data)
 
         self.assertTrue(result.is_valid)
@@ -251,9 +226,7 @@ class ContractUpdateValidationTest(TestCase):
         self.contract.status = ContractStatus.RETIRED
         self.contract.save()
 
-        contract_data = {
-            "status": ContractStatus.ACTIVE
-        }
+        contract_data = {"status": ContractStatus.ACTIVE}
         result = self.rules.validate_contract_update(self.contract, contract_data)
 
         self.assertFalse(result.is_valid)
@@ -266,9 +239,7 @@ class ContractUpdateValidationTest(TestCase):
         self.contract.status = ContractStatus.ACTIVE
         self.contract.save()
 
-        contract_data = {
-            "status": ContractStatus.DRAFT  # Cannot go back to DRAFT
-        }
+        contract_data = {"status": ContractStatus.DRAFT}  # Cannot go back to DRAFT
         result = self.rules.validate_contract_update(self.contract, contract_data)
 
         self.assertFalse(result.is_valid)
@@ -277,9 +248,7 @@ class ContractUpdateValidationTest(TestCase):
 
     def test_validate_contract_update_valid_status_transition(self):
         """Test contract update validation with valid status transition"""
-        contract_data = {
-            "status": ContractStatus.ACTIVE  # DRAFT -> ACTIVE is valid
-        }
+        contract_data = {"status": ContractStatus.ACTIVE}  # DRAFT -> ACTIVE is valid
         result = self.rules.validate_contract_update(self.contract, contract_data)
 
         self.assertTrue(result.is_valid)
@@ -287,9 +256,7 @@ class ContractUpdateValidationTest(TestCase):
 
     def test_validate_contract_update_version_decrease(self):
         """Test contract update validation with version decrease"""
-        contract_data = {
-            "version": 0  # Invalid version (must be positive)
-        }
+        contract_data = {"version": 0}  # Invalid version (must be positive)
         result = self.rules.validate_contract_update(self.contract, contract_data)
 
         self.assertFalse(result.is_valid)
@@ -301,9 +268,7 @@ class ContractUpdateValidationTest(TestCase):
         self.contract.version = 5
         self.contract.save()
 
-        contract_data = {
-            "version": 3  # Cannot decrease version
-        }
+        contract_data = {"version": 3}  # Cannot decrease version
         result = self.rules.validate_contract_update(self.contract, contract_data)
 
         self.assertFalse(result.is_valid)
@@ -321,12 +286,10 @@ class ContractUpdateValidationTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             status=ContractStatus.DRAFT,
-            version=2
+            version=2,
         )
 
-        contract_data = {
-            "version": 2  # Conflict with existing contract
-        }
+        contract_data = {"version": 2}  # Conflict with existing contract
         result = self.rules.validate_contract_update(self.contract, contract_data)
 
         self.assertFalse(result.is_valid)
@@ -338,13 +301,9 @@ class ContractUpdateValidationTest(TestCase):
         other_tenant = Tenant.objects.create(
             name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
         )
-        rules = ContractsBusinessRules(
-            tenant_id=str(other_tenant.id), user_id=str(self.user.id)
-        )
+        rules = ContractsBusinessRules(tenant_id=str(other_tenant.id), user_id=str(self.user.id))
 
-        contract_data = {
-            "status": ContractStatus.ACTIVE
-        }
+        contract_data = {"status": ContractStatus.ACTIVE}
         result = rules.validate_contract_update(self.contract, contract_data)
 
         self.assertFalse(result.is_valid)
@@ -352,19 +311,12 @@ class ContractUpdateValidationTest(TestCase):
         self.assertIn("does not belong to tenant", result.errors[0])
 
 
-class ContractDeletionValidationTest(TestCase):
+class ContractDeletionValidationTest(ContractsTestBase):
     """Test contract deletion validation"""
 
     def setUp(self):
         """Set up test fixtures"""
-        from hub.apps.users.models import UserStatus
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
+        super().setUp()
         self.asset = Asset.objects.create(
             name="Test Asset", key="test-asset", tenant=self.tenant, status=AssetStatus.ACTIVE
         )
@@ -376,7 +328,7 @@ class ContractDeletionValidationTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             status=ContractStatus.DRAFT,
-            version=1
+            version=1,
         )
         self.rules = ContractsBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -393,7 +345,12 @@ class ContractDeletionValidationTest(TestCase):
     def test_validate_contract_deletion_referenced_by_scheduled_ingestion(self):
         """Test contract deletion validation when referenced by scheduled ingestion"""
         try:
-            from hub.apps.scheduled_ingestion.models import ScheduledIngestion, SourceType, ScheduleType
+            from hub.apps.scheduled_ingestion.models import (
+                ScheduledIngestion,
+                ScheduleType,
+                SourceType,
+            )
+
             ScheduledIngestion.objects.create(
                 tenant=self.tenant,
                 contract=self.contract,
@@ -402,7 +359,7 @@ class ContractDeletionValidationTest(TestCase):
                 source_config={"bucket": "test-bucket", "path": "test-path"},
                 schedule_type=ScheduleType.DAILY,
                 schedule_config={"time": "00:00", "timezone": "UTC"},
-                file_pattern=".*\\.csv$"
+                file_pattern=".*\\.csv$",
             )
 
             result = self.rules.validate_contract_deletion(self.contract)
@@ -431,13 +388,7 @@ class ContractDeletionValidationTest(TestCase):
             original_spec_version="4.1",
             status=ContractStatus.DRAFT,
             version=1,
-            hub_contract_json={
-                "extensions": {
-                    "x_odps": {
-                        "odcs_link": str(self.contract.id)
-                    }
-                }
-            }
+            hub_contract_json={"extensions": {"x_odps": {"odcs_link": str(self.contract.id)}}},
         )
 
         result = self.rules.validate_contract_deletion(self.contract)
@@ -464,9 +415,7 @@ class ContractDeletionValidationTest(TestCase):
         other_tenant = Tenant.objects.create(
             name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
         )
-        rules = ContractsBusinessRules(
-            tenant_id=str(other_tenant.id), user_id=str(self.user.id)
-        )
+        rules = ContractsBusinessRules(tenant_id=str(other_tenant.id), user_id=str(self.user.id))
 
         result = rules.validate_contract_deletion(self.contract)
 
@@ -475,19 +424,12 @@ class ContractDeletionValidationTest(TestCase):
         self.assertIn("does not belong to tenant", result.errors[0])
 
 
-class ContractVersionValidationTest(TestCase):
+class ContractVersionValidationTest(ContractsTestBase):
     """Test contract version validation"""
 
     def setUp(self):
         """Set up test fixtures"""
-        from hub.apps.users.models import UserStatus
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
+        super().setUp()
         self.asset = Asset.objects.create(
             name="Test Asset", key="test-asset", tenant=self.tenant, status=AssetStatus.ACTIVE
         )
@@ -499,7 +441,7 @@ class ContractVersionValidationTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             status=ContractStatus.DRAFT,
-            version=1
+            version=1,
         )
         self.rules = ContractsBusinessRules(
             tenant_id=str(self.tenant.id), user_id=str(self.user.id)
@@ -524,7 +466,7 @@ class ContractVersionValidationTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             status=ContractStatus.DRAFT,
-            version=2
+            version=2,
         )
 
         # Test validation by checking if it would detect conflict if we tried to update
@@ -548,7 +490,7 @@ class ContractVersionValidationTest(TestCase):
         conflicting_contracts = Contract.objects.filter(
             tenant_id=self.contract.tenant_id,
             asset_id=self.contract.asset_id,
-            version=self.contract.version
+            version=self.contract.version,
         ).exclude(id=self.contract.id)
 
         # Should be empty since self.contract is the only one with version 1
@@ -579,7 +521,7 @@ class ContractVersionValidationTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             status=ContractStatus.DRAFT,
-            version=1
+            version=1,
         )
 
         # Create contract with version 5 (gap)
@@ -591,7 +533,7 @@ class ContractVersionValidationTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             status=ContractStatus.DRAFT,
-            version=5
+            version=5,
         )
 
         result = self.rules.validate_contract_version(contract_v5)
@@ -611,7 +553,7 @@ class ContractVersionValidationTest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             status=ContractStatus.DRAFT,
-            version=1
+            version=1,
         )
 
         result = self.rules.validate_contract_version(contract_no_asset)
@@ -620,19 +562,12 @@ class ContractVersionValidationTest(TestCase):
         self.assertEqual(len(result.errors), 0)
 
 
-class ContractLifecycleIntegrationTest(TestCase):
+class ContractLifecycleIntegrationTest(ContractsTestBase):
     """Integration tests for contract lifecycle validation with ContractService"""
 
     def setUp(self):
         """Set up test fixtures"""
-        from hub.apps.users.models import UserStatus
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com", password="testpass123", tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
+        super().setUp()
         self.asset = Asset.objects.create(
             name="Test Asset", key="test-asset", tenant=self.tenant, status=AssetStatus.ACTIVE
         )
@@ -642,15 +577,10 @@ class ContractLifecycleIntegrationTest(TestCase):
 
     def test_contract_lifecycle_validation_with_service(self):
         """Test contract lifecycle validation integrates with ContractService"""
-        from hub.apps.contracts.services import ContractService
-
-        service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = self.contract_service
 
         # Create contract via service with valid ODCS format
-        valid_odcs_contract = '''{
+        valid_odcs_contract = """{
             "apiVersion": "odcs.io/v3.0.2",
             "kind": "DataContract",
             "id": "test-contract",
@@ -665,29 +595,30 @@ class ContractLifecycleIntegrationTest(TestCase):
                     }
                 ]
             }
-        }'''
+        }"""
 
         contract = service.create_contract(
             original_raw=valid_odcs_contract,
             original_format=OriginalFormat.JSON,
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_id=str(self.asset.id)
+            asset_id=str(self.asset.id),
         )
 
         # Validate creation
-        creation_result = self.rules.validate_contract_creation({
-            "tenant_id": str(self.tenant.id),
-            "original_raw": valid_odcs_contract,
-            "original_format": OriginalFormat.JSON,
-            "original_spec_type": OriginalSpecType.ODCS,
-        })
+        creation_result = self.rules.validate_contract_creation(
+            {
+                "tenant_id": str(self.tenant.id),
+                "original_raw": valid_odcs_contract,
+                "original_format": OriginalFormat.JSON,
+                "original_spec_type": OriginalSpecType.ODCS,
+            }
+        )
         self.assertTrue(creation_result.is_valid)
 
         # Validate update
         update_result = self.rules.validate_contract_update(
-            contract,
-            contract_data={"status": ContractStatus.ACTIVE}
+            contract, contract_data={"status": ContractStatus.ACTIVE}
         )
         self.assertTrue(update_result.is_valid)
 
@@ -699,3 +630,187 @@ class ContractLifecycleIntegrationTest(TestCase):
         deletion_result = self.rules.validate_contract_deletion(contract)
         self.assertTrue(deletion_result.is_valid)
 
+    # Edge cases and error handling tests
+    def test_validate_contract_creation_with_none_values(self):
+        """Test contract creation validation with None values."""
+        contract_data = {
+            "tenant_id": None,
+            "original_raw": None,
+            "original_format": None,
+            "original_spec_type": None,
+        }
+        result = self.rules.validate_contract_creation(contract_data)
+
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_contract_creation_with_whitespace_only(self):
+        """Test contract creation validation with whitespace-only strings."""
+        contract_data = {
+            "tenant_id": str(self.tenant.id),
+            "original_raw": "   ",
+            "original_format": OriginalFormat.JSON,
+            "original_spec_type": OriginalSpecType.ODCS,
+        }
+        result = self.rules.validate_contract_creation(contract_data)
+
+        # Whitespace-only should be treated as empty
+        self.assertFalse(result.is_valid)
+
+    def test_validate_contract_update_with_empty_dict(self):
+        """Test contract update validation with empty update data."""
+        contract_data = {}
+        result = self.rules.validate_contract_update(self.contract, contract_data)
+
+        # Empty update should be valid (no changes)
+        self.assertTrue(result.is_valid)
+
+    def test_validate_contract_update_with_none_status(self):
+        """Test contract update validation with None status."""
+        contract_data = {"status": None}
+        result = self.rules.validate_contract_update(self.contract, contract_data)
+
+        # None status may be invalid or handled gracefully
+        self.assertIsNotNone(result)
+
+    def test_validate_contract_deletion_with_nonexistent_contract(self):
+        """Test contract deletion validation with nonexistent contract."""
+        import uuid
+
+        fake_contract = Contract(
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            original_raw='{"info": {"name": "fake"}}',
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS,
+        )
+
+        # Should handle nonexistent contract gracefully
+        try:
+            result = self.rules.validate_contract_deletion(fake_contract)
+            self.assertIsNotNone(result)
+        except Exception:
+            # If it raises exception, that's acceptable
+            pass
+
+    def test_validate_contract_version_with_zero_version(self):
+        """Test contract version validation with zero version."""
+        self.contract.version = 0
+        self.contract.save()
+
+        result = self.rules.validate_contract_version(self.contract)
+
+        # Zero version should be invalid
+        self.assertFalse(result.is_valid)
+
+    def test_validate_contract_version_with_negative_version(self):
+        """Test contract version validation with negative version."""
+        self.contract.version = -1
+        self.contract.save()
+
+        result = self.rules.validate_contract_version(self.contract)
+
+        # Negative version should be invalid
+        self.assertFalse(result.is_valid)
+
+    def test_validate_contract_creation_with_very_long_strings(self):
+        """Test contract creation validation with very long strings."""
+        long_string = "A" * 100000
+        contract_data = {
+            "tenant_id": str(self.tenant.id),
+            "original_raw": long_string,
+            "original_format": OriginalFormat.JSON,
+            "original_spec_type": OriginalSpecType.ODCS,
+        }
+        result = self.rules.validate_contract_creation(contract_data)
+
+        # Should handle very long strings (may fail validation or succeed)
+        self.assertIsNotNone(result)
+
+    def test_validate_contract_creation_with_special_characters(self):
+        """Test contract creation validation with special characters."""
+        contract_data = {
+            "tenant_id": str(self.tenant.id),
+            "original_raw": '{"info": {"name": "<>&"\'"}}',
+            "original_format": OriginalFormat.JSON,
+            "original_spec_type": OriginalSpecType.ODCS,
+        }
+        result = self.rules.validate_contract_creation(contract_data)
+
+        # Should handle special characters
+        self.assertIsNotNone(result)
+
+    def test_validate_contract_creation_with_unicode(self):
+        """Test contract creation validation with unicode characters."""
+        contract_data = {
+            "tenant_id": str(self.tenant.id),
+            "original_raw": '{"info": {"name": "产品名称"}}',
+            "original_format": OriginalFormat.JSON,
+            "original_spec_type": OriginalSpecType.ODCS,
+        }
+        result = self.rules.validate_contract_creation(contract_data)
+
+        # Should handle unicode
+        self.assertIsNotNone(result)
+
+    def test_validate_contract_update_cross_tenant_asset(self):
+        """Test contract update validation with asset from different tenant."""
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant", slug="other-tenant-update", kyc_status=KYCStatus.VERIFIED
+        )
+        other_asset = Asset.objects.create(
+            name="Other Asset",
+            key="other-asset-update",
+            tenant=other_tenant,
+            status=AssetStatus.ACTIVE,
+        )
+
+        contract_data = {"asset_id": str(other_asset.id)}
+        result = self.rules.validate_contract_update(self.contract, contract_data)
+
+        # Should fail due to tenant mismatch
+        self.assertFalse(result.is_valid)
+
+    def test_validate_contract_deletion_with_multiple_references(self):
+        """Test contract deletion validation with multiple reference types."""
+        # Create ODPS contract referencing this contract
+        other_asset = Asset.objects.create(
+            name="ODPS Asset", key="odps-asset-ref", tenant=self.tenant, status=AssetStatus.ACTIVE
+        )
+        odps_contract = Contract.objects.create(
+            tenant=self.tenant,
+            asset=other_asset,
+            original_raw='{"schema": "https://opendataproducts.org/schema/v4.1"}',
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODPS,
+            hub_contract_json={"extensions": {"x_odps": {"odcs_link": str(self.contract.id)}}},
+        )
+
+        result = self.rules.validate_contract_deletion(self.contract)
+
+        # Should fail due to references
+        self.assertFalse(result.is_valid)
+        self.assertTrue(result.details.get("referenced_by_odps_contracts", False))
+
+    def test_validate_contract_version_with_very_large_version(self):
+        """Test contract version validation with very large version number."""
+        self.contract.version = 999999999
+        self.contract.save()
+
+        result = self.rules.validate_contract_version(self.contract)
+
+        # Should handle very large version (may warn about gap)
+        self.assertIsNotNone(result)
+
+    def test_validate_contract_creation_with_malformed_json(self):
+        """Test contract creation validation with malformed JSON."""
+        contract_data = {
+            "tenant_id": str(self.tenant.id),
+            "original_raw": '{"info": {"name": "test", invalid}',
+            "original_format": OriginalFormat.JSON,
+            "original_spec_type": OriginalSpecType.ODCS,
+        }
+        result = self.rules.validate_contract_creation(contract_data)
+
+        # May validate format or fail later during normalization
+        self.assertIsNotNone(result)

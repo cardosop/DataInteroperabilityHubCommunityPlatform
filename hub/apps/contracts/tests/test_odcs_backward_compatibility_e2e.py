@@ -10,6 +10,7 @@ Tests the complete normalization flow for all ODCS versions:
 These tests verify that the entire system works correctly for all ODCS versions
 without any mocks or stubs.
 """
+
 from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
@@ -87,7 +88,10 @@ marketplace:
 
         # Verify normalization succeeded
         self.assertIsNotNone(hub_contract)
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(errors), 0)
 
         # Verify critical fields
@@ -120,7 +124,10 @@ marketplace:
 
         # Verify normalization succeeded
         self.assertIsNotNone(hub_contract)
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(errors), 0)
 
         # Verify critical fields
@@ -144,7 +151,10 @@ marketplace:
 
         # Verify normalization succeeded
         self.assertIsNotNone(hub_contract)
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(errors), 0)
 
         # Verify critical fields
@@ -171,7 +181,10 @@ marketplace:
 
         # Verify normalization succeeded
         self.assertIsNotNone(hub_contract)
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(errors), 0)
 
         # Verify critical fields
@@ -192,7 +205,10 @@ marketplace:
 
         # Verify normalization succeeded
         self.assertIsNotNone(hub_contract)
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(errors), 0)
 
         # Verify critical fields
@@ -218,7 +234,7 @@ marketplace:
                 "spec_version": spec_version,
                 "status": status,
                 "errors": errors,
-                "warnings": warnings
+                "warnings": warnings,
             }
 
         # All versions should normalize successfully
@@ -228,7 +244,7 @@ marketplace:
             self.assertIsNotNone(result["hub_contract"])
             self.assertIn(
                 result["status"],
-                [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+                [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
             )
             self.assertEqual(len(result["errors"]), 0)
 
@@ -268,7 +284,10 @@ marketplace:
 
         # Should normalize successfully (graceful degradation)
         self.assertIsNotNone(hub_contract)
-        self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
 
         # Core fields should be present
         self.assertEqual(hub_contract["id"], "graceful-degradation-test")
@@ -286,26 +305,12 @@ marketplace:
                 "id": f"json-test-{version}",
                 "name": f"JSON Test Contract {version}",
                 "version": "1.0.0",
-                "schema": {
-                    "fields": [
-                        {
-                            "name": "id",
-                            "type": "string",
-                            "nullable": False
-                        }
-                    ]
-                },
-                "info": {
-                    "owners": [
-                        {
-                            "name": "Test Owner",
-                            "email": "owner@example.com"
-                        }
-                    ]
-                }
+                "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+                "info": {"owners": [{"name": "Test Owner", "email": "owner@example.com"}]},
             }
 
             import json
+
             raw_contract = json.dumps(json_contract)
 
             hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
@@ -316,7 +321,10 @@ marketplace:
             self.assertEqual(spec_type, OriginalSpecType.ODCS)
             self.assertEqual(spec_version, version)
             self.assertIsNotNone(hub_contract)
-            self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+            self.assertIn(
+                status,
+                [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+            )
             self.assertEqual(len(errors), 0)
             self.assertEqual(hub_contract["id"], f"json-test-{version}")
 
@@ -325,7 +333,9 @@ marketplace:
         versions = ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"]
 
         for version in versions:
-            raw_contract = self._create_yaml_contract(version, include_advanced=(version in ["3.0.2", "3.0.1"]))
+            raw_contract = self._create_yaml_contract(
+                version, include_advanced=(version in ["3.0.2", "3.0.1"])
+            )
 
             hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
                 raw_contract, "yaml"
@@ -333,7 +343,10 @@ marketplace:
 
             # Verify complete normalization
             self.assertIsNotNone(hub_contract)
-            self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+            self.assertIn(
+                status,
+                [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+            )
 
             # Verify all expected sections
             self.assertIn("id", hub_contract)
@@ -367,6 +380,120 @@ marketplace:
 
             # Verify normalization succeeded (correct normalizer was used)
             self.assertIsNotNone(hub_contract)
-            self.assertIn(status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+            self.assertIn(
+                status,
+                [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+            )
             self.assertEqual(len(errors), 0)
 
+    def test_e2e_handles_unicode_characters(self):
+        """E2E test: Verify unicode characters are handled correctly."""
+        raw_contract = """apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: test-unicode
+name: 测试合同
+version: 1.0.0
+description: 测试描述
+schema:
+  fields:
+    - name: 字段名称
+      type: string"""
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract, "yaml"
+        )
+
+        # Should handle unicode characters
+        self.assertIsNotNone(hub_contract)
+        self.assertEqual(spec_type, OriginalSpecType.ODCS)
+
+    def test_e2e_handles_special_characters(self):
+        """E2E test: Verify special characters are handled correctly."""
+        raw_contract = """apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: test-special
+name: Test & Co. (Special)
+version: 1.0.0
+description: Test <description> & more
+schema:
+  fields:
+    - name: field-name
+      type: string"""
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract, "yaml"
+        )
+
+        # Should handle special characters
+        self.assertIsNotNone(hub_contract)
+        self.assertEqual(spec_type, OriginalSpecType.ODCS)
+
+    def test_e2e_handles_very_large_documents(self):
+        """E2E test: Verify very large documents are handled correctly."""
+        large_description = "A" * 100000  # 100KB string
+        raw_contract = f"""apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: test-large
+name: Test Product
+version: 1.0.0
+description: {large_description}
+schema:
+  fields:
+    - name: id
+      type: string"""
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract, "yaml"
+        )
+
+        # Should handle very large documents
+        self.assertIsNotNone(hub_contract)
+        self.assertEqual(spec_type, OriginalSpecType.ODCS)
+
+    def test_e2e_handles_none_values(self):
+        """E2E test: Verify None values are handled correctly."""
+        import json
+
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-none",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": None,  # None value
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        raw_contract = json.dumps(contract_data)
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract, "json"
+        )
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(hub_contract)
+        self.assertEqual(spec_type, OriginalSpecType.ODCS)
+
+    def test_e2e_handles_nested_structures(self):
+        """E2E test: Verify nested structures are handled correctly."""
+        raw_contract = """apiVersion: odcs.io/v3.0.2
+kind: DataContract
+id: test-nested
+name: Test Product
+version: 1.0.0
+schema:
+  fields:
+    - name: id
+      type: string
+      nested:
+        level1:
+          level2:
+            level3:
+              value: deep"""
+
+        hub_contract, spec_type, spec_version, status, errors, warnings = normalize_contract(
+            raw_contract, "yaml"
+        )
+
+        # Should handle nested structures
+        self.assertIsNotNone(hub_contract)
+        self.assertEqual(spec_type, OriginalSpecType.ODCS)

@@ -1,0 +1,64 @@
+/**
+ * Jobs React Query Hooks
+ */
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { jobService } from '../services/jobService';
+import type { JobCreateRequest, JobListFilters } from '../../../shared/types/jobs';
+
+export function useJobs(filters: JobListFilters = {}) {
+  return useQuery({
+    queryKey: ['jobs', 'list', filters],
+    queryFn: () => jobService.list(filters),
+    refetchInterval: (query) => {
+      // Auto-refetch if there are running jobs
+      const data = query.state.data;
+      if (data?.results) {
+        const hasRunningJobs = data.results.some(
+          (job) => job.status === 'PENDING' || job.status === 'RUNNING'
+        );
+        return hasRunningJobs ? 2000 : false; // Poll every 2 seconds if running
+      }
+      return false;
+    },
+  });
+}
+
+export function useJob(id: string | null) {
+  return useQuery({
+    queryKey: ['jobs', 'detail', id],
+    queryFn: () => jobService.getById(id!),
+    enabled: !!id,
+    refetchInterval: (query) => {
+      // Auto-refetch if job is running
+      const job = query.state.data;
+      if (job && (job.status === 'PENDING' || job.status === 'RUNNING')) {
+        return 2000; // Poll every 2 seconds
+      }
+      return false;
+    },
+  });
+}
+
+export function useCreateJob() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: JobCreateRequest) => jobService.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+}
+
+export function useCancelJob() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => jobService.cancel(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', 'detail', id] });
+    },
+  });
+}

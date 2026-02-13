@@ -10,30 +10,20 @@ Tests verify:
 6. Establishes bidirectional linking
 7. Error handling for invalid inputs
 """
+
 import json
-from django.test import TestCase
-from django.contrib.auth import get_user_model
 
-from hub.apps.contracts.services import ContractService
-from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, ContractStatus
-from hub.apps.tenants.models import Tenant
 from hub.apps.assets.models import Asset
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.contracts.tests.test_base import ContractsTestBase
 
 
-User = get_user_model()
-
-
-class ODPSAutoGenerationTest(TestCase):
+class ODPSAutoGenerationTest(ContractsTestBase):
     """Test ODPS auto-generation from ODCS contracts"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(name="Test Tenant")
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
+        super().setUp()
 
         # Create a sample ODCS contract with HubContract
         self.odcs_hub_contract = {
@@ -43,44 +33,18 @@ class ODPSAutoGenerationTest(TestCase):
                 "description": "A test data contract for auto-generation",
                 "version": "1.0.0",
                 "tags": ["test", "sample"],
-                "owners": [
-                    {
-                        "name": "Test Owner",
-                        "email": "owner@example.com"
-                    }
-                ]
+                "owners": [{"name": "Test Owner", "email": "owner@example.com"}],
             },
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string"
-                    }
-                ]
-            },
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
             "marketplace": {
                 "x_odps": {
-                    "pricing_plans": [
-                        {
-                            "name": "Basic Plan",
-                            "price": 10.00,
-                            "currency": "USD"
-                        }
-                    ],
-                    "access_methods": {
-                        "api": {
-                            "endpoint": "https://api.example.com/data"
-                        }
-                    },
-                    "payment_gateways": {
-                        "stripe": {
-                            "enabled": True
-                        }
-                    }
+                    "pricing_plans": [{"name": "Basic Plan", "price": 10.00, "currency": "USD"}],
+                    "access_methods": {"api": {"endpoint": "https://api.example.com/data"}},
+                    "payment_gateways": {"stripe": {"enabled": True}},
                 },
                 "license_summary": "MIT License",
                 "restricted_use": ["No commercial use"],
-                "intended_use": ["Research", "Education"]
+                "intended_use": ["Research", "Education"],
             },
             "quality": {
                 "rules": [
@@ -88,33 +52,22 @@ class ODPSAutoGenerationTest(TestCase):
                         "dimension": "completeness",
                         "rule_id": "rule-1",
                         "name": "Completeness Check",
-                        "expression": ">= 0.95 percentage"
+                        "expression": ">= 0.95 percentage",
                     }
                 ]
             },
-            "lifecycle": {
-                "slas": {
-                    "availability": 0.99
-                }
-            }
+            "lifecycle": {"slas": {"availability": 0.99}},
         }
 
-        self.odcs_raw = json.dumps({
-            "schema": "https://datacontract.com/schema/v3.0.2",
-            "version": "3.0.2",
-            "info": {
-                "title": "Test Data Contract",
-                "version": "1.0.0"
+        self.odcs_raw = json.dumps(
+            {
+                "schema": "https://datacontract.com/schema/v3.0.2",
+                "version": "3.0.2",
+                "info": {"title": "Test Data Contract", "version": "1.0.0"},
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             },
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string"
-                    }
-                ]
-            }
-        }, indent=2)
+            indent=2,
+        )
 
     def test_auto_generate_odps_when_link_missing(self):
         """Test auto-generation when ODCS contract has no linked ODPS"""
@@ -128,14 +81,11 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json=self.odcs_hub_contract,
             hub_contract_version="1.0.0",
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Auto-generate ODPS
-        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
-        odps_contract = service.auto_generate_odps_for_odcs(
-            odcs_contract_id=str(odcs_contract.id)
-        )
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
 
         # Verify ODPS contract was created
         self.assertIsNotNone(odps_contract)
@@ -207,22 +157,22 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json=self.odcs_hub_contract,
             hub_contract_version="1.0.0",
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create existing ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-contract-001",
-                        "name": "Existing ODPS Product"
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {"productID": "test-contract-001", "name": "Existing ODPS Product"}
                     }
-                }
-            }
-        }, indent=2)
+                },
+            },
+            indent=2,
+        )
 
         existing_odps = Contract.objects.create(
             tenant=self.tenant,
@@ -233,7 +183,7 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json={"id": "test-contract-001"},
             hub_contract_version="1.0.0",
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Link them
@@ -245,10 +195,8 @@ class ODPSAutoGenerationTest(TestCase):
         odcs_contract.save(update_fields=["hub_contract_json"])
 
         # Auto-generate (should return existing)
-        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
-        odps_contract = service.auto_generate_odps_for_odcs(
-            odcs_contract_id=str(odcs_contract.id)
-        )
+        # ContractService already provided by ContractsTestBase
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
 
         # Verify it returns the existing ODPS
         self.assertEqual(odps_contract.id, existing_odps.id)
@@ -264,16 +212,11 @@ class ODPSAutoGenerationTest(TestCase):
                     "dimension": "completeness",
                     "rule_id": "rule-1",
                     "name": "Completeness Check",
-                    "expression": ">= 0.95 percentage"
+                    "expression": ">= 0.95 percentage",
                 }
             ]
         }
-        hub_contract["lifecycle"] = {
-            "slas": {
-                "availability": 0.99,
-                "latency_ms_p95": 100
-            }
-        }
+        hub_contract["lifecycle"] = {"slas": {"availability": 0.99, "latency_ms_p95": 100}}
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -284,14 +227,11 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json=hub_contract,
             hub_contract_version="1.0.0",
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Auto-generate ODPS
-        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
-        odps_contract = service.auto_generate_odps_for_odcs(
-            odcs_contract_id=str(odcs_contract.id)
-        )
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
 
         # Verify ODPS document
         odps_doc = json.loads(odps_contract.original_raw)
@@ -311,9 +251,9 @@ class ODPSAutoGenerationTest(TestCase):
             marketplace = odps_doc["product"]["marketplace"]
             # Should have marketplace fields
             self.assertTrue(
-                "pricingPlans" in marketplace or
-                "accessMethods" in marketplace or
-                "paymentGateways" in marketplace
+                "pricingPlans" in marketplace
+                or "accessMethods" in marketplace
+                or "paymentGateways" in marketplace
             )
 
     def test_auto_generate_with_minimal_marketplace_data(self):
@@ -321,13 +261,8 @@ class ODPSAutoGenerationTest(TestCase):
         # Create ODCS contract with minimal marketplace data
         minimal_hub_contract = {
             "id": "minimal-contract",
-            "info": {
-                "name": "Minimal Contract",
-                "description": "Minimal test contract"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Minimal Contract", "description": "Minimal test contract"},
+            "schema": {"fields": []},
         }
 
         odcs_contract = Contract.objects.create(
@@ -339,14 +274,11 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json=minimal_hub_contract,
             hub_contract_version="1.0.0",
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Auto-generate ODPS
-        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
-        odps_contract = service.auto_generate_odps_for_odcs(
-            odcs_contract_id=str(odcs_contract.id)
-        )
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
 
         # Verify ODPS was created even with minimal data
         self.assertIsNotNone(odps_contract)
@@ -360,18 +292,16 @@ class ODPSAutoGenerationTest(TestCase):
     def test_auto_generate_raises_error_for_non_odcs_contract(self):
         """Test that auto-generation raises error for non-ODCS contracts"""
         # Create ODPS contract (not ODCS)
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
-        }, indent=2)
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
+            },
+            indent=2,
+        )
 
         odps_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -382,17 +312,15 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json={"id": "test-product"},
             hub_contract_version="1.0.0",
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Try to auto-generate (should raise error)
-        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        # ContractService already provided by ContractsTestBase
         from hub.apps.core.services.base import ValidationError
 
         with self.assertRaises(ValidationError) as context:
-            service.auto_generate_odps_for_odcs(
-                odcs_contract_id=str(odps_contract.id)
-            )
+            self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odps_contract.id))
 
         self.assertIn("not an ODCS contract", str(context.exception))
 
@@ -408,17 +336,14 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json=None,  # No HubContract
             hub_contract_version=None,
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Try to auto-generate (should raise error)
-        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         from hub.apps.core.services.base import ValidationError
 
         with self.assertRaises(ValidationError) as context:
-            service.auto_generate_odps_for_odcs(
-                odcs_contract_id=str(odcs_contract.id)
-            )
+            self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
 
         self.assertIn("has no hub_contract_json", str(context.exception))
 
@@ -430,7 +355,9 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract["extensions"] = {}
         if "x_odps" not in hub_contract["extensions"]:
             hub_contract["extensions"]["x_odps"] = {}
-        hub_contract["extensions"]["x_odps"]["odps_link"] = "00000000-0000-0000-0000-000000000000"  # Non-existent ID
+        hub_contract["extensions"]["x_odps"][
+            "odps_link"
+        ] = "00000000-0000-0000-0000-000000000000"  # Non-existent ID
 
         odcs_contract = Contract.objects.create(
             tenant=self.tenant,
@@ -441,14 +368,12 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json=hub_contract,
             hub_contract_version="1.0.0",
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Auto-generate (should remove invalid link and create new ODPS)
-        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
-        odps_contract = service.auto_generate_odps_for_odcs(
-            odcs_contract_id=str(odcs_contract.id)
-        )
+        # ContractService already provided by ContractsTestBase
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
 
         # Verify new ODPS was created
         self.assertIsNotNone(odps_contract)
@@ -473,14 +398,11 @@ class ODPSAutoGenerationTest(TestCase):
             hub_contract_json=self.odcs_hub_contract,
             hub_contract_version="1.0.0",
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Auto-generate ODPS
-        service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
-        odps_contract = service.auto_generate_odps_for_odcs(
-            odcs_contract_id=str(odcs_contract.id)
-        )
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
 
         # Verify ODPS document includes original ODCS contract
         odps_doc = json.loads(odps_contract.original_raw)
@@ -488,7 +410,218 @@ class ODPSAutoGenerationTest(TestCase):
         if "contract" in odps_doc["product"]:
             contract_section = odps_doc["product"]["contract"]
             # Should have either spec (inline) or contractURL (reference)
-            self.assertTrue(
-                "spec" in contract_section or "contractURL" in contract_section
-            )
+            self.assertTrue("spec" in contract_section or "contractURL" in contract_section)
 
+    def test_auto_generate_handles_unicode_characters(self):
+        """Test that auto-generation handles unicode characters correctly."""
+        unicode_hub_contract = {
+            "id": "test-unicode",
+            "info": {"name": "测试产品", "description": "测试描述"},
+            "schema": {"fields": [{"name": "字段名称", "data_type": "string"}]},
+        }
+
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-unicode",
+                "name": "测试产品",
+                "version": "1.0.0",
+                "schema": {"fields": [{"name": "字段名称", "type": "string"}]},
+            }
+        )
+
+        odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_raw=odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            hub_contract_json=unicode_hub_contract,
+            hub_contract_version="1.0.0",
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        # ContractService already provided by ContractsTestBase
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+
+        # Should handle unicode characters
+        self.assertIsNotNone(odps_contract)
+        if odps_contract.hub_contract_json and "info" in odps_contract.hub_contract_json:
+            self.assertIsNotNone(odps_contract.hub_contract_json["info"])
+
+    def test_auto_generate_handles_special_characters(self):
+        """Test that auto-generation handles special characters correctly."""
+        special_hub_contract = {
+            "id": "test-special",
+            "info": {"name": "Test & Co. (Special)", "description": "Test <description> & more"},
+            "schema": {"fields": [{"name": "field-name", "data_type": "string"}]},
+        }
+
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-special",
+                "name": "Test & Co. (Special)",
+                "version": "1.0.0",
+                "schema": {"fields": [{"name": "field-name", "type": "string"}]},
+            }
+        )
+
+        odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_raw=odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            hub_contract_json=special_hub_contract,
+            hub_contract_version="1.0.0",
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        # ContractService already provided by ContractsTestBase
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+
+        # Should handle special characters
+        self.assertIsNotNone(odps_contract)
+        if odps_contract.hub_contract_json and "info" in odps_contract.hub_contract_json:
+            self.assertIsNotNone(odps_contract.hub_contract_json["info"])
+
+    def test_auto_generate_handles_very_large_documents(self):
+        """Test that auto-generation handles very large documents correctly."""
+        # Keep large but under PostgreSQL btree index row size limit (~2704 bytes for hub_contract_json index)
+        large_description = "A" * 1000
+        large_hub_contract = {
+            "id": "test-large",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+        }
+
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-large",
+                "name": "Test Product",
+                "version": "1.0.0",
+                "description": large_description,
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
+            }
+        )
+
+        odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_raw=odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            hub_contract_json=large_hub_contract,
+            hub_contract_version="1.0.0",
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        # ContractService already provided by ContractsTestBase
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+
+        # Should handle very large documents
+        self.assertIsNotNone(odps_contract)
+
+    def test_auto_generate_handles_none_values(self):
+        """Test that auto-generation handles None values correctly."""
+        none_hub_contract = {
+            "id": "test-none",
+            "info": {"name": "Test Product", "description": None},  # None value
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+        }
+
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-none",
+                "name": "Test Product",
+                "version": "1.0.0",
+                "description": None,
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
+            }
+        )
+
+        odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_raw=odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            hub_contract_json=none_hub_contract,
+            hub_contract_version="1.0.0",
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        # ContractService already provided by ContractsTestBase
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(odps_contract)
+
+    def test_auto_generate_handles_nested_structures(self):
+        """Test that auto-generation handles nested structures correctly."""
+        nested_hub_contract = {
+            "id": "test-nested",
+            "info": {
+                "name": "Test Product",
+                "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+            },
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "data_type": "string",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                ]
+            },
+        }
+
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-nested",
+                "name": "Test Product",
+                "version": "1.0.0",
+                "schema": {
+                    "fields": [
+                        {
+                            "name": "id",
+                            "type": "string",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    ]
+                },
+            }
+        )
+
+        odcs_contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_raw=odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            hub_contract_json=nested_hub_contract,
+            hub_contract_version="1.0.0",
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        # ContractService already provided by ContractsTestBase
+        odps_contract = self.contract_service.auto_generate_odps_for_odcs(odcs_contract_id=str(odcs_contract.id))
+
+        # Should handle nested structures
+        self.assertIsNotNone(odps_contract)
+        if odps_contract.hub_contract_json and "schema" in odps_contract.hub_contract_json:
+            self.assertIsNotNone(odps_contract.hub_contract_json["schema"])

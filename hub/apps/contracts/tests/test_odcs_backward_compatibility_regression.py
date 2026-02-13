@@ -10,19 +10,22 @@ Tests all ODCS versions (3.0.2, 3.0.1, 3.0.0, 3.0.0-preview, 2.2.2) to ensure:
 This test suite ensures that version-specific normalizers maintain backward
 compatibility and handle older versions gracefully.
 """
+
 from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import (
-    normalize_contract,
-    get_normalizer,
     NormalizationResult,
+    get_normalizer,
+    normalize_contract,
 )
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import ODCSNormalizerV3_0_0_Preview
 from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import (
+    ODCSNormalizerV3_0_0_Preview,
+)
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
 
 
 class ODCSBackwardCompatibilityRegressionTest(TestCase):
@@ -43,31 +46,26 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
                         "name": "id",
                         "type": "string",
                         "nullable": False,
-                        "description": "Unique identifier"
+                        "description": "Unique identifier",
                     },
                     {
                         "name": "name",
                         "type": "string",
                         "nullable": False,
-                        "description": "Name field"
+                        "description": "Name field",
                     },
                     {
                         "name": "value",
                         "type": "number",
                         "nullable": True,
-                        "description": "Numeric value"
-                    }
+                        "description": "Numeric value",
+                    },
                 ]
             },
             "info": {
-                "owners": [
-                    {
-                        "name": "Test Owner",
-                        "email": "owner@example.com"
-                    }
-                ],
-                "tags": ["test", "regression"]
-            }
+                "owners": [{"name": "Test Owner", "email": "owner@example.com"}],
+                "tags": ["test", "regression"],
+            },
         }
 
     def _create_advanced_odcs_contract(self, version: str) -> dict:
@@ -82,24 +80,17 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
                     "id": "rule1",
                     "name": "Completeness Check",
                     "type": "completeness",
-                    "rule": "id IS NOT NULL"
+                    "rule": "id IS NOT NULL",
                 }
-            ]
+            ],
         }
 
         # Add lifecycle section (available in all versions)
-        contract["lifecycle"] = {
-            "data_source": "database",
-            "refresh_cadence": "daily"
-        }
+        contract["lifecycle"] = {"data_source": "database", "refresh_cadence": "daily"}
 
         # Add marketplace section (available in 3.0.1+)
         if version in ["3.0.2", "3.0.1"]:
-            contract["marketplace"] = {
-                "pricing": {
-                    "model": "free"
-                }
-            }
+            contract["marketplace"] = {"pricing": {"model": "free"}}
 
         return contract
 
@@ -115,7 +106,10 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
 
         # Verify normalization succeeded
         self.assertIsNotNone(result.hub_contract)
-        self.assertIn(NormalizationStatus.NORMALIZED_OK, [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            NormalizationStatus.NORMALIZED_OK,
+            [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0)
 
         # Verify critical fields
@@ -153,7 +147,10 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
 
         # Verify normalization succeeded
         self.assertIsNotNone(result.hub_contract)
-        self.assertIn(NormalizationStatus.NORMALIZED_OK, [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            NormalizationStatus.NORMALIZED_OK,
+            [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0)
 
         # Verify critical fields (same as 3.0.2)
@@ -181,7 +178,10 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
 
         # Verify normalization succeeded
         self.assertIsNotNone(result.hub_contract)
-        self.assertIn(NormalizationStatus.NORMALIZED_OK, [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            NormalizationStatus.NORMALIZED_OK,
+            [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0)
 
         # Verify critical fields
@@ -209,7 +209,10 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
 
         # Verify normalization succeeded
         self.assertIsNotNone(result.hub_contract)
-        self.assertIn(NormalizationStatus.NORMALIZED_OK, [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            NormalizationStatus.NORMALIZED_OK,
+            [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0)
 
         # Verify critical fields
@@ -234,7 +237,10 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
 
         # Verify normalization succeeded
         self.assertIsNotNone(result.hub_contract)
-        self.assertIn(NormalizationStatus.NORMALIZED_OK, [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            NormalizationStatus.NORMALIZED_OK,
+            [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0)
 
         # Verify critical fields
@@ -257,7 +263,10 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
 
         # Should normalize successfully without marketplace
         self.assertIsNotNone(result.hub_contract)
-        self.assertIn(NormalizationStatus.NORMALIZED_OK, [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            NormalizationStatus.NORMALIZED_OK,
+            [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0)
 
         # Critical fields should still be present
@@ -274,7 +283,10 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
 
         # Should normalize successfully without 3.x features
         self.assertIsNotNone(result.hub_contract)
-        self.assertIn(NormalizationStatus.NORMALIZED_OK, [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            NormalizationStatus.NORMALIZED_OK,
+            [result.status, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
         self.assertEqual(len(result.errors), 0)
 
         # Critical fields should still be present
@@ -354,7 +366,7 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
             self.assertIsNotNone(result.hub_contract)
             self.assertIn(
                 result.status,
-                [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+                [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
             )
             self.assertEqual(len(result.errors), 0)
 
@@ -365,7 +377,7 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
         # Test with invalid contract (missing required fields)
         invalid_contract = {
             "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract"
+            "kind": "DataContract",
             # Missing id, name, schema
         }
 
@@ -377,7 +389,110 @@ class ODCSBackwardCompatibilityRegressionTest(TestCase):
             # All versions should handle errors consistently
             # Either fail with errors or produce contract with warnings
             self.assertTrue(
-                result.status == NormalizationStatus.NORMALIZATION_FAILED or
-                (result.hub_contract is not None and len(result.warnings) > 0)
+                result.status == NormalizationStatus.NORMALIZATION_FAILED
+                or (result.hub_contract is not None and len(result.warnings) > 0)
             )
 
+    def test_regression_handles_unicode_characters(self):
+        """Test that regression tests handle unicode characters correctly."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-unicode",
+            "name": "测试合同",
+            "version": "1.0.0",
+            "description": "测试描述",
+            "schema": {"fields": [{"name": "字段名称", "type": "string"}]},
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle unicode characters
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "info" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["info"])
+
+    def test_regression_handles_special_characters(self):
+        """Test that regression tests handle special characters correctly."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-special",
+            "name": "Test & Co. (Special)",
+            "version": "1.0.0",
+            "description": "Test <description> & more",
+            "schema": {"fields": [{"name": "field-name", "type": "string"}]},
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle special characters
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "info" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["info"])
+
+    def test_regression_handles_very_large_documents(self):
+        """Test that regression tests handle very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-large",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": large_description,
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle very large documents
+        self.assertIsNotNone(result.hub_contract)
+
+    def test_regression_handles_none_values(self):
+        """Test that regression tests handle None values correctly."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-none",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": None,  # None value
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(result.hub_contract)
+
+    def test_regression_handles_nested_structures(self):
+        """Test that regression tests handle nested structures correctly."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-nested",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                ]
+            },
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle nested structures
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "schema" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["schema"])

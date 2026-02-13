@@ -13,118 +13,91 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Resource cleanup
 - Error handling
 """
+
 import json
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.odps_linking_compensation import (
-    ODPSLinkingCompensation,
-    ODPSLinkingState
-)
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
 )
+from hub.apps.contracts.odps_linking_compensation import ODPSLinkingCompensation, ODPSLinkingState
+from hub.apps.contracts.tests.test_base import ContractsTestBase
 from hub.apps.core.services.base import ValidationError
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class ODPSLinkingCompensationTestBase(TestCase):
+class ODPSLinkingCompensationTestBase(ContractsTestBase):
     """Base test class for ODPS linking compensation tests."""
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
+        super().setUp()
 
         # Create ODCS contract
-        from hub.apps.contracts.services import ContractService
-        contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        contract_service = self.contract_service
 
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-odcs-linking-compensation",
-            "name": "Test ODCS for Linking Compensation",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-odcs-linking-compensation",
+                "name": "Test ODCS for Linking Compensation",
+                "version": "3.0.2",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
         self.odcs_contract = contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS,
         )
 
         # Create ODPS contract
-        from hub.apps.contracts.services import ODPSService
-        odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        odps_service = self.odps_service
 
         # ODPS document with contract section for linking
-        odcs_raw_for_odps = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-odcs-linking-compensation",
-            "name": "Test ODCS for Linking Compensation",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
+        odcs_raw_for_odps = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-odcs-linking-compensation",
+                "name": "Test ODCS for Linking Compensation",
+                "version": "3.0.2",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-linking-compensation",
-                        "name": "Test ODPS for Linking Compensation"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-odps-linking-compensation",
+                            "name": "Test ODPS for Linking Compensation",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                    "contract": {"spec": json.loads(odcs_raw_for_odps)},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                },
-                "contract": {
-                    "spec": json.loads(odcs_raw_for_odps)
-                }
             }
-        })
+        )
 
         self.odps_contract = odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Link the contracts
@@ -132,7 +105,7 @@ class ODPSLinkingCompensationTestBase(TestCase):
             odcs_contract_id=str(self.odcs_contract.id),
             odps_contract_id=str(self.odps_contract.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Refresh from database
@@ -141,8 +114,7 @@ class ODPSLinkingCompensationTestBase(TestCase):
 
         # Initialize compensation handler
         self.compensation = ODPSLinkingCompensation(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
 
@@ -151,13 +123,15 @@ class ODPSLinkingCompensationRemoveLinksTest(ODPSLinkingCompensationTestBase):
 
     def test_remove_established_links_success(self):
         """Test successful removal of established links."""
+        # Arrange
         state = ODPSLinkingState(
-            odps_contract_id=str(self.odps_contract.id),
-            odcs_contract_id=str(self.odcs_contract.id)
+            odps_contract_id=str(self.odps_contract.id), odcs_contract_id=str(self.odcs_contract.id)
         )
 
+        # Act
         result = self.compensation.remove_established_links(state=state)
 
+        # Assert
         self.assertEqual(result["status"], "success")
         self.assertGreater(len(result["links_removed"]), 0)
         self.assertIn("odps_to_odcs", result["links_removed"])
@@ -184,31 +158,35 @@ class ODPSLinkingCompensationRemoveLinksTest(ODPSLinkingCompensationTestBase):
 
     def test_remove_established_links_odps_not_found(self):
         """Test link removal when ODPS contract doesn't exist."""
+        # Arrange
         from uuid import uuid4
-        fake_id = str(uuid4())
 
+        fake_id = str(uuid4())
         state = ODPSLinkingState(
-            odps_contract_id=fake_id,
-            odcs_contract_id=str(self.odcs_contract.id)
+            odps_contract_id=fake_id, odcs_contract_id=str(self.odcs_contract.id)
         )
 
+        # Act
         result = self.compensation.remove_established_links(state=state)
 
+        # Assert
         # Should still remove ODCS link
         self.assertIn("odcs_to_odps", result["links_removed"])
 
     def test_remove_established_links_odcs_not_found(self):
         """Test link removal when ODCS contract doesn't exist."""
+        # Arrange
         from uuid import uuid4
-        fake_id = str(uuid4())
 
+        fake_id = str(uuid4())
         state = ODPSLinkingState(
-            odps_contract_id=str(self.odps_contract.id),
-            odcs_contract_id=fake_id
+            odps_contract_id=str(self.odps_contract.id), odcs_contract_id=fake_id
         )
 
+        # Act
         result = self.compensation.remove_established_links(state=state)
 
+        # Assert
         # Should still remove ODPS link
         self.assertIn("odps_to_odcs", result["links_removed"])
 
@@ -228,8 +206,7 @@ class ODPSLinkingCompensationRemoveLinksTest(ODPSLinkingCompensationTestBase):
             self.odcs_contract.save()
 
         state = ODPSLinkingState(
-            odps_contract_id=str(self.odps_contract.id),
-            odcs_contract_id=str(self.odcs_contract.id)
+            odps_contract_id=str(self.odps_contract.id), odcs_contract_id=str(self.odcs_contract.id)
         )
 
         result = self.compensation.remove_established_links(state=state)
@@ -245,37 +222,32 @@ class ODPSLinkingCompensationRestoreTest(ODPSLinkingCompensationTestBase):
         """Test state restoration deletes ODPS contract if it was created."""
         # Create a new ODPS contract for this test
         from hub.apps.contracts.services import ODPSService
-        odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
 
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-to-delete",
-                        "name": "Test ODPS to Delete"
-                    }
+        odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {"productID": "test-odps-to-delete", "name": "Test ODPS to Delete"}
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
             }
-        })
+        )
 
         new_odps = odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         state = ODPSLinkingState(
             odps_contract_id=str(new_odps.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            odps_contract_created=True
+            odps_contract_created=True,
         )
 
         result = self.compensation.restore_previous_state(state=state)
@@ -292,7 +264,7 @@ class ODPSLinkingCompensationRestoreTest(ODPSLinkingCompensationTestBase):
         state = ODPSLinkingState(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            odps_contract_created=False  # Not created during linking
+            odps_contract_created=False,  # Not created during linking
         )
 
         result = self.compensation.restore_previous_state(state=state)
@@ -306,16 +278,14 @@ class ODPSLinkingCompensationRestoreTest(ODPSLinkingCompensationTestBase):
         """Test state restoration restores previous links."""
         # Link ODPS to ODCS (this will be the "previous" link)
         from hub.apps.contracts.services import ContractService
-        contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+
+        contract_service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         contract_service.link_odps_to_odcs(
             odcs_contract_id=str(self.odcs_contract.id),
             odps_contract_id=str(self.odps_contract.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Refresh to get current state
@@ -332,7 +302,7 @@ class ODPSLinkingCompensationRestoreTest(ODPSLinkingCompensationTestBase):
         state = ODPSLinkingState(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            previous_odcs_link=str(self.odcs_contract.id)  # Previous link (same as current)
+            previous_odcs_link=str(self.odcs_contract.id),  # Previous link (same as current)
         )
 
         # Remove current link
@@ -366,13 +336,10 @@ class ODPSLinkingCompensationCleanupTest(ODPSLinkingCompensationTestBase):
         state = ODPSLinkingState(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            events_published=["event-1", "event-2"]
+            events_published=["event-1", "event-2"],
         )
 
-        result = self.compensation.cleanup_resources(
-            state=state,
-            publish_compensation_events=True
-        )
+        result = self.compensation.cleanup_resources(state=state, publish_compensation_events=True)
 
         self.assertEqual(result["status"], "success")
         self.assertGreater(len(result["resources_cleaned"]), 0)
@@ -383,13 +350,10 @@ class ODPSLinkingCompensationCleanupTest(ODPSLinkingCompensationTestBase):
         state = ODPSLinkingState(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            events_published=[]
+            events_published=[],
         )
 
-        result = self.compensation.cleanup_resources(
-            state=state,
-            publish_compensation_events=True
-        )
+        result = self.compensation.cleanup_resources(state=state, publish_compensation_events=True)
 
         self.assertEqual(result["status"], "success")
 
@@ -403,7 +367,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
             odps_contract_created=False,
-            events_published=["event-1"]
+            events_published=["event-1"],
         )
 
         result = self.compensation.compensate(
@@ -411,7 +375,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
             remove_links=True,
             restore_state=True,
             cleanup_resources=True,
-            publish_compensation_events=True
+            publish_compensation_events=True,
         )
 
         self.assertEqual(result["status"], "success")
@@ -431,8 +395,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
     def test_compensate_partial_rollback(self):
         """Test compensation with only link removal."""
         state = ODPSLinkingState(
-            odps_contract_id=str(self.odps_contract.id),
-            odcs_contract_id=str(self.odcs_contract.id)
+            odps_contract_id=str(self.odps_contract.id), odcs_contract_id=str(self.odcs_contract.id)
         )
 
         result = self.compensation.compensate(
@@ -440,7 +403,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
             remove_links=True,
             restore_state=False,
             cleanup_resources=False,
-            publish_compensation_events=False
+            publish_compensation_events=False,
         )
 
         self.assertEqual(result["status"], "success")
@@ -452,48 +415,44 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
         """Test compensation deletes ODPS contract if it was created."""
         # Create a fresh ODCS contract for this test (not linked to anything)
         from hub.apps.contracts.services import ContractService
-        contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
 
-        odcs_raw2 = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-odcs-compensate-delete",
-            "name": "Test ODCS for Compensate Delete",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
+        contract_service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+        odcs_raw2 = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-odcs-compensate-delete",
+                "name": "Test ODCS for Compensate Delete",
+                "version": "3.0.2",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
         fresh_odcs = contract_service.create_contract(
             original_raw=odcs_raw2,
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS
+            original_spec_type=OriginalSpecType.ODCS,
         )
 
         # ODPS document with contract section for linking
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-compensate-delete",
-                        "name": "Test ODPS for Compensate Delete"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-odps-compensate-delete",
+                            "name": "Test ODPS for Compensate Delete",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                    "contract": {"spec": json.loads(odcs_raw2)},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                },
-                "contract": {
-                    "spec": json.loads(odcs_raw2)
-                }
             }
-        })
+        )
 
         # Link ODPS to ODCS (this will create the ODPS contract)
         new_odps = contract_service.link_odps_to_odcs(
@@ -501,7 +460,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         state = ODPSLinkingState(
@@ -509,7 +468,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
             odcs_contract_id=str(fresh_odcs.id),
             odps_contract_created=True,
             previous_odps_link=None,  # No previous link since ODPS was created during linking
-            previous_odcs_link=None
+            previous_odcs_link=None,
         )
 
         result = self.compensation.compensate(
@@ -517,7 +476,7 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
             remove_links=True,
             restore_state=True,
             cleanup_resources=True,
-            publish_compensation_events=True
+            publish_compensation_events=True,
         )
 
         self.assertEqual(result["status"], "success")
@@ -538,9 +497,45 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
 
     def test_compensate_no_contracts(self):
         """Test compensation when no contracts are provided."""
+        state = ODPSLinkingState(odps_contract_id=None, odcs_contract_id=None)
+
+        result = self.compensation.compensate(
+            state=state,
+            remove_links=True,
+            restore_state=True,
+            cleanup_resources=True,
+            publish_compensation_events=True,
+        )
+
+        # Should complete successfully even without contracts
+        self.assertEqual(result["status"], "success")
+
+    def test_linking_compensation_handles_unicode_characters(self):
+        """Test that linking compensation handles unicode characters correctly."""
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-unicode",
+                        "name": "测试产品",
+                        "description": "测试描述",
+                    }
+                },
+                "dataSchema": {"fields": []},
+            },
+        }
+
+        odps_raw = json.dumps(odps_doc)
+        odps_contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
         state = ODPSLinkingState(
-            odps_contract_id=None,
-            odcs_contract_id=None
+            odps_contract_id=str(odps_contract.id), odcs_contract_id=str(self.odcs_contract.id)
         )
 
         result = self.compensation.compensate(
@@ -548,9 +543,170 @@ class ODPSLinkingCompensationComprehensiveTest(ODPSLinkingCompensationTestBase):
             remove_links=True,
             restore_state=True,
             cleanup_resources=True,
-            publish_compensation_events=True
+            publish_compensation_events=True,
         )
 
-        # Should complete successfully even without contracts
+        # Should handle unicode characters
+        self.assertIsNotNone(result)
         self.assertEqual(result["status"], "success")
 
+    def test_linking_compensation_handles_special_characters(self):
+        """Test that linking compensation handles special characters correctly."""
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-special",
+                        "name": "Test & Co. (Special)",
+                        "description": "Test <description> & more",
+                    }
+                },
+                "dataSchema": {"fields": []},
+            },
+        }
+
+        odps_raw = json.dumps(odps_doc)
+        odps_contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        state = ODPSLinkingState(
+            odps_contract_id=str(odps_contract.id), odcs_contract_id=str(self.odcs_contract.id)
+        )
+
+        result = self.compensation.compensate(
+            state=state,
+            remove_links=True,
+            restore_state=True,
+            cleanup_resources=True,
+            publish_compensation_events=True,
+        )
+
+        # Should handle special characters
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "success")
+
+    def test_linking_compensation_handles_very_large_documents(self):
+        """Test that linking compensation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-large",
+                        "name": "Test Product",
+                        "description": large_description,
+                    }
+                },
+                "dataSchema": {"fields": []},
+            },
+        }
+
+        odps_raw = json.dumps(odps_doc)
+        odps_contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        state = ODPSLinkingState(
+            odps_contract_id=str(odps_contract.id), odcs_contract_id=str(self.odcs_contract.id)
+        )
+
+        result = self.compensation.compensate(
+            state=state,
+            remove_links=True,
+            restore_state=True,
+            cleanup_resources=True,
+            publish_compensation_events=True,
+        )
+
+        # Should handle very large documents
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "success")
+
+    def test_linking_compensation_handles_none_values(self):
+        """Test that linking compensation handles None values correctly."""
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-none",
+                        "name": "Test Product",
+                        # description omitted - None is not allowed by schema
+                    }
+                },
+                "dataSchema": {"fields": []},
+            },
+        }
+
+        odps_raw = json.dumps(odps_doc)
+        odps_contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        state = ODPSLinkingState(
+            odps_contract_id=str(odps_contract.id), odcs_contract_id=str(self.odcs_contract.id)
+        )
+
+        result = self.compensation.compensate(
+            state=state,
+            remove_links=True,
+            restore_state=True,
+            cleanup_resources=True,
+            publish_compensation_events=True,
+        )
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "success")
+
+    def test_linking_compensation_handles_nested_structures(self):
+        """Test that linking compensation handles nested structures correctly."""
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-nested",
+                        "name": "Test Product",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                },
+                "dataSchema": {"fields": []},
+            },
+        }
+
+        odps_raw = json.dumps(odps_doc)
+        odps_contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        state = ODPSLinkingState(
+            odps_contract_id=str(odps_contract.id), odcs_contract_id=str(self.odcs_contract.id)
+        )
+
+        result = self.compensation.compensate(
+            state=state,
+            remove_links=True,
+            restore_state=True,
+            cleanup_resources=True,
+            publish_compensation_events=True,
+        )
+
+        # Should handle nested structures
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "success")

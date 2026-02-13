@@ -10,19 +10,20 @@ Tests edge cases including:
 
 These tests use real Google Cloud SDK clients - no mocks/stubs.
 """
-import os
+
 import json
+import os
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
+from hub.apps.core.services.base import NotFoundError, PermissionError
 from hub.apps.integrations.base import (
-    MarketplaceType,
     MarketplaceListing,
     MarketplaceResource,
+    MarketplaceType,
 )
-from hub.apps.core.services.base import NotFoundError, PermissionError
-
+from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 # Real service account credentials for testing
 REAL_SERVICE_ACCOUNT_JSON = {
@@ -36,13 +37,13 @@ REAL_SERVICE_ACCOUNT_JSON = {
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
     "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dih-786%40projzero-441310.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
+    "universe_domain": "googleapis.com",
 }
 
 
 def get_test_credentials():
     """Get test credentials from environment or use default"""
-    env_json = os.environ.get('GCP_SERVICE_ACCOUNT_JSON')
+    env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if env_json:
         try:
             return json.loads(env_json)
@@ -60,19 +61,15 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Set up test class with real credentials"""
         super().setUpClass()
         cls.credentials_json = get_test_credentials()
-        cls.project_id = cls.credentials_json.get('project_id', 'projzero-441310')
+        cls.project_id = cls.credentials_json.get("project_id", "projzero-441310")
 
     def setUp(self):
         """Set up test fixtures"""
         self.connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
         # Authenticate the connector before tests
-        credentials = {
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json
-        }
+        credentials = {"project_id": self.project_id, "credentials_json": self.credentials_json}
         try:
             self.connector.authenticate(credentials)
         except Exception:
@@ -86,7 +83,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
             # This should raise NotFoundError (correct behavior for non-existent resource)
             with self.assertRaises(NotFoundError):
                 self.connector.list_listings(
-                    filters={'data_exchange_id': 'nonexistent-exchange-12345'}
+                    filters={"data_exchange_id": "nonexistent-exchange-12345"}
                 )
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
@@ -99,7 +96,9 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
             # requesting a specific non-existent one will raise NotFoundError
             # This is acceptable - skip if it's a different error that indicates no data exchanges exist
             if "No data exchanges found" in str(e) or "not found" in str(e).lower():
-                self.skipTest("No data exchanges found in project - cannot test empty result scenario")
+                self.skipTest(
+                    "No data exchanges found in project - cannot test empty result scenario"
+                )
             else:
                 raise
 
@@ -176,7 +175,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Test get_listing with empty string ID"""
         try:
             with self.assertRaises((ValueError, NotFoundError)):
-                self.connector.get_listing('')
+                self.connector.get_listing("")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
@@ -194,7 +193,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         try:
             # Invalid format: should not contain slashes or special characters
             with self.assertRaises((ValueError, NotFoundError)):
-                self.connector.get_listing('invalid/format/123')
+                self.connector.get_listing("invalid/format/123")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
@@ -202,7 +201,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Test list_resources with empty listing ID"""
         try:
             with self.assertRaises((ValueError, NotFoundError)):
-                self.connector.list_resources('')
+                self.connector.list_resources("")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
@@ -219,7 +218,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Test list_resources with non-existent listing ID"""
         try:
             # Use a non-existent listing ID
-            resources = self.connector.list_resources('nonexistent-exchange/nonexistent-listing')
+            resources = self.connector.list_resources("nonexistent-exchange/nonexistent-listing")
             # Should return empty list or raise NotFoundError
             self.assertIsInstance(resources, list)
             self.assertEqual(len(resources), 0)
@@ -245,8 +244,10 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Test sync_pull with non-existent listing IDs"""
         try:
             result = self.connector.sync_pull(
-                listing_ids=['nonexistent-exchange/nonexistent-listing-1',
-                            'nonexistent-exchange/nonexistent-listing-2']
+                listing_ids=[
+                    "nonexistent-exchange/nonexistent-listing-1",
+                    "nonexistent-exchange/nonexistent-listing-2",
+                ]
             )
             # Should complete but with errors or skipped items
             self.assertIsNotNone(result)
@@ -260,7 +261,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Test sync_pull with filters that return no results"""
         try:
             result = self.connector.sync_pull(
-                filters={'data_exchange_id': 'nonexistent-exchange-12345'}
+                filters={"data_exchange_id": "nonexistent-exchange-12345"}
             )
             # Should complete successfully with 0 items
             self.assertIsNotNone(result)
@@ -276,9 +277,9 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         try:
             # Create a minimal listing
             minimal_listing = MarketplaceListing(
-                marketplace_id='test-exchange/test-listing',
+                marketplace_id="test-exchange/test-listing",
                 marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE,
-                title='Test Listing',
+                title="Test Listing",
                 description=None,  # Missing description
                 url=None,  # Missing URL
             )
@@ -288,7 +289,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
             # Should handle missing fields gracefully
             self.assertIsNotNone(mapping)
             self.assertIsNotNone(mapping.asset_data)
-            self.assertEqual(mapping.asset_data.get('name'), 'Test Listing')
+            self.assertEqual(mapping.asset_data.get("name"), "Test Listing")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
@@ -296,7 +297,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Test download_resource with empty resource ID"""
         try:
             with self.assertRaises((ValueError, NotFoundError)):
-                self.connector.download_resource('', '/tmp/test.csv')
+                self.connector.download_resource("", "/tmp/test.csv")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
@@ -305,7 +306,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         try:
             # None will cause error when trying to parse or use it
             with self.assertRaises((ValueError, TypeError, AttributeError, ConnectionError)):
-                self.connector.download_resource(None, '/tmp/test.csv')
+                self.connector.download_resource(None, "/tmp/test.csv")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
@@ -316,8 +317,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
             # Invalid destination: parent directory doesn't exist
             with self.assertRaises((ValueError, OSError, PermissionError)):
                 self.connector.download_resource(
-                    'test-exchange/test-listing/test-table',
-                    '/nonexistent/path/to/file.csv'
+                    "test-exchange/test-listing/test-table", "/nonexistent/path/to/file.csv"
                 )
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
@@ -329,19 +329,14 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Test project_id validation"""
         # Empty project_id
         with self.assertRaises(ValueError):
-            connector = GCPMarketplaceConnector(
-                project_id='',
-                use_adc=True
-            )
+            connector = GCPMarketplaceConnector(project_id="", use_adc=True)
             connector._get_bigquery_client()
 
     def test_location_validation(self):
         """Test location validation"""
         # Empty location should use default
         connector = GCPMarketplaceConnector(
-            project_id='test-project',
-            credentials_json={'type': 'service_account'},
-            location=''
+            project_id="test-project", credentials_json={"type": "service_account"}, location=""
         )
         # Empty location should be handled (may use default or raise error)
         # The connector should handle this gracefully
@@ -352,8 +347,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         # Invalid credentials_json type
         with self.assertRaises(ValueError):
             connector = GCPMarketplaceConnector(
-                project_id='test-project',
-                credentials_json='invalid-string'  # Should be dict
+                project_id="test-project", credentials_json="invalid-string"  # Should be dict
             )
             connector._get_credentials()
 
@@ -361,9 +355,7 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         """Test list_listings with invalid filter keys"""
         try:
             # Use invalid filter keys
-            listings = self.connector.list_listings(
-                filters={'invalid_filter_key': 'value'}
-            )
+            listings = self.connector.list_listings(filters={"invalid_filter_key": "value"})
             # Should handle invalid filters gracefully (may ignore or raise ValueError)
             self.assertIsInstance(listings, list)
         except (ValueError, NotFoundError):
@@ -372,3 +364,72 @@ class TestGCPMarketplaceConnectorEdgeCases(TestCase):
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
 
+    def test_list_listings_with_none_filters(self):
+        """Test list_listings() error handling with None filters"""
+        try:
+            listings = self.connector.list_listings(filters=None)
+            # Should handle None filters gracefully
+            self.assertIsInstance(listings, list)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+
+    def test_list_listings_with_zero_limit(self):
+        """Test list_listings() edge case with zero limit"""
+        try:
+            listings = self.connector.list_listings(limit=0)
+            # Should return empty list or handle gracefully
+            self.assertIsInstance(listings, list)
+            self.assertEqual(len(listings), 0)
+        except (ValueError, TypeError):
+            # Expected if zero limit is invalid
+            pass
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+
+    def test_list_listings_with_very_large_limit(self):
+        """Test list_listings() edge case with very large limit"""
+        try:
+            listings = self.connector.list_listings(limit=1000000)
+            # Should handle large limit gracefully (may be capped internally)
+            self.assertIsInstance(listings, list)
+            self.assertLessEqual(len(listings), 1000000)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+
+    def test_get_listing_with_empty_id(self):
+        """Test get_listing() error handling with empty ID"""
+        try:
+            with self.assertRaises((ValueError, NotFoundError)):
+                self.connector.get_listing("")
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+
+    def test_get_listing_with_none_id(self):
+        """Test get_listing() error handling with None ID"""
+        try:
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                self.connector.get_listing(None)  # type: ignore[arg-type]
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+
+    def test_list_resources_with_empty_listing_id(self):
+        """Test list_resources() error handling with empty listing ID"""
+        try:
+            with self.assertRaises((ValueError, NotFoundError)):
+                self.connector.list_resources("")
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+
+    def test_list_resources_with_none_listing_id(self):
+        """Test list_resources() error handling with None listing ID"""
+        try:
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                self.connector.list_resources(None)  # type: ignore[arg-type]
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")

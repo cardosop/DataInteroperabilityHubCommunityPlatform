@@ -6,22 +6,24 @@ real CKAN instances. No mocks or stubs - all tests use actual CKAN API endpoints
 
 Uses centralized test utilities for consistent configuration.
 """
-import pytest
+
 import time
+
+import pytest
 from django.test import TestCase
 
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
-    MarketplaceType,
     MarketplaceListing,
     MarketplaceResource,
+    MarketplaceType,
 )
-from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    create_test_connector,
-    marketplace_available,
-    get_test_ckan_url,  # Backward compatibility
     # Backward compatibility (deprecated)
     ckan_available,
+    create_test_connector,
+    get_test_ckan_url,  # Backward compatibility
+    marketplace_available,
 )
 
 
@@ -108,10 +110,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
     def test_list_listings_with_search_query(self):
         """Test listing retrieval with search query filter."""
         # Search for packages (most CKAN instances have some packages)
-        listings = self.connector.list_listings(
-            filters={'q': 'data'},
-            limit=10
-        )
+        listings = self.connector.list_listings(filters={"q": "data"}, limit=10)
 
         self.assertIsInstance(listings, list)
         # Verify search worked (may return 0 results if no matches)
@@ -134,8 +133,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             if org_listing:
                 # Filter by organization
                 filtered = self.connector.list_listings(
-                    filters={'organization': org_listing.category},
-                    limit=10
+                    filters={"organization": org_listing.category}, limit=10
                 )
 
                 self.assertIsInstance(filtered, list)
@@ -147,8 +145,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         """Test listing retrieval with filter that returns no results."""
         # Use a very specific filter that likely won't match anything
         listings = self.connector.list_listings(
-            filters={'q': 'nonexistent_package_xyz_12345'},
-            limit=10
+            filters={"q": "nonexistent_package_xyz_12345"}, limit=10
         )
 
         self.assertIsInstance(listings, list)
@@ -167,12 +164,12 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         self.assertEqual(listing.marketplace_type, MarketplaceType.CKAN_INSTANCE)
         self.assertIsNotNone(listing.title)
         self.assertIsNotNone(listing.metadata)
-        self.assertIn('ckan_package', listing.metadata)
+        self.assertIn("ckan_package", listing.metadata)
 
     def test_get_listing_not_found(self):
         """Test getting a non-existent listing raises NotFoundError."""
         with self.assertRaises(NotFoundError):
-            self.connector.get_listing('nonexistent-package-id-xyz-12345')
+            self.connector.get_listing("nonexistent-package-id-xyz-12345")
 
     def test_get_listing_with_name(self):
         """Test getting a listing by name (CKAN supports both ID and name)."""
@@ -183,8 +180,8 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         listing_by_id = self.connector.get_listing(self.test_package_id)
 
         # Extract name from metadata if available
-        package_data = listing_by_id.metadata.get('ckan_package', {})
-        package_name = package_data.get('name')
+        package_data = listing_by_id.metadata.get("ckan_package", {})
+        package_name = package_data.get("name")
 
         if package_name and package_name != self.test_package_id:
             # Try getting by name
@@ -208,7 +205,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
     def test_list_resources_not_found(self):
         """Test listing resources for non-existent package raises NotFoundError."""
         with self.assertRaises(NotFoundError):
-            self.connector.list_resources('nonexistent-package-id-xyz-12345')
+            self.connector.list_resources("nonexistent-package-id-xyz-12345")
 
     def test_list_resources_empty_package(self):
         """Test listing resources for a package with no resources."""
@@ -238,11 +235,11 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
             self.assertIsNotNone(resource.resource_id)
             self.assertIsNotNone(resource.name)
             self.assertIsNotNone(resource.resource_type)
-            self.assertIn(resource.resource_type, ['FILE', 'API'])
+            self.assertIn(resource.resource_type, ["FILE", "API"])
 
             # Verify metadata contains CKAN resource data
-            self.assertIn('ckan_resource', resource.metadata)
-            ckan_resource = resource.metadata['ckan_resource']
+            self.assertIn("ckan_resource", resource.metadata)
+            ckan_resource = resource.metadata["ckan_resource"]
             self.assertIsInstance(ckan_resource, dict)
 
     def test_listing_to_marketplace_listing_mapping(self):
@@ -258,11 +255,11 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         self.assertEqual(listing.marketplace_type, MarketplaceType.CKAN_INSTANCE)
 
         # Verify metadata contains full CKAN package data
-        self.assertIn('ckan_package', listing.metadata)
-        ckan_package = listing.metadata['ckan_package']
+        self.assertIn("ckan_package", listing.metadata)
+        ckan_package = listing.metadata["ckan_package"]
         self.assertIsInstance(ckan_package, dict)
-        self.assertIn('id', ckan_package)
-        self.assertIn('title', ckan_package)
+        self.assertIn("id", ckan_package)
+        self.assertIn("title", ckan_package)
 
     def test_listing_tags_extraction(self):
         """Test that tags are properly extracted from CKAN packages."""
@@ -298,7 +295,7 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
 
         if listing.url:
             self.assertIsInstance(listing.url, str)
-            self.assertTrue(listing.url.startswith('http'))
+            self.assertTrue(listing.url.startswith("http"))
             self.assertIn(listing.marketplace_id, listing.url)
 
     def test_pagination_consistency(self):
@@ -345,7 +342,8 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         """Test that connector handles connection issues gracefully."""
         # Create connector with invalid URL
         from hub.apps.integrations.connectors.ckan_connector import CKANConnector
-        invalid_connector = CKANConnector(base_url='https://invalid-ckan-instance-xyz-12345.com')
+
+        invalid_connector = CKANConnector(base_url="https://invalid-ckan-instance-xyz-12345.com")
 
         with self.assertRaises(ConnectionError):
             invalid_connector.list_listings(limit=1)
@@ -370,3 +368,42 @@ class TestCKANConnectorDiscoveryOperations(TestCase):
         self.assertIsNotNone(detailed_listing.title)
         self.assertIsNotNone(detailed_listing.metadata)
 
+    def test_get_listing_with_empty_id(self):
+        """Test get_listing() error handling with empty ID"""
+        with self.assertRaises((ValueError, NotFoundError)):
+            self.connector.get_listing("")
+
+    def test_get_listing_with_none_id(self):
+        """Test get_listing() error handling with None ID"""
+        with self.assertRaises((ValueError, TypeError, NotFoundError)):
+            self.connector.get_listing(None)  # type: ignore[arg-type]
+
+    def test_list_resources_with_empty_id(self):
+        """Test list_resources() error handling with empty ID"""
+        with self.assertRaises((ValueError, NotFoundError)):
+            self.connector.list_resources("")
+
+    def test_list_resources_with_none_id(self):
+        """Test list_resources() error handling with None ID"""
+        with self.assertRaises((ValueError, TypeError, NotFoundError)):
+            self.connector.list_resources(None)  # type: ignore[arg-type]
+
+    def test_list_listings_with_zero_limit(self):
+        """Test list_listings() edge case with zero limit"""
+        listings = self.connector.list_listings(limit=0)
+        # Should return empty list or handle gracefully
+        self.assertIsInstance(listings, list)
+        self.assertEqual(len(listings), 0)
+
+    def test_list_listings_with_very_large_limit(self):
+        """Test list_listings() edge case with very large limit"""
+        listings = self.connector.list_listings(limit=1000000)
+        # Should handle large limit gracefully (may be capped internally)
+        self.assertIsInstance(listings, list)
+        self.assertLessEqual(len(listings), 1000000)
+
+    def test_list_listings_with_none_filters(self):
+        """Test list_listings() handles None filters gracefully"""
+        listings = self.connector.list_listings(filters=None)
+        # Should handle None filters gracefully
+        self.assertIsInstance(listings, list)

@@ -56,6 +56,22 @@ Rate limit information is returned in response headers:
 - `X-RateLimit-Reset`: Unix timestamp when limit resets
 - `Retry-After`: Seconds until retry is allowed
 
+### Per-tenant and per-API-key configuration
+
+Per-tenant and per-API-key limits are implemented and configurable as follows (no TODOs; all use real DB/Redis).
+
+1. **Tenant limit**  
+   Stored in Django `TenantConfig.rate_limits` (JSONField). The gateway reads the key `api_gateway_requests_per_hour` (integer, requests per hour).  
+   Example: set `TenantConfig.rate_limits = {"api_gateway_requests_per_hour": 5000}` for a tenant.  
+   If the key is missing or null, no tenant-level limit is applied (tier and API key limits still apply).
+
+2. **API key limit**  
+   Stored on the Django `APIKey` model as `rate_limit_per_hour` (nullable integer).  
+   Example: `APIKey.objects.create(..., rate_limit_per_hour=1000)`.  
+   If null, no API-key-level limit is applied.
+
+Checks run in order: tier → tenant → API key. The first limit that is exceeded returns 429 with the corresponding limit and headers. When all pass, response headers reflect the tier limit.
+
 ## Running the Service
 
 ### Development
@@ -110,9 +126,31 @@ pytest tests/
 ## Endpoints
 
 - `GET /health`: Health check endpoint
+- `GET /api/v1/health`: Aggregate health of all backends (see Backend health contract below)
 - `GET /metrics`: Prometheus metrics endpoint
 - `GET /`: Service information
 - `* /api/v1/*`: Proxied to backend service
+
+## Backend health contract
+
+Backends behind the gateway **MUST** expose a health endpoint so the gateway can report aggregate health at `GET /api/v1/health`.
+
+- **Default path**: `/health` — the gateway builds each backend’s health URL as `{backend_base_url}/health` (no trailing slash on base).
+- **Override**: If a backend uses a different path (e.g. `/healthz`, `/ready`), configure it in `routing.BACKEND_HEALTH_PATHS` (hostname → path), e.g. `{"workflow-engine": "/healthz"}`.
+
+**Backends and their health paths (current deployment):**
+
+| Backend              | Health path | Notes |
+|----------------------|-------------|--------|
+| api-service          | `/health`   | Django app at `path("health/", ...)` — request `/health` or `/health/`. |
+| dq-service           | `/health`   | FastAPI `@app.get("/health")`. |
+| compliance-service   | `/health`   | FastAPI `@app.get("/health")`. |
+| semantic-service     | `/health`   | FastAPI `@app.get("/health")`. |
+| search-service       | `/health`   | FastAPI `@app.get("/health")`. |
+| observability-service| `/health`   | FastAPI `@app.get("/health")`. |
+| webhook-service      | `/health`   | FastAPI `@app.get("/health")`. |
+
+New backends added to `ROUTE_CONFIG` must expose `/health` (or be added to `BACKEND_HEALTH_PATHS`). The gateway uses `routing.get_backend_health_url(backend_url)` for every backend when building the aggregate health response; there are no hardcoded per-backend paths outside this contract.
 
 ## Dependencies
 

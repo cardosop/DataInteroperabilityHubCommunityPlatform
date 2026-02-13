@@ -11,52 +11,34 @@ All tests use real implementations (no mocks/stubs) and verify:
 - original_raw is preserved even when normalization fails
 - Contract is created with proper error tracking
 """
+
 import json
+
 import pytest
-from django.test import TestCase
 
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
 )
-from hub.apps.contracts.services import ODPSService
 from hub.apps.contracts.odps_errors import ODPSNormalizationError
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
+from hub.apps.contracts.tests.test_base import ContractsTestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class ODPSNormalizationCompensationTestBase(TestCase):
+class ODPSNormalizationCompensationTestBase(ContractsTestBase):
     """Base test class for ODPS normalization compensation tests."""
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
+        super().setUp()
 
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
-
-        # Initialize ODPS service
-        self.odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
 
 
 class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTestBase):
@@ -64,24 +46,26 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
 
     def test_normalization_failure_preserves_original_raw(self):
         """Test that original_raw is preserved when normalization fails."""
+        # Arrange
         # Create an ODPS document that passes validation but fails normalization
         # Missing "name" field in product.details.en - required for normalization
         # but might pass ODPS schema validation (depending on schema strictness)
-        invalid_odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product"
-                        # Missing "name" - required for normalization but might pass validation
-                    }
+        invalid_odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product"
+                            # Missing "name" - required for normalization but might pass validation
+                        }
+                    },
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
+        # Act
         # Create ODPS contract - normalization should fail if name is missing
         # Note: This might fail validation first, but if it passes validation,
         # normalization will fail and we can test compensation
@@ -90,9 +74,10 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
                 odps_raw=invalid_odps_raw,
                 odps_format="json",
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
+            # Assert
             # If contract was created (passed validation), verify normalization handling
             self.assertIsNotNone(contract)
 
@@ -113,23 +98,24 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
 
     def test_normalization_failure_with_ref_resolution_preserves_original_raw(self):
         """Test that original_raw is preserved even when ref resolution fails."""
+        # Arrange
         # Create ODPS document with external ref that might fail resolution
         # but will still preserve original_raw
-        odps_with_ref = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
+        odps_with_ref = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                    "dataSchema": {
+                        "fields": [{"name": "id", "type": "string"}],
+                        # Additional ref that might fail resolution
+                        "$ref": "https://example.com/nonexistent-schema.json",
+                    },
                 },
-                "dataSchema": {
-                    "$ref": "https://example.com/nonexistent-schema.json"  # Will fail resolution
-                }
             }
-        })
+        )
 
+        # Act
         # Create ODPS contract with resolve_external_refs=True
         # Even if ref resolution fails, original_raw should be preserved
         contract = self.odps_service.create_odps(
@@ -137,9 +123,10 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
             odps_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            resolve_external_refs=True
+            resolve_external_refs=True,
         )
 
+        # Assert
         # Verify contract was created
         self.assertIsNotNone(contract)
 
@@ -150,30 +137,32 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
 
     def test_normalization_failure_without_ref_resolution_preserves_original_raw(self):
         """Test that original_raw is preserved when ref resolution is disabled."""
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
+        # Arrange
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                    "dataSchema": {
+                        "fields": [{"name": "id", "type": "string"}],
+                        # Additional ref for local resolution test
+                        "$ref": "#/definitions/schema",
+                    },
                 },
-                "dataSchema": {
-                    "$ref": "#/definitions/schema"
-                }
             }
-        })
+        )
 
+        # Act
         # Create ODPS contract with resolve_external_refs=False
         contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            resolve_external_refs=False
+            resolve_external_refs=False,
         )
 
+        # Assert
         # Verify contract was created
         self.assertIsNotNone(contract)
 
@@ -183,32 +172,35 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
 
     def test_normalization_failure_marks_contract_appropriately(self):
         """Test that contract is marked appropriately when normalization fails."""
+        # Arrange
         # Create ODPS document that passes validation but fails normalization
         # Missing "name" field - required for normalization
-        invalid_odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product"
-                        # Missing "name" - required for normalization
-                    }
+        invalid_odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-product"
+                            # Missing "name" - required for normalization
+                        }
+                    },
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
+        # Act
         # Create ODPS contract
         try:
             contract = self.odps_service.create_odps(
                 odps_raw=invalid_odps_raw,
                 odps_format="json",
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
+            # Assert
             # If contract was created, verify normalization status handling
             self.assertIsNotNone(contract)
 
@@ -220,8 +212,7 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
             if contract.normalization_status == NormalizationStatus.NORMALIZATION_FAILED:
                 # Verify normalization status is FAILED
                 self.assertEqual(
-                    contract.normalization_status,
-                    NormalizationStatus.NORMALIZATION_FAILED
+                    contract.normalization_status, NormalizationStatus.NORMALIZATION_FAILED
                 )
 
                 # Verify contract status (should be DRAFT for failed normalization)
@@ -248,27 +239,22 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
         # The actual exception handling is tested in the normalizer unit tests
 
         # Use a valid ODPS document to verify original_raw preservation works
-        valid_odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
+        valid_odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
         # Create ODPS contract
         contract = self.odps_service.create_odps(
             odps_raw=valid_odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify contract was created
@@ -285,25 +271,22 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
     def test_normalization_failure_with_valid_odps_structure_but_invalid_content(self):
         """Test normalization failure with valid structure but invalid content."""
         # Create ODPS document with valid structure but content that causes normalization failure
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                    "dataSchema": {
+                        "fields": [
+                            {
+                                "name": "id",
+                                "type": "invalid_type",  # Invalid type that might cause normalization issues
+                            }
+                        ]
+                    },
                 },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "id",
-                            "type": "invalid_type"  # Invalid type that might cause normalization issues
-                        }
-                    ]
-                }
             }
-        })
+        )
 
         # Create ODPS contract
         # Note: This might actually succeed with warnings, but we test the failure path
@@ -311,7 +294,7 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify contract was created
@@ -325,3 +308,148 @@ class ODPSNormalizationFailureCompensationTest(ODPSNormalizationCompensationTest
         self.assertEqual(contract.original_spec_type, OriginalSpecType.ODPS)
         self.assertEqual(contract.original_format, OriginalFormat.JSON)
 
+    def test_normalization_compensation_handles_unicode_characters(self):
+        """Test that normalization compensation handles unicode characters correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-unicode",
+                            "name": "测试产品",
+                            "description": "测试描述",
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Should handle unicode characters
+        self.assertIsNotNone(contract)
+        self.assertIsNotNone(contract.original_raw)
+
+    def test_normalization_compensation_handles_special_characters(self):
+        """Test that normalization compensation handles special characters correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-special",
+                            "name": "Test & Co. (Special)",
+                            "description": "Test <description> & more",
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Should handle special characters
+        self.assertIsNotNone(contract)
+        self.assertIsNotNone(contract.original_raw)
+
+    def test_normalization_compensation_handles_very_large_documents(self):
+        """Test that normalization compensation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-large",
+                            "name": "Test Product",
+                            "description": large_description,
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Should handle very large documents
+        self.assertIsNotNone(contract)
+        self.assertIsNotNone(contract.original_raw)
+
+    def test_normalization_compensation_handles_none_values(self):
+        """Test that normalization compensation handles None values correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-none",
+                            "name": "Test Product",
+                            # description omitted - None is not allowed by schema
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(contract)
+        self.assertIsNotNone(contract.original_raw)
+
+    def test_normalization_compensation_handles_nested_structures(self):
+        """Test that normalization compensation handles nested structures correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-nested",
+                            "name": "Test Product",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Should handle nested structures
+        self.assertIsNotNone(contract)
+        self.assertIsNotNone(contract.original_raw)

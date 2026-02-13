@@ -14,18 +14,19 @@ Following TDD approach and engineering best practices:
 """
 
 import uuid
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from hub.apps.core.events.models import Event
-from hub.apps.search.services import SearchService
-from hub.apps.search.models import SearchIndex
-from hub.apps.search.indexing import SearchIndexer
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.contracts.models import Contract
 from hub.apps.assets.models import Asset
+from hub.apps.contracts.models import Contract
+from hub.apps.core.events.models import Event
 from hub.apps.datasets.models import Dataset
+from hub.apps.search.indexing import SearchIndexer
+from hub.apps.search.models import SearchIndex
+from hub.apps.search.services import SearchService
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 
 
 @override_settings(
@@ -37,21 +38,29 @@ class SearchServiceEventIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        # CRITICAL: Disconnect semantic service signals to prevent timeouts
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        self.service = SearchService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.service = SearchService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_search_publishes_search_query_event(self):
         """Test that search() publishes search.query event"""
@@ -62,7 +71,7 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=resource_id,
             title="Test Contract",
-            search_vector="test contract"
+            search_vector="test contract",
         )
 
         # Get initial event count
@@ -70,14 +79,12 @@ class SearchServiceEventIntegrationTest(TestCase):
 
         # Perform search
         results, total = self.service.search(
-            tenant_id=str(self.tenant.id),
-            query="test",
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), query="test", user_id=str(self.user.id)
         )
 
         # Verify event was published
         # Events are persisted synchronously in tests, so we can query immediately
-        events = Event.objects.filter(event_type="search.query").order_by('-created_at')
+        events = Event.objects.filter(event_type="search.query").order_by("-created_at")
         # Filter by tenant to ensure we get the right event
         events = events.filter(tenant_id=self.tenant.id)
         self.assertGreaterEqual(events.count(), initial_count + 1)
@@ -107,7 +114,7 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_id=resource_id,
             title="Test Contract",
             search_vector="test contract",
-            classification="PUBLIC"
+            classification="PUBLIC",
         )
 
         # Perform search with filters
@@ -117,11 +124,11 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="CONTRACT",
             classification="PUBLIC",
             tags=["important"],
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify event was published with filters
-        event = Event.objects.filter(event_type="search.query").order_by('-created_at').first()
+        event = Event.objects.filter(event_type="search.query").order_by("-created_at").first()
         self.assertIsNotNone(event)
 
         event_data = event.data
@@ -136,11 +143,11 @@ class SearchServiceEventIntegrationTest(TestCase):
         results, total = self.service.search(
             tenant_id=str(self.tenant.id),
             query="nonexistent_query_xyz123",
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify event was published with no_results=True
-        event = Event.objects.filter(event_type="search.query").order_by('-created_at').first()
+        event = Event.objects.filter(event_type="search.query").order_by("-created_at").first()
         self.assertIsNotNone(event)
 
         event_data = event.data
@@ -150,7 +157,13 @@ class SearchServiceEventIntegrationTest(TestCase):
     def test_update_index_publishes_index_updated_event(self):
         """Test that update_index() publishes search.index.updated event"""
         # Create a contract
-        from hub.apps.contracts.models import ContractStatus, OriginalSpecType, OriginalFormat, NormalizationStatus
+        from hub.apps.contracts.models import (
+            ContractStatus,
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+
         contract = Contract.objects.create(
             tenant=self.tenant,
             version=1,
@@ -163,13 +176,10 @@ class SearchServiceEventIntegrationTest(TestCase):
             hub_contract_json={
                 "hub_contract_version": "1.0.0",
                 "id": "test",
-                "info": {
-                    "title": "Test Contract",
-                    "description": "Test description"
-                }
+                "info": {"title": "Test Contract", "description": "Test description"},
             },
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Get initial event count
@@ -180,11 +190,11 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=str(contract.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify event was published
-        events = Event.objects.filter(event_type="search.index.updated").order_by('-created_at')
+        events = Event.objects.filter(event_type="search.index.updated").order_by("-created_at")
         self.assertEqual(events.count(), initial_count + 1)
 
         event = events.first()
@@ -205,7 +215,13 @@ class SearchServiceEventIntegrationTest(TestCase):
     def test_update_index_publishes_event_with_created_type(self):
         """Test that update_index() publishes search.index.updated event with update_type='created'"""
         # Create a contract
-        from hub.apps.contracts.models import ContractStatus, OriginalSpecType, OriginalFormat, NormalizationStatus
+        from hub.apps.contracts.models import (
+            ContractStatus,
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+
         contract = Contract.objects.create(
             tenant=self.tenant,
             version=1,
@@ -218,13 +234,10 @@ class SearchServiceEventIntegrationTest(TestCase):
             hub_contract_json={
                 "hub_contract_version": "1.0.0",
                 "id": "new",
-                "info": {
-                    "title": "New Contract",
-                    "description": "New description"
-                }
+                "info": {"title": "New Contract", "description": "New description"},
             },
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Update index with update_type='created'
@@ -233,11 +246,13 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_id=str(contract.id),
             tenant_id=str(self.tenant.id),
             update_type="created",
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify event was published with update_type='created'
-        event = Event.objects.filter(event_type="search.index.updated").order_by('-created_at').first()
+        event = (
+            Event.objects.filter(event_type="search.index.updated").order_by("-created_at").first()
+        )
         self.assertIsNotNone(event)
 
         event_data = event.data
@@ -250,7 +265,7 @@ class SearchServiceEventIntegrationTest(TestCase):
             tenant=self.tenant,
             name="Test Asset",
             description="Test description",
-            created_by=self.user
+            created_by=self.user,
         )
         SearchIndexer.index_asset(asset)
 
@@ -262,12 +277,12 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="ASSET",
             resource_id=str(asset.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify event was published
         # Events are persisted synchronously in tests, so we can query immediately
-        events = Event.objects.filter(event_type="search.index.updated").order_by('-created_at')
+        events = Event.objects.filter(event_type="search.index.updated").order_by("-created_at")
         # Filter by tenant to ensure we get the right event
         events = events.filter(tenant_id=self.tenant.id)
         self.assertGreaterEqual(events.count(), initial_count + 1)
@@ -285,7 +300,13 @@ class SearchServiceEventIntegrationTest(TestCase):
     def test_rebuild_index_publishes_index_rebuilt_event(self):
         """Test that rebuild_index() publishes search.index.rebuilt event"""
         # Create some resources
-        from hub.apps.contracts.models import ContractStatus, OriginalSpecType, OriginalFormat, NormalizationStatus
+        from hub.apps.contracts.models import (
+            ContractStatus,
+            NormalizationStatus,
+            OriginalFormat,
+            OriginalSpecType,
+        )
+
         contract = Contract.objects.create(
             tenant=self.tenant,
             version=1,
@@ -298,31 +319,24 @@ class SearchServiceEventIntegrationTest(TestCase):
             hub_contract_json={
                 "hub_contract_version": "1.0.0",
                 "id": "test",
-                "info": {
-                    "title": "Test Contract"
-                }
+                "info": {"title": "Test Contract"},
             },
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            created_by=self.user
+            created_by=self.user,
         )
-        asset = Asset.objects.create(
-            tenant=self.tenant,
-            name="Test Asset",
-            created_by=self.user
-        )
+        asset = Asset.objects.create(tenant=self.tenant, name="Test Asset", created_by=self.user)
 
         # Get initial event count
         initial_count = Event.objects.filter(event_type="search.index.rebuilt").count()
 
         # Rebuild index
         result = self.service.rebuild_index(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Verify event was published
         # Events are persisted synchronously in tests, so we can query immediately
-        events = Event.objects.filter(event_type="search.index.rebuilt").order_by('-created_at')
+        events = Event.objects.filter(event_type="search.index.rebuilt").order_by("-created_at")
         # Filter by tenant to ensure we get the right event
         events = events.filter(tenant_id=self.tenant.id)
         self.assertGreaterEqual(events.count(), initial_count + 1)
@@ -353,12 +367,13 @@ class SearchServiceEventIntegrationTest(TestCase):
 
         # Rebuild index (should succeed normally)
         result = self.service.rebuild_index(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Verify event was published with success=True
-        event = Event.objects.filter(event_type="search.index.rebuilt").order_by('-created_at').first()
+        event = (
+            Event.objects.filter(event_type="search.index.rebuilt").order_by("-created_at").first()
+        )
         self.assertIsNotNone(event)
 
         event_data = event.data
@@ -374,18 +389,16 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=resource_id,
             title="Test Contract",
-            search_vector="test contract"
+            search_vector="test contract",
         )
 
         # Perform search
         results, total = self.service.search(
-            tenant_id=str(self.tenant.id),
-            query="test",
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), query="test", user_id=str(self.user.id)
         )
 
         # Verify event includes execution_time_ms
-        event = Event.objects.filter(event_type="search.query").order_by('-created_at').first()
+        event = Event.objects.filter(event_type="search.query").order_by("-created_at").first()
         self.assertIsNotNone(event)
 
         event_data = event.data
@@ -401,7 +414,7 @@ class SearchServiceEventIntegrationTest(TestCase):
             tenant=self.tenant,
             name="Test Asset",
             description="Test description",
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Update index
@@ -409,11 +422,13 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="ASSET",
             resource_id=str(asset.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify event was published
-        event = Event.objects.filter(event_type="search.index.updated").order_by('-created_at').first()
+        event = (
+            Event.objects.filter(event_type="search.index.updated").order_by("-created_at").first()
+        )
         self.assertIsNotNone(event)
 
         event_data = event.data
@@ -431,7 +446,7 @@ class SearchServiceEventIntegrationTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
 
         file_obj = File.objects.create(
@@ -442,21 +457,17 @@ class SearchServiceEventIntegrationTest(TestCase):
             status=FileStatus.ACTIVE,
             storage_path="test/test.csv",
             content_sha256="abc123",
-            created_by=self.user
+            created_by=self.user,
         )
 
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=asset,
             file=file_obj,
-            schema_json={
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
-            },
+            schema_json={"fields": [{"name": "id", "type": "string"}]},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Update index
@@ -464,12 +475,14 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="DATASET",
             resource_id=str(dataset.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify event was published
         # Filter by tenant to ensure we get the right event
-        events = Event.objects.filter(event_type="search.index.updated", tenant_id=self.tenant.id).order_by('-created_at')
+        events = Event.objects.filter(
+            event_type="search.index.updated", tenant_id=self.tenant.id
+        ).order_by("-created_at")
         self.assertGreaterEqual(events.count(), 1)
 
         event = events.first()
@@ -488,7 +501,7 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=resource_id,
             title="Test Contract",
-            search_vector="test contract"
+            search_vector="test contract",
         )
 
         # Perform search without query string
@@ -496,11 +509,11 @@ class SearchServiceEventIntegrationTest(TestCase):
             tenant_id=str(self.tenant.id),
             query="",
             resource_type="CONTRACT",
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify event uses query_type='filter_only'
-        event = Event.objects.filter(event_type="search.query").order_by('-created_at').first()
+        event = Event.objects.filter(event_type="search.query").order_by("-created_at").first()
         self.assertIsNotNone(event)
 
         event_data = event.data
@@ -519,14 +532,12 @@ class SearchServiceEventIntegrationTest(TestCase):
             resource_type="CONTRACT",
             resource_id=resource_id,
             title="Test Contract",
-            search_vector="test contract"
+            search_vector="test contract",
         )
 
         # Perform search
         results, total = self.service.search(
-            tenant_id=str(self.tenant.id),
-            query="test",
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), query="test", user_id=str(self.user.id)
         )
 
         # Verify search succeeded
@@ -537,3 +548,16 @@ class SearchServiceEventIntegrationTest(TestCase):
         # Verify event was still published (if event publishing worked)
         # This test ensures search doesn't fail even if events are published
 
+    def tearDown(self):
+        """Reconnect signals after test"""
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass

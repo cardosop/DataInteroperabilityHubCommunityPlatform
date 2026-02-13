@@ -4,19 +4,19 @@ Security Tests for AWS Data Exchange Connector
 Tests authentication, authorization, credential encryption, and input validation.
 Tests verify AWS security best practices.
 """
-import os
-import pytest
-from unittest.mock import Mock, patch
-from django.test import TestCase
-from django.conf import settings
-from botocore.exceptions import ClientError
 
-from hub.apps.integrations.connectors.aws_data_exchange_connector import (
-    AWSDataExchangeConnector
-)
-from hub.apps.integrations.models import MarketplaceConnection
+import os
+from unittest.mock import Mock, patch
+
+import pytest
+from botocore.exceptions import ClientError
+from django.conf import settings
+from django.test import TestCase
+
+from hub.apps.core.services.base import NotFoundError, PermissionError
 from hub.apps.integrations.base import MarketplaceType
-from hub.apps.core.services.base import PermissionError, NotFoundError
+from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSDataExchangeConnector
+from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.tenants.models import Tenant
 
 # ConnectionError is a built-in Python exception (available since Python 3.3)
@@ -29,30 +29,19 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant-security"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant-security")
 
     def test_iam_credentials_validation(self):
         """Test IAM credentials validation"""
         # Test missing access key - will fail during authentication test
-        connector = AWSDataExchangeConnector(
-            aws_secret_access_key='test-secret'
-        )
+        connector = AWSDataExchangeConnector(aws_secret_access_key="test-secret")
         with self.assertRaises((ValueError, PermissionError, ConnectionError)):
-            connector.authenticate({
-                'aws_secret_access_key': 'test-secret'
-            })
+            connector.authenticate({"aws_secret_access_key": "test-secret"})
 
         # Test missing secret key - will fail during authentication test
-        connector = AWSDataExchangeConnector(
-            aws_access_key_id='test-key'
-        )
+        connector = AWSDataExchangeConnector(aws_access_key_id="test-key")
         with self.assertRaises((ValueError, PermissionError, ConnectionError)):
-            connector.authenticate({
-                'aws_access_key_id': 'test-key'
-            })
+            connector.authenticate({"aws_access_key_id": "test-key"})
 
         # Test invalid credentials format
         connector = AWSDataExchangeConnector()
@@ -62,9 +51,7 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
     def test_iam_role_assumption_validation(self):
         """Test IAM role assumption validation"""
         # Test role ARN format validation
-        connector = AWSDataExchangeConnector(
-            role_arn='invalid-arn-format'
-        )
+        connector = AWSDataExchangeConnector(role_arn="invalid-arn-format")
 
         # Role ARN validation happens during authentication
         # Invalid ARN will cause authentication to fail
@@ -79,9 +66,9 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE,
             name="Test Connection",
             config={
-                'aws_access_key_id': 'test-key-id',
-                'aws_secret_access_key': 'test-secret-key',
-            }
+                "aws_access_key_id": "test-key-id",
+                "aws_secret_access_key": "test-secret-key",
+            },
         )
 
         # Verify credentials are stored (they should be encrypted if encryption is enabled)
@@ -91,27 +78,26 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         stored_config = connection.config
 
         # Check if encryption is enabled (indicated by '_encrypted' key)
-        if '_encrypted' in stored_config:
+        if "_encrypted" in stored_config:
             # Encryption is enabled - verify encrypted value exists
-            self.assertIn('_encrypted', stored_config)
-            self.assertIsInstance(stored_config['_encrypted'], str)
-            self.assertGreater(len(stored_config['_encrypted']), 0)
+            self.assertIn("_encrypted", stored_config)
+            self.assertIsInstance(stored_config["_encrypted"], str)
+            self.assertGreater(len(stored_config["_encrypted"]), 0)
         else:
             # Encryption is disabled - verify keys exist directly
-            self.assertIn('aws_access_key_id', stored_config)
-            self.assertIn('aws_secret_access_key', stored_config)
+            self.assertIn("aws_access_key_id", stored_config)
+            self.assertIn("aws_secret_access_key", stored_config)
 
     def test_input_validation_dataset_id(self):
         """Test dataset ID validation"""
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='test-key',
-            aws_secret_access_key='test-secret'
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
         # Test empty dataset ID - connector will try to call AWS and get ConnectionError
         # This is acceptable behavior - empty string validation could be added but isn't critical
         with self.assertRaises((ValueError, TypeError, ConnectionError)):
-            connector.get_listing('')
+            connector.get_listing("")
 
         # Test None dataset ID - boto3 will validate and raise ParameterValidationError
         # which gets wrapped in ConnectionError
@@ -119,28 +105,27 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
             connector.get_listing(None)
 
         # Test invalid dataset ID format - mock AWS call to avoid real connection
-        with patch.object(connector, '_get_dataexchange_client') as mock_get_client:
+        with patch.object(connector, "_get_dataexchange_client") as mock_get_client:
             mock_client = Mock()
             mock_get_client.return_value = mock_client
             error = ClientError(
-                {'Error': {'Code': 'ResourceNotFoundException', 'Message': 'Dataset not found'}},
-                'GetDataSet'
+                {"Error": {"Code": "ResourceNotFoundException", "Message": "Dataset not found"}},
+                "GetDataSet",
             )
             mock_client.get_data_set.side_effect = error
             connector._circuit_breaker.call = lambda func: func()
 
             with self.assertRaises(NotFoundError):
-                connector.get_listing('invalid-format-123')
+                connector.get_listing("invalid-format-123")
 
     def test_input_validation_s3_bucket(self):
         """Test S3 bucket validation in export job creation"""
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='test-key',
-            aws_secret_access_key='test-secret'
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
         # Mock AWS client to avoid real calls
-        with patch.object(connector, '_get_dataexchange_client') as mock_get_client:
+        with patch.object(connector, "_get_dataexchange_client") as mock_get_client:
             mock_client = Mock()
             mock_get_client.return_value = mock_client
             connector._circuit_breaker.call = lambda func: func()
@@ -148,19 +133,19 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
             # Test empty bucket name - may raise ValueError or ConnectionError depending on validation
             with self.assertRaises((ValueError, ConnectionError)):
                 connector._create_export_job(
-                    dataset_id='dataset-123',
-                    revision_id='revision-123',
-                    destination_bucket='',
-                    destination_key_prefix='prefix'
+                    dataset_id="dataset-123",
+                    revision_id="revision-123",
+                    destination_bucket="",
+                    destination_key_prefix="prefix",
                 )
 
             # Test None bucket name - boto3 will validate parameter types
             with self.assertRaises((ValueError, TypeError, ConnectionError)):
                 connector._create_export_job(
-                    dataset_id='dataset-123',
-                    revision_id='revision-123',
+                    dataset_id="dataset-123",
+                    revision_id="revision-123",
                     destination_bucket=None,
-                    destination_key_prefix='prefix'
+                    destination_key_prefix="prefix",
                 )
 
     def test_least_privilege_principle(self):
@@ -169,8 +154,7 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         # This is tested by verifying the connector only calls necessary AWS APIs
 
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='test-key',
-            aws_secret_access_key='test-secret'
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
         # Verify connector only uses read operations for discovery
@@ -186,18 +170,16 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
         """Test that connector supports credential rotation"""
         # Test that connector can be re-authenticated with new credentials
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='old-key',
-            aws_secret_access_key='old-secret'
+            aws_access_key_id="old-key", aws_secret_access_key="old-secret"
         )
 
         # Re-authenticate with new credentials
         # Note: This will fail connection test with invalid credentials, but that's expected
         # The important thing is that the connector accepts new credentials for authentication
         try:
-            connector.authenticate({
-                'aws_access_key_id': 'new-key',
-                'aws_secret_access_key': 'new-secret'
-            })
+            connector.authenticate(
+                {"aws_access_key_id": "new-key", "aws_secret_access_key": "new-secret"}
+            )
             # If authentication succeeds (unlikely with invalid credentials), verify authenticated flag
             # If it fails, that's also acceptable - the test verifies the method accepts new credentials
         except (ConnectionError, PermissionError):
@@ -206,26 +188,26 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
 
         # Verify connector updated credentials (even if authentication failed)
         # The connector should have updated its internal credential state
-        self.assertEqual(connector._aws_access_key_id, 'new-key')
-        self.assertEqual(connector._aws_secret_access_key, 'new-secret')
+        self.assertEqual(connector._aws_access_key_id, "new-key")
+        self.assertEqual(connector._aws_secret_access_key, "new-secret")
 
     def test_access_denied_exception_handling(self):
         """Test AccessDeniedException handling"""
         from unittest.mock import Mock, patch
+
         from botocore.exceptions import ClientError
 
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='test-key',
-            aws_secret_access_key='test-secret'
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
         # Mock AccessDeniedException
-        with patch.object(connector, '_get_dataexchange_client') as mock_get_client:
+        with patch.object(connector, "_get_dataexchange_client") as mock_get_client:
             mock_client = Mock()
             mock_get_client.return_value = mock_client
             error = ClientError(
-                {'Error': {'Code': 'AccessDeniedException', 'Message': 'Access denied'}},
-                'ListDataSets'
+                {"Error": {"Code": "AccessDeniedException", "Message": "Access denied"}},
+                "ListDataSets",
             )
             mock_client.list_data_sets.side_effect = error
             connector._circuit_breaker.call = lambda func: func()
@@ -236,37 +218,36 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
     def test_resource_not_found_exception_handling(self):
         """Test ResourceNotFoundException handling"""
         from unittest.mock import Mock, patch
+
         from botocore.exceptions import ClientError
 
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='test-key',
-            aws_secret_access_key='test-secret'
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
         # Mock ResourceNotFoundException
-        with patch.object(connector, '_get_dataexchange_client') as mock_get_client:
+        with patch.object(connector, "_get_dataexchange_client") as mock_get_client:
             mock_client = Mock()
             mock_get_client.return_value = mock_client
             error = ClientError(
-                {'Error': {'Code': 'ResourceNotFoundException', 'Message': 'Resource not found'}},
-                'GetDataSet'
+                {"Error": {"Code": "ResourceNotFoundException", "Message": "Resource not found"}},
+                "GetDataSet",
             )
             mock_client.get_data_set.side_effect = error
             connector._circuit_breaker.call = lambda func: func()
 
             with self.assertRaises(NotFoundError):
-                connector.get_listing('dataset-123')
+                connector.get_listing("dataset-123")
 
     def test_aws_security_best_practices(self):
         """Test AWS security best practices"""
         # Verify connector uses secure defaults
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='test-key',
-            aws_secret_access_key='test-secret'
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
         # Verify region is set (default: us-east-1)
-        self.assertEqual(connector._region_name, 'us-east-1')
+        self.assertEqual(connector._region_name, "us-east-1")
 
         # Verify credentials are not logged
         # (This is verified by checking that credentials are not in log output)
@@ -279,17 +260,73 @@ class TestAWSDataExchangeConnectorSecurity(TestCase):
     def test_credential_exposure_prevention(self):
         """Test prevention of credential exposure"""
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='test-key',
-            aws_secret_access_key='test-secret'
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
         )
 
         # Verify credentials are not exposed in string representation
         connector_str = str(connector)
-        self.assertNotIn('test-key', connector_str)
-        self.assertNotIn('test-secret', connector_str)
+        self.assertNotIn("test-key", connector_str)
+        self.assertNotIn("test-secret", connector_str)
 
         # Verify credentials are not exposed in repr
         connector_repr = repr(connector)
-        self.assertNotIn('test-key', connector_repr)
-        self.assertNotIn('test-secret', connector_repr)
+        self.assertNotIn("test-key", connector_repr)
+        self.assertNotIn("test-secret", connector_repr)
 
+    def test_input_validation_empty_strings(self):
+        """Test input validation with empty strings"""
+        connector = AWSDataExchangeConnector(
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
+        )
+
+        # Test empty string inputs
+        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+            connector.get_listing("")
+
+        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+            connector.list_resources("")
+
+    def test_input_validation_none_values(self):
+        """Test input validation with None values"""
+        connector = AWSDataExchangeConnector(
+            aws_access_key_id="test-key", aws_secret_access_key="test-secret"
+        )
+
+        # Test None inputs
+        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+            connector.get_listing(None)  # type: ignore[arg-type]
+
+        with self.assertRaises((ValueError, TypeError, ConnectionError)):
+            connector.list_resources(None)  # type: ignore[arg-type]
+
+    def test_credential_validation_with_empty_strings(self):
+        """Test credential validation with empty strings"""
+        # Test empty access key
+        connector = AWSDataExchangeConnector(
+            aws_access_key_id="", aws_secret_access_key="test-secret"
+        )
+        with self.assertRaises((ValueError, PermissionError, ConnectionError)):
+            connector.authenticate(
+                {"aws_access_key_id": "", "aws_secret_access_key": "test-secret"}
+            )
+
+        # Test empty secret key
+        connector = AWSDataExchangeConnector(aws_access_key_id="test-key", aws_secret_access_key="")
+        with self.assertRaises((ValueError, PermissionError, ConnectionError)):
+            connector.authenticate({"aws_access_key_id": "test-key", "aws_secret_access_key": ""})
+
+    def test_role_arn_validation_with_invalid_format(self):
+        """Test role ARN validation with various invalid formats"""
+        # Test invalid ARN formats
+        invalid_arns = [
+            "invalid-arn",
+            "arn:aws:iam::",
+            "arn:aws:iam::123456789012:",
+            "arn:aws:iam::123456789012:role",
+            "not-an-arn",
+        ]
+
+        for invalid_arn in invalid_arns:
+            connector = AWSDataExchangeConnector(role_arn=invalid_arn)
+            with self.assertRaises((ValueError, PermissionError, ConnectionError)):
+                connector.authenticate({})

@@ -11,31 +11,36 @@ Covers all 5 enhanced use cases:
 All tests use REAL services (no mocks/stubs) and follow TDD principles.
 Tests cover main flows, alternate flows, and edge cases.
 """
+
 import json
-import pytest
 import time
 import uuid
+
+import pytest
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
-from hub.apps.marketplace.models import (
-    Listing, ListingStatus, PricingModel,
-    Order, OrderStatus,
-    Entitlement, EntitlementStatus
-)
-from hub.apps.files.models import File, FileStatus
-from hub.apps.datasets.models import Dataset
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.contracts.services import ContractService, ODPSService
+from hub.apps.datasets.models import Dataset
+from hub.apps.files.models import File, FileStatus
+from hub.apps.marketplace.models import (
+    Entitlement,
+    EntitlementStatus,
+    Listing,
+    ListingStatus,
+    Order,
+    OrderStatus,
+    PricingModel,
+)
+from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 
 from .conftest import E2ETestBase
-
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -43,6 +48,7 @@ pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 # ============================================================================
 # UC-AM-001 Enhanced: Enhanced Data-First Flow with ODPS
 # ============================================================================
+
 
 class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
     """
@@ -60,10 +66,7 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
         super().setUp()
 
         # Create ODPS service
-        self.odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_main_flow_data_first_with_odps_linking(self):
         """
@@ -78,21 +81,21 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
         """
         # Step 1: Create asset
         asset_id = self.create_asset(
-            key='data-first-odps-asset',
-            name='Data-First ODPS Asset',
-            description='Asset created via data-first flow with ODPS linking'
+            key="data-first-odps-asset",
+            name="Data-First ODPS Asset",
+            description="Asset created via data-first flow with ODPS linking",
         )
 
         # Step 2: Upload data file
-        test_content = b'id,name,value\n1,Item1,100\n2,Item2,200'
+        test_content = b"id,name,value\n1,Item1,100\n2,Item2,200"
         content_hash = self._calculate_sha256(test_content)
 
         file_id = self.init_file_upload(
-            name='data.csv',
-            content_type='text/csv',
-            size=len(test_content)
+            name="data.csv", content_type="text/csv", size=len(test_content)
         )
-        self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content, mock_s3=True)
+        self.complete_file_upload(
+            file_id, content_sha256=content_hash, test_content=test_content, mock_s3=False
+        )
 
         # Step 3: Create dataset (triggers schema inference)
         dataset_id = self.create_dataset(file_id, asset_id)
@@ -104,20 +107,17 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
             "id": "data-first-contract",
             "info": {
                 "name": "Data-First Contract",
-                "description": "Contract created via data-first flow"
+                "description": "Contract created via data-first flow",
             },
             "schema": {
                 "fields": [
                     {"name": "id", "type": "string"},
                     {"name": "name", "type": "string"},
-                    {"name": "value", "type": "number"}
+                    {"name": "value", "type": "number"},
                 ]
-            }
+            },
         }
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
 
         # Step 5: Link ODPS contract to ODCS
         # ODPS contract must include product.contract.spec with matching ODCS contract
@@ -129,12 +129,10 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
                     "en": {
                         "productID": f"data-first-product-{uuid.uuid4().hex[:8]}",
                         "name": "Data-First Product",
-                        "description": "Product created via data-first flow"
+                        "description": "Product created via data-first flow",
                     }
                 },
-                "contract": {
-                    "spec": odcs_contract_data  # Include ODCS contract inline
-                },
+                "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
                         {
@@ -142,17 +140,14 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
                             "name": "Basic Plan",
                             "price": 9.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
+                            "billingPeriod": "monthly",
                         }
                     ],
                     "accessMethods": {
-                        "api": {
-                            "type": "REST",
-                            "endpoint": "https://api.example.com/v1"
-                        }
-                    }
-                }
-            }
+                        "api": {"type": "REST", "endpoint": "https://api.example.com/v1"}
+                    },
+                },
+            },
         }
 
         # Create ODPS contract
@@ -215,36 +210,34 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
         """
         # Step 1: Create asset and upload data
         asset_id = self.create_asset(
-            key='data-first-no-odps-asset',
-            name='Data-First No ODPS Asset'
+            key="data-first-no-odps-asset", name="Data-First No ODPS Asset"
         )
 
-        test_content = b'id,name\n1,Item1'
+        test_content = b"id,name\n1,Item1"
         content_hash = self._calculate_sha256(test_content)
 
         file_id = self.init_file_upload(
-            name='data.csv',
-            content_type='text/csv',
-            size=len(test_content)
+            name="data.csv", content_type="text/csv", size=len(test_content)
         )
-        self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content, mock_s3=True)
+        self.complete_file_upload(
+            file_id, content_sha256=content_hash, test_content=test_content, mock_s3=False
+        )
 
         dataset_id = self.create_dataset(file_id, asset_id)
         contract_id = self.create_contract(
             asset_id,
-            original_raw=json.dumps({
-                "id": f"contract-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
+            original_raw=json.dumps(
+                {
+                    "id": f"contract-{uuid.uuid4().hex[:8]}",
+                    "info": {"name": "Test Contract", "description": "Test contract"},
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                 }
-            })
+            ),
         )
 
         # Step 2: Attempt to link non-existent ODPS contract (should fail)
@@ -280,25 +273,23 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
         4. Asset creation completes without ODPS
         """
         asset_id = self.create_asset(
-            key='data-first-invalid-odps-asset',
-            name='Data-First Invalid ODPS Asset'
+            key="data-first-invalid-odps-asset", name="Data-First Invalid ODPS Asset"
         )
 
         contract_id = self.create_contract(
             asset_id,
-            original_raw=json.dumps({
-                "id": f"contract-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
+            original_raw=json.dumps(
+                {
+                    "id": f"contract-{uuid.uuid4().hex[:8]}",
+                    "info": {"name": "Test Contract", "description": "Test contract"},
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                 }
-            })
+            ),
         )
 
         # Attempt to create invalid ODPS contract
@@ -329,12 +320,14 @@ class UC_AM_001_Enhanced_DataFirstFlowWithODPSTest(E2ETestBase):
     def _calculate_sha256(self, content: bytes) -> str:
         """Helper to calculate SHA256 hash"""
         import hashlib
+
         return hashlib.sha256(content).hexdigest()
 
 
 # ============================================================================
 # UC-CM-001 Enhanced: Enhanced Technical-First Flow with ODPS
 # ============================================================================
+
 
 class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
     """
@@ -352,13 +345,9 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
         super().setUp()
 
         self.contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        self.odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_main_flow_technical_first_with_odps_linking(self):
         """
@@ -373,9 +362,9 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
         """
         # Step 1: Create asset
         asset_id = self.create_asset(
-            key='technical-first-odps-asset',
-            name='Technical-First ODPS Asset',
-            description='Asset created via technical-first flow with ODPS linking'
+            key="technical-first-odps-asset",
+            name="Technical-First ODPS Asset",
+            description="Asset created via technical-first flow with ODPS linking",
         )
 
         # Step 2: Create ODCS contract
@@ -385,26 +374,23 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
             "id": contract_id_str,
             "info": {
                 "name": "Technical-First Contract",
-                "description": "Contract created via technical-first flow"
+                "description": "Contract created via technical-first flow",
             },
             "schema": {
                 "fields": [
                     {"name": "id", "type": "string", "description": "Unique identifier"},
                     {"name": "name", "type": "string", "description": "Name"},
-                    {"name": "value", "type": "number", "description": "Value"}
+                    {"name": "value", "type": "number", "description": "Value"},
                 ]
-            }
+            },
         }
 
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
 
         # Step 3: Validate contract
         validate_response = self.validate_contract(contract_id, async_mode=False)
-        if isinstance(validate_response, dict) and 'validation_status' in validate_response:
-            self.assertIn(validate_response.get('validation_status'), ['VALID', 'INVALID'])
+        if isinstance(validate_response, dict) and "validation_status" in validate_response:
+            self.assertIn(validate_response.get("validation_status"), ["VALID", "INVALID"])
 
         # Step 4: Link ODPS contract to ODCS
         # ODPS contract must include product.contract.spec with matching ODCS contract
@@ -416,12 +402,10 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
                     "en": {
                         "productID": f"technical-first-product-{uuid.uuid4().hex[:8]}",
                         "name": "Technical-First Product",
-                        "description": "Product created via technical-first flow"
+                        "description": "Product created via technical-first flow",
                     }
                 },
-                "contract": {
-                    "spec": odcs_contract_data  # Include ODCS contract inline
-                },
+                "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
                         {
@@ -429,21 +413,15 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
                             "name": "Premium Plan",
                             "price": 29.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
+                            "billingPeriod": "monthly",
                         }
                     ],
                     "accessMethods": {
-                        "api": {
-                            "type": "REST",
-                            "endpoint": "https://api.example.com/v1"
-                        },
-                        "download": {
-                            "type": "FILE",
-                            "format": "CSV"
-                        }
-                    }
-                }
-            }
+                        "api": {"type": "REST", "endpoint": "https://api.example.com/v1"},
+                        "download": {"type": "FILE", "format": "CSV"},
+                    },
+                },
+            },
         }
 
         # Create ODPS contract
@@ -488,25 +466,23 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
         4. Contract creation still completes successfully (ODPS is optional)
         """
         asset_id = self.create_asset(
-            key='technical-first-no-odps-asset',
-            name='Technical-First No ODPS Asset'
+            key="technical-first-no-odps-asset", name="Technical-First No ODPS Asset"
         )
 
         contract_id = self.create_contract(
             asset_id,
-            original_raw=json.dumps({
-                "id": f"contract-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
+            original_raw=json.dumps(
+                {
+                    "id": f"contract-{uuid.uuid4().hex[:8]}",
+                    "info": {"name": "Test Contract", "description": "Test contract"},
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                 }
-            })
+            ),
         )
 
         # Attempt to link non-existent ODPS contract (should fail)
@@ -533,29 +509,19 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
         3. System handles duplicate linking gracefully
         """
         asset_id = self.create_asset(
-            key='technical-first-existing-odps-asset',
-            name='Technical-First Existing ODPS Asset'
+            key="technical-first-existing-odps-asset", name="Technical-First Existing ODPS Asset"
         )
 
         # Create ODCS contract with consistent data
         odcs_contract_data = {
             "id": f"existing-odps-contract-{uuid.uuid4().hex[:8]}",
-            "info": {
-                "name": "Test Contract",
-                "description": "Test contract"
-            },
+            "info": {"name": "Test Contract", "description": "Test contract"},
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
         }
 
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
 
         # Create ODPS contract with product.contract section
         odps_data = {
@@ -565,13 +531,11 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
                 "details": {
                     "en": {
                         "productID": f"existing-odps-product-{uuid.uuid4().hex[:8]}",
-                        "name": "Existing ODPS Product"
+                        "name": "Existing ODPS Product",
                     }
                 },
-                "contract": {
-                    "spec": odcs_contract_data  # Include ODCS contract inline
-                }
-            }
+                "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
+            },
         }
 
         odps_contract = self.odps_service.create_odps(
@@ -612,6 +576,7 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
 # UC-MKT-001 Enhanced: Enhanced Marketplace Publishing with ODPS
 # ============================================================================
 
+
 class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
     """
     UC-MKT-001 Enhanced: Enhanced Marketplace Publishing with ODPS
@@ -630,12 +595,9 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
 
         # Set tenant KYC status to VERIFIED for marketplace operations
         self.tenant.kyc_status = KYCStatus.VERIFIED
-        self.tenant.save(update_fields=['kyc_status'])
+        self.tenant.save(update_fields=["kyc_status"])
 
-        self.odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_main_flow_publish_asset_with_odps_configuration(self):
         """
@@ -650,30 +612,21 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
         """
         # Step 1: Create asset
         asset_id = self.create_asset(
-            key='marketplace-odps-asset',
-            name='Marketplace ODPS Asset',
-            description='Asset for marketplace publishing with ODPS'
+            key="marketplace-odps-asset",
+            name="Marketplace ODPS Asset",
+            description="Asset for marketplace publishing with ODPS",
         )
 
         # Step 2: Create ODCS contract with consistent data
         odcs_contract_data = {
             "id": f"marketplace-contract-{uuid.uuid4().hex[:8]}",
-            "info": {
-                "name": "Test Contract",
-                "description": "Test contract"
-            },
+            "info": {"name": "Test Contract", "description": "Test contract"},
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
         }
 
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
         self.prepare_contract_for_activation(contract_id)  # Validate before attaching
         self.attach_contract_to_asset(asset_id, contract_id)
         self.prepare_asset_for_activation(asset_id)
@@ -688,12 +641,10 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
                     "en": {
                         "productID": f"marketplace-product-{uuid.uuid4().hex[:8]}",
                         "name": "Marketplace Product",
-                        "description": "Product with marketplace configuration"
+                        "description": "Product with marketplace configuration",
                     }
                 },
-                "contract": {
-                    "spec": odcs_contract_data  # Include ODCS contract inline
-                },
+                "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
                         {
@@ -701,26 +652,19 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
                             "name": "Standard Plan",
                             "price": 49.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
+                            "billingPeriod": "monthly",
                         }
                     ],
                     "accessMethods": {
                         "api": {
                             "type": "REST",
                             "endpoint": "https://api.example.com/v1",
-                            "authentication": {
-                                "type": "API_KEY"
-                            }
+                            "authentication": {"type": "API_KEY"},
                         }
                     },
-                    "paymentGateways": {
-                        "stripe": {
-                            "enabled": True,
-                            "publicKey": "pk_test_..."
-                        }
-                    }
-                }
-            }
+                    "paymentGateways": {"stripe": {"enabled": True, "publicKey": "pk_test_..."}},
+                },
+            },
         }
 
         odps_contract = self.odps_service.create_odps(
@@ -741,26 +685,29 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
 
         # Step 4: Create marketplace listing (should pre-populate from ODPS)
         listing_response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Marketplace ODPS Asset',
-                'short_description': 'Asset with ODPS configuration',
-                'pricing_model': PricingModel.REQUEST_APPROVAL,
-                'price_amount': 49.99,
-                'currency': 'USD'
+                "asset_id": str(asset_id),
+                "title": "Marketplace ODPS Asset",
+                "short_description": "Asset with ODPS configuration",
+                "pricing_model": PricingModel.REQUEST_APPROVAL,
+                "price_amount": 49.99,
+                "currency": "USD",
             },
-            format='json'
+            format="json",
         )
-        self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED,
-                       f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}")
-        listing_id = listing_response.data['id']
+        self.assertEqual(
+            listing_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+        )
+        listing_id = listing_response.data["id"]
 
         # Step 5: Publish listing
         publish_response = self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
         self.assertEqual(publish_response.status_code, status.HTTP_200_OK)
 
@@ -787,25 +734,23 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
         4. Marketplace publishing still works without ODPS
         """
         asset_id = self.create_asset(
-            key='marketplace-no-odps-asset',
-            name='Marketplace No ODPS Asset'
+            key="marketplace-no-odps-asset", name="Marketplace No ODPS Asset"
         )
 
         contract_id = self.create_contract(
             asset_id,
-            original_raw=json.dumps({
-                "id": f"contract-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
+            original_raw=json.dumps(
+                {
+                    "id": f"contract-{uuid.uuid4().hex[:8]}",
+                    "info": {"name": "Test Contract", "description": "Test contract"},
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                 }
-            })
+            ),
         )
         self.prepare_contract_for_activation(contract_id)  # Validate before attaching
         self.attach_contract_to_asset(asset_id, contract_id)
@@ -830,15 +775,15 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
 
         # Marketplace publishing should still work without ODPS
         listing_response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Marketplace No ODPS Asset',
-                'short_description': 'Asset without ODPS',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0
+                "asset_id": str(asset_id),
+                "title": "Marketplace No ODPS Asset",
+                "short_description": "Asset without ODPS",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED)
 
@@ -852,25 +797,23 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
         3. System should handle legacy flow gracefully
         """
         asset_id = self.create_asset(
-            key='marketplace-legacy-asset',
-            name='Marketplace Legacy Asset'
+            key="marketplace-legacy-asset", name="Marketplace Legacy Asset"
         )
 
         contract_id = self.create_contract(
             asset_id,
-            original_raw=json.dumps({
-                "id": f"contract-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
+            original_raw=json.dumps(
+                {
+                    "id": f"contract-{uuid.uuid4().hex[:8]}",
+                    "info": {"name": "Test Contract", "description": "Test contract"},
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                 }
-            })
+            ),
         )
         self.prepare_contract_for_activation(contract_id)  # Validate before attaching
         self.attach_contract_to_asset(asset_id, contract_id)
@@ -879,25 +822,28 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
 
         # Publish without ODPS (legacy flow)
         listing_response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Marketplace Legacy Asset',
-                'short_description': 'Asset without ODPS',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
+                "asset_id": str(asset_id),
+                "title": "Marketplace Legacy Asset",
+                "short_description": "Asset without ODPS",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
             },
-            format='json'
+            format="json",
         )
-        self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED,
-                       f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}")
+        self.assertEqual(
+            listing_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+        )
 
-        listing_id = listing_response.data['id']
+        listing_id = listing_response.data["id"]
 
         # Publish listing
         publish_response = self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
         self.assertEqual(publish_response.status_code, status.HTTP_200_OK)
 
@@ -909,6 +855,7 @@ class UC_MKT_001_Enhanced_MarketplacePublishingWithODPSTest(E2ETestBase):
 # ============================================================================
 # UC-MKT-002 Enhanced: Enhanced Marketplace Purchase with ODPS
 # ============================================================================
+
 
 class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
     """
@@ -928,37 +875,32 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
 
         # Provider tenant (seller)
         self.provider_tenant = Tenant.objects.create(
-            name="Provider Tenant",
-            slug="provider-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Provider Tenant", slug="provider-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.provider_user = User.objects.create_user(
             email="provider@example.com",
             password="testpass123",
             tenant=self.provider_tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.provider_client = APIClient()
         self.provider_client.force_authenticate(user=self.provider_user)
 
         # Consumer tenant (buyer)
         self.consumer_tenant = Tenant.objects.create(
-            name="Consumer Tenant",
-            slug="consumer-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Consumer Tenant", slug="consumer-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.consumer_user = User.objects.create_user(
             email="consumer@example.com",
             password="testpass123",
             tenant=self.consumer_tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.consumer_client = APIClient()
         self.consumer_client.force_authenticate(user=self.consumer_user)
 
         self.odps_service = ODPSService(
-            tenant_id=str(self.provider_tenant.id),
-            user_id=str(self.provider_user.id)
+            tenant_id=str(self.provider_tenant.id), user_id=str(self.provider_user.id)
         )
 
     def test_main_flow_discover_asset_view_odps_details_purchase(self):
@@ -976,30 +918,18 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         # Step 1: Provider creates asset with ODPS
         self.client = self.provider_client
 
-        asset_id = self.create_asset(
-            key='purchasable-odps-asset',
-            name='Purchasable ODPS Asset'
-        )
+        asset_id = self.create_asset(key="purchasable-odps-asset", name="Purchasable ODPS Asset")
 
         # Create ODCS contract with consistent data
         odcs_contract_data = {
             "id": f"purchasable-contract-{uuid.uuid4().hex[:8]}",
-            "info": {
-                "name": "Test Contract",
-                "description": "Test contract"
-            },
+            "info": {"name": "Test Contract", "description": "Test contract"},
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
         }
 
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
         self.prepare_contract_for_activation(contract_id)  # Validate before attaching
         self.attach_contract_to_asset(asset_id, contract_id)
         self.prepare_asset_for_activation(asset_id)
@@ -1014,12 +944,10 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
                     "en": {
                         "productID": f"purchasable-product-{uuid.uuid4().hex[:8]}",
                         "name": "Purchasable Product",
-                        "description": "Product with ODPS details"
+                        "description": "Product with ODPS details",
                     }
                 },
-                "contract": {
-                    "spec": odcs_contract_data  # Include ODCS contract inline
-                },
+                "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                 "marketplace": {
                     "pricingPlans": [
                         {
@@ -1027,22 +955,15 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
                             "name": "Standard Plan",
                             "price": 29.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
+                            "billingPeriod": "monthly",
                         }
                     ],
                     "accessMethods": {
-                        "api": {
-                            "type": "REST",
-                            "endpoint": "https://api.example.com/v1"
-                        }
+                        "api": {"type": "REST", "endpoint": "https://api.example.com/v1"}
                     },
-                    "paymentGateways": {
-                        "stripe": {
-                            "enabled": True
-                        }
-                    }
-                }
-            }
+                    "paymentGateways": {"stripe": {"enabled": True}},
+                },
+            },
         }
 
         odps_contract = self.odps_service.create_odps(
@@ -1062,79 +983,75 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
 
         # Step 2: Provider publishes to marketplace
         listing_response = self.provider_client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Purchasable ODPS Asset',
-                'short_description': 'Asset with ODPS details',
-                'pricing_model': PricingModel.REQUEST_APPROVAL,
-                'price_amount': 29.99,
-                'currency': 'USD'
+                "asset_id": str(asset_id),
+                "title": "Purchasable ODPS Asset",
+                "short_description": "Asset with ODPS details",
+                "pricing_model": PricingModel.REQUEST_APPROVAL,
+                "price_amount": 29.99,
+                "currency": "USD",
             },
-            format='json'
+            format="json",
         )
         self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED)
-        listing_id = listing_response.data['id']
+        listing_id = listing_response.data["id"]
 
         publish_response = self.provider_client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
         self.assertEqual(publish_response.status_code, status.HTTP_200_OK)
 
         # Step 3: Consumer discovers asset
         self.client = self.consumer_client
 
-        search_response = self.consumer_client.get('/api/v1/marketplace/listings/search/')
+        search_response = self.consumer_client.get("/api/v1/marketplace/listings/search/")
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        listings = search_response.data.get('results', [])
-        our_listing = next((l for l in listings if l['id'] == str(listing_id)), None)
+        listings = search_response.data.get("results", [])
+        our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
         self.assertIsNotNone(our_listing, "Should find our listing")
 
         # Step 4: Consumer views ODPS details
         listing_detail_response = self.consumer_client.get(
-            f'/api/v1/marketplace/listings/{listing_id}/'
+            f"/api/v1/marketplace/listings/{listing_id}/"
         )
         self.assertEqual(listing_detail_response.status_code, status.HTTP_200_OK)
         listing_data = listing_detail_response.data
-        self.assertEqual(listing_data['id'], str(listing_id))
+        self.assertEqual(listing_data["id"], str(listing_id))
 
         # Step 5: Consumer purchases asset
         order_response = self.consumer_client.post(
-            '/api/v1/marketplace/orders/',
-            {'listing_id': str(listing_id)},
-            format='json'
+            "/api/v1/marketplace/orders/", {"listing_id": str(listing_id)}, format="json"
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
 
-        order_data = order_response.data.get('order', order_response.data)
-        order_id = order_data['id']
-        self.assertEqual(order_data['status'], OrderStatus.REQUESTED.value)
+        order_data = order_response.data.get("order", order_response.data)
+        order_id = order_data["id"]
+        self.assertEqual(order_data["status"], OrderStatus.REQUESTED.value)
 
         # Step 6: Provider approves order
         self.client = self.provider_client
 
         approve_response = self.provider_client.post(
-            f'/api/v1/marketplace/orders/{order_id}/approve/',
-            format='json'
+            f"/api/v1/marketplace/orders/{order_id}/approve/", format="json"
         )
         self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
 
         # Verify entitlement is created
         self.client = self.consumer_client
 
-        entitlements_response = self.consumer_client.get('/api/v1/marketplace/entitlements/')
+        entitlements_response = self.consumer_client.get("/api/v1/marketplace/entitlements/")
         self.assertEqual(entitlements_response.status_code, status.HTTP_200_OK)
 
-        entitlements = entitlements_response.data.get('results', [])
+        entitlements = entitlements_response.data.get("results", [])
         our_entitlement = next(
-            (e for e in entitlements if str(e.get('asset', '')) == str(asset_id)),
-            None
+            (e for e in entitlements if str(e.get("asset", "")) == str(asset_id)), None
         )
         self.assertIsNotNone(our_entitlement, "Entitlement should be created")
-        self.assertEqual(our_entitlement['status'], EntitlementStatus.ACTIVE.value)
+        self.assertEqual(our_entitlement["status"], EntitlementStatus.ACTIVE.value)
 
     def test_alternate_flow_odps_access_method_unavailable(self):
         """
@@ -1149,25 +1066,23 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         self.client = self.provider_client
 
         asset_id = self.create_asset(
-            key='unavailable-access-asset',
-            name='Unavailable Access Asset'
+            key="unavailable-access-asset", name="Unavailable Access Asset"
         )
 
         contract_id = self.create_contract(
             asset_id,
-            original_raw=json.dumps({
-                "id": f"contract-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
+            original_raw=json.dumps(
+                {
+                    "id": f"contract-{uuid.uuid4().hex[:8]}",
+                    "info": {"name": "Test Contract", "description": "Test contract"},
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                 }
-            })
+            ),
         )
         self.prepare_contract_for_activation(contract_id)  # Validate before attaching
         self.attach_contract_to_asset(asset_id, contract_id)
@@ -1176,22 +1091,22 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
 
         # Create listing without ODPS access methods
         listing_response = self.provider_client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Unavailable Access Asset',
-                'short_description': 'Asset without access methods',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0
+                "asset_id": str(asset_id),
+                "title": "Unavailable Access Asset",
+                "short_description": "Asset without access methods",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
             },
-            format='json'
+            format="json",
         )
-        listing_id = listing_response.data['id']
+        listing_id = listing_response.data["id"]
 
         publish_response = self.provider_client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
         self.assertEqual(publish_response.status_code, status.HTTP_200_OK)
 
@@ -1199,9 +1114,7 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         self.client = self.consumer_client
 
         order_response = self.consumer_client.post(
-            '/api/v1/marketplace/orders/',
-            {'listing_id': str(listing_id)},
-            format='json'
+            "/api/v1/marketplace/orders/", {"listing_id": str(listing_id)}, format="json"
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
 
@@ -1217,26 +1130,22 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         # Create asset and listing without ODPS
         self.client = self.provider_client
 
-        asset_id = self.create_asset(
-            key='legacy-purchase-asset',
-            name='Legacy Purchase Asset'
-        )
+        asset_id = self.create_asset(key="legacy-purchase-asset", name="Legacy Purchase Asset")
 
         contract_id = self.create_contract(
             asset_id,
-            original_raw=json.dumps({
-                "id": f"contract-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
+            original_raw=json.dumps(
+                {
+                    "id": f"contract-{uuid.uuid4().hex[:8]}",
+                    "info": {"name": "Test Contract", "description": "Test contract"},
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                 }
-            })
+            ),
         )
         self.prepare_contract_for_activation(contract_id)  # Validate before attaching
         self.attach_contract_to_asset(asset_id, contract_id)
@@ -1244,22 +1153,22 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         self.activate_asset(asset_id)
 
         listing_response = self.provider_client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Legacy Purchase Asset',
-                'short_description': 'Asset without ODPS',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0
+                "asset_id": str(asset_id),
+                "title": "Legacy Purchase Asset",
+                "short_description": "Asset without ODPS",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
             },
-            format='json'
+            format="json",
         )
-        listing_id = listing_response.data['id']
+        listing_id = listing_response.data["id"]
 
         publish_response = self.provider_client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
         self.assertEqual(publish_response.status_code, status.HTTP_200_OK)
 
@@ -1267,20 +1176,19 @@ class UC_MKT_002_Enhanced_MarketplacePurchaseWithODPSTest(E2ETestBase):
         self.client = self.consumer_client
 
         order_response = self.consumer_client.post(
-            '/api/v1/marketplace/orders/',
-            {'listing_id': str(listing_id)},
-            format='json'
+            "/api/v1/marketplace/orders/", {"listing_id": str(listing_id)}, format="json"
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
 
-        order_data = order_response.data.get('order', order_response.data)
+        order_data = order_response.data.get("order", order_response.data)
         # For FREE_AUTO_APPROVE, order should be fulfilled
-        self.assertEqual(order_data['status'], OrderStatus.FULFILLED.value)
+        self.assertEqual(order_data["status"], OrderStatus.FULFILLED.value)
 
 
 # ============================================================================
 # UC-DC-001 Enhanced: Enhanced Asset Discovery with ODPS
 # ============================================================================
+
 
 class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
     """
@@ -1299,12 +1207,9 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
 
         # Set tenant KYC status to VERIFIED for marketplace operations
         self.tenant.kyc_status = KYCStatus.VERIFIED
-        self.tenant.save(update_fields=['kyc_status'])
+        self.tenant.save(update_fields=["kyc_status"])
 
-        self.odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_main_flow_search_view_results_with_odps_product_details(self):
         """
@@ -1321,28 +1226,20 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         assets = []
         for i in range(3):
             asset_id = self.create_asset(
-                key=f'discovery-odps-asset-{i}',
-                name=f'Discovery ODPS Asset {i}'
+                key=f"discovery-odps-asset-{i}", name=f"Discovery ODPS Asset {i}"
             )
 
             # Create ODCS contract with consistent data
             odcs_contract_data = {
                 "id": f"discovery-contract-{i}-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
+                "info": {"name": "Test Contract", "description": "Test contract"},
                 "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
-                }
+                    "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+                },
             }
 
             contract_id = self.create_contract(
-                asset_id,
-                original_raw=json.dumps(odcs_contract_data)
+                asset_id, original_raw=json.dumps(odcs_contract_data)
             )
             self.prepare_contract_for_activation(contract_id)  # Validate before attaching
             self.attach_contract_to_asset(asset_id, contract_id)
@@ -1358,12 +1255,10 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
                         "en": {
                             "productID": f"discovery-product-{i}-{uuid.uuid4().hex[:8]}",
                             "name": f"Discovery Product {i}",
-                            "description": f"Product {i} for discovery test"
+                            "description": f"Product {i} for discovery test",
                         }
                     },
-                    "contract": {
-                        "spec": odcs_contract_data  # Include ODCS contract inline
-                    },
+                    "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
                     "marketplace": {
                         "pricingPlans": [
                             {
@@ -1371,11 +1266,11 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
                                 "name": f"Plan {i}",
                                 "price": float(10 + i * 10),
                                 "currency": "USD",
-                                "billingPeriod": "monthly"
+                                "billingPeriod": "monthly",
                             }
                         ]
-                    }
-                }
+                    },
+                },
             }
 
             odps_contract = self.odps_service.create_odps(
@@ -1395,43 +1290,46 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
 
             # Create and publish listing
             listing_response = self.client.post(
-                '/api/v1/marketplace/listings/',
+                "/api/v1/marketplace/listings/",
                 {
-                    'asset_id': str(asset_id),
-                    'title': f'Discovery ODPS Asset {i}',
-                    'short_description': f'Asset {i} for discovery',
-                    'pricing_model': PricingModel.REQUEST_APPROVAL,
-                    'price_amount': float(10 + i * 10),
-                    'currency': 'USD'
+                    "asset_id": str(asset_id),
+                    "title": f"Discovery ODPS Asset {i}",
+                    "short_description": f"Asset {i} for discovery",
+                    "pricing_model": PricingModel.REQUEST_APPROVAL,
+                    "price_amount": float(10 + i * 10),
+                    "currency": "USD",
                 },
-                format='json'
+                format="json",
             )
-            self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED,
-                           f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}")
-            listing_id = listing_response.data['id']
+            self.assertEqual(
+                listing_response.status_code,
+                status.HTTP_201_CREATED,
+                f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+            )
+            listing_id = listing_response.data["id"]
 
             self.client.patch(
-                f'/api/v1/marketplace/listings/{listing_id}/',
-                {'status': ListingStatus.PUBLISHED},
-                format='json'
+                f"/api/v1/marketplace/listings/{listing_id}/",
+                {"status": ListingStatus.PUBLISHED},
+                format="json",
             )
 
             assets.append(asset_id)
 
         # Step 2: Consumer searches for assets
-        search_response = self.client.get('/api/v1/marketplace/listings/search/')
+        search_response = self.client.get("/api/v1/marketplace/listings/search/")
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        listings = search_response.data.get('results', [])
+        listings = search_response.data.get("results", [])
         self.assertGreater(len(listings), 0, "Should have at least one listing")
 
         # Step 3: Verify results include ODPS product details (if implemented)
         # The listing detail endpoint should include ODPS information
         if listings and len(listings) > 0:
             # Ensure listing has 'id' field
-            self.assertIn('id', listings[0], f"Listing missing 'id' field: {listings[0]}")
-            listing_id = listings[0]['id']
-            detail_response = self.client.get(f'/api/v1/marketplace/listings/{listing_id}/')
+            self.assertIn("id", listings[0], f"Listing missing 'id' field: {listings[0]}")
+            listing_id = listings[0]["id"]
+            detail_response = self.client.get(f"/api/v1/marketplace/listings/{listing_id}/")
             self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
             listing_data = detail_response.data
             self.assertIsNotNone(listing_data)
@@ -1447,26 +1345,22 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         4. System returns results (legacy flow)
         """
         # Create asset without ODPS
-        asset_id = self.create_asset(
-            key='discovery-no-odps-asset',
-            name='Discovery No ODPS Asset'
-        )
+        asset_id = self.create_asset(key="discovery-no-odps-asset", name="Discovery No ODPS Asset")
 
         contract_id = self.create_contract(
             asset_id,
-            original_raw=json.dumps({
-                "id": f"contract-{uuid.uuid4().hex[:8]}",
-                "info": {
-                    "name": "Test Contract",
-                    "description": "Test contract"
-                },
-                "schema": {
-                    "fields": [
-                        {"name": "id", "type": "string"},
-                        {"name": "name", "type": "string"}
-                    ]
+            original_raw=json.dumps(
+                {
+                    "id": f"contract-{uuid.uuid4().hex[:8]}",
+                    "info": {"name": "Test Contract", "description": "Test contract"},
+                    "schema": {
+                        "fields": [
+                            {"name": "id", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ]
+                    },
                 }
-            })
+            ),
         )
         self.prepare_contract_for_activation(contract_id)  # Validate before attaching
         self.attach_contract_to_asset(asset_id, contract_id)
@@ -1475,31 +1369,34 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
 
         # Create and publish listing
         listing_response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Discovery No ODPS Asset',
-                'short_description': 'Asset without ODPS',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
+                "asset_id": str(asset_id),
+                "title": "Discovery No ODPS Asset",
+                "short_description": "Asset without ODPS",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
             },
-            format='json'
+            format="json",
         )
-        self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED,
-                       f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}")
-        listing_id = listing_response.data['id']
+        self.assertEqual(
+            listing_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+        )
+        listing_id = listing_response.data["id"]
 
         self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
 
         # Search should still work
-        search_response = self.client.get('/api/v1/marketplace/listings/search/')
+        search_response = self.client.get("/api/v1/marketplace/listings/search/")
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        listings = search_response.data.get('results', [])
-        our_listing = next((l for l in listings if l['id'] == str(listing_id)), None)
+        listings = search_response.data.get("results", [])
+        our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
         self.assertIsNotNone(our_listing, "Should find listing without ODPS")
 
     def test_edge_case_multilingual_product_details_in_search_results(self):
@@ -1512,30 +1409,18 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
         3. Consumer searches for assets
         4. System returns results with multilingual details
         """
-        asset_id = self.create_asset(
-            key='multilingual-odps-asset',
-            name='Multilingual ODPS Asset'
-        )
+        asset_id = self.create_asset(key="multilingual-odps-asset", name="Multilingual ODPS Asset")
 
         # Create ODCS contract with consistent data
         odcs_contract_data = {
             "id": f"multilingual-contract-{uuid.uuid4().hex[:8]}",
-            "info": {
-                "name": "Test Contract",
-                "description": "Test contract"
-            },
+            "info": {"name": "Test Contract", "description": "Test contract"},
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
         }
 
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
         self.prepare_contract_for_activation(contract_id)  # Validate before attaching
         self.attach_contract_to_asset(asset_id, contract_id)
         self.prepare_asset_for_activation(asset_id)
@@ -1550,23 +1435,21 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
                     "en": {
                         "productID": f"multilingual-product-{uuid.uuid4().hex[:8]}",
                         "name": "Multilingual Product",
-                        "description": "Product with multilingual details"
+                        "description": "Product with multilingual details",
                     },
                     "fi": {
                         "productID": f"multilingual-product-{uuid.uuid4().hex[:8]}",
                         "name": "Monikielinen Tuote",
-                        "description": "Tuote monikielisillä tiedoilla"
+                        "description": "Tuote monikielisillä tiedoilla",
                     },
                     "sv": {
                         "productID": f"multilingual-product-{uuid.uuid4().hex[:8]}",
                         "name": "Flerspråkig Produkt",
-                        "description": "Produkt med flerspråkiga detaljer"
-                    }
+                        "description": "Produkt med flerspråkiga detaljer",
+                    },
                 },
-                "contract": {
-                    "spec": odcs_contract_data  # Include ODCS contract inline
-                }
-            }
+                "contract": {"spec": odcs_contract_data},  # Include ODCS contract inline
+            },
         }
 
         odps_contract = self.odps_service.create_odps(
@@ -1586,29 +1469,32 @@ class UC_DC_001_Enhanced_AssetDiscoveryWithODPSTest(E2ETestBase):
 
         # Create and publish listing
         listing_response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Multilingual ODPS Asset',
-                'short_description': 'Asset with multilingual details',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
+                "asset_id": str(asset_id),
+                "title": "Multilingual ODPS Asset",
+                "short_description": "Asset with multilingual details",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
             },
-            format='json'
+            format="json",
         )
-        self.assertEqual(listing_response.status_code, status.HTTP_201_CREATED,
-                       f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}")
-        listing_id = listing_response.data['id']
+        self.assertEqual(
+            listing_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Failed to create listing: {listing_response.data if hasattr(listing_response, 'data') else listing_response.content}",
+        )
+        listing_id = listing_response.data["id"]
 
         self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
 
         # Search should return results (multilingual details may be in listing detail view)
-        search_response = self.client.get('/api/v1/marketplace/listings/search/')
+        search_response = self.client.get("/api/v1/marketplace/listings/search/")
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        listings = search_response.data.get('results', [])
-        our_listing = next((l for l in listings if l['id'] == str(listing_id)), None)
+        listings = search_response.data.get("results", [])
+        our_listing = next((l for l in listings if l["id"] == str(listing_id)), None)
         self.assertIsNotNone(our_listing, "Should find multilingual listing")

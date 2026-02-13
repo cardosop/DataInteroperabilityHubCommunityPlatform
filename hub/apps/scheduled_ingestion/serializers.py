@@ -23,6 +23,8 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
     contract_name = serializers.CharField(source='contract.name', read_only=True, allow_null=True)
     created_by_username = serializers.CharField(source='created_by.username', read_only=True, allow_null=True)
     asset_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    # allow_blank so empty/whitespace name reaches service (ScheduledIngestionBusinessRules)
+    name = serializers.CharField(max_length=255, allow_blank=True)
     
     class Meta:
         model = ScheduledIngestion
@@ -59,6 +61,7 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'tenant',
             'tenant_name',
             'asset_name',
             'contract_name',
@@ -72,9 +75,15 @@ class ScheduledIngestionSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+        extra_kwargs = {
+            # API requires file_pattern on create/update; model allows null/blank for match-all (.*)
+            'file_pattern': {'required': True, 'allow_blank': True},
+        }
     
     def validate_file_pattern(self, value):
-        """Validate file pattern is a valid regex"""
+        """Validate file pattern is a valid regex. None/blank allowed (means match-all in processor)."""
+        if value is None or value == "":
+            return value
         import re
         try:
             re.compile(value)
@@ -209,9 +218,9 @@ class ScheduledIngestionCreateSerializer(ScheduledIngestionSerializer):
     def validate(self, attrs):
         """Validate and test connection if requested"""
         attrs = super().validate(attrs)
-        
-        # Test connection if requested
-        if attrs.get('test_connection', True):
+        test_connection = attrs.get('test_connection', True)
+
+        if test_connection:
             source_type = attrs.get('source_type')
             source_config = attrs.get('source_config')
             
@@ -236,7 +245,9 @@ class ScheduledIngestionCreateSerializer(ScheduledIngestionSerializer):
                     raise serializers.ValidationError({
                         'source_config': f'Connection test failed: {str(e)}'
                     })
-        
+
+        # Remove so it is never in validated_data or passed to create()
+        attrs.pop('test_connection', None)
         return attrs
     
     def create(self, validated_data):

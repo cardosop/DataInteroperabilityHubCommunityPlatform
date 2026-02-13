@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError, ConflictError
 from hub.apps.core.events.service_publishers import DataMeshEventPublisher
+from hub.apps.mesh.business_rules import DataMeshBusinessRules
 from hub.apps.mesh.models import (
     DataMeshDomain,
     DomainStatus,
@@ -292,6 +293,36 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         if not name or not name.strip():
             raise ValidationError("Domain name is required")
+
+        # Validate via DataMeshBusinessRules before any mutation
+        from hub.apps.tenants.models import Tenant
+        from hub.apps.users.models import User
+
+        tenant_obj = Tenant.objects.get(id=effective_tenant_id)
+        user_obj = User.objects.get(id=self.user_id) if self.user_id else None
+        payload_domain = DataMeshDomain(
+            tenant_id=effective_tenant_id,
+            name=name.strip(),
+            description=description or "",
+            owner_id=owner_id,
+            boundaries=boundaries,
+            capabilities=capabilities,
+            resource_quota=resource_quota,
+            status=status,
+        )
+        rules = DataMeshBusinessRules(tenant_id=effective_tenant_id, user_id=self.user_id)
+        result = rules.validate(
+            domain=payload_domain,
+            tenant=tenant_obj,
+            user=user_obj,
+            validation_type="structure",
+        )
+        if not result.is_valid:
+            raise ValidationError(
+                "; ".join(result.errors),
+                code="BUSINESS_RULES_VALIDATION",
+                details=result.details,
+            )
 
         # Execute workflow
         from hub.apps.orchestration.workflows.data_mesh import DataMeshWorkflow
@@ -592,6 +623,26 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         domain = self.get_domain(domain_id, tenant_id=effective_tenant_id)
 
+        # Validate via DataMeshBusinessRules before mutation
+        from hub.apps.tenants.models import Tenant
+        from hub.apps.users.models import User
+
+        tenant_obj = Tenant.objects.get(id=effective_tenant_id)
+        user_obj = User.objects.get(id=self.user_id) if self.user_id else None
+        rules = DataMeshBusinessRules(tenant_id=effective_tenant_id, user_id=self.user_id)
+        result = rules.validate(
+            domain=domain,
+            tenant=tenant_obj,
+            user=user_obj,
+            validation_type="structure",
+        )
+        if not result.is_valid:
+            raise ValidationError(
+                "; ".join(result.errors),
+                code="BUSINESS_RULES_VALIDATION",
+                details=result.details,
+            )
+
         # Track changes for event and metrics
         changes = {}
         previous_status = domain.status
@@ -601,7 +652,11 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
         if name is not None:
             name = name.strip()
             if not name:
-                raise ValidationError("Domain name cannot be empty")
+                raise ValidationError(
+                    "Domain name cannot be empty",
+                    code="BUSINESS_RULES_VALIDATION",
+                    details={"name": "empty"},
+                )
             # Check for duplicate if name changed
             if name != domain.name:
                 if DataMeshDomain.objects.filter(tenant_id=effective_tenant_id, name=name).exists():
@@ -812,6 +867,26 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
             raise ValidationError("tenant_id is required")
 
         domain = self.get_domain(domain_id, tenant_id=effective_tenant_id)
+
+        # Validate via DataMeshBusinessRules before mutation
+        from hub.apps.tenants.models import Tenant
+        from hub.apps.users.models import User
+
+        tenant_obj = Tenant.objects.get(id=effective_tenant_id)
+        user_obj = User.objects.get(id=self.user_id) if self.user_id else None
+        rules = DataMeshBusinessRules(tenant_id=effective_tenant_id, user_id=self.user_id)
+        result = rules.validate(
+            domain=domain,
+            tenant=tenant_obj,
+            user=user_obj,
+            validation_type="structure",
+        )
+        if not result.is_valid:
+            raise ValidationError(
+                "; ".join(result.errors),
+                code="BUSINESS_RULES_VALIDATION",
+                details=result.details,
+            )
 
         domain_id_str = str(domain.id)
         domain_name = domain.name

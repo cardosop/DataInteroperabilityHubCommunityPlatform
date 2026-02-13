@@ -163,10 +163,18 @@ class VirtualizationBusinessRules(BusinessRules):
         errors: List[str] = []
         warnings: List[str] = []
         details: Dict[str, Any] = {
-            "dataset_id": str(virtual_dataset.id) if virtual_dataset.id else None,
+            "dataset_id": str(virtual_dataset.id) if getattr(virtual_dataset, "id", None) else None,
             "dataset_name": virtual_dataset.name if hasattr(virtual_dataset, 'name') else None,
             "validation_type": validation_type,
         }
+
+        # Structure: name required and non-empty (applies to create and update)
+        name_val = getattr(virtual_dataset, 'name', None)
+        if not name_val or not str(name_val).strip():
+            errors.append("Name is required and cannot be empty")
+            details["name_valid"] = False
+        else:
+            details["name_valid"] = True
 
         # Perform validation based on type
         if validation_type in ('query_syntax', 'query_mapping', 'all'):

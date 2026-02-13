@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-003-2a792ed6",
+      "journey_name": "Download Purchased Data",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1770554243.7939079,
+      "end_time": 1770554243.809415,
+      "duration": 0.015507221221923828,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': 'bd519abf-0967-4e42-988a-c4cd292f1835', 'timestamp': '2026-02-08T12:37:23.803014+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset with File",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770554243.7939217,
+          "end_time": 1770554243.8094087,
+          "duration": 0.015486955642700195,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': 'bd519abf-0967-4e42-988a-c4cd292f1835', 'timestamp': '2026-02-08T12:37:23.803014+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:37:23.809541"
+}

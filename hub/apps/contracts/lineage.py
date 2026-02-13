@@ -187,6 +187,18 @@ class LineageReference:
         return self._is_broken is True
 
 
+def resolve_lineage_reference(ref: Optional[LineageReference]) -> Optional[Any]:
+    """
+    Resolve a lineage reference to its contract.
+
+    Triggers lazy resolution and returns the resolved contract, or None if
+    the reference is broken or unresolvable. Side effect: populates ref._is_broken.
+    """
+    if ref is None:
+        return None
+    return ref.resolve_contract()
+
+
 def extract_contract_level_lineage(odcs_contract: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Extract contract-level lineage from ODCS contract.
@@ -587,7 +599,7 @@ class LineageTraverser:
         # Find contracts that reference this contract
         # Filter by tenant_id for performance (root cause fix)
         # This significantly improves performance when there are many contracts
-        tenant_id = contract.tenant_id if hasattr(contract, 'tenant_id') else None
+        tenant_id = contract.tenant_id if hasattr(contract, "tenant_id") else None
         queryset = Contract.objects.exclude(id=contract_id)
         if tenant_id:
             queryset = queryset.filter(tenant_id=tenant_id)

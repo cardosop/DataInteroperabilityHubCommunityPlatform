@@ -1,0 +1,146 @@
+.governance-access-request-detail-page {
+  padding: var(--spacing-lg);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.governance-detail-header {
+  margin-bottom: var(--spacing-xl);
+}
+
+.governance-detail-header .btn-back {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  padding: 0;
+  margin-bottom: var(--spacing-md);
+}
+
+.governance-detail-header .btn-back:hover {
+  text-decoration: underline;
+}
+
+.governance-detail-content h1 {
+  margin: 0 0 var(--spacing-lg);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.governance-detail-section {
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius);
+}
+
+.governance-detail-section h2 {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.governance-detail-metadata {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.governance-detail-metadata .metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.governance-detail-metadata label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.governance-detail-actions {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-lg);
+}
+
+.governance-detail-actions .btn-approve {
+  background: var(--color-success, #2e7d32);
+  color: white;
+}
+
+.governance-detail-actions .btn-reject {
+  background: #c62828;
+  color: white;
+}
+
+.governance-reject-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.governance-reject-modal {
+  background: var(--color-bg-primary);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+  max-width: 420px;
+  width: 90%;
+  box-shadow: var(--shadow-lg);
+}
+
+.governance-reject-modal h3 {
+  margin: 0 0 var(--spacing-md);
+}
+
+.governance-reject-modal textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  font-family: inherit;
+  margin-bottom: var(--spacing-md);
+}
+
+.governance-reject-modal-actions {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: flex-end;
+}
+
+.governance-access-request-detail-page .governance-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.governance-access-request-detail-page .governance-status-badge.PENDING {
+  background: var(--color-warning-light, #fff3e0);
+  color: var(--color-warning, #ed6c02);
+}
+
+.governance-access-request-detail-page .governance-status-badge.APPROVED {
+  background: var(--color-success-light, #e8f5e9);
+  color: var(--color-success, #2e7d32);
+}
+
+.governance-access-request-detail-page .governance-status-badge.REJECTED {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.governance-access-request-detail-page .governance-status-badge.EXPIRED,
+.governance-access-request-detail-page .governance-status-badge.REVOKED {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}

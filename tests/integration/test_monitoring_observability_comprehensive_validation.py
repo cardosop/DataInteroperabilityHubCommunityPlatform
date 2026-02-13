@@ -13,7 +13,7 @@ Tests follow TDD approach and fix root causes.
 
 import time
 import uuid
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import structlog
@@ -25,21 +25,29 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset
 from hub.apps.dq.alerting import DQAlertingService
-from hub.apps.dq.models import DQAlertingRule, DQAnomalySeverity, DQAlertChannel, DQRun
+from hub.apps.dq.models import (
+    DQAlertChannel,
+    DQAlertingRule,
+    DQAnomalySeverity,
+    DQEngine,
+    DQRun,
+    DQRunStatus,
+)
+from hub.apps.jobs.models import Job, JobStatus, JobType
+from hub.apps.observability.models import PipelineExecution
 from hub.apps.observability.otel_metrics import (
-    http_requests_total,
-    http_request_duration_seconds,
-    http_errors_total,
-    jobs_started_total,
-    jobs_completed_total,
-    tenant_running_jobs,
-    tenant_queued_jobs,
-    dq_runs_total,
-    db_connections_active,
     cache_hits_total,
+    db_connections_active,
+    dq_runs_total,
+    http_errors_total,
+    http_request_duration_seconds,
+    http_requests_total,
+    jobs_completed_total,
+    jobs_started_total,
+    tenant_queued_jobs,
+    tenant_running_jobs,
 )
 from hub.apps.observability.pipeline_monitoring import PipelineMonitor
-from hub.apps.observability.models import PipelineExecution
 from tests.factories import TenantFactory
 
 User = get_user_model()
@@ -74,30 +82,37 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
     def setUp(self):
         """Set up test data"""
         # Initialize OpenTelemetry metrics - root cause fix
-        from hub.apps.observability.otel_metrics import setup_opentelemetry_metrics, REGISTRY, OPENTELEMETRY_AVAILABLE
-        
+        from hub.apps.observability.otel_metrics import (
+            OPENTELEMETRY_AVAILABLE,
+            REGISTRY,
+            setup_opentelemetry_metrics,
+        )
+
         if OPENTELEMETRY_AVAILABLE:
             meter = setup_opentelemetry_metrics()
             # Verify OpenTelemetry is properly initialized
-            self.assertIsNotNone(meter, "OpenTelemetry metrics should be initialized in test environment")
-            self.assertIsNotNone(REGISTRY, "Prometheus REGISTRY should be available after OpenTelemetry initialization")
+            self.assertIsNotNone(
+                meter, "OpenTelemetry metrics should be initialized in test environment"
+            )
+            self.assertIsNotNone(
+                REGISTRY,
+                "Prometheus REGISTRY should be available after OpenTelemetry initialization",
+            )
         else:
-            self.fail("OpenTelemetry is not available. Install opentelemetry packages for metrics testing.")
-        
+            self.fail(
+                "OpenTelemetry is not available. Install opentelemetry packages for metrics testing."
+            )
+
         self.client = APIClient()
         self.tenant1 = TenantFactory.create_tenant()
         self.tenant2 = TenantFactory.create_tenant()
         # Root cause fix: Use unique email addresses to avoid conflicts in TransactionTestCase with --keepdb
         unique_id = uuid.uuid4().hex[:8]
         self.user1 = User.objects.create_user(
-            email=f"user1_{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant1
+            email=f"user1_{unique_id}@example.com", password="testpass123", tenant=self.tenant1
         )
         self.user2 = User.objects.create_user(
-            email=f"user2_{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant2
+            email=f"user2_{unique_id}@example.com", password="testpass123", tenant=self.tenant2
         )
         self.client.force_authenticate(user=self.user1)
 
@@ -109,92 +124,83 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         # Make HTTP requests
         # Root cause fix: Health endpoint should return 200 since services are running in docker compose
         for i in range(5):
-            response = self.client.get('/health/')
+            response = self.client.get("/health/")
             self.assertEqual(
-                response.status_code, 
+                response.status_code,
                 status.HTTP_200_OK,
                 f"Health endpoint returned {response.status_code}. "
                 f"All services (including Redis) should be available in docker compose. "
-                f"Response: {response.content.decode('utf-8')}"
+                f"Response: {response.content.decode('utf-8')}",
             )
 
         # Verify metrics were collected
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code}. "
             f"OpenTelemetry metrics should be initialized in setUp(). "
-            f"Response: {metrics_response.content.decode('utf-8')}"
+            f"Response: {metrics_response.content.decode('utf-8')}",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # Should contain HTTP metrics
-        self.assertIn('http_requests_total', content)
+        self.assertIn("http_requests_total", content)
         # Verify metrics format is correct
-        self.assertIn('# HELP', content)
-        self.assertIn('# TYPE', content)
+        self.assertIn("# HELP", content)
+        self.assertIn("# TYPE", content)
 
     def test_metrics_collection_accuracy_job_metrics(self):
         """Test metrics collection accuracy for job metrics"""
         tenant_id = str(self.tenant1.id)
 
         # Record job metrics
-        jobs_started_total.labels(
-            job_type='DQ_RUN',
-            tenant_id=tenant_id
-        ).inc()
+        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant_id).inc()
 
         jobs_completed_total.labels(
-            job_type='DQ_RUN',
-            status='COMPLETED',
-            tenant_id=tenant_id
+            job_type="DQ_RUN", status="COMPLETED", tenant_id=tenant_id
         ).inc()
 
         # Verify metrics were recorded
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code}. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # Should contain job metrics
-        self.assertIn('jobs_started_total', content)
-        self.assertIn('jobs_completed_total', content)
+        self.assertIn("jobs_started_total", content)
+        self.assertIn("jobs_completed_total", content)
 
     def test_metrics_collection_accuracy_histogram_metrics(self):
         """Test metrics collection accuracy for histogram metrics"""
         # Record histogram values
         http_request_duration_seconds.labels(
-            method='GET',
-            route='/health/',
-            status_class='2xx'
+            method="GET", route="/health/", status_class="2xx"
         ).observe(0.1)
 
         http_request_duration_seconds.labels(
-            method='GET',
-            route='/health/',
-            status_class='2xx'
+            method="GET", route="/health/", status_class="2xx"
         ).observe(0.2)
 
         # Verify metrics were recorded
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code}. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # Should contain histogram metrics
-        self.assertIn('http_request_duration_seconds', content)
+        self.assertIn("http_request_duration_seconds", content)
 
     def test_metrics_collection_accuracy_gauge_metrics(self):
         """Test metrics collection accuracy for gauge metrics"""
@@ -206,18 +212,18 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
         # Verify metrics were recorded
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code}. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # Should contain gauge metrics
-        self.assertIn('tenant_running_jobs', content)
-        self.assertIn('tenant_queued_jobs', content)
+        self.assertIn("tenant_running_jobs", content)
+        self.assertIn("tenant_queued_jobs", content)
 
     def test_metrics_collection_completeness_all_metric_types(self):
         """Test metrics collection completeness - all metric types"""
@@ -225,17 +231,11 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
         # Record all metric types
         # Counter
-        http_requests_total.labels(
-            method='GET',
-            route='/test/',
-            status_class='2xx'
-        ).inc()
+        http_requests_total.labels(method="GET", route="/test/", status_class="2xx").inc()
 
         # Histogram
         http_request_duration_seconds.labels(
-            method='GET',
-            route='/test/',
-            status_class='2xx'
+            method="GET", route="/test/", status_class="2xx"
         ).observe(0.15)
 
         # Gauge
@@ -243,19 +243,19 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
         # Verify all metrics are present
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code}. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # All metric types should be present
-        self.assertIn('http_requests_total', content)
-        self.assertIn('http_request_duration_seconds', content)
-        self.assertIn('tenant_running_jobs', content)
+        self.assertIn("http_requests_total", content)
+        self.assertIn("http_request_duration_seconds", content)
+        self.assertIn("tenant_running_jobs", content)
 
     def test_metrics_collection_completeness_all_services(self):
         """Test metrics collection completeness - all services"""
@@ -263,54 +263,45 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
         # Record metrics for different services
         # HTTP metrics
-        http_requests_total.labels(
-            method='GET',
-            route='/api/',
-            status_class='2xx'
-        ).inc()
+        http_requests_total.labels(method="GET", route="/api/", status_class="2xx").inc()
 
         # Job metrics
-        jobs_started_total.labels(
-            job_type='DQ_RUN',
-            tenant_id=tenant_id
-        ).inc()
+        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant_id).inc()
 
         # DQ metrics
         dq_runs_total.labels(
-            status='success',
-            engine='great_expectations',
-            tenant_id=tenant_id
+            status="success", engine="great_expectations", tenant_id=tenant_id
         ).inc()
 
         # Database metrics
         db_connections_active.set(5)
 
         # Cache metrics
-        cache_hits_total.labels(cache_key_prefix='test').inc()
+        cache_hits_total.labels(cache_key_prefix="test").inc()
 
         # Verify all service metrics are present
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code}. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # All service metrics should be present
-        self.assertIn('http_requests_total', content)
-        self.assertIn('jobs_started_total', content)
-        self.assertIn('dq_runs_total', content)
-        self.assertIn('db_connections_active', content)
-        self.assertIn('cache_hits_total', content)
+        self.assertIn("http_requests_total", content)
+        self.assertIn("jobs_started_total", content)
+        self.assertIn("dq_runs_total", content)
+        self.assertIn("db_connections_active", content)
+        self.assertIn("cache_hits_total", content)
 
     def test_metrics_collection_performance_endpoint_response_time(self):
         """Test metrics collection performance - endpoint response time"""
         # Measure response time
         start_time = time.time()
-        response = self.client.get('/metrics/')
+        response = self.client.get("/metrics/")
         duration = time.time() - start_time
 
         # Should respond quickly (< 1 second)
@@ -320,7 +311,7 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
             response.status_code,
             200,
             f"Metrics endpoint returned {response.status_code}. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
 
     def test_metrics_collection_performance_high_volume(self):
@@ -330,11 +321,7 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         # Record many metrics
         start_time = time.time()
         for i in range(100):
-            http_requests_total.labels(
-                method='GET',
-                route=f'/test/{i}/',
-                status_class='2xx'
-            ).inc()
+            http_requests_total.labels(method="GET", route=f"/test/{i}/", status_class="2xx").inc()
         duration = time.time() - start_time
 
         # Should handle high volume efficiently (< 1 second for 100 metrics)
@@ -342,12 +329,12 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
         # Verify metrics are still accessible
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code} after recording metrics. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
 
     def test_metrics_collection_reliability_after_errors(self):
@@ -355,37 +342,29 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         tenant_id = str(self.tenant1.id)
 
         # Record metrics normally
-        http_requests_total.labels(
-            method='GET',
-            route='/test/',
-            status_class='2xx'
-        ).inc()
+        http_requests_total.labels(method="GET", route="/test/", status_class="2xx").inc()
 
         # Simulate error condition (invalid labels)
         try:
             # This might fail, but shouldn't break metrics collection
-            http_requests_total.labels(
-                method='GET',
-                route='/test/',
-                status_class='2xx'
-            ).inc()
+            http_requests_total.labels(method="GET", route="/test/", status_class="2xx").inc()
         except Exception:
             pass
 
         # Metrics should still be collectable after error
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code} after error. "
             f"Metrics collection should continue working even after errors. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # Should still contain metrics
-        self.assertIn('http_requests_total', content)
+        self.assertIn("http_requests_total", content)
 
     def test_metrics_collection_reliability_concurrent_access(self):
         """Test metrics collection reliability - concurrent access"""
@@ -393,24 +372,17 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
         # Record metrics from multiple "threads" (simulated)
         for i in range(10):
-            http_requests_total.labels(
-                method='GET',
-                route=f'/test/{i}/',
-                status_class='2xx'
-            ).inc()
-            jobs_started_total.labels(
-                job_type='DQ_RUN',
-                tenant_id=tenant_id
-            ).inc()
+            http_requests_total.labels(method="GET", route=f"/test/{i}/", status_class="2xx").inc()
+            jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant_id).inc()
 
         # Metrics should be collectable
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code} after concurrent access. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
 
     def test_metrics_collection_tenant_isolation_metrics_separation(self):
@@ -419,35 +391,29 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
         tenant2_id = str(self.tenant2.id)
 
         # Record metrics for tenant1
-        jobs_started_total.labels(
-            job_type='DQ_RUN',
-            tenant_id=tenant1_id
-        ).inc()
+        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant1_id).inc()
 
         tenant_running_jobs.labels(tenant_id=tenant1_id).set(5)
 
         # Record metrics for tenant2
-        jobs_started_total.labels(
-            job_type='DQ_RUN',
-            tenant_id=tenant2_id
-        ).inc()
+        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant2_id).inc()
 
         tenant_running_jobs.labels(tenant_id=tenant2_id).set(3)
 
         # Verify metrics are separated by tenant
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code}. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # Both tenants' metrics should be present but separate
-        self.assertIn('jobs_started_total', content)
-        self.assertIn('tenant_running_jobs', content)
+        self.assertIn("jobs_started_total", content)
+        self.assertIn("tenant_running_jobs", content)
         # Verify tenant_id labels are present
         self.assertIn(tenant1_id, content)
         self.assertIn(tenant2_id, content)
@@ -459,29 +425,27 @@ class MetricsCollectionVerificationTest(TransactionTestCase):
 
         # Record metrics for tenant1 only
         dq_runs_total.labels(
-            status='success',
-            engine='great_expectations',
-            tenant_id=tenant1_id
+            status="success", engine="great_expectations", tenant_id=tenant1_id
         ).inc()
 
         # Verify tenant2's metrics don't appear in tenant1's context
         # (In real scenario, metrics would be filtered by tenant_id in queries)
         # Root cause fix: Metrics endpoint should return 200 since OpenTelemetry is initialized in setUp
-        metrics_response = self.client.get('/metrics/')
+        metrics_response = self.client.get("/metrics/")
         self.assertEqual(
             metrics_response.status_code,
             200,
             f"Metrics endpoint returned {metrics_response.status_code}. "
-            f"OpenTelemetry metrics should be initialized in setUp()."
+            f"OpenTelemetry metrics should be initialized in setUp().",
         )
-        
-        content = metrics_response.content.decode('utf-8')
+
+        content = metrics_response.content.decode("utf-8")
         # Metrics should have tenant_id labels for proper isolation
-        self.assertIn('dq_runs_total', content)
+        self.assertIn("dq_runs_total", content)
         # Both tenant IDs might be in content, but labels ensure separation
         self.assertTrue(
-            tenant1_id in content or 'tenant_id' in content,
-            "Metrics should include tenant_id labels for isolation"
+            tenant1_id in content or "tenant_id" in content,
+            "Metrics should include tenant_id labels for isolation",
         )
 
 
@@ -511,17 +475,11 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
         # Root cause fix: Use unique email address to avoid conflicts in TransactionTestCase with --keepdb
         unique_id = uuid.uuid4().hex[:8]
         self.user = User.objects.create_user(
-            email=f"test_{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test_{unique_id}@example.com", password="testpass123", tenant=self.tenant
         )
 
         # Create a test asset
-        self.asset = Asset.objects.create(
-            name="Test Asset",
-            tenant=self.tenant,
-            status="ACTIVE"
-        )
+        self.asset = Asset.objects.create(name="Test Asset", tenant=self.tenant, status="ACTIVE")
 
     def test_alert_triggering_on_threshold_breach_quality_score_below(self):
         """Test alert triggering on threshold breach - quality score below threshold"""
@@ -533,18 +491,30 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             metric_type="quality_score",
             threshold=0.7,
             comparison_operator="<",
-            severity=DQAnomalySeverity.WARNING,
+            severity=DQAnomalySeverity.MEDIUM,
             enabled=True,
-            alert_channels=[DQAlertChannel.EMAIL]
+            alert_channels=[DQAlertChannel.EMAIL],
+        )
+
+        # Create job for DQ run
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=self.asset.id,
+            created_by=self.user,
         )
 
         # Create DQ run with quality score below threshold
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
+            job=job,
+            profile_key="test_profile",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.SUCCEEDED,
             quality_score=0.5,  # Below threshold of 0.7
-            status="COMPLETED",
-            engine="great_expectations"
         )
 
         # Evaluate rules
@@ -566,18 +536,30 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             metric_type="quality_score",
             threshold=0.9,
             comparison_operator=">",
-            severity=DQAnomalySeverity.INFO,
+            severity=DQAnomalySeverity.LOW,
             enabled=True,
-            alert_channels=[DQAlertChannel.EMAIL]
+            alert_channels=[DQAlertChannel.EMAIL],
+        )
+
+        # Create job for DQ run
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=self.asset.id,
+            created_by=self.user,
         )
 
         # Create DQ run with quality score above threshold
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
+            job=job,
+            profile_key="test_profile",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.SUCCEEDED,
             quality_score=0.95,  # Above threshold of 0.9
-            status="COMPLETED",
-            engine="great_expectations"
         )
 
         # Evaluate rules
@@ -598,9 +580,9 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             metric_type="quality_score",
             threshold=0.7,
             comparison_operator="<",
-            severity=DQAnomalySeverity.WARNING,
+            severity=DQAnomalySeverity.MEDIUM,
             enabled=True,
-            alert_channels=[DQAlertChannel.EMAIL]
+            alert_channels=[DQAlertChannel.EMAIL],
         )
 
         rule2 = DQAlertingRule.objects.create(
@@ -612,16 +594,28 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             comparison_operator="<",
             severity=DQAnomalySeverity.CRITICAL,
             enabled=True,
-            alert_channels=[DQAlertChannel.EMAIL]
+            alert_channels=[DQAlertChannel.EMAIL],
         )
 
         # Create DQ run that should trigger both rules
+        # Create job for DQ run
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=self.asset.id,
+            created_by=self.user,
+        )
+
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
+            job=job,
+            profile_key="test_profile",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.SUCCEEDED,
             quality_score=0.4,  # Below both thresholds
-            status="COMPLETED",
-            engine="great_expectations"
         )
 
         # Evaluate rules
@@ -643,18 +637,30 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             metric_type="quality_score",
             threshold=0.7,
             comparison_operator="<",
-            severity=DQAnomalySeverity.WARNING,
+            severity=DQAnomalySeverity.MEDIUM,
             enabled=True,
-            alert_channels=[DQAlertChannel.EMAIL]
+            alert_channels=[DQAlertChannel.EMAIL],
         )
 
         # Create DQ run with quality score above threshold (should not trigger)
+        # Create job for DQ run
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=self.asset.id,
+            created_by=self.user,
+        )
+
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
+            job=job,
+            profile_key="test_profile",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.SUCCEEDED,
             quality_score=0.8,  # Above threshold of 0.7
-            status="COMPLETED",
-            engine="great_expectations"
         )
 
         # Evaluate rules
@@ -673,18 +679,30 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             metric_type="quality_score",
             threshold=0.7,
             comparison_operator="<",
-            severity=DQAnomalySeverity.WARNING,
+            severity=DQAnomalySeverity.MEDIUM,
             enabled=True,
-            alert_channels=[DQAlertChannel.EMAIL]
+            alert_channels=[DQAlertChannel.EMAIL],
         )
 
         # Create DQ run
+        # Create job for DQ run
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=self.asset.id,
+            created_by=self.user,
+        )
+
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
+            job=job,
+            profile_key="test_profile",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.SUCCEEDED,
             quality_score=0.5,
-            status="COMPLETED",
-            engine="great_expectations"
         )
 
         # Measure evaluation time
@@ -706,18 +724,30 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             metric_type="quality_score",
             threshold=0.7,
             comparison_operator="<",
-            severity=DQAnomalySeverity.WARNING,
+            severity=DQAnomalySeverity.MEDIUM,
             enabled=True,
-            alert_channels=[DQAlertChannel.EMAIL]
+            alert_channels=[DQAlertChannel.EMAIL],
         )
 
         # Create DQ run
+        # Create job for DQ run
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=self.asset.id,
+            created_by=self.user,
+        )
+
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
+            job=job,
+            profile_key="test_profile",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.SUCCEEDED,
             quality_score=0.5,
-            status="COMPLETED",
-            engine="great_expectations"
         )
 
         # Evaluate rules multiple times
@@ -740,19 +770,31 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             metric_type="quality_score",
             threshold=0.7,
             comparison_operator="<",
-            severity=DQAnomalySeverity.WARNING,
+            severity=DQAnomalySeverity.MEDIUM,
             enabled=True,
             alert_channels=[DQAlertChannel.EMAIL],
-            channel_config={"emails": ["admin@example.com"]}
+            channel_config={"emails": ["admin@example.com"]},
         )
 
         # Create DQ run
+        # Create job for DQ run
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=self.asset.id,
+            created_by=self.user,
+        )
+
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
+            job=job,
+            profile_key="test_profile",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.SUCCEEDED,
             quality_score=0.5,
-            status="COMPLETED",
-            engine="great_expectations"
         )
 
         # Evaluate rules (should trigger delivery)
@@ -772,22 +814,34 @@ class AlertTriggeringVerificationTest(TransactionTestCase):
             metric_type="quality_score",
             threshold=0.7,
             comparison_operator="<",
-            severity=DQAnomalySeverity.WARNING,
+            severity=DQAnomalySeverity.MEDIUM,
             enabled=True,
             alert_channels=[DQAlertChannel.EMAIL, DQAlertChannel.SLACK],
             channel_config={
                 "emails": ["admin@example.com"],
-                "webhook_url": "https://hooks.slack.com/test"
-            }
+                "webhook_url": "https://hooks.slack.com/test",
+            },
         )
 
         # Create DQ run
+        # Create job for DQ run
+        job = Job.objects.create(
+            tenant=self.tenant,
+            type=JobType.DQ_RUN,
+            status=JobStatus.COMPLETED,
+            resource_type="ASSET",
+            resource_id=self.asset.id,
+            created_by=self.user,
+        )
+
         dq_run = DQRun.objects.create(
             tenant=self.tenant,
             asset=self.asset,
+            job=job,
+            profile_key="test_profile",
+            engine=DQEngine.GREAT_EXPECTATIONS,
+            status=DQRunStatus.SUCCEEDED,
             quality_score=0.5,
-            status="COMPLETED",
-            engine="great_expectations"
         )
 
         # Evaluate rules
@@ -826,14 +880,10 @@ class DashboardDataAccuracyTest(TransactionTestCase):
         # Root cause fix: Use unique email addresses to avoid conflicts in TransactionTestCase with --keepdb
         unique_id = uuid.uuid4().hex[:8]
         self.user1 = User.objects.create_user(
-            email=f"user1_{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant1
+            email=f"user1_{unique_id}@example.com", password="testpass123", tenant=self.tenant1
         )
         self.user2 = User.objects.create_user(
-            email=f"user2_{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant2
+            email=f"user2_{unique_id}@example.com", password="testpass123", tenant=self.tenant2
         )
         self.client.force_authenticate(user=self.user1)
 
@@ -849,7 +899,7 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             status="COMPLETED",
             execution_time_seconds=10.5,
             items_processed=100,
-            items_failed=0
+            items_failed=0,
         )
 
         execution2 = PipelineMonitor.record_execution(
@@ -859,13 +909,12 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             status="FAILED",
             execution_time_seconds=5.0,
             items_processed=50,
-            items_failed=50
+            items_failed=50,
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify accuracy
@@ -888,13 +937,12 @@ class DashboardDataAccuracyTest(TransactionTestCase):
                 status="COMPLETED" if i < 8 else "FAILED",
                 execution_time_seconds=10.0 + i,
                 items_processed=100,
-                items_failed=0
+                items_failed=0,
             )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify calculated metrics are accurate
@@ -916,13 +964,12 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             tenant_id=tenant_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
-            status="RUNNING"
+            status="RUNNING",
         )
 
         # Get dashboard data immediately
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Should include the recent execution
@@ -938,26 +985,22 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             tenant_id=tenant_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
-            status="RUNNING"
+            status="RUNNING",
         )
 
         # Update execution status
         PipelineMonitor.update_execution(
-            execution_id=str(execution.id),
-            status="COMPLETED",
-            completed_at=timezone.now()
+            execution_id=str(execution.id), status="COMPLETED", completed_at=timezone.now()
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Should reflect updated status
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["status"], "COMPLETED")
@@ -980,19 +1023,17 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             items_failed=0,
             resource_type="ASSET",
             resource_id=str(uuid.uuid4()),
-            result_json={"test": "data"}
+            result_json={"test": "data"},
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify all fields are present
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["pipeline_type"], "DQ_RUN")
@@ -1017,13 +1058,12 @@ class DashboardDataAccuracyTest(TransactionTestCase):
                 pipeline_id=str(uuid.uuid4()),
                 status="COMPLETED" if i < 4 else "FAILED",
                 execution_time_seconds=10.0,
-                items_processed=100
+                items_processed=100,
             )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify summary statistics are complete
@@ -1051,15 +1091,13 @@ class DashboardDataAccuracyTest(TransactionTestCase):
                 pipeline_type="DQ_RUN",
                 pipeline_id=str(uuid.uuid4()),
                 status="COMPLETED",
-                execution_time_seconds=10.0
+                execution_time_seconds=10.0,
             )
 
         # Measure query time
         start_time = time.time()
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN",
-            limit=100
+            tenant_id=tenant_id, pipeline_type="DQ_RUN", limit=100
         )
         duration = time.time() - start_time
 
@@ -1078,15 +1116,13 @@ class DashboardDataAccuracyTest(TransactionTestCase):
                 pipeline_type="DQ_RUN",
                 pipeline_id=str(uuid.uuid4()),
                 status="COMPLETED",
-                execution_time_seconds=10.0
+                execution_time_seconds=10.0,
             )
 
         # Measure query time with limit
         start_time = time.time()
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN",
-            limit=100  # Limit results
+            tenant_id=tenant_id, pipeline_type="DQ_RUN", limit=100  # Limit results
         )
         duration = time.time() - start_time
 
@@ -1104,7 +1140,7 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             tenant_id=tenant1_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
-            status="COMPLETED"
+            status="COMPLETED",
         )
 
         # Create executions for tenant2
@@ -1112,19 +1148,17 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             tenant_id=tenant2_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
-            status="COMPLETED"
+            status="COMPLETED",
         )
 
         # Get dashboard data for tenant1
         dashboard_data1 = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant1_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant1_id, pipeline_type="DQ_RUN"
         )
 
         # Get dashboard data for tenant2
         dashboard_data2 = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant2_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant2_id, pipeline_type="DQ_RUN"
         )
 
         # Verify tenant isolation
@@ -1146,13 +1180,12 @@ class DashboardDataAccuracyTest(TransactionTestCase):
             tenant_id=tenant2_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
-            status="COMPLETED"
+            status="COMPLETED",
         )
 
         # Get dashboard data for tenant1 (should not see tenant2's data)
         dashboard_data1 = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant1_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant1_id, pipeline_type="DQ_RUN"
         )
 
         # Verify tenant1 doesn't see tenant2's execution
@@ -1187,9 +1220,7 @@ class PerformanceMonitoringTest(TransactionTestCase):
         # Root cause fix: Use unique email address to avoid conflicts in TransactionTestCase with --keepdb
         unique_id = uuid.uuid4().hex[:8]
         self.user = User.objects.create_user(
-            email=f"test_{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email=f"test_{unique_id}@example.com", password="testpass123", tenant=self.tenant
         )
         self.client.force_authenticate(user=self.user)
 
@@ -1203,19 +1234,17 @@ class PerformanceMonitoringTest(TransactionTestCase):
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
             status="COMPLETED",
-            execution_time_seconds=10.5
+            execution_time_seconds=10.5,
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify execution time is accurate
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["execution_time_seconds"], 10.5)
@@ -1230,19 +1259,17 @@ class PerformanceMonitoringTest(TransactionTestCase):
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
             status="COMPLETED",
-            latency_ms=150.0
+            latency_ms=150.0,
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify latency is accurate
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["latency_ms"], 150.0)
@@ -1257,19 +1284,17 @@ class PerformanceMonitoringTest(TransactionTestCase):
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
             status="COMPLETED",
-            throughput_items_per_second=25.5
+            throughput_items_per_second=25.5,
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify throughput is accurate
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["throughput_items_per_second"], 25.5)
@@ -1288,19 +1313,17 @@ class PerformanceMonitoringTest(TransactionTestCase):
             latency_ms=150.0,
             throughput_items_per_second=25.5,
             items_processed=100,
-            items_failed=0
+            items_failed=0,
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify all metrics are present
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertIsNotNone(execution_data["execution_time_seconds"])
@@ -1322,13 +1345,12 @@ class PerformanceMonitoringTest(TransactionTestCase):
                 status="COMPLETED",
                 execution_time_seconds=10.0 + i,
                 latency_ms=100.0 + i * 10,
-                throughput_items_per_second=20.0 + i
+                throughput_items_per_second=20.0 + i,
             )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify aggregate statistics are present
@@ -1349,7 +1371,7 @@ class PerformanceMonitoringTest(TransactionTestCase):
             tenant_id=tenant_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
-            status="RUNNING"
+            status="RUNNING",
         )
 
         # Update to COMPLETED
@@ -1357,19 +1379,17 @@ class PerformanceMonitoringTest(TransactionTestCase):
             execution_id=str(execution.id),
             status="COMPLETED",
             completed_at=timezone.now(),
-            execution_time_seconds=10.5
+            execution_time_seconds=10.5,
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify status is updated
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["status"], "COMPLETED")
@@ -1384,7 +1404,7 @@ class PerformanceMonitoringTest(TransactionTestCase):
             tenant_id=tenant_id,
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
-            status="RUNNING"
+            status="RUNNING",
         )
 
         # Update metrics
@@ -1392,19 +1412,17 @@ class PerformanceMonitoringTest(TransactionTestCase):
             execution_id=str(execution.id),
             latency_ms=200.0,
             throughput_items_per_second=30.0,
-            items_processed=150
+            items_processed=150,
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify metrics are updated
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["latency_ms"], 200.0)
@@ -1423,7 +1441,7 @@ class PerformanceMonitoringTest(TransactionTestCase):
                 pipeline_type="DQ_RUN",
                 pipeline_id=str(uuid.uuid4()),
                 status="COMPLETED",
-                execution_time_seconds=10.0
+                execution_time_seconds=10.0,
             )
             # Update created_at to simulate historical data
             # Since created_at has auto_now_add=True, we need to use update() to bypass it
@@ -1434,9 +1452,7 @@ class PerformanceMonitoringTest(TransactionTestCase):
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN",
-            limit=100
+            tenant_id=tenant_id, pipeline_type="DQ_RUN", limit=100
         )
 
         # Verify historical data is accessible
@@ -1447,12 +1463,14 @@ class PerformanceMonitoringTest(TransactionTestCase):
         for r in dashboard_data["results"]:
             # Handle both with and without timezone info
             date_str = r["created_at"]
-            if date_str.endswith('Z'):
-                date_str = date_str.replace('Z', '+00:00')
+            if date_str.endswith("Z"):
+                date_str = date_str.replace("Z", "+00:00")
             created_dates.append(datetime.fromisoformat(date_str))
         # Verify dates are in descending order (most recent first)
         sorted_dates = sorted(created_dates, reverse=True)
-        self.assertEqual(created_dates, sorted_dates, "Results should be ordered by created_at descending")
+        self.assertEqual(
+            created_dates, sorted_dates, "Results should be ordered by created_at descending"
+        )
 
     def test_performance_monitoring_historical_data_trend_analysis(self):
         """Test performance monitoring historical data - trend analysis"""
@@ -1467,13 +1485,12 @@ class PerformanceMonitoringTest(TransactionTestCase):
                 status="COMPLETED",
                 execution_time_seconds=10.0 + i * 0.5,  # Increasing execution time
                 latency_ms=100.0 + i * 5,
-                throughput_items_per_second=20.0 - i * 0.5  # Decreasing throughput
+                throughput_items_per_second=20.0 - i * 0.5,  # Decreasing throughput
             )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify trend data is available
@@ -1493,19 +1510,17 @@ class PerformanceMonitoringTest(TransactionTestCase):
             pipeline_type="DQ_RUN",
             pipeline_id=str(uuid.uuid4()),
             status="COMPLETED",
-            execution_time_seconds=300.0  # 5 minutes (high)
+            execution_time_seconds=300.0,  # 5 minutes (high)
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify execution is recorded
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["execution_time_seconds"], 300.0)
@@ -1525,7 +1540,7 @@ class PerformanceMonitoringTest(TransactionTestCase):
                 pipeline_id=str(uuid.uuid4()),
                 status="COMPLETED",
                 execution_time_seconds=10.0,
-                latency_ms=100.0
+                latency_ms=100.0,
             )
 
         # Create anomalous execution (much slower)
@@ -1535,19 +1550,17 @@ class PerformanceMonitoringTest(TransactionTestCase):
             pipeline_id=str(uuid.uuid4()),
             status="COMPLETED",
             execution_time_seconds=1000.0,  # Very high
-            latency_ms=5000.0  # Very high
+            latency_ms=5000.0,  # Very high
         )
 
         # Get dashboard data
         dashboard_data = PipelineMonitor.get_pipeline_dashboard(
-            tenant_id=tenant_id,
-            pipeline_type="DQ_RUN"
+            tenant_id=tenant_id, pipeline_type="DQ_RUN"
         )
 
         # Verify anomalous execution is recorded
         execution_data = next(
-            (r for r in dashboard_data["results"] if r["id"] == str(anomalous_execution.id)),
-            None
+            (r for r in dashboard_data["results"] if r["id"] == str(anomalous_execution.id)), None
         )
         self.assertIsNotNone(execution_data)
         self.assertEqual(execution_data["execution_time_seconds"], 1000.0)

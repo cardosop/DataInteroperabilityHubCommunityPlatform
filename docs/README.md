@@ -26,9 +26,13 @@ Complete documentation for the Data Interoperability Hub platform.
 - **[WebSocket API](WEBSOCKET_API.md)** - WebSocket API for real-time updates
 - **[Webhook API](WEBHOOK_API.md)** - Webhook subscriptions and ODPS event delivery
 - **[ODPS Integration Guide](ODPS_INTEGRATION_GUIDE.md)** - Complete guide for ODPS (Open Data Product Standard) integration
+- **[ODPS Creation Flows](ODPS_CREATION_FLOWS.md)** - Detailed guide for Product-First, Technical-First, and Data-First flows
+- **[ODPS Migration Guide](ODPS_MIGRATION_GUIDE.md)** - Comprehensive guide for ODPS and ODCS version migrations
+- **[ODPS Examples](ODPS_EXAMPLES.md)** - Complete examples for all ODPS scenarios
 
 ### Features
 - **[Features](FEATURES.md)** - Complete feature documentation
+- **[Scheduled Export Guide](SCHEDULED_EXPORT_GUIDE.md)** - User and operator guide for scheduled exports
 
 ### Development
 - **[Development Guide](DEVELOPMENT_GUIDE.md)** - Development workflows and practices
@@ -39,6 +43,7 @@ Complete documentation for the Data Interoperability Hub platform.
 - **[Error Handling](ERROR_HANDLING.md)** - Error handling patterns and practices
 
 ### Deployment
+- **[Release criteria and gate](RELEASE.md)** - Release gate (Green Phase 12A + test summary report + sign-off) before staging/production
 - **[Docker Compose Deployment](DOCKER_COMPOSE_DEPLOYMENT.md)** - Deploy using Docker Compose
 - **[Kubernetes Deployment](KUBERNETES_DEPLOYMENT.md)** - Production Kubernetes deployment
 - **[Service Deployment Guide](SERVICE_DEPLOYMENT_GUIDE.md)** - Individual service deployment
@@ -49,10 +54,48 @@ Complete documentation for the Data Interoperability Hub platform.
 - **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Runbooks](RUNBOOKS.md)** - Operational runbooks
 - **[ODCS to ODPS Migration Guide](ODCS_TO_ODPS_MIGRATION_GUIDE.md)** - Complete guide for migrating ODCS contracts to ODPS
+- **[Marketplace Integration Framework](MARKETPLACE_INTEGRATION_FRAMEWORK.md)** - Marketplace integration architecture and framework
+- **[Marketplace Connector Development Guide](MARKETPLACE_CONNECTOR_DEVELOPMENT_GUIDE.md)** - Guide for developing marketplace connectors
+- **[Marketplace API Reference](MARKETPLACE_API_REFERENCE.md)** - Complete marketplace API documentation
+- **[Marketplace Integration User Guide](MARKETPLACE_INTEGRATION_USER_GUIDE.md)** - User guide for marketplace integrations
+- **[Marketplace Use Cases](MARKETPLACE_USE_CASES.md)** - Marketplace use cases and scenarios
+- **[Marketplace User Journeys](MARKETPLACE_USER_JOURNEYS.md)** - Marketplace user journey documentation
+- **Marketplace-Specific Guides**:
+  - [CKAN Guide](MARKETPLACE_CKAN_GUIDE.md)
+  - [Snowflake Guide](MARKETPLACE_SNOWFLAKE_GUIDE.md)
+  - [AWS Data Exchange Guide](MARKETPLACE_AWS_GUIDE.md)
+  - [Azure Marketplace Guide](MARKETPLACE_AZURE_GUIDE.md)
+  - [GCP Marketplace Guide](MARKETPLACE_GCP_GUIDE.md)
+  - [Databricks Guide](MARKETPLACE_DATABRICKS_GUIDE.md)
+  - [SAP Guide](MARKETPLACE_SAP_GUIDE.md)
+  - [IBM Guide](MARKETPLACE_IBM_GUIDE.md)
+  - [Oracle Guide](MARKETPLACE_ORACLE_GUIDE.md)
+  - [Salesforce Guide](MARKETPLACE_SALESFORCE_GUIDE.md)
+  - [DataRade Guide](MARKETPLACE_DATARADE_GUIDE.md)
+  - [Dawex Guide](MARKETPLACE_DAWEX_GUIDE.md)
+  - [NASDAQ Guide](MARKETPLACE_NASDAQ_GUIDE.md)
+  - [ESRI Guide](MARKETPLACE_ESRI_GUIDE.md)
+  - [Collibra Guide](MARKETPLACE_COLLIBRA_GUIDE.md)
 
 ### Infrastructure
 - **[Event Bus](EVENT_BUS.md)** - Event-driven communication
 - **[Event Types Reference](EVENT_TYPES_REFERENCE.md)** - Event type documentation
+
+### CLI & SDK
+- **[CLI Tool](../cli/README.md)** - Command-line interface documentation
+- **[Python SDK](../sdk/python/README.md)** - Python SDK documentation
+- **CLI Usage Guides**:
+  - [ODPS Usage Guide](../cli/docs/ODPS_USAGE.md) - ODPS contract management commands
+  - [Marketplace Usage Guide](../cli/docs/MARKETPLACE_USAGE.md) - Marketplace integration commands
+  - [BaaS Usage Guide](../cli/docs/BAAS_USAGE.md) - BaaS platform commands
+  - [ODH Usage Guide](../cli/docs/ODH_USAGE.md) - ML/ODH integration commands
+  - [Model Serving Usage Guide](../cli/docs/MODEL_SERVING_USAGE.md) - Model serving and A/B testing commands
+- **SDK Usage Guides**:
+  - [ODPS Usage Guide](../sdk/python/docs/ODPS_USAGE.md) - ODPS contract management APIs
+  - [Marketplace Usage Guide](../sdk/python/docs/MARKETPLACE_USAGE.md) - Marketplace integration APIs
+  - [BaaS Usage Guide](../sdk/python/docs/BAAS_USAGE.md) - BaaS platform APIs
+  - [ODH Usage Guide](../sdk/python/docs/ODH_USAGE.md) - ML/ODH integration APIs
+  - [Model Serving Usage Guide](../sdk/python/docs/MODEL_SERVING_USAGE.md) - Model serving and A/B testing APIs
 
 ## Documentation Structure
 
@@ -89,6 +132,7 @@ docs/
 │   └── ERROR_HANDLING.md        # Error handling
 │
 ├── Deployment
+│   ├── RELEASE.md                   # Release criteria and gate
 │   ├── DOCKER_COMPOSE_DEPLOYMENT.md # Docker Compose
 │   ├── KUBERNETES_DEPLOYMENT.md     # Kubernetes
 │   ├── SERVICE_DEPLOYMENT_GUIDE.md  # Service deployment

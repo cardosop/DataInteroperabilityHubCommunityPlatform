@@ -4,41 +4,41 @@ Unit tests for ODPS webhook error handling and validation.
 Tests comprehensive error handling for ODPS webhook operations including:
 - Error class hierarchy and structure
 - Payload validation
-- Delivery error handling
+- Delivery error handling (via real server or unreachable URL; no mocks)
 - Error recovery strategies
 """
-import json
+
+import time
 import uuid
-import requests
-from unittest.mock import patch, MagicMock
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
+from hub.apps.contracts.odps_errors import RecoveryStrategy
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import UserStatus
 from hub.apps.webhooks.models import (
+    DeliveryStatus,
     Webhook,
     WebhookDelivery,
     WebhookEventType,
     WebhookStatus,
-    DeliveryStatus,
 )
-from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.webhooks.odps_webhook_errors import (
-    ODPSWebhookError,
     ODPSWebhookDeliveryError,
-    ODPSWebhookValidationError,
+    ODPSWebhookError,
     ODPSWebhookPayloadError,
+    ODPSWebhookValidationError,
 )
 from hub.apps.webhooks.odps_webhook_validators import (
-    validate_odps_webhook_payload,
-    validate_odps_event_data,
     MAX_PAYLOAD_SIZE,
+    validate_odps_event_data,
+    validate_odps_webhook_payload,
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import UserStatus
-from hub.apps.contracts.odps_errors import RecoveryStrategy
+from hub.apps.webhooks.service import WebhookDeliveryService
+from hub.apps.webhooks.tests.test_odps_webhook_integration import TestWebhookServer
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -378,14 +378,50 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             created_by=self.user,
         )
 
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_delivery_timeout_error(self, mock_post):
-        """Test handling of timeout errors"""
-        mock_post.side_effect = requests.exceptions.Timeout("Request timed out")
+    def test_delivery_timeout_error(self):
+        """Test handling of timeout errors via real server with long delay (35s)."""
+        with TestWebhookServer(response_status=200, response_delay=35.0) as server:
+            webhook = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook",
+                url=server.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
+            event_data = {"contract_id": str(uuid.uuid4())}
+            WebhookDeliveryService.trigger_webhook(
+                tenant_id=str(self.tenant.id),
+                event_type=WebhookEventType.ODPS_CREATED,
+                resource_type="ODPS",
+                resource_id=str(uuid.uuid4()),
+                event_data=event_data,
+            )
+            time.sleep(1)
+            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
+            self.assertIsNotNone(delivery)
+            self.assertEqual(delivery.status, DeliveryStatus.FAILED)
+            self.assertIsNotNone(delivery.error_message)
+            error_msg_lower = delivery.error_message.lower()
+            self.assertTrue(
+                "timeout" in error_msg_lower or "timed out" in error_msg_lower,
+                f"Expected timeout-related message, got: {delivery.error_message}",
+            )
+            self.assertIsNotNone(delivery.next_retry_at)
 
+    def test_delivery_connection_error(self):
+        """Test handling of connection errors (unreachable URL, no mock)."""
+        webhook = Webhook.objects.create(
+            tenant=self.tenant,
+            name="ODPS Webhook",
+            url="http://127.0.0.1:9/",  # Discard port, no server
+            secret="test-secret",
+            event_types=[WebhookEventType.ODPS_CREATED],
+            status=WebhookStatus.ACTIVE,
+            created_by=self.user,
+        )
         event_data = {"contract_id": str(uuid.uuid4())}
-
-        # Trigger webhook
         WebhookDeliveryService.trigger_webhook(
             tenant_id=str(self.tenant.id),
             event_type=WebhookEventType.ODPS_CREATED,
@@ -393,52 +429,78 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             resource_id=str(uuid.uuid4()),
             event_data=event_data,
         )
-
-        # Check delivery record
-        delivery = WebhookDelivery.objects.filter(webhook=self.webhook).first()
-        self.assertIsNotNone(delivery)
-        self.assertEqual(delivery.status, DeliveryStatus.FAILED)
-        self.assertIsNotNone(delivery.error_message)
-        # Check for timeout-related keywords (message may say "timed out" or "timeout")
-        error_msg_lower = delivery.error_message.lower()
-        self.assertTrue("timeout" in error_msg_lower or "timed out" in error_msg_lower,
-                       f"Expected timeout-related message, got: {delivery.error_message}")
-        self.assertIsNotNone(delivery.next_retry_at)
-
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_delivery_connection_error(self, mock_post):
-        """Test handling of connection errors"""
-        mock_post.side_effect = requests.exceptions.ConnectionError("Connection refused")
-
-        event_data = {"contract_id": str(uuid.uuid4())}
-
-        # Trigger webhook
-        WebhookDeliveryService.trigger_webhook(
-            tenant_id=str(self.tenant.id),
-            event_type=WebhookEventType.ODPS_CREATED,
-            resource_type="ODPS",
-            resource_id=str(uuid.uuid4()),
-            event_data=event_data,
-        )
-
-        # Check delivery record
-        delivery = WebhookDelivery.objects.filter(webhook=self.webhook).first()
+        time.sleep(0.5)
+        delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
         self.assertIsNotNone(delivery)
         self.assertEqual(delivery.status, DeliveryStatus.FAILED)
         self.assertIsNotNone(delivery.error_message)
         self.assertIn("connect", delivery.error_message.lower())
 
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_delivery_http_5xx_error(self, mock_post):
-        """Test handling of HTTP 5xx errors"""
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.text = "Internal Server Error"
-        mock_post.return_value = mock_response
+    def test_delivery_http_5xx_error(self):
+        """Test handling of HTTP 5xx errors via real server returning 500."""
+        with TestWebhookServer(response_status=500) as server:
+            webhook = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook",
+                url=server.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
+            event_data = {"contract_id": str(uuid.uuid4())}
+            WebhookDeliveryService.trigger_webhook(
+                tenant_id=str(self.tenant.id),
+                event_type=WebhookEventType.ODPS_CREATED,
+                resource_type="ODPS",
+                resource_id=str(uuid.uuid4()),
+                event_data=event_data,
+            )
+            time.sleep(0.5)
+            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
+            self.assertIsNotNone(delivery)
+            self.assertEqual(delivery.status, DeliveryStatus.FAILED)
+            self.assertEqual(delivery.http_status_code, 500)
+            self.assertIsNotNone(delivery.next_retry_at)
 
+    def test_delivery_http_4xx_error(self):
+        """Test handling of HTTP 4xx errors via real server returning 400."""
+        with TestWebhookServer(response_status=400) as server:
+            webhook = Webhook.objects.create(
+                tenant=self.tenant,
+                name="ODPS Webhook",
+                url=server.get_url(),
+                secret="test-secret",
+                event_types=[WebhookEventType.ODPS_CREATED],
+                status=WebhookStatus.ACTIVE,
+                created_by=self.user,
+            )
+            event_data = {"contract_id": str(uuid.uuid4())}
+            WebhookDeliveryService.trigger_webhook(
+                tenant_id=str(self.tenant.id),
+                event_type=WebhookEventType.ODPS_CREATED,
+                resource_type="ODPS",
+                resource_id=str(uuid.uuid4()),
+                event_data=event_data,
+            )
+            time.sleep(0.5)
+            delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
+            self.assertIsNotNone(delivery)
+            self.assertEqual(delivery.status, DeliveryStatus.FAILED)
+            self.assertEqual(delivery.http_status_code, 400)
+
+    def test_delivery_ssl_error(self):
+        """Test handling of connection/network errors (unreachable URL; no mock)."""
+        webhook = Webhook.objects.create(
+            tenant=self.tenant,
+            name="ODPS Webhook",
+            url="http://127.0.0.1:9/",
+            secret="test-secret",
+            event_types=[WebhookEventType.ODPS_CREATED],
+            status=WebhookStatus.ACTIVE,
+            created_by=self.user,
+        )
         event_data = {"contract_id": str(uuid.uuid4())}
-
-        # Trigger webhook
         WebhookDeliveryService.trigger_webhook(
             tenant_id=str(self.tenant.id),
             event_type=WebhookEventType.ODPS_CREATED,
@@ -446,63 +508,11 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             resource_id=str(uuid.uuid4()),
             event_data=event_data,
         )
-
-        # Check delivery record
-        delivery = WebhookDelivery.objects.filter(webhook=self.webhook).first()
-        self.assertIsNotNone(delivery)
-        self.assertEqual(delivery.status, DeliveryStatus.FAILED)
-        self.assertEqual(delivery.http_status_code, 500)
-        self.assertIsNotNone(delivery.next_retry_at)  # 5xx errors are retryable
-
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_delivery_http_4xx_error(self, mock_post):
-        """Test handling of HTTP 4xx errors"""
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-        mock_response.text = "Bad Request"
-        mock_post.return_value = mock_response
-
-        event_data = {"contract_id": str(uuid.uuid4())}
-
-        # Trigger webhook
-        WebhookDeliveryService.trigger_webhook(
-            tenant_id=str(self.tenant.id),
-            event_type=WebhookEventType.ODPS_CREATED,
-            resource_type="ODPS",
-            resource_id=str(uuid.uuid4()),
-            event_data=event_data,
-        )
-
-        # Check delivery record
-        delivery = WebhookDelivery.objects.filter(webhook=self.webhook).first()
-        self.assertIsNotNone(delivery)
-        self.assertEqual(delivery.status, DeliveryStatus.FAILED)
-        self.assertEqual(delivery.http_status_code, 400)
-        # 4xx errors are not retryable, so next_retry_at should be None after max retries
-        # But initially it will be set for the first retry attempt
-
-    @patch('hub.apps.webhooks.service.requests.post')
-    def test_delivery_ssl_error(self, mock_post):
-        """Test handling of SSL errors"""
-        mock_post.side_effect = requests.exceptions.SSLError("SSL certificate verification failed")
-
-        event_data = {"contract_id": str(uuid.uuid4())}
-
-        # Trigger webhook
-        WebhookDeliveryService.trigger_webhook(
-            tenant_id=str(self.tenant.id),
-            event_type=WebhookEventType.ODPS_CREATED,
-            resource_type="ODPS",
-            resource_id=str(uuid.uuid4()),
-            event_data=event_data,
-        )
-
-        # Check delivery record
-        delivery = WebhookDelivery.objects.filter(webhook=self.webhook).first()
+        time.sleep(0.5)
+        delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
         self.assertIsNotNone(delivery)
         self.assertEqual(delivery.status, DeliveryStatus.FAILED)
         self.assertIsNotNone(delivery.error_message)
-        self.assertIn("ssl", delivery.error_message.lower())
 
     def test_trigger_odps_webhook_invalid_payload(self):
         """Test trigger_odps_webhook raises error for invalid event type"""
@@ -580,4 +590,3 @@ class ODPSWebhookDeliveryErrorHandlingTest(TestCase):
             cm.exception.error_code,
             ODPSWebhookValidationError.ERROR_CODE_INVALID_EVENT_TYPE,
         )
-

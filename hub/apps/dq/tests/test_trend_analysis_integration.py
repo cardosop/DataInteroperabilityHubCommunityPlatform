@@ -75,8 +75,10 @@ class TrendAnalysisIntegrationTest(TestCase):
         for i in range(20):
             job = Job.objects.create(
                 tenant=self.tenant,
-                job_type=JobType.DQ_CHECK,
+                type=JobType.DQ_RUN,
                 status=JobStatus.COMPLETED,
+                resource_type="DQ_RUN",
+                resource_id=self.dataset.id,
                 created_by=self.user
             )
             
@@ -126,8 +128,10 @@ class TrendAnalysisIntegrationTest(TestCase):
         for i in range(10):
             job = Job.objects.create(
                 tenant=self.tenant,
-                job_type=JobType.DQ_CHECK,
+                type=JobType.DQ_RUN,
                 status=JobStatus.COMPLETED,
+                resource_type="DQ_RUN",
+                resource_id=self.dataset.id,
                 created_by=self.user
             )
             

@@ -1008,9 +1008,12 @@ if data_drift > 0.1:
 
 ## Additional Resources
 
-- **[ODH Usage Guide](ODH_USAGE.md)** - Complete guide for ML/ODH commands
-- **[SDK README](../README.md)** - General SDK documentation
-- **[API Documentation](https://api.hub.example.com/docs)** - API reference documentation
+- **[SDK README](../README.md)** - Complete SDK documentation
+- **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management APIs
+- **[Marketplace Usage Guide](MARKETPLACE_USAGE.md)** - Marketplace integration APIs
+- **[BaaS Usage Guide](BAAS_USAGE.md)** - BaaS platform APIs
+- **[ODH Usage Guide](ODH_USAGE.md)** - Complete guide for ML/ODH APIs
+- **[API Reference](../../../docs/API_REFERENCE.md)** - Complete API documentation
 
 ## API Reference
 

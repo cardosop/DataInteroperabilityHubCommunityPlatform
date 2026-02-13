@@ -11,13 +11,20 @@ All tests use real services (no mocks/stubs) and follow TDD principles.
 """
 
 import json
+import sys
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TransactionTestCase
+
+# Add project root to Python path for imports
+project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -72,12 +79,94 @@ from hub.apps.scheduled_ingestion.models import (
     SourceType,
 )
 from hub.apps.scheduled_ingestion.services import IngestionService
-from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.users.models import UserStatus
-from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
-pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
+
+
+def _create_tenant(
+    *,
+    name=None,
+    slug=None,
+    status=TenantStatus.ACTIVE,
+    kyc_status=KYCStatus.VERIFIED,
+    **kwargs,
+):
+    """Create a tenant for tests (no dependency on top-level tests package)."""
+    if name is None:
+        name = f"Test Tenant {uuid.uuid4().hex[:8]}"
+    if slug is None:
+        slug = (name or "").lower().replace(" ", "-")[:50]
+    return Tenant.objects.create(
+        name=name,
+        slug=slug,
+        status=status,
+        kyc_status=kyc_status,
+        **kwargs,
+    )
+
+
+def _create_user(*, email=None, tenant=None, status=None, **kwargs):
+    """Create a user for tests (no dependency on top-level tests package)."""
+    if email is None:
+        email = f"test-{uuid.uuid4().hex[:8]}@example.com"
+    if tenant is None:
+        tenant = _create_tenant()
+    if status is None:
+        status = UserStatus.ACTIVE.value
+    return User.objects.create(
+        email=email,
+        tenant=tenant,
+        status=status,
+        **kwargs,
+    )
+
+
+# API-compatible with tests.factories for drop-in replacement in this file
+class TenantFactory:
+    @staticmethod
+    def create_tenant(
+        name=None,
+        slug=None,
+        status=TenantStatus.ACTIVE,
+        kyc_status=KYCStatus.VERIFIED,
+        region=None,
+        **kwargs,
+    ):
+        return _create_tenant(
+            name=name,
+            slug=slug,
+            status=status,
+            kyc_status=kyc_status,
+            region=region,
+            **kwargs,
+        )
+
+
+class UserFactory:
+    @staticmethod
+    def create_user(
+        email=None,
+        tenant=None,
+        display_name=None,
+        status=None,
+        **kwargs,
+    ):
+        return _create_user(
+            email=email,
+            tenant=tenant,
+            display_name=display_name,
+            status=status or UserStatus.ACTIVE.value,
+            **kwargs,
+        )
+
+
+# TransactionTestCase teardown (flush) can exceed 300s; allow 600s per test.
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.timeout(600),
+]
 
 
 class ScheduledIngestionCRUDTest(TransactionTestCase):
@@ -622,13 +711,17 @@ class ScheduledIngestionExecutionTest(TransactionTestCase):
             format="json",
         )
 
-        # May return 503 if Prefect unavailable, or 200 if successful
+        # May return 503 if Prefect/deployment unavailable, or 200/202 if successful
         self.assertIn(
             response.status_code,
-            [status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE],
+            [
+                status.HTTP_200_OK,
+                status.HTTP_202_ACCEPTED,
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+            ],
         )
 
-        if response.status_code == status.HTTP_200_OK:
+        if response.status_code in (status.HTTP_200_OK, status.HTTP_202_ACCEPTED):
             self.assertIn("run_id", response.data)
             self.assertIn("flow_run_id", response.data)
 

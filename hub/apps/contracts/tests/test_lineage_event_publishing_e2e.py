@@ -4,44 +4,27 @@ E2E tests for lineage event publishing through REST API endpoints.
 Tests complete lineage operations through REST API and verifies
 events are published at each step (no mocks/stubs).
 """
-from django.test import TestCase, override_settings
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
-from rest_framework import status
+
 import json
 
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
-from hub.apps.users.models import UserStatus
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.core.events.models import Event
+from django.test import override_settings
+from rest_framework import status
 
-User = get_user_model()
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.core.events.models import Event
 
 
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
 )
-class LineageEventPublishingE2ETest(TestCase):
+class LineageEventPublishingE2ETest(ContractsAPITestBase):
     """E2E tests for lineage event publishing through REST API endpoints."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.client = APIClient()
-
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
-
-        self.client.force_authenticate(user=self.user)
+        super().setUp()
 
         # Create a test contract with lineage
         self.test_contract = Contract.objects.create(
@@ -52,48 +35,39 @@ class LineageEventPublishingE2ETest(TestCase):
             original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="3.0.2",
             original_format=OriginalFormat.JSON,
-            original_raw=json.dumps({
-                "apiVersion": "odcs/v3",
-                "kind": "DataContract",
-                "id": "test-contract",
-                "name": "Test Contract",
-                "transformSourceObjects": [
-                    {
-                        "namespace": "source_namespace",
-                        "name": "source_contract"
-                    }
-                ],
-                "transformLogic": "SELECT * FROM source",
-                "schema": {
-                    "name": "TestModel",
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string",
-                            "transformSourceObjects": [
-                                {
-                                    "namespace": "source_namespace",
-                                    "name": "source_contract",
-                                    "model": "SourceModel",
-                                    "field": "source_field"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            }),
-            hub_contract_json={
-                "info": {
-                    "name": "test_contract",
-                    "namespace": "test_namespace"
-                },
-                "lineage": {
-                    "contracts": [
-                        {
-                            "namespace": "source_namespace",
-                            "name": "source_contract"
-                        }
+            original_raw=json.dumps(
+                {
+                    "apiVersion": "odcs/v3",
+                    "kind": "DataContract",
+                    "id": "test-contract",
+                    "name": "Test Contract",
+                    "transformSourceObjects": [
+                        {"namespace": "source_namespace", "name": "source_contract"}
                     ],
+                    "transformLogic": "SELECT * FROM source",
+                    "schema": {
+                        "name": "TestModel",
+                        "fields": [
+                            {
+                                "name": "test_field",
+                                "type": "string",
+                                "transformSourceObjects": [
+                                    {
+                                        "namespace": "source_namespace",
+                                        "name": "source_contract",
+                                        "model": "SourceModel",
+                                        "field": "source_field",
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ),
+            hub_contract_json={
+                "info": {"name": "test_contract", "namespace": "test_namespace"},
+                "lineage": {
+                    "contracts": [{"namespace": "source_namespace", "name": "source_contract"}],
                     "entries": [
                         {
                             "input_fields": [
@@ -101,11 +75,11 @@ class LineageEventPublishingE2ETest(TestCase):
                                     "namespace": "source_namespace",
                                     "name": "source_contract",
                                     "model": "SourceModel",
-                                    "field": "source_field"
+                                    "field": "source_field",
                                 }
                             ]
                         }
-                    ]
+                    ],
                 },
                 "models": [
                     {
@@ -115,10 +89,10 @@ class LineageEventPublishingE2ETest(TestCase):
                                 {
                                     "namespace": "source_namespace",
                                     "name": "source_contract",
-                                    "model": "SourceModel"
+                                    "model": "SourceModel",
                                 }
                             ],
-                            "entries": []
+                            "entries": [],
                         },
                         "fields": [
                             {
@@ -129,16 +103,16 @@ class LineageEventPublishingE2ETest(TestCase):
                                             "namespace": "source_namespace",
                                             "name": "source_contract",
                                             "model": "SourceModel",
-                                            "field": "source_field"
+                                            "field": "source_field",
                                         }
                                     ],
-                                    "transformations": []
-                                }
+                                    "transformations": [],
+                                },
                             }
-                        ]
+                        ],
                     }
-                ]
-            }
+                ],
+            },
         )
 
     def test_e2e_get_contract_lineage_publishes_event(self):
@@ -155,7 +129,7 @@ class LineageEventPublishingE2ETest(TestCase):
         event_count_after = Event.objects.filter(event_type="lineage.updated").count()
         self.assertEqual(event_count_after, event_count_before + 1)
 
-        event = Event.objects.filter(event_type="lineage.updated").order_by('-timestamp').first()
+        event = Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
         self.assertIsNotNone(event)
         self.assertEqual(event.data["contract_id"], str(self.test_contract.id))
         self.assertEqual(event.data["lineage_type"], "contract")
@@ -167,7 +141,9 @@ class LineageEventPublishingE2ETest(TestCase):
         """Test that GET /api/v1/contracts/{id}/models/{model_name}/lineage/ publishes lineage.updated event."""
         event_count_before = Event.objects.filter(event_type="lineage.updated").count()
 
-        response = self.client.get(f"/api/v1/contracts/{self.test_contract.id}/models/TestModel/lineage/")
+        response = self.client.get(
+            f"/api/v1/contracts/{self.test_contract.id}/models/TestModel/lineage/"
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("model_name", response.data)
@@ -177,7 +153,7 @@ class LineageEventPublishingE2ETest(TestCase):
         event_count_after = Event.objects.filter(event_type="lineage.updated").count()
         self.assertEqual(event_count_after, event_count_before + 1)
 
-        event = Event.objects.filter(event_type="lineage.updated").order_by('-timestamp').first()
+        event = Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
         self.assertIsNotNone(event)
         self.assertEqual(event.data["contract_id"], str(self.test_contract.id))
         self.assertEqual(event.data["model_name"], "TestModel")
@@ -188,7 +164,9 @@ class LineageEventPublishingE2ETest(TestCase):
         """Test that GET /api/v1/contracts/{id}/fields/{field_name}/lineage/ publishes lineage.updated event."""
         event_count_before = Event.objects.filter(event_type="lineage.updated").count()
 
-        response = self.client.get(f"/api/v1/contracts/{self.test_contract.id}/fields/test_field/lineage/")
+        response = self.client.get(
+            f"/api/v1/contracts/{self.test_contract.id}/fields/test_field/lineage/"
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("field_name", response.data)
@@ -198,7 +176,7 @@ class LineageEventPublishingE2ETest(TestCase):
         event_count_after = Event.objects.filter(event_type="lineage.updated").count()
         self.assertEqual(event_count_after, event_count_before + 1)
 
-        event = Event.objects.filter(event_type="lineage.updated").order_by('-timestamp').first()
+        event = Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
         self.assertIsNotNone(event)
         self.assertEqual(event.data["contract_id"], str(self.test_contract.id))
         self.assertEqual(event.data["field_name"], "test_field")
@@ -219,7 +197,7 @@ class LineageEventPublishingE2ETest(TestCase):
         event_count_after = Event.objects.filter(event_type="lineage.updated").count()
         self.assertEqual(event_count_after, event_count_before + 1)
 
-        event = Event.objects.filter(event_type="lineage.updated").order_by('-timestamp').first()
+        event = Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
         self.assertIsNotNone(event)
         self.assertEqual(event.data["contract_id"], str(self.test_contract.id))
         self.assertEqual(event.data["lineage_type"], "full")
@@ -232,7 +210,9 @@ class LineageEventPublishingE2ETest(TestCase):
         # which may trigger lineage operations. For now, we'll test that the endpoint works.
         # If visualization needs event publishing, it should be added to LineageService.get_lineage_visualization()
 
-        response = self.client.get(f"/api/v1/contracts/{self.test_contract.id}/lineage/visualization/?format=json")
+        response = self.client.get(
+            f"/api/v1/contracts/{self.test_contract.id}/lineage/visualization/?format=json"
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, dict)
@@ -251,7 +231,9 @@ class LineageEventPublishingE2ETest(TestCase):
             self.assertGreaterEqual(event_count_after, event_count_before)
 
             # Check if any event was published
-            event = Event.objects.filter(event_type="lineage.updated").order_by('-timestamp').first()
+            event = (
+                Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
+            )
             if event:
                 self.assertEqual(event.data["contract_id"], str(self.test_contract.id))
                 self.assertEqual(event.data["lineage_type"], "impact_analysis")
@@ -271,7 +253,7 @@ class LineageEventPublishingE2ETest(TestCase):
         self.assertEqual(event_count_after, event_count_before + 3)
 
         # Verify each event has correct lineage_type
-        events = Event.objects.filter(event_type="lineage.updated").order_by('-timestamp')[:3]
+        events = Event.objects.filter(event_type="lineage.updated").order_by("-timestamp")[:3]
         lineage_types = {event.data["lineage_type"] for event in events}
         self.assertIn("contract", lineage_types)
         self.assertIn("model", lineage_types)
@@ -281,7 +263,7 @@ class LineageEventPublishingE2ETest(TestCase):
         """Test that lineage events include correct tenant_id and user_id."""
         self.client.get(f"/api/v1/contracts/{self.test_contract.id}/lineage/contracts/")
 
-        event = Event.objects.filter(event_type="lineage.updated").order_by('-timestamp').first()
+        event = Event.objects.filter(event_type="lineage.updated").order_by("-timestamp").first()
         self.assertIsNotNone(event)
         self.assertEqual(str(event.tenant_id), str(self.tenant.id))
         self.assertEqual(str(event.user_id), str(self.user.id))
@@ -314,4 +296,3 @@ class LineageEventPublishingE2ETest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("contracts", response.data)
         self.assertIn("entries", response.data)
-

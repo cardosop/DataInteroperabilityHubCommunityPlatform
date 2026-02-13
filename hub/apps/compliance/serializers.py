@@ -65,10 +65,6 @@ class ComplianceRunCreateSerializer(serializers.Serializer):
     )
     
     def validate(self, data):
-        """Validate that at least one of asset_id, dataset_id, or file_id is provided"""
-        if not data.get('asset_id') and not data.get('dataset_id') and not data.get('file_id'):
-            raise serializers.ValidationError(
-                "At least one of asset_id, dataset_id, or file_id must be provided"
-            )
+        """At least one of asset_id, dataset_id, file_id is validated by ComplianceBusinessRules in service."""
         return data
 

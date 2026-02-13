@@ -52,11 +52,30 @@ class AssetRecommendationService:
         """
         recommendations = []
         
+        # Validate tenant_id is a valid UUID
+        try:
+            import uuid
+            uuid.UUID(tenant_id)
+        except (ValueError, TypeError):
+            # Return empty list for invalid UUID
+            return []
+        
         # Get base assets (exclude RETIRED)
-        base_query = Asset.objects.filter(
-            tenant_id=tenant_id,
-            status__in=[AssetStatus.ACTIVE, AssetStatus.PUBLIC]
-        )
+        try:
+            base_query = Asset.objects.filter(
+                tenant_id=tenant_id,
+                status__in=[AssetStatus.ACTIVE, AssetStatus.PUBLIC]
+            )
+        except (ValueError, TypeError) as e:
+            # Return empty list for invalid UUID format
+            return []
+        except Exception as e:
+            # Catch Django ValidationError and other exceptions for invalid UUID
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            if isinstance(e, DjangoValidationError):
+                logger.warning(f"Invalid tenant_id format: {tenant_id}", exc_info=True)
+                return []
+            raise
         
         # Usage pattern-based recommendations
         if include_usage_patterns:
@@ -231,10 +250,18 @@ class AssetRecommendationService:
         recommendations = []
         
         # Get user's search history
-        recent_searches = SearchAnalytics.objects.filter(
-            tenant_id=tenant_id,
-            user_id=user_id
-        ).order_by('-created_at')[:50]
+        try:
+            recent_searches = SearchAnalytics.objects.filter(
+                tenant_id=tenant_id,
+                user_id=user_id
+            ).order_by('-created_at')[:50]
+        except Exception as e:
+            # Handle invalid UUID format
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            if isinstance(e, DjangoValidationError):
+                logger.warning(f"Invalid UUID format in user behavior recommendations: tenant_id={tenant_id}, user_id={user_id}", exc_info=True)
+                return []
+            raise
         
         # Extract clicked assets
         clicked_assets = {}
@@ -253,11 +280,20 @@ class AssetRecommendationService:
                 clicked_asset = Asset.objects.get(id=asset_id, tenant_id=tenant_id)
                 
                 # Find similar assets (same domain, similar name)
-                similar_assets = Asset.objects.filter(
-                    tenant_id=tenant_id,
-                    status__in=[AssetStatus.ACTIVE, AssetStatus.PUBLIC],
-                    domain=clicked_asset.domain
-                ).exclude(id=clicked_asset.id)[:limit]
+                # If clicked asset has a domain, find assets with same domain
+                # Otherwise, find assets with similar names or any active assets
+                if clicked_asset.domain:
+                    similar_assets = Asset.objects.filter(
+                        tenant_id=tenant_id,
+                        status__in=[AssetStatus.ACTIVE, AssetStatus.PUBLIC],
+                        domain=clicked_asset.domain
+                    ).exclude(id=clicked_asset.id)[:limit]
+                else:
+                    # If no domain, find any active assets
+                    similar_assets = Asset.objects.filter(
+                        tenant_id=tenant_id,
+                        status__in=[AssetStatus.ACTIVE, AssetStatus.PUBLIC]
+                    ).exclude(id=clicked_asset.id)[:limit]
                 
                 for asset in similar_assets:
                     score = 0.6 * (click_count / 10.0)  # Weight by click frequency

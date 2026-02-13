@@ -234,6 +234,107 @@ class WorkflowAlerting:
         
         return alerts
     
+    def _is_validation_related_failure(
+        self,
+        error_message: Optional[str],
+        error_details: Optional[Dict[str, Any]]
+    ) -> bool:
+        """Return True if the failure appears to be validation-related (Task 5.3.1)."""
+        if error_message and (
+            "validation" in error_message.lower()
+            or "WorkflowExecutionError" in error_message
+            or "business rules" in error_message.lower()
+            or "validate_workflow" in error_message.lower()
+        ):
+            return True
+        if error_details:
+            msg = str(
+                error_details.get("error_message")
+                or error_details.get("message")
+                or ""
+            )
+            if "validation" in msg.lower() or "business rules" in msg.lower():
+                return True
+            if error_details.get("validation_errors") or error_details.get("validation_failed"):
+                return True
+        return False
+
+    def check_validation_failure_rate(
+        self,
+        min_validation_failures: int = 5,
+        min_failure_rate: float = 0.1,
+        time_window_minutes: int = 60,
+        workflow_name: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Check for high validation-related failure rates (Task 5.3.1).
+        Uses DB only; complements Prometheus validation metrics.
+        """
+        alerts = []
+        window_start = timezone.now() - timedelta(minutes=time_window_minutes)
+
+        query = Q(
+            status=WorkflowStatus.FAILED,
+            completed_at__gte=window_start,
+            completed_at__lte=timezone.now(),
+        )
+        if workflow_name:
+            query &= Q(workflow_name=workflow_name)
+
+        failed_instances = WorkflowInstance.objects.filter(query).only(
+            "id", "workflow_name", "workflow_version", "error_message", "error_details"
+        )
+        by_workflow = {}
+        for inst in failed_instances:
+            by_workflow.setdefault(
+                (inst.workflow_name, inst.workflow_version),
+                {"total_failed": 0, "validation_failed": 0}
+            )
+            by_workflow[(inst.workflow_name, inst.workflow_version)]["total_failed"] += 1
+            if self._is_validation_related_failure(inst.error_message, inst.error_details):
+                by_workflow[(inst.workflow_name, inst.workflow_version)]["validation_failed"] += 1
+
+        started_in_window = (
+            WorkflowInstance.objects.filter(
+                started_at__gte=window_start,
+                started_at__lte=timezone.now(),
+            )
+            .values("workflow_name", "workflow_version")
+            .annotate(started=Count("id"))
+        )
+        started_by = {(r["workflow_name"], r["workflow_version"]): r["started"] for r in started_in_window}
+
+        for (wf_name, wf_version), counts in by_workflow.items():
+            total_failed = counts["total_failed"]
+            validation_failed = counts["validation_failed"]
+            if validation_failed < min_validation_failures:
+                continue
+            started = started_by.get((wf_name, wf_version), 0)
+            if started == 0:
+                continue
+            rate = total_failed / started
+            validation_rate = validation_failed / started
+            if validation_rate >= min_failure_rate:
+                alert = {
+                    "alert_type": "validation_failure_rate",
+                    "severity": "high" if validation_rate >= 0.25 else "medium",
+                    "workflow_name": wf_name,
+                    "workflow_version": wf_version,
+                    "validation_failed_count": validation_failed,
+                    "total_failed_count": total_failed,
+                    "started_count": started,
+                    "validation_failure_rate": validation_rate,
+                    "time_window_minutes": time_window_minutes,
+                    "message": (
+                        f"Workflow {wf_name} has {validation_failed} validation-related failures "
+                        f"out of {started} started ({validation_rate:.1%}) in the last {time_window_minutes} minutes"
+                    ),
+                }
+                alerts.append(alert)
+                self.send_alert(alert)
+
+        return alerts
+
     def check_step_failure_rate(
         self,
         min_failure_rate: float = 0.5,
@@ -339,7 +440,10 @@ class WorkflowAlerting:
             "stuck": self.check_stuck_workflows(stuck_threshold_minutes),
             "step_failures": self.check_step_failure_rate(
                 time_window_minutes=step_failure_rate_window_minutes
-            )
+            ),
+            "validation_failures": self.check_validation_failure_rate(
+                time_window_minutes=failure_rate_window_minutes
+            ),
         }
         
         return all_alerts
@@ -355,26 +459,29 @@ class WorkflowAlerting:
             alert: Alert dictionary
             
         Returns:
-            True if alert was sent successfully
+            True if alert was sent successfully, False if logging or delivery failed.
         """
         severity = alert.get('severity', 'medium')
         alert_type = alert.get('alert_type', 'unknown')
         message = alert.get('message', 'Workflow alert')
-        
-        # Log alert based on severity
-        if severity == 'critical':
-            logger.critical(f"Workflow alert [{alert_type}]: {message}", extra={"alert": alert})
-        elif severity == 'high':
-            logger.error(f"Workflow alert [{alert_type}]: {message}", extra={"alert": alert})
-        elif severity == 'medium':
-            logger.warning(f"Workflow alert [{alert_type}]: {message}", extra={"alert": alert})
-        else:
-            logger.info(f"Workflow alert [{alert_type}]: {message}", extra={"alert": alert})
-        
-        # TODO: Integrate with external alerting systems:
-        # - PagerDuty Events API
-        # - Slack Webhook API
-        # - Email via Django email backend
-        # - Prometheus Alertmanager
-        
+        try:
+            if severity == 'critical':
+                logger.critical(
+                    f"Workflow alert [{alert_type}]: {message}", extra={"alert": alert}
+                )
+            elif severity == 'high':
+                logger.error(
+                    f"Workflow alert [{alert_type}]: {message}", extra={"alert": alert}
+                )
+            elif severity == 'medium':
+                logger.warning(
+                    f"Workflow alert [{alert_type}]: {message}", extra={"alert": alert}
+                )
+            else:
+                logger.info(
+                    f"Workflow alert [{alert_type}]: {message}", extra={"alert": alert}
+                )
+        except Exception:
+            logger.exception("Failed to send workflow alert")
+            return False
         return True

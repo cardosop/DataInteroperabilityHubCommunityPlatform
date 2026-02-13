@@ -11,19 +11,17 @@ Tests:
 
 All tests use real implementations (no mocks/stubs) and follow engineering best practices.
 """
+
 import time
 import uuid
-from django.test import TestCase
+
 from django.db import connection
-from django.contrib.auth import get_user_model
-from hub.apps.tenants.models import Tenant
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
+
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.contracts.tests.test_base import ContractsTestBase
 
 
-User = get_user_model()
-
-
-class ODPSQueryIndexesPerformanceTest(TestCase):
+class ODPSQueryIndexesPerformanceTest(ContractsTestBase):
     """
     Performance tests for ODPS query indexes.
 
@@ -37,16 +35,16 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
 
     def setUp(self):
         """Set up test data with ODPS and ODCS contracts."""
+        super().setUp()
         unique_id = str(uuid.uuid4())[:8]
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {unique_id}",
-            slug=f"test-tenant-{unique_id}"
-        )
-        self.user = User.objects.create_user(
-            email=f"test-{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
+
+        # Update tenant/user names for clarity
+        self.tenant.name = f"Test Tenant {unique_id}"
+        self.tenant.slug = f"test-tenant-{unique_id}"
+        self.tenant.save()
+
+        self.user.email = f"test-{unique_id}@example.com"
+        self.user.save()
 
         # Create test contracts
         self.odps_contract_id = str(uuid.uuid4())
@@ -62,17 +60,13 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "odps-test", "name": "ODPS Test"}',
             hub_contract_json={
-                'hub_contract_version': '1.0.0',
-                'id': 'odps-test',
-                'info': {'name': 'ODPS Test'},
-                'schema': {'fields': []},
-                'extensions': {
-                    'x_odps': {
-                        'odcs_link': self.odcs_contract_id
-                    }
-                }
+                "hub_contract_version": "1.0.0",
+                "id": "odps-test",
+                "info": {"name": "ODPS Test"},
+                "schema": {"fields": []},
+                "extensions": {"x_odps": {"odcs_link": self.odcs_contract_id}},
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create ODCS contract
@@ -85,86 +79,98 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "odcs-test", "name": "ODCS Test"}',
             hub_contract_json={
-                'hub_contract_version': '1.0.0',
-                'id': 'odcs-test',
-                'info': {'name': 'ODCS Test'},
-                'schema': {'fields': []},
-                'extensions': {
-                    'x_odps': {
-                        'odps_link': self.odps_contract_id
-                    }
-                }
+                "hub_contract_version": "1.0.0",
+                "id": "odcs-test",
+                "info": {"name": "ODCS Test"},
+                "schema": {"fields": []},
+                "extensions": {"x_odps": {"odps_link": self.odps_contract_id}},
             },
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_original_spec_type_index_exists(self):
         """Test that index on original_spec_type exists."""
         with connection.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT indexname, indexdef
                 FROM pg_indexes
                 WHERE tablename = 'contracts'
                 AND indexname = 'idx_contracts_original_spec_type'
-            """)
+            """
+            )
             result = cursor.fetchone()
             self.assertIsNotNone(result, "Index idx_contracts_original_spec_type should exist")
-            self.assertEqual(result[0], 'idx_contracts_original_spec_type')
+            self.assertEqual(result[0], "idx_contracts_original_spec_type")
 
     def test_tenant_original_spec_type_index_exists(self):
         """Test that composite index on tenant_id + original_spec_type exists."""
         with connection.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT indexname, indexdef
                 FROM pg_indexes
                 WHERE tablename = 'contracts'
                 AND indexname = 'idx_contracts_tenant_original_spec_type'
-            """)
+            """
+            )
             result = cursor.fetchone()
-            self.assertIsNotNone(result, "Index idx_contracts_tenant_original_spec_type should exist")
-            self.assertEqual(result[0], 'idx_contracts_tenant_original_spec_type')
+            self.assertIsNotNone(
+                result, "Index idx_contracts_tenant_original_spec_type should exist"
+            )
+            self.assertEqual(result[0], "idx_contracts_tenant_original_spec_type")
 
     def test_extensions_x_odps_gin_index_exists(self):
         """Test that GIN index on extensions.x_odps exists."""
         with connection.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT indexname, indexdef
                 FROM pg_indexes
                 WHERE tablename = 'contracts'
                 AND indexname = 'idx_contracts_extensions_x_odps_gin'
-            """)
+            """
+            )
             result = cursor.fetchone()
             self.assertIsNotNone(result, "Index idx_contracts_extensions_x_odps_gin should exist")
             index_def = result[1].upper()
-            self.assertIn('GIN', index_def, "Index should be a GIN index")
+            self.assertIn("GIN", index_def, "Index should be a GIN index")
 
     def test_extensions_x_odps_odcs_link_index_exists(self):
         """Test that GIN index on extensions.x_odps.odcs_link exists."""
         with connection.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT indexname, indexdef
                 FROM pg_indexes
                 WHERE tablename = 'contracts'
                 AND indexname = 'idx_contracts_extensions_x_odps_odcs_link_gin'
-            """)
+            """
+            )
             result = cursor.fetchone()
-            self.assertIsNotNone(result, "Index idx_contracts_extensions_x_odps_odcs_link_gin should exist")
+            self.assertIsNotNone(
+                result, "Index idx_contracts_extensions_x_odps_odcs_link_gin should exist"
+            )
             index_def = result[1].upper()
-            self.assertIn('GIN', index_def, "Index should be a GIN index")
+            self.assertIn("GIN", index_def, "Index should be a GIN index")
 
     def test_extensions_x_odps_odps_link_index_exists(self):
         """Test that GIN index on extensions.x_odps.odps_link exists."""
         with connection.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT indexname, indexdef
                 FROM pg_indexes
                 WHERE tablename = 'contracts'
                 AND indexname = 'idx_contracts_extensions_x_odps_odps_link_gin'
-            """)
+            """
+            )
             result = cursor.fetchone()
-            self.assertIsNotNone(result, "Index idx_contracts_extensions_x_odps_odps_link_gin should exist")
+            self.assertIsNotNone(
+                result, "Index idx_contracts_extensions_x_odps_odps_link_gin should exist"
+            )
             index_def = result[1].upper()
-            self.assertIn('GIN', index_def, "Index should be a GIN index")
+            self.assertIn("GIN", index_def, "Index should be a GIN index")
 
     def test_original_spec_type_filtering_performance(self):
         """Test query performance when filtering by original_spec_type."""
@@ -181,12 +187,12 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
                 original_format=OriginalFormat.JSON,
                 original_raw=f'{{"id": "odps-{i}", "name": "ODPS {i}"}}',
                 hub_contract_json={
-                    'hub_contract_version': '1.0.0',
-                    'id': f'odps-{i}',
-                    'info': {'name': f'ODPS {i}'},
-                    'schema': {'fields': []}
+                    "hub_contract_version": "1.0.0",
+                    "id": f"odps-{i}",
+                    "info": {"name": f"ODPS {i}"},
+                    "schema": {"fields": []},
                 },
-                created_by=self.user
+                created_by=self.user,
             )
             contracts.append(odps_contract)
 
@@ -200,20 +206,19 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
                 original_format=OriginalFormat.JSON,
                 original_raw=f'{{"id": "odcs-{i}", "name": "ODCS {i}"}}',
                 hub_contract_json={
-                    'hub_contract_version': '1.0.0',
-                    'id': f'odcs-{i}',
-                    'info': {'name': f'ODCS {i}'},
-                    'schema': {'fields': []}
+                    "hub_contract_version": "1.0.0",
+                    "id": f"odcs-{i}",
+                    "info": {"name": f"ODCS {i}"},
+                    "schema": {"fields": []},
                 },
-                created_by=self.user
+                created_by=self.user,
             )
             contracts.append(odcs_contract)
 
         # Test ODPS filtering performance
         start_time = time.time()
         odps_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODPS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODPS
         )
         odps_count = odps_contracts.count()
         query_time = time.time() - start_time
@@ -224,8 +229,7 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
         # Test ODCS filtering performance
         start_time = time.time()
         odcs_contracts = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODCS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODCS
         )
         odcs_count = odcs_contracts.count()
         query_time = time.time() - start_time
@@ -251,17 +255,13 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
                 original_format=OriginalFormat.JSON,
                 original_raw=f'{{"id": "odcs-linked-{i}", "name": "ODCS Linked {i}"}}',
                 hub_contract_json={
-                    'hub_contract_version': '1.0.0',
-                    'id': f'odcs-linked-{i}',
-                    'info': {'name': f'ODCS Linked {i}'},
-                    'schema': {'fields': []},
-                    'extensions': {
-                        'x_odps': {
-                            'odps_link': self.odps_contract_id
-                        }
-                    }
+                    "hub_contract_version": "1.0.0",
+                    "id": f"odcs-linked-{i}",
+                    "info": {"name": f"ODCS Linked {i}"},
+                    "schema": {"fields": []},
+                    "extensions": {"x_odps": {"odps_link": self.odps_contract_id}},
                 },
-                created_by=self.user
+                created_by=self.user,
             )
             contracts.append(contract)
 
@@ -294,17 +294,13 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
                 original_format=OriginalFormat.JSON,
                 original_raw=f'{{"id": "odps-linked-{i}", "name": "ODPS Linked {i}"}}',
                 hub_contract_json={
-                    'hub_contract_version': '1.0.0',
-                    'id': f'odps-linked-{i}',
-                    'info': {'name': f'ODPS Linked {i}'},
-                    'schema': {'fields': []},
-                    'extensions': {
-                        'x_odps': {
-                            'odcs_link': self.odcs_contract_id
-                        }
-                    }
+                    "hub_contract_version": "1.0.0",
+                    "id": f"odps-linked-{i}",
+                    "info": {"name": f"ODPS Linked {i}"},
+                    "schema": {"fields": []},
+                    "extensions": {"x_odps": {"odcs_link": self.odcs_contract_id}},
                 },
-                created_by=self.user
+                created_by=self.user,
             )
             contracts.append(contract)
 
@@ -338,17 +334,13 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
                 original_format=OriginalFormat.JSON,
                 original_raw=f'{{"id": "odps-comp-{i}", "name": "ODPS Composite {i}"}}',
                 hub_contract_json={
-                    'hub_contract_version': '1.0.0',
-                    'id': f'odps-comp-{i}',
-                    'info': {'name': f'ODPS Composite {i}'},
-                    'schema': {'fields': []},
-                    'extensions': {
-                        'x_odps': {
-                            'odcs_link': self.odcs_contract_id
-                        }
-                    }
+                    "hub_contract_version": "1.0.0",
+                    "id": f"odps-comp-{i}",
+                    "info": {"name": f"ODPS Composite {i}"},
+                    "schema": {"fields": []},
+                    "extensions": {"x_odps": {"odcs_link": self.odcs_contract_id}},
                 },
-                created_by=self.user
+                created_by=self.user,
             )
             contracts.append(odps_contract)
 
@@ -357,7 +349,7 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
         results = Contract.objects.filter(
             tenant=self.tenant,
             original_spec_type=OriginalSpecType.ODPS,
-            hub_contract_json__extensions__x_odps__odcs_link=self.odcs_contract_id
+            hub_contract_json__extensions__x_odps__odcs_link=self.odcs_contract_id,
         )
         count = results.count()
         query_time = time.time() - start_time
@@ -373,34 +365,40 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
         """Test EXPLAIN ANALYZE to verify index usage."""
         with connection.cursor() as cursor:
             # Test original_spec_type index usage
-            cursor.execute("""
+            cursor.execute(
+                """
                 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT TEXT)
                 SELECT id, original_spec_type
                 FROM contracts
                 WHERE original_spec_type = 'ODPS'
                 AND tenant_id = %s
-            """, [str(self.tenant.id)])
+            """,
+                [str(self.tenant.id)],
+            )
 
             explain_output = cursor.fetchall()
-            explain_text = '\n'.join([row[0] for row in explain_output])
+            explain_text = "\n".join([row[0] for row in explain_output])
 
             # Verify query plan mentions index usage
-            self.assertIn('contracts', explain_text.lower(), "Query should access contracts table")
+            self.assertIn("contracts", explain_text.lower(), "Query should access contracts table")
             # Log for debugging
             print(f"\nEXPLAIN ANALYZE for original_spec_type:\n{explain_text}")
 
             # Test JSONB index usage
-            cursor.execute("""
+            cursor.execute(
+                """
                 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT TEXT)
                 SELECT id
                 FROM contracts
                 WHERE hub_contract_json->'extensions'->'x_odps'->>'odcs_link' = %s
-            """, [self.odcs_contract_id])
+            """,
+                [self.odcs_contract_id],
+            )
 
             explain_output = cursor.fetchall()
-            explain_text = '\n'.join([row[0] for row in explain_output])
+            explain_text = "\n".join([row[0] for row in explain_output])
 
-            self.assertIn('contracts', explain_text.lower(), "Query should access contracts table")
+            self.assertIn("contracts", explain_text.lower(), "Query should access contracts table")
             print(f"\nEXPLAIN ANALYZE for x_odps.odcs_link:\n{explain_text}")
 
     def test_bulk_query_performance(self):
@@ -420,17 +418,13 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
                     original_format=OriginalFormat.JSON,
                     original_raw=f'{{"id": "odps-bulk-{odcs_id[:8]}-{i}", "name": "ODPS Bulk"}}',
                     hub_contract_json={
-                        'hub_contract_version': '1.0.0',
-                        'id': f'odps-bulk-{odcs_id[:8]}-{i}',
-                        'info': {'name': 'ODPS Bulk'},
-                        'schema': {'fields': []},
-                        'extensions': {
-                            'x_odps': {
-                                'odcs_link': odcs_id
-                            }
-                        }
+                        "hub_contract_version": "1.0.0",
+                        "id": f"odps-bulk-{odcs_id[:8]}-{i}",
+                        "info": {"name": "ODPS Bulk"},
+                        "schema": {"fields": []},
+                        "extensions": {"x_odps": {"odcs_link": odcs_id}},
                     },
-                    created_by=self.user
+                    created_by=self.user,
                 )
                 contracts.append(contract)
 
@@ -449,8 +443,7 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
         # Query all ODPS contracts
         start_time = time.time()
         all_odps = Contract.objects.filter(
-            tenant=self.tenant,
-            original_spec_type=OriginalSpecType.ODPS
+            tenant=self.tenant, original_spec_type=OriginalSpecType.ODPS
         )
         all_count = all_odps.count()
         query_time = time.time() - start_time
@@ -466,7 +459,8 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
         """Test index statistics and maintenance."""
         with connection.cursor() as cursor:
             # Get index statistics for original_spec_type index
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT
                     schemaname,
                     relname as tablename,
@@ -476,41 +470,48 @@ class ODPSQueryIndexesPerformanceTest(TestCase):
                     idx_tup_fetch as tuples_fetched
                 FROM pg_stat_user_indexes
                 WHERE indexrelname = 'idx_contracts_original_spec_type'
-            """)
+            """
+            )
             result = cursor.fetchone()
 
             # Index should exist in statistics (may have zero scans if not used yet)
             if result:
-                self.assertEqual(result[2], 'idx_contracts_original_spec_type')
+                self.assertEqual(result[2], "idx_contracts_original_spec_type")
             else:
                 # Verify index exists even if not in statistics
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT indexname
                     FROM pg_indexes
                     WHERE tablename = 'contracts'
                     AND indexname = 'idx_contracts_original_spec_type'
-                """)
+                """
+                )
                 index_check = cursor.fetchone()
-                self.assertIsNotNone(index_check, "Index should exist even if not in statistics yet")
+                self.assertIsNotNone(
+                    index_check, "Index should exist even if not in statistics yet"
+                )
 
     def test_all_indexes_exist(self):
         """Test that all required indexes exist."""
         required_indexes = [
-            'idx_contracts_original_spec_type',
-            'idx_contracts_tenant_original_spec_type',
-            'idx_contracts_extensions_x_odps_gin',
-            'idx_contracts_extensions_x_odps_odcs_link_gin',
-            'idx_contracts_extensions_x_odps_odps_link_gin',
+            "idx_contracts_original_spec_type",
+            "idx_contracts_tenant_original_spec_type",
+            "idx_contracts_extensions_x_odps_gin",
+            "idx_contracts_extensions_x_odps_odcs_link_gin",
+            "idx_contracts_extensions_x_odps_odps_link_gin",
         ]
 
         with connection.cursor() as cursor:
             for index_name in required_indexes:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT COUNT(*)
                     FROM pg_indexes
                     WHERE tablename = 'contracts'
                     AND indexname = %s
-                """, [index_name])
+                """,
+                    [index_name],
+                )
                 count = cursor.fetchone()[0]
                 self.assertEqual(count, 1, f"Index {index_name} should exist")
-

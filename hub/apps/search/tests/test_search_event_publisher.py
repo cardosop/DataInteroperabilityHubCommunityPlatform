@@ -4,12 +4,14 @@ Unit tests for SearchEventPublisher.
 Tests event publishing using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.core.events.service_publishers import SearchEventPublisher
+
 from hub.apps.core.events.models import Event
+from hub.apps.core.events.service_publishers import SearchEventPublisher
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 
 
 @override_settings(
@@ -22,15 +24,13 @@ class SearchEventPublisherTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create a test service with SearchEventPublisher
@@ -40,10 +40,7 @@ class SearchEventPublisherTest(TestCase):
                 self.user_id = user_id
                 super().__init__(tenant_id=tenant_id, user_id=user_id)
 
-        self.service = TestSearchService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.service = TestSearchService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_publish_search_query_event(self):
         """Test publishing search.query event with real EventPublisher."""
@@ -53,7 +50,7 @@ class SearchEventPublisherTest(TestCase):
             filters={"resource_type": "CONTRACT"},
             result_count=10,
             no_results=False,
-            execution_time_ms=150
+            execution_time_ms=150,
         )
 
         # Verify event was published
@@ -75,9 +72,7 @@ class SearchEventPublisherTest(TestCase):
 
     def test_publish_search_query_with_minimal_data(self):
         """Test publishing search.query event with only required fields."""
-        event_id = self.service.publish_search_query(
-            query="minimal query"
-        )
+        event_id = self.service.publish_search_query(query="minimal query")
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -96,10 +91,7 @@ class SearchEventPublisherTest(TestCase):
     def test_publish_search_query_with_no_results(self):
         """Test publishing search.query event with no results."""
         event_id = self.service.publish_search_query(
-            query="no results query",
-            result_count=0,
-            no_results=True,
-            execution_time_ms=50
+            query="no results query", result_count=0, no_results=True, execution_time_ms=50
         )
 
         # Verify event was published
@@ -121,7 +113,7 @@ class SearchEventPublisherTest(TestCase):
             resource_id="test-resource-id-123",
             index_id="index-123",
             title="Test Contract Title",
-            update_type="updated"
+            update_type="updated",
         )
 
         # Verify event was published
@@ -143,8 +135,7 @@ class SearchEventPublisherTest(TestCase):
     def test_publish_index_updated_with_minimal_data(self):
         """Test publishing search.index.updated event with only required fields."""
         event_id = self.service.publish_index_updated(
-            resource_type="ASSET",
-            resource_id="asset-123"
+            resource_type="ASSET", resource_id="asset-123"
         )
 
         # Verify event was published
@@ -163,9 +154,7 @@ class SearchEventPublisherTest(TestCase):
     def test_publish_index_updated_with_created_type(self):
         """Test publishing search.index.updated event with update_type='created'."""
         event_id = self.service.publish_index_updated(
-            resource_type="DATASET",
-            resource_id="dataset-456",
-            update_type="created"
+            resource_type="DATASET", resource_id="dataset-456", update_type="created"
         )
 
         # Verify event was published
@@ -180,9 +169,7 @@ class SearchEventPublisherTest(TestCase):
     def test_publish_index_updated_with_deleted_type(self):
         """Test publishing search.index.updated event with update_type='deleted'."""
         event_id = self.service.publish_index_updated(
-            resource_type="CONTRACT",
-            resource_id="contract-789",
-            update_type="deleted"
+            resource_type="CONTRACT", resource_id="contract-789", update_type="deleted"
         )
 
         # Verify event was published
@@ -202,7 +189,7 @@ class SearchEventPublisherTest(TestCase):
             duration_ms=5000,
             resource_types=["CONTRACT", "ASSET", "DATASET"],
             success=True,
-            errors=[]
+            errors=[],
         )
 
         # Verify event was published
@@ -224,9 +211,7 @@ class SearchEventPublisherTest(TestCase):
 
     def test_publish_index_rebuilt_with_minimal_data(self):
         """Test publishing search.index.rebuilt event with only required fields."""
-        event_id = self.service.publish_index_rebuilt(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = self.service.publish_index_rebuilt(tenant_id=str(self.tenant.id))
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -250,7 +235,7 @@ class SearchEventPublisherTest(TestCase):
             resource_count=500,
             duration_ms=3000,
             success=False,
-            errors=errors
+            errors=errors,
         )
 
         # Verify event was published
@@ -271,7 +256,7 @@ class SearchEventPublisherTest(TestCase):
             duration_ms=4000,
             resource_types=["CONTRACT", "ASSET"],
             success=True,
-            errors=["Warning: Some resources skipped"]
+            errors=["Warning: Some resources skipped"],
         )
 
         # Verify event was published
@@ -286,9 +271,7 @@ class SearchEventPublisherTest(TestCase):
 
     def test_event_source_includes_tenant_and_user(self):
         """Test that events include tenant_id and user_id in source."""
-        event_id = self.service.publish_search_query(
-            query="test query"
-        )
+        event_id = self.service.publish_search_query(query="test query")
 
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(str(event.tenant_id), str(self.tenant.id))
@@ -298,9 +281,7 @@ class SearchEventPublisherTest(TestCase):
     def test_event_timestamp_is_set(self):
         """Test that events have timestamp set."""
         before_publish = timezone.now()
-        event_id = self.service.publish_search_query(
-            query="test query"
-        )
+        event_id = self.service.publish_search_query(query="test query")
         after_publish = timezone.now()
 
         event = Event.objects.get(event_id=event_id)
@@ -320,8 +301,7 @@ class SearchEventPublisherTest(TestCase):
 
         # Test search.index.updated tags
         event_id = self.service.publish_index_updated(
-            resource_type="CONTRACT",
-            resource_id="test-123"
+            resource_type="CONTRACT", resource_id="test-123"
         )
         event = Event.objects.get(event_id=event_id)
         tags = event.metadata.get("tags", []) if event.metadata else []
@@ -329,9 +309,7 @@ class SearchEventPublisherTest(TestCase):
         self.assertIn("index", tags)
 
         # Test search.index.rebuilt tags
-        event_id = self.service.publish_index_rebuilt(
-            tenant_id=str(self.tenant.id)
-        )
+        event_id = self.service.publish_index_rebuilt(tenant_id=str(self.tenant.id))
         event = Event.objects.get(event_id=event_id)
         tags = event.metadata.get("tags", []) if event.metadata else []
         self.assertIn("search", tags)
@@ -347,13 +325,26 @@ class SearchEventPublisherTest(TestCase):
 
     def test_service_initialization_with_tenant_and_user(self):
         """Test SearchEventPublisher initialization with tenant_id and user_id."""
-        service = TestSearchService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        service = TestSearchService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
         self.assertIsNotNone(service._event_publisher)
         self.assertEqual(service._event_publisher.default_tenant_id, str(self.tenant.id))
         self.assertEqual(service._event_publisher.default_user_id, str(self.user.id))
+
+    def test_published_event_has_required_structure_tdd(self):
+        """TDD: Published search.query event has required structure (event_type, data, tenant_id, etc.)."""
+        event_id = self.service.publish_search_query(query="structure check")
+        self.assertIsNotNone(event_id)
+        self.assertIsInstance(event_id, str)
+        event = Event.objects.get(event_id=event_id)
+        self.assertIsNotNone(event.event_type)
+        self.assertEqual(event.event_type, "search.query")
+        self.assertIsNotNone(event.data)
+        self.assertIn("query", event.data)
+        self.assertIsNotNone(event.tenant_id)
+        self.assertEqual(str(event.tenant_id), str(self.tenant.id))
+        self.assertEqual(str(event.user_id), str(self.user.id))
+        self.assertEqual(event.source_service, "search_service")
+        self.assertIsNotNone(event.timestamp)
 
 
 # Helper class for testing
@@ -364,4 +355,3 @@ class TestSearchService(SearchEventPublisher):
         self.tenant_id = tenant_id
         self.user_id = user_id
         super().__init__(tenant_id=tenant_id, user_id=user_id)
-

@@ -8,18 +8,20 @@ Tests verify that:
 4. Directory whitelist validation works correctly
 5. Path traversal prevention works
 """
+
 import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
 from django.test import TestCase
 
 from hub.apps.contracts.config.odps_refs_config import (
-    ODPSRefsConfig,
-    get_odps_refs_config,
-    get_allowed_base_dirs,
     DEFAULT_ALLOWED_BASE_DIRS,
     ENV_ODPS_REFS_DIR,
+    ODPSRefsConfig,
+    get_allowed_base_dirs,
+    get_odps_refs_config,
 )
 
 
@@ -30,6 +32,7 @@ class ODPSRefsConfigTest(TestCase):
         """Set up test fixtures"""
         # Clear any cached config instance
         import hub.apps.contracts.config.odps_refs_config as config_module
+
         config_module._config_instance = None
 
     def tearDown(self):
@@ -40,6 +43,7 @@ class ODPSRefsConfigTest(TestCase):
 
         # Clear cached config instance
         import hub.apps.contracts.config.odps_refs_config as config_module
+
         config_module._config_instance = None
 
     def test_default_allowed_base_dirs(self):
@@ -47,7 +51,7 @@ class ODPSRefsConfigTest(TestCase):
         self.assertEqual(
             DEFAULT_ALLOWED_BASE_DIRS,
             ["./contracts/refs", "./odps-refs"],
-            "Default allowed base directories should match expected values"
+            "Default allowed base directories should match expected values",
         )
 
     def test_config_loads_defaults_when_no_file(self):
@@ -60,7 +64,7 @@ class ODPSRefsConfigTest(TestCase):
         self.assertEqual(
             allowed_dirs,
             DEFAULT_ALLOWED_BASE_DIRS,
-            "Should use default values when config file doesn't exist"
+            "Should use default values when config file doesn't exist",
         )
 
     def test_config_loads_from_yaml_file(self):
@@ -71,18 +75,16 @@ class ODPSRefsConfigTest(TestCase):
             self.skipTest("yaml library not available")
 
         # Create temporary YAML config file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            yaml.dump({
-                'allowed_base_dirs': ['./custom/refs', './custom/odps-refs']
-            }, f)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump({"allowed_base_dirs": ["./custom/refs", "./custom/odps-refs"]}, f)
             temp_config_file = Path(f.name)
 
         try:
             config = ODPSRefsConfig(config_file=temp_config_file)
             allowed_dirs = config.allowed_base_dirs
 
-            self.assertIn('./custom/refs', allowed_dirs)
-            self.assertIn('./custom/odps-refs', allowed_dirs)
+            self.assertIn("./custom/refs", allowed_dirs)
+            self.assertIn("./custom/odps-refs", allowed_dirs)
         finally:
             # Clean up
             temp_config_file.unlink()
@@ -120,7 +122,7 @@ class ODPSRefsConfigTest(TestCase):
             self.assertEqual(
                 allowed_dirs.count("./contracts/refs"),
                 1,
-                "Environment variable directory should not be duplicated"
+                "Environment variable directory should not be duplicated",
             )
         finally:
             del os.environ[ENV_ODPS_REFS_DIR]
@@ -138,10 +140,7 @@ class ODPSRefsConfigTest(TestCase):
 
         # All paths should be absolute
         for dir_path in absolute_dirs:
-            self.assertTrue(
-                dir_path.is_absolute(),
-                f"Path should be absolute: {dir_path}"
-            )
+            self.assertTrue(dir_path.is_absolute(), f"Path should be absolute: {dir_path}")
 
     def test_is_path_allowed_within_allowed_directory(self):
         """Test that paths within allowed directories are allowed"""
@@ -160,19 +159,18 @@ class ODPSRefsConfigTest(TestCase):
             test_file.touch()
 
             # Update config to use our temp directory by patching _config_data
-            with patch.object(config, '_config_data', {'allowed_base_dirs': [str(allowed_dir)]}):
+            with patch.object(config, "_config_data", {"allowed_base_dirs": [str(allowed_dir)]}):
                 # Test with relative path
                 is_allowed = config.is_path_allowed(test_file, base_path=temp_path)
                 self.assertTrue(
-                    is_allowed,
-                    f"Path within allowed directory should be allowed: {test_file}"
+                    is_allowed, f"Path within allowed directory should be allowed: {test_file}"
                 )
 
                 # Test with absolute path
                 is_allowed = config.is_path_allowed(test_file.resolve(), base_path=temp_path)
                 self.assertTrue(
                     is_allowed,
-                    f"Absolute path within allowed directory should be allowed: {test_file.resolve()}"
+                    f"Absolute path within allowed directory should be allowed: {test_file.resolve()}",
                 )
 
     def test_is_path_allowed_outside_allowed_directory(self):
@@ -194,11 +192,10 @@ class ODPSRefsConfigTest(TestCase):
             test_file.touch()
 
             # Update config to use our temp directory by patching _config_data
-            with patch.object(config, '_config_data', {'allowed_base_dirs': [str(allowed_dir)]}):
+            with patch.object(config, "_config_data", {"allowed_base_dirs": [str(allowed_dir)]}):
                 is_allowed = config.is_path_allowed(test_file, base_path=temp_path)
                 self.assertFalse(
-                    is_allowed,
-                    f"Path outside allowed directory should be blocked: {test_file}"
+                    is_allowed, f"Path outside allowed directory should be blocked: {test_file}"
                 )
 
     def test_is_path_allowed_path_traversal_prevention(self):
@@ -223,13 +220,10 @@ class ODPSRefsConfigTest(TestCase):
             traversal_path = allowed_dir / "subdir" / ".." / ".." / "etc" / "passwd"
 
             # Update config to use our temp directory by patching _config_data
-            with patch.object(config, '_config_data', {'allowed_base_dirs': [str(allowed_dir)]}):
+            with patch.object(config, "_config_data", {"allowed_base_dirs": [str(allowed_dir)]}):
                 # Legitimate file should be allowed
                 is_allowed = config.is_path_allowed(legitimate_file, base_path=temp_path)
-                self.assertTrue(
-                    is_allowed,
-                    "Legitimate file in subdirectory should be allowed"
-                )
+                self.assertTrue(is_allowed, "Legitimate file in subdirectory should be allowed")
 
                 # Path traversal should be blocked (even if it resolves to a path outside)
                 # Note: The traversal path might not exist, but we test the logic
@@ -238,36 +232,23 @@ class ODPSRefsConfigTest(TestCase):
                 resolved = traversal_path.resolve()
                 try:
                     if not resolved.is_relative_to(allowed_dir.resolve()):
-                        self.assertFalse(
-                            is_allowed,
-                            "Path traversal attack should be blocked"
-                        )
+                        self.assertFalse(is_allowed, "Path traversal attack should be blocked")
                 except AttributeError:
                     # Python < 3.9 doesn't have is_relative_to, check differently
                     try:
                         common = Path(os.path.commonpath([resolved, allowed_dir.resolve()]))
                         if common != allowed_dir.resolve():
-                            self.assertFalse(
-                                is_allowed,
-                                "Path traversal attack should be blocked"
-                            )
+                            self.assertFalse(is_allowed, "Path traversal attack should be blocked")
                     except ValueError:
                         # Paths don't share a common path
-                        self.assertFalse(
-                            is_allowed,
-                            "Path traversal attack should be blocked"
-                        )
+                        self.assertFalse(is_allowed, "Path traversal attack should be blocked")
 
     def test_get_odps_refs_config_singleton(self):
         """Test that get_odps_refs_config returns singleton instance"""
         config1 = get_odps_refs_config()
         config2 = get_odps_refs_config()
 
-        self.assertIs(
-            config1,
-            config2,
-            "get_odps_refs_config should return the same instance"
-        )
+        self.assertIs(config1, config2, "get_odps_refs_config should return the same instance")
 
     def test_get_odps_refs_config_custom_file(self):
         """Test that get_odps_refs_config can use custom config file"""
@@ -277,17 +258,15 @@ class ODPSRefsConfigTest(TestCase):
             self.skipTest("yaml library not available")
 
         # Create temporary YAML config file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            yaml.dump({
-                'allowed_base_dirs': ['./custom/config/refs']
-            }, f)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump({"allowed_base_dirs": ["./custom/config/refs"]}, f)
             temp_config_file = Path(f.name)
 
         try:
             config = get_odps_refs_config(config_file=temp_config_file)
             allowed_dirs = config.allowed_base_dirs
 
-            self.assertIn('./custom/config/refs', allowed_dirs)
+            self.assertIn("./custom/config/refs", allowed_dirs)
         finally:
             temp_config_file.unlink()
 
@@ -303,7 +282,7 @@ class ODPSRefsConfigTest(TestCase):
     def test_config_handles_invalid_yaml(self):
         """Test that configuration handles invalid YAML gracefully"""
         # Create a file with invalid YAML
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("invalid: yaml: content: [unclosed")
             temp_config_file = Path(f.name)
 
@@ -325,8 +304,8 @@ class ODPSRefsConfigTest(TestCase):
             self.skipTest("yaml library not available")
 
         # Create YAML file without allowed_base_dirs
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            yaml.dump({'other_key': 'value'}, f)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump({"other_key": "value"}, f)
             temp_config_file = Path(f.name)
 
         try:
@@ -346,8 +325,8 @@ class ODPSRefsConfigTest(TestCase):
             self.skipTest("yaml library not available")
 
         # Create YAML file with allowed_base_dirs as string instead of list
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            yaml.dump({'allowed_base_dirs': 'not-a-list'}, f)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump({"allowed_base_dirs": "not-a-list"}, f)
             temp_config_file = Path(f.name)
 
         try:
@@ -372,11 +351,12 @@ class ODPSRefsConfigTest(TestCase):
             test_file.touch()
 
             # Use absolute path for allowed directory by patching _config_data
-            with patch.object(config, '_config_data', {'allowed_base_dirs': [str(allowed_dir.resolve())]}):
+            with patch.object(
+                config, "_config_data", {"allowed_base_dirs": [str(allowed_dir.resolve())]}
+            ):
                 is_allowed = config.is_path_allowed(test_file, base_path=temp_path)
                 self.assertTrue(
-                    is_allowed,
-                    "Path should be allowed when using absolute allowed directory"
+                    is_allowed, "Path should be allowed when using absolute allowed directory"
                 )
 
     def test_is_path_allowed_with_subdirectory(self):
@@ -394,10 +374,6 @@ class ODPSRefsConfigTest(TestCase):
             test_file = nested_dir / "deep_file.yaml"
             test_file.touch()
 
-            with patch.object(config, '_config_data', {'allowed_base_dirs': [str(allowed_dir)]}):
+            with patch.object(config, "_config_data", {"allowed_base_dirs": [str(allowed_dir)]}):
                 is_allowed = config.is_path_allowed(test_file, base_path=temp_path)
-                self.assertTrue(
-                    is_allowed,
-                    "Files in nested subdirectories should be allowed"
-                )
-
+                self.assertTrue(is_allowed, "Files in nested subdirectories should be allowed")

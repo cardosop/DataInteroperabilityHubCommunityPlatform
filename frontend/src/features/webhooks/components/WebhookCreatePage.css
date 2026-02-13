@@ -1,0 +1,113 @@
+.webhook-create-page {
+  padding: var(--spacing-lg);
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.webhook-create-page .btn-back {
+  margin-bottom: var(--spacing-md);
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+}
+
+.webhook-create-page h1 {
+  margin: 0 0 var(--spacing-lg) 0;
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+}
+
+.webhook-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.webhook-form-error {
+  padding: var(--spacing-md);
+  background: var(--color-error-light);
+  border: 1px solid var(--color-error);
+  border-radius: var(--border-radius-md);
+  color: var(--color-error-dark);
+}
+
+.webhook-create-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.webhook-create-form label {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+}
+
+.webhook-create-form input[type='text'],
+.webhook-create-form input[type='url'],
+.webhook-create-form input[type='password'] {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+}
+
+.webhook-event-types-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--spacing-xs);
+  max-height: 240px;
+  overflow-y: auto;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  background: var(--color-background-primary);
+}
+
+.webhook-event-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.webhook-event-checkbox input {
+  flex-shrink: 0;
+}
+
+.webhook-event-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.form-actions .btn-primary {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  border: none;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+}
+
+.form-actions .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-actions .btn-secondary {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+}

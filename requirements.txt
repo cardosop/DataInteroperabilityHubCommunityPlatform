@@ -35,8 +35,8 @@ opentelemetry-sdk>=1.20.0
 opentelemetry-instrumentation-django>=0.42b0
 opentelemetry-instrumentation-requests>=0.42b0  # Required for HTTP request tracing
 opentelemetry-instrumentation-httpx>=0.42b0  # Required for HTTPX client tracing
-opentelemetry-exporter-jaeger>=1.20.0
-opentelemetry-exporter-otlp>=1.20.0  # OTLP exporter (preferred over Jaeger)
+# Jaeger exporter removed: conflicts with opentelemetry-proto (protobuf>=5) and googleapis-common-protos (protobuf<5). Use OTLP for tracing.
+opentelemetry-exporter-otlp>=1.20.0  # OTLP exporter for tracing (Jaeger can ingest OTLP)
 opentelemetry-exporter-prometheus>=0.60b0
 
 # Error Tracking
@@ -91,7 +91,12 @@ snowflake-connector-python>=3.7.0
 # Google Cloud Platform
 google-cloud-bigquery>=3.20.0
 google-cloud-bigquery-analyticshub>=0.6.0
+google-cloud-storage>=2.10.0  # Required for Prefect integration S3/GCS connectors
 google-auth>=2.25.0
 
 # Performance Testing
 psutil>=5.9.0
+
+# Prefect Integration (optional - required for scheduled ingestion Prefect deployment sync)
+# Note: Prefect services run separately, but api-service needs Prefect Python client for deployment sync
+prefect>=2.14.0

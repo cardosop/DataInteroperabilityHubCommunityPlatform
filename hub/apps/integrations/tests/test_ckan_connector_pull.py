@@ -6,28 +6,29 @@ No mocks or stubs - all tests use actual CKAN API endpoints and download real re
 
 Uses centralized test utilities for consistent configuration.
 """
+
 import os
-import pytest
 import tempfile
 import uuid
 from pathlib import Path
 
 import httpx
+import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.ckan_connector import CKANConnector
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
-    MarketplaceType,
     MarketplaceListing,
     MarketplaceResource,
+    MarketplaceType,
 )
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    create_test_connector,
-    marketplace_available,
-    get_test_ckan_url,  # Backward compatibility
     # Backward compatibility (deprecated)
     ckan_available,
+    create_test_connector,
+    get_test_ckan_url,  # Backward compatibility
+    marketplace_available,
 )
 
 
@@ -55,6 +56,9 @@ class TestCKANConnectorPullOperations(TestCase):
         if not cls.connector:
             pytest.skip("Cannot create or connect to CKAN instance for testing")
 
+        # Type narrowing for type checker
+        assert cls.connector is not None
+
         # Cache connector URL for backward compatibility
         cls.ckan_url = cls.connector.base_url
 
@@ -76,11 +80,11 @@ class TestCKANConnectorPullOperations(TestCase):
                 try:
                     resources = cls.connector.list_resources(listing.marketplace_id)
                     for resource in resources:
-                        if resource.url and resource.url.startswith('http'):
+                        if resource.url and resource.url.startswith("http"):
                             # Skip certain URL patterns that are known to be problematic
                             skip_patterns = [
-                                '/download/',  # Download endpoints may be broken
-                                'lincolnshire.ckan.io',  # Known broken links
+                                "/download/",  # Download endpoints may be broken
+                                "lincolnshire.ckan.io",  # Known broken links
                             ]
                             if any(pattern in resource.url for pattern in skip_patterns):
                                 continue
@@ -88,7 +92,9 @@ class TestCKANConnectorPullOperations(TestCase):
                             # Try to verify URL is accessible
                             try:
                                 # Quick HEAD request to check if resource is accessible
-                                head_response = httpx.head(resource.url, timeout=5, follow_redirects=True)
+                                head_response = httpx.head(
+                                    resource.url, timeout=5, follow_redirects=True
+                                )
                                 if head_response.status_code == 200:
                                     cls.test_resource_id = resource.resource_id
                                     cls.test_resource_url = resource.url
@@ -96,8 +102,16 @@ class TestCKANConnectorPullOperations(TestCase):
                             except httpx.HTTPStatusError:
                                 # HEAD failed, try GET as fallback
                                 try:
-                                    get_response = httpx.get(resource.url, timeout=5, follow_redirects=True, headers={'Range': 'bytes=0-1023'})
-                                    if get_response.status_code in (200, 206):  # 206 is Partial Content
+                                    get_response = httpx.get(
+                                        resource.url,
+                                        timeout=5,
+                                        follow_redirects=True,
+                                        headers={"Range": "bytes=0-1023"},
+                                    )
+                                    if get_response.status_code in (
+                                        200,
+                                        206,
+                                    ):  # 206 is Partial Content
                                         cls.test_resource_id = resource.resource_id
                                         cls.test_resource_url = resource.url
                                         break
@@ -131,11 +145,10 @@ class TestCKANConnectorPullOperations(TestCase):
 
         # Type guard: test_resource_id is not None after skipTest check
         assert self.test_resource_id is not None, "test_resource_id should be set"
-        assert self.test_resource_id is not None, "test_resource_id should be set"
         resource_id: str = self.test_resource_id
 
         # Create temporary file for download
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
             destination_path = tmp_file.name
 
         try:
@@ -146,7 +159,7 @@ class TestCKANConnectorPullOperations(TestCase):
             self.assertGreater(os.path.getsize(destination_path), 0)
 
             # Verify file is readable
-            with open(destination_path, 'rb') as f:
+            with open(destination_path, "rb") as f:
                 content = f.read()
                 self.assertIsInstance(content, bytes)
                 self.assertGreater(len(content), 0)
@@ -167,7 +180,7 @@ class TestCKANConnectorPullOperations(TestCase):
 
         # Create temporary directory
         with tempfile.TemporaryDirectory() as tmp_dir:
-            destination_path = os.path.join(tmp_dir, 'downloaded_resource.csv')
+            destination_path = os.path.join(tmp_dir, "downloaded_resource.csv")
 
             result_path = self.connector.download_resource(resource_id, destination_path)
 
@@ -189,8 +202,8 @@ class TestCKANConnectorPullOperations(TestCase):
         # Create temporary directory
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create nested directory path
-            nested_dir = os.path.join(tmp_dir, 'nested', 'subdirectory')
-            destination_path = os.path.join(nested_dir, 'resource.csv')
+            nested_dir = os.path.join(tmp_dir, "nested", "subdirectory")
+            destination_path = os.path.join(nested_dir, "resource.csv")
 
             # Directory shouldn't exist yet
             self.assertFalse(os.path.exists(nested_dir))
@@ -260,13 +273,13 @@ class TestCKANConnectorPullOperations(TestCase):
         resource_id: str = self.test_resource_id
 
         # Download with specific extension
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.json') as tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp_file:
             destination_path = tmp_file.name
 
         try:
             result_path = self.connector.download_resource(resource_id, destination_path)
 
-            self.assertTrue(result_path.endswith('.json'))
+            self.assertTrue(result_path.endswith(".json"))
             self.assertTrue(os.path.exists(result_path))
         finally:
             if os.path.exists(destination_path):
@@ -291,7 +304,7 @@ class TestCKANConnectorPullOperations(TestCase):
             result_path = self.connector.download_resource(resource_id, destination_path)
 
             # Verify no .tmp file exists after download
-            temp_path = destination_path + '.tmp'
+            temp_path = destination_path + ".tmp"
             self.assertFalse(os.path.exists(temp_path))
 
             # Verify final file exists
@@ -345,7 +358,7 @@ class TestCKANConnectorPullOperations(TestCase):
             self.assertGreater(file_size, 0)
 
             # Verify file content matches size
-            with open(result_path, 'rb') as f:
+            with open(result_path, "rb") as f:
                 content = f.read()
                 self.assertEqual(len(content), file_size)
         finally:
@@ -364,8 +377,8 @@ class TestCKANConnectorPullOperations(TestCase):
         resource_id: str = self.test_resource_id
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            path1 = os.path.join(tmp_dir, 'resource1.csv')
-            path2 = os.path.join(tmp_dir, 'resource2.csv')
+            path1 = os.path.join(tmp_dir, "resource1.csv")
+            path2 = os.path.join(tmp_dir, "resource2.csv")
 
             # Download twice
             result1 = self.connector.download_resource(resource_id, path1)
@@ -388,7 +401,7 @@ class TestCKANConnectorPullOperations(TestCase):
 
         try:
             with self.assertRaises(NotFoundError):
-                self.connector.download_resource('invalid-resource-id-xyz-12345', destination_path)
+                self.connector.download_resource("invalid-resource-id-xyz-12345", destination_path)
         finally:
             if os.path.exists(destination_path):
                 os.unlink(destination_path)
@@ -405,10 +418,12 @@ class TestCKANConnectorPullOperations(TestCase):
                 try:
                     resources = self.connector.list_resources(listing.marketplace_id)
                     for resource in resources:
-                        if resource.url and resource.url.startswith('http'):
+                        if resource.url and resource.url.startswith("http"):
                             # Check if URL returns 404
                             try:
-                                test_response = httpx.head(resource.url, timeout=5, follow_redirects=True)
+                                test_response = httpx.head(
+                                    resource.url, timeout=5, follow_redirects=True
+                                )
                                 if test_response.status_code == 404:
                                     broken_resource = resource
                                     break
@@ -430,7 +445,9 @@ class TestCKANConnectorPullOperations(TestCase):
                 try:
                     # Should raise NotFoundError when URL returns 404
                     with self.assertRaises(NotFoundError):
-                        self.connector.download_resource(broken_resource.resource_id, destination_path)
+                        self.connector.download_resource(
+                            broken_resource.resource_id, destination_path
+                        )
                 finally:
                     if os.path.exists(destination_path):
                         os.unlink(destination_path)
@@ -440,16 +457,83 @@ class TestCKANConnectorPullOperations(TestCase):
         except Exception as e:
             self.skipTest(f"Could not test broken URL handling: {e}")
 
+    def test_download_resource_with_none_resource_id(self):
+        """Test downloading resource with None resource_id raises error"""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            destination_path = tmp_file.name
+
+        try:
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                self.connector.download_resource(None, destination_path)  # type: ignore[arg-type]
+        finally:
+            if os.path.exists(destination_path):
+                os.unlink(destination_path)
+
+    def test_download_resource_with_none_destination_path(self):
+        """Test downloading resource with None destination_path raises error"""
+        if not self.test_resource_id:
+            self.skipTest("No test resource available for validation test")
+
+        assert self.test_resource_id is not None, "test_resource_id should be set"
+        resource_id: str = self.test_resource_id
+
+        with self.assertRaises((ValueError, TypeError)):
+            self.connector.download_resource(resource_id, None)  # type: ignore[arg-type]
+
+    def test_download_resource_with_invalid_resource_id_format(self):
+        """Test downloading resource with invalid resource_id format"""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            destination_path = tmp_file.name
+
+        try:
+            # Test with invalid format (contains special characters)
+            invalid_resource_ids = [
+                "../../etc/passwd",
+                "'; DROP TABLE resources; --",
+                "<script>alert('xss')</script>",
+            ]
+
+            for invalid_id in invalid_resource_ids:
+                with self.assertRaises((ValueError, NotFoundError)):
+                    self.connector.download_resource(invalid_id, destination_path)
+        finally:
+            if os.path.exists(destination_path):
+                os.unlink(destination_path)
+
+    def test_download_resource_with_readonly_destination(self):
+        """Test downloading resource to readonly destination raises error"""
+        if not self.test_resource_id:
+            self.skipTest("No test resource available for validation test")
+
+        assert self.test_resource_id is not None, "test_resource_id should be set"
+        resource_id: str = self.test_resource_id
+
+        # Create a readonly directory
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            readonly_file = os.path.join(tmp_dir, "readonly_file.csv")
+            # Create file and make it readonly
+            with open(readonly_file, "w") as f:
+                f.write("test")
+            os.chmod(readonly_file, 0o444)  # Read-only
+
+            try:
+                # Should raise PermissionError or IOError
+                with self.assertRaises((PermissionError, IOError, OSError)):
+                    self.connector.download_resource(resource_id, readonly_file)
+            finally:
+                # Restore permissions for cleanup
+                os.chmod(readonly_file, 0o644)
+
     def test_download_resource_connection_error(self):
         """Test that connection errors are properly handled."""
-        invalid_connector = CKANConnector(base_url='https://invalid-ckan-instance-xyz-12345.com')
+        invalid_connector = CKANConnector(base_url="https://invalid-ckan-instance-xyz-12345.com")
 
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             destination_path = tmp_file.name
 
         try:
             with self.assertRaises(Exception):  # ConnectionError or NotFoundError
-                invalid_connector.download_resource('test-resource', destination_path)
+                invalid_connector.download_resource("test-resource", destination_path)
         finally:
             if os.path.exists(destination_path):
                 os.unlink(destination_path)
@@ -466,11 +550,11 @@ class TestCKANConnectorPullOperations(TestCase):
             try:
                 resources = self.connector.list_resources(listing.marketplace_id)
                 for resource in resources:
-                    if resource.url and resource.url.startswith('http'):
+                    if resource.url and resource.url.startswith("http"):
                         # Skip problematic URL patterns
                         skip_patterns = [
-                            '/download/',  # Download endpoints may be broken
-                            'lincolnshire.ckan.io',  # Known broken links
+                            "/download/",  # Download endpoints may be broken
+                            "lincolnshire.ckan.io",  # Known broken links
                         ]
                         if any(pattern in resource.url for pattern in skip_patterns):
                             continue
@@ -478,7 +562,9 @@ class TestCKANConnectorPullOperations(TestCase):
                         # Verify resource URL is accessible
                         try:
                             # Try HEAD first
-                            test_response = httpx.head(resource.url, timeout=5, follow_redirects=True)
+                            test_response = httpx.head(
+                                resource.url, timeout=5, follow_redirects=True
+                            )
                             if test_response.status_code == 200:
                                 downloadable_resource = resource
                                 break
@@ -489,9 +575,14 @@ class TestCKANConnectorPullOperations(TestCase):
                                     resource.url,
                                     timeout=5,
                                     follow_redirects=True,
-                                    headers={'Range': 'bytes=0-1023'}  # Partial content for large files
+                                    headers={
+                                        "Range": "bytes=0-1023"
+                                    },  # Partial content for large files
                                 )
-                                if test_response.status_code in (200, 206):  # 206 is Partial Content
+                                if test_response.status_code in (
+                                    200,
+                                    206,
+                                ):  # 206 is Partial Content
                                     downloadable_resource = resource
                                     break
                             except Exception:
@@ -511,8 +602,7 @@ class TestCKANConnectorPullOperations(TestCase):
             try:
                 # Step 3: Download resource
                 result_path = self.connector.download_resource(
-                    downloadable_resource.resource_id,
-                    destination_path
+                    downloadable_resource.resource_id, destination_path
                 )
 
                 # Verify download succeeded
@@ -520,7 +610,7 @@ class TestCKANConnectorPullOperations(TestCase):
                 self.assertGreater(os.path.getsize(result_path), 0)
 
                 # Verify file content
-                with open(result_path, 'rb') as f:
+                with open(result_path, "rb") as f:
                     content = f.read()
                     self.assertGreater(len(content), 0)
             except NotFoundError:
@@ -549,4 +639,3 @@ class TestCKANConnectorPullOperations(TestCase):
                     "No downloadable resource found in any listing. "
                     "Some CKAN resources may have broken links - this is expected in real-world scenarios."
                 )
-

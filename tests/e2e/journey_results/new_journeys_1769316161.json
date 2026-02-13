@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.022385358810424805
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-001-b865591a",
+      "journey_name": "Use Natural Language Search",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1769316161.9531918,
+      "end_time": 1769316161.975577,
+      "duration": 0.022385358810424805,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Search with Natural Language",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316161.9531977,
+          "end_time": 1769316161.9755735,
+          "duration": 0.022375822067260742,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-25T04:42:41.975636"
+}

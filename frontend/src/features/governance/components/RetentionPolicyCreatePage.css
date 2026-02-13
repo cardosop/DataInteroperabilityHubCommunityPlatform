@@ -1,0 +1,62 @@
+.governance-retention-policy-create-page {
+  padding: 2rem;
+  max-width: 800px;
+}
+
+.governance-retention-policy-form {
+  background: white;
+  border-radius: 4px;
+  padding: 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.form-group input[type='text'],
+.form-group input[type='number'],
+.form-group input[type='datetime-local'],
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.form-group textarea {
+  resize: vertical;
+}
+
+.form-group input[type='checkbox'] {
+  width: auto;
+  margin-right: 0.5rem;
+}
+
+.resource-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.required {
+  color: #d32f2f;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #eee;
+}

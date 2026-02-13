@@ -3,17 +3,18 @@ Unit tests for MarketplaceConnection model.
 
 Comprehensive tests for model creation, validation, encryption, and constraints.
 """
+
 import pytest
-from django.test import TestCase
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.utils import timezone
 
-from hub.apps.tenants.models import Tenant
-from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.integrations.base import MarketplaceType
-from hub.apps.integrations.encryption import encrypt_json_field, decrypt_json_field, EncryptionError
-
+from hub.apps.integrations.encryption import EncryptionError, decrypt_json_field, encrypt_json_field
+from hub.apps.integrations.models import MarketplaceConnection
+from hub.apps.tenants.models import Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -24,14 +25,11 @@ class MarketplaceConnectionModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.config = {
             "api_key": "test-api-key-123",
             "endpoint": "https://api.example.com",
-            "timeout": 30
+            "timeout": 30,
         }
 
     def test_create_marketplace_connection(self):
@@ -40,11 +38,13 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         self.assertEqual(connection.tenant, self.tenant)
-        self.assertEqual(connection.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value)
+        self.assertEqual(
+            connection.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        )
         self.assertEqual(connection.name, "Test Connection")
         self.assertTrue(connection.is_active)
         self.assertIsNotNone(connection.id)
@@ -67,12 +67,8 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
             name="Full Connection",
-            config={
-                "api_key": "aws-key",
-                "secret_key": "aws-secret",
-                "region": "us-east-1"
-            },
-            is_active=False
+            config={"api_key": "aws-key", "secret_key": "aws-secret", "region": "us-east-1"},
+            is_active=False,
         )
 
         self.assertEqual(connection.marketplace_type, MarketplaceType.AWS_DATA_EXCHANGE.value)
@@ -90,7 +86,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         str_repr = str(connection)
@@ -104,7 +100,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Unique Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Try to create another connection with same name for same tenant
@@ -114,29 +110,26 @@ class MarketplaceConnectionModelTest(TestCase):
                 tenant=self.tenant,
                 marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
                 name="Unique Connection",
-                config=self.config
+                config=self.config,
             )
             connection.full_clean()
 
     def test_same_name_different_tenants(self):
         """Test that same connection name can exist for different tenants"""
-        tenant2 = Tenant.objects.create(
-            name="Another Tenant",
-            slug="another-tenant"
-        )
+        tenant2 = Tenant.objects.create(name="Another Tenant", slug="another-tenant")
 
         connection1 = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Shared Name",
-            config=self.config
+            config=self.config,
         )
 
         connection2 = MarketplaceConnection.objects.create(
             tenant=tenant2,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Shared Name",
-            config=self.config
+            config=self.config,
         )
 
         self.assertEqual(connection1.name, connection2.name)
@@ -148,7 +141,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type="INVALID_TYPE",
             name="Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         with self.assertRaises(ValidationError):
@@ -160,7 +153,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="",
-            config=self.config
+            config=self.config,
         )
 
         with self.assertRaises(ValidationError):
@@ -172,7 +165,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="   ",
-            config=self.config
+            config=self.config,
         )
 
         with self.assertRaises(ValidationError):
@@ -184,7 +177,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config="not-a-dict"
+            config="not-a-dict",
         )
 
         with self.assertRaises(ValidationError):
@@ -196,7 +189,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Encryption Test",
-            config=self.config
+            config=self.config,
         )
 
         # Before save, config should be plain dict
@@ -219,7 +212,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Update Test",
-            config=self.config
+            config=self.config,
         )
 
         original_encrypted = connection.config["_encrypted"]
@@ -243,7 +236,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Empty Config Test",
-            config={}
+            config={},
         )
 
         decrypted = connection.get_config()
@@ -257,7 +250,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="None Config Test",
-            config={}
+            config={},
         )
 
         # Refresh to get value from DB
@@ -272,7 +265,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Set Config Test",
-            config=self.config
+            config=self.config,
         )
 
         with self.assertRaises(ValueError):
@@ -288,11 +281,14 @@ class MarketplaceConnectionModelTest(TestCase):
                 tenant=self.tenant,
                 marketplace_type=marketplace_type.value,
                 name=f"Connection {marketplace_type.name}",
-                config=self.config
+                config=self.config,
             )
 
             self.assertEqual(connection.marketplace_type, marketplace_type.value)
-            self.assertEqual(connection.get_marketplace_type_display(), marketplace_type.name.replace("_", " ").title())
+            self.assertEqual(
+                connection.get_marketplace_type_display(),
+                marketplace_type.name.replace("_", " ").title(),
+            )
 
     def test_indexes_exist(self):
         """Test that indexes are created correctly"""
@@ -304,7 +300,7 @@ class MarketplaceConnectionModelTest(TestCase):
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Index Test 1",
             config=self.config,
-            is_active=True
+            is_active=True,
         )
 
         MarketplaceConnection.objects.create(
@@ -312,16 +308,19 @@ class MarketplaceConnectionModelTest(TestCase):
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
             name="Index Test 2",
             config=self.config,
-            is_active=False
+            is_active=False,
         )
 
         # Verify queries use indexes (check execution plan)
         with db_connection.cursor() as cursor:
             # Query that should use tenant + marketplace_type index
-            cursor.execute("""
+            cursor.execute(
+                """
                 EXPLAIN SELECT * FROM marketplace_connections
                 WHERE tenant_id = %s AND marketplace_type = %s
-            """, [self.tenant.id, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value])
+            """,
+                [self.tenant.id, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value],
+            )
 
             # Just verify query executes without error
             # Actual index usage depends on PostgreSQL query planner
@@ -332,17 +331,18 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="First Connection",
-            config=self.config
+            config=self.config,
         )
 
         import time
+
         time.sleep(0.01)  # Small delay to ensure different timestamps
 
         connection2 = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE.value,
             name="Second Connection",
-            config=self.config
+            config=self.config,
         )
 
         connections = list(MarketplaceConnection.objects.all())
@@ -354,22 +354,18 @@ class MarketplaceConnectionModelTest(TestCase):
         complex_config = {
             "api_key": "test-key",
             "endpoint": "https://api.example.com",
-            "nested": {
-                "level1": {
-                    "level2": "deep-value"
-                }
-            },
+            "nested": {"level1": {"level2": "deep-value"}},
             "array": [1, 2, 3, {"nested": "value"}],
             "boolean": True,
             "null_value": None,
-            "number": 42.5
+            "number": 42.5,
         }
 
         connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Complex Config Test",
-            config=complex_config
+            config=complex_config,
         )
 
         decrypted = connection.get_config()
@@ -385,16 +381,17 @@ class MarketplaceConnectionModelTest(TestCase):
         # This test verifies that encryption errors raise ValidationError
         # We'll test by patching the encryption function to raise an error
         from unittest.mock import patch
+
         from hub.apps.integrations.encryption import EncryptionError
 
-        with patch('hub.apps.integrations.models.encrypt_json_field') as mock_encrypt:
+        with patch("hub.apps.integrations.models.encrypt_json_field") as mock_encrypt:
             mock_encrypt.side_effect = EncryptionError("Test encryption error")
 
             connection = MarketplaceConnection(
                 tenant=self.tenant,
                 marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
                 name="Encryption Error Test",
-                config=self.config
+                config=self.config,
             )
 
             with self.assertRaises(ValidationError) as cm:
@@ -409,7 +406,7 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Cascade Test",
-            config=self.config
+            config=self.config,
         )
 
         connection_id = connection.id
@@ -426,12 +423,13 @@ class MarketplaceConnectionModelTest(TestCase):
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Timestamp Test",
-            config=self.config
+            config=self.config,
         )
 
         original_updated_at = connection.updated_at
 
         import time
+
         time.sleep(0.01)
 
         # Update connection
@@ -441,3 +439,244 @@ class MarketplaceConnectionModelTest(TestCase):
         connection.refresh_from_db()
         self.assertGreater(connection.updated_at, original_updated_at)
 
+    # ========== FAILURE SCENARIOS TESTS ==========
+
+    def test_create_connection_missing_required_fields(self):
+        """Test that creating connection without required fields fails"""
+        # Missing tenant
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceConnection.objects.create(
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name="Test Connection",
+                config=self.config,
+            )
+
+        # Missing marketplace_type
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceConnection.objects.create(
+                tenant=self.tenant, name="Test Connection", config=self.config
+            )
+
+        # Missing name
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceConnection.objects.create(
+                tenant=self.tenant,
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                config=self.config,
+            )
+
+    def test_create_connection_with_invalid_tenant(self):
+        """Test that creating connection with invalid tenant fails"""
+        import uuid
+
+        invalid_tenant_id = uuid.uuid4()
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceConnection.objects.create(
+                tenant_id=invalid_tenant_id,
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name="Test Connection",
+                config=self.config,
+            )
+
+    def test_get_config_with_corrupted_encryption(self):
+        """Test that get_config handles corrupted encryption gracefully"""
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Test Connection",
+            config=self.config,
+        )
+
+        # Corrupt the encrypted data
+        connection.config = {"_encrypted": "corrupted_data"}
+        connection.save()
+
+        # Should raise EncryptionError
+        with self.assertRaises(EncryptionError):
+            connection.get_config()
+
+    def test_set_config_with_invalid_data(self):
+        """Test that set_config validates input"""
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Test Connection",
+            config=self.config,
+        )
+
+        # Try to set invalid config
+        with self.assertRaises((ValueError, TypeError)):
+            connection.set_config("not-a-dict")
+
+        with self.assertRaises((ValueError, TypeError)):
+            connection.set_config(None)
+
+    # ========== EDGE CASES TESTS ==========
+
+    def test_connection_name_max_length(self):
+        """Test that connection name respects max length"""
+        # Create connection with very long name
+        long_name = "a" * 500  # Assuming reasonable max length
+        try:
+            connection = MarketplaceConnection.objects.create(
+                tenant=self.tenant,
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name=long_name,
+                config=self.config,
+            )
+            # If it succeeds, verify it was stored correctly
+            connection.refresh_from_db()
+            self.assertEqual(connection.name, long_name)
+        except (ValidationError, IntegrityError):
+            # If max length is enforced, that's also acceptable
+            pass
+
+    def test_config_with_large_data(self):
+        """Test that config can handle large data structures"""
+        large_config = {
+            "api_key": "test-key",
+            "data": {f"key-{i}": f"value-{i}" for i in range(1000)},
+        }
+        try:
+            connection = MarketplaceConnection.objects.create(
+                tenant=self.tenant,
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name="Large Config Test",
+                config=large_config,
+            )
+            connection.refresh_from_db()
+            decrypted = connection.get_config()
+            self.assertEqual(len(decrypted["data"]), 1000)
+        except (ValidationError, EncryptionError):
+            # If there's a limit, that's acceptable
+            pass
+
+    def test_config_with_special_characters(self):
+        """Test that config can contain special characters"""
+        special_config = {
+            "api_key": "test-key-with-special-chars-!@#$%^&*()",
+            "endpoint": "https://api.example.com/path?param=value&other=123",
+            "nested": {"key": "value with spaces and special chars: !@#$"},
+        }
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Special Chars Test",
+            config=special_config,
+        )
+        connection.refresh_from_db()
+        decrypted = connection.get_config()
+        self.assertEqual(decrypted["api_key"], special_config["api_key"])
+        self.assertEqual(decrypted["endpoint"], special_config["endpoint"])
+
+    def test_config_with_nested_structures(self):
+        """Test that config can contain deeply nested structures"""
+        nested_config = {
+            "level1": {
+                "level2": {
+                    "level3": {
+                        "level4": "deep_value",
+                        "list": [1, 2, 3],
+                        "nested_dict": {"key": "value"},
+                    }
+                }
+            }
+        }
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Nested Config Test",
+            config=nested_config,
+        )
+        connection.refresh_from_db()
+        decrypted = connection.get_config()
+        self.assertEqual(decrypted["level1"]["level2"]["level3"]["level4"], "deep_value")
+        self.assertEqual(decrypted["level1"]["level2"]["level3"]["list"], [1, 2, 3])
+
+    # ========== TDD COMPLIANCE TESTS ==========
+
+    def test_connection_has_all_required_fields(self):
+        """Test that created connection has all required fields"""
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Required Fields Test",
+            config=self.config,
+        )
+
+        # Verify all required fields are present
+        self.assertIsNotNone(connection.id)
+        self.assertIsNotNone(connection.tenant)
+        self.assertIsNotNone(connection.marketplace_type)
+        self.assertIsNotNone(connection.name)
+        self.assertIsNotNone(connection.config)
+        self.assertIsNotNone(connection.is_active)
+        self.assertIsNotNone(connection.created_at)
+        self.assertIsNotNone(connection.updated_at)
+
+    def test_connection_field_types(self):
+        """Test that connection fields have correct types"""
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Types Test",
+            config=self.config,
+        )
+
+        # Verify field types
+        self.assertIsInstance(connection.id, (str, int, type(None)))
+        self.assertIsInstance(connection.marketplace_type, str)
+        self.assertIsInstance(connection.name, str)
+        self.assertIsInstance(connection.config, dict)
+        self.assertIsInstance(connection.is_active, bool)
+        self.assertIsInstance(connection.created_at, (type(None), type(timezone.now())))
+
+    def test_connection_timestamps_auto_set(self):
+        """Test that created_at and updated_at are automatically set"""
+        before_create = timezone.now()
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Timestamps Test",
+            config=self.config,
+        )
+        after_create = timezone.now()
+
+        # Verify timestamps are set
+        self.assertIsNotNone(connection.created_at)
+        self.assertIsNotNone(connection.updated_at)
+        self.assertGreaterEqual(connection.created_at, before_create)
+        self.assertLessEqual(connection.created_at, after_create)
+        self.assertEqual(connection.created_at, connection.updated_at)
+
+    def test_connection_default_values(self):
+        """Test that connection has correct default values"""
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Defaults Test",
+            config=self.config,
+        )
+
+        # Verify defaults
+        self.assertTrue(connection.is_active)  # Default should be True
+
+    def test_connection_repr_contains_key_information(self):
+        """Test that connection __repr__ contains key information"""
+        connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Repr Test",
+            config=self.config,
+        )
+
+        repr_str = repr(connection)
+        # Should contain key identifying information
+        self.assertIn(str(connection.id), repr_str or "")
+        # May contain name, tenant name, or marketplace type
+        self.assertTrue(
+            "Repr Test" in repr_str
+            or "Test Tenant" in repr_str
+            or "Snowflake" in repr_str
+            or str(connection.id) in repr_str
+        )

@@ -188,7 +188,6 @@ class DataMaskerTest(TestCase):
             access_type="READ",
             masking_strategy="FORMAT_PRESERVING",
             masking_config={"show_last": 4},
-            created_by=self.user
         )
         
         # Create classification

@@ -604,7 +604,7 @@ class ScheduledIngestionScheduleResourceValidationTest(TestCase):
             tenant=self.tenant,
             name="Test Schedule",
             source_type=SourceType.HTTP,
-            source_config={"url": "https://example.com/data.csv"},
+            source_config={"base_url": "https://example.com/data.csv"},
             schedule_type=ScheduleType.DAILY,
             schedule_config={"time": "00:00"},
             file_pattern=".*\\.csv",

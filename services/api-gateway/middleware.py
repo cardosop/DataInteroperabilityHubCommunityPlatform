@@ -358,8 +358,16 @@ class APIGatewayMiddleware(BaseHTTPMiddleware):
         tier = api_key_info.tier
 
         # Check tier limit
-        tier_allowed, tier_count, tier_reset = self.rate_limiter.check_tier_limit(tier)
+        tier_allowed, tier_count, tier_reset = await sync_to_async(
+            lambda: self.rate_limiter.check_tier_limit(tier)
+        )()
         if not tier_allowed:
+            logger.warning(
+                "rate_limit_tier_exceeded",
+                request_id=request_id,
+                tenant_id=api_key_info.tenant_id,
+                tier=tier
+            )
             return False, {
                 'limit': self._get_tier_limit(tier),
                 'remaining': 0,
@@ -367,15 +375,54 @@ class APIGatewayMiddleware(BaseHTTPMiddleware):
                 'retry_after': max(1, tier_reset - int(time.time()))
             }
 
-        # Check tenant limit (for now, no custom tenant limits, skip)
-        # TODO: When tenant limits are configured, check here
+        # Check tenant limit (from TenantConfig.rate_limits["api_gateway_requests_per_hour"])
+        tenant_limit = await sync_to_async(
+            self.api_key_manager.get_tenant_rate_limit
+        )(api_key_info.tenant_id)
+        if tenant_limit is not None:
+            tenant_allowed, tenant_count, tenant_reset = await sync_to_async(
+                lambda: self.rate_limiter.check_tenant_limit(
+                    api_key_info.tenant_id, limit=tenant_limit
+                )
+            )()
+            if not tenant_allowed:
+                logger.warning(
+                    "rate_limit_tenant_exceeded",
+                    request_id=request_id,
+                    tenant_id=api_key_info.tenant_id,
+                    limit=tenant_limit
+                )
+                return False, {
+                    'limit': tenant_limit,
+                    'remaining': 0,
+                    'reset_time': tenant_reset,
+                    'retry_after': max(1, tenant_reset - int(time.time()))
+                }
 
-        # Check API key limit (for now, no custom API key limits, skip)
-        # TODO: When API key limits are configured, check here
+        # Check API key limit (from APIKey.rate_limit_per_hour)
+        api_key_limit = getattr(api_key_info, 'rate_limit_per_hour', None)
+        if api_key_limit is not None:
+            api_key_allowed, api_key_count, api_key_reset = await sync_to_async(
+                lambda: self.rate_limiter.check_api_key_limit(
+                    api_key_info.api_key_id, limit=api_key_limit
+                )
+            )()
+            if not api_key_allowed:
+                logger.warning(
+                    "rate_limit_apikey_exceeded",
+                    request_id=request_id,
+                    api_key_id=api_key_info.api_key_id,
+                    limit=api_key_limit
+                )
+                return False, {
+                    'limit': api_key_limit,
+                    'remaining': 0,
+                    'reset_time': api_key_reset,
+                    'retry_after': max(1, api_key_reset - int(time.time()))
+                }
 
-        # Get tier limit for headers
+        # All limits passed; use tier for response headers
         tier_limit = self._get_tier_limit(tier)
-
         return True, {
             'limit': tier_limit,
             'remaining': max(0, tier_limit - tier_count - 1) if tier_limit else None,

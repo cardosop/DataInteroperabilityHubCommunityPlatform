@@ -4,24 +4,24 @@ End-to-End tests for complete user journeys (T.11).
 Tests multiple complete user journeys end-to-end.
 Uses REAL services (Compliance, DQ, DataContract, MinIO).
 """
-import pytest
+
+import hashlib
 import os
 import time
-import hashlib
-from django.test import TestCase
+
+import pytest
 from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+from django.test import TestCase, override_settings
 from rest_framework import status
+from rest_framework.test import APIClient
 
-from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.contracts.models import Contract, ValidationStatus, ContractStatus
-from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel, Order, OrderStatus
-from hub.apps.dq.models import DQRun, DQRunStatus
 from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
+from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus
+from hub.apps.dq.models import DQRun, DQRunStatus
+from hub.apps.marketplace.models import Listing, ListingStatus, Order, OrderStatus, PricingModel
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.service_utils import check_service_health
-from django.test import override_settings
-
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e5]
 User = get_user_model()
@@ -37,11 +37,11 @@ class CompleteUserJourneysE2ETest(TestCase):
 
         # Use staging-aware service URLs
         from .conftest import (
-            get_datacontract_service_url,
+            check_service_health,
             get_compliance_service_url,
+            get_datacontract_service_url,
             get_dq_service_url,
             get_s3_endpoint_url,
-            check_service_health
         )
 
         datacontract_url = get_datacontract_service_url()
@@ -54,15 +54,15 @@ class CompleteUserJourneysE2ETest(TestCase):
             DATACONTRACT_SERVICE_URL=datacontract_url,
             COMPLIANCE_SERVICE_URL=compliance_url,
             DQ_SERVICE_URL=dq_url,
-            AWS_S3_ENDPOINT_URL=s3_url
+            AWS_S3_ENDPOINT_URL=s3_url,
         )
         cls.override_settings.enable()
 
         # Check if services are available
         services = {
-            'COMPLIANCE_SERVICE_URL': compliance_url,
-            'DQ_SERVICE_URL': dq_url,
-            'DATACONTRACT_SERVICE_URL': datacontract_url
+            "COMPLIANCE_SERVICE_URL": compliance_url,
+            "DQ_SERVICE_URL": dq_url,
+            "DATACONTRACT_SERVICE_URL": datacontract_url,
         }
 
         missing_services = []
@@ -80,7 +80,7 @@ class CompleteUserJourneysE2ETest(TestCase):
     @classmethod
     def tearDownClass(cls):
         """Clean up after tests"""
-        if hasattr(cls, 'override_settings'):
+        if hasattr(cls, "override_settings"):
             cls.override_settings.disable()
         super().tearDownClass()
 
@@ -89,15 +89,11 @@ class CompleteUserJourneysE2ETest(TestCase):
         self.client = APIClient()
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
 
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="test@example.com", password="testpass123", tenant=self.tenant
         )
 
         self.client.force_authenticate(user=self.user)
@@ -107,74 +103,77 @@ class CompleteUserJourneysE2ETest(TestCase):
 
         # 1. Onboard data (data-first)
         asset_response = self.client.post(
-            '/api/v1/assets/',
-            {'key': 'sales-data', 'name': 'Sales Data', 'visibility': 'INTERNAL'},
-            format='json'
+            "/api/v1/assets/",
+            {"key": "sales-data", "name": "Sales Data", "visibility": "INTERNAL"},
+            format="json",
         )
-        asset_id = asset_response.data['id']
+        asset_id = asset_response.data["id"]
 
         # Prepare test content first to get accurate size
-        test_content = b'col1,col2\nval1,val2'
+        test_content = b"col1,col2\nval1,val2"
         content_sha256 = hashlib.sha256(test_content).hexdigest()
         file_size = len(test_content)
 
         file_response = self.client.post(
-            '/api/v1/files/init/',
-            {'name': 'sales.csv', 'content_type': 'text/csv', 'size': file_size},
-            format='json'
+            "/api/v1/files/init/",
+            {"name": "sales.csv", "content_type": "text/csv", "size": file_size},
+            format="json",
         )
-        file_id = file_response.data['file_id']
+        file_id = file_response.data["file_id"]
 
         # Upload file to real MinIO
         import boto3
         from django.conf import settings
+
         from hub.apps.files.models import File as FileModel
+
         file_obj = FileModel.objects.get(id=file_id)
 
         s3_client = boto3.client(
-            's3',
+            "s3",
             endpoint_url=settings.AWS_S3_ENDPOINT_URL,
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
         )
 
         s3_client.put_object(
             Bucket=settings.AWS_STORAGE_BUCKET_NAME,
             Key=file_obj.storage_path,
             Body=test_content,
-            ContentType='text/csv'
+            ContentType="text/csv",
         )
 
         complete_response = self.client.post(
-            f'/api/v1/files/{file_id}/complete/',
-            {'content_sha256': content_sha256},
-            format='json'
+            f"/api/v1/files/{file_id}/complete/", {"content_sha256": content_sha256}, format="json"
         )
         self.assertEqual(complete_response.status_code, status.HTTP_200_OK)
 
         dataset_response = self.client.post(
-            '/api/v1/datasets/',
-            {'file_id': file_id, 'asset_id': asset_id},
-            format='json'
+            "/api/v1/datasets/", {"file_id": file_id, "asset_id": asset_id}, format="json"
         )
-        dataset_id = dataset_response.data['id']
+        dataset_id = dataset_response.data["id"]
 
         # 2. Run compliance and DQ (REAL services)
         compliance_response = self.client.post(
-            '/api/v1/compliance/runs/',
-            {'file_id': file_id, 'dataset_id': dataset_id, 'asset_id': asset_id, 'scan_mode': 'internal'},
-            format='json'
+            "/api/v1/compliance/runs/",
+            {
+                "file_id": file_id,
+                "dataset_id": dataset_id,
+                "asset_id": asset_id,
+                "scan_mode": "internal",
+            },
+            format="json",
         )
         self.assertEqual(compliance_response.status_code, status.HTTP_201_CREATED)
-        compliance_run_id = compliance_response.data['id']
+        compliance_run_id = compliance_response.data["id"]
 
         dq_response = self.client.post(
-            '/api/v1/dq/runs/',
-            {'file_id': file_id, 'dataset_id': dataset_id, 'asset_id': asset_id},
-            format='json'
+            "/api/v1/dq/runs/",
+            {"file_id": file_id, "dataset_id": dataset_id, "asset_id": asset_id},
+            format="json",
         )
         self.assertEqual(dq_response.status_code, status.HTTP_201_CREATED)
-        dq_run_id = dq_response.data['id']
+        dq_run_id = dq_response.data["id"]
 
         # Wait for jobs to complete
         max_wait = 60
@@ -182,8 +181,10 @@ class CompleteUserJourneysE2ETest(TestCase):
         while wait_time < max_wait:
             compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
             dq_run = DQRun.objects.get(id=dq_run_id)
-            if (compliance_run.status in [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED] and
-                dq_run.status in [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]):
+            if compliance_run.status in [
+                ComplianceRunStatus.SUCCEEDED,
+                ComplianceRunStatus.FAILED,
+            ] and dq_run.status in [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]:
                 break
             time.sleep(1)
             wait_time += 1
@@ -197,22 +198,27 @@ class CompleteUserJourneysE2ETest(TestCase):
             self.skipTest(f"DQ check failed: {dq_run.error_message}")
 
         # 3. Create and validate contract (REAL DataContract service)
+        # Ensure schema.fields has at least one field for ODCS compliance
         contract_response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
-                'asset_id': asset_id,
-                'original_raw': '{"id": "sales-data", "name": "Sales Data", "schema": {"fields": []}}',
-                'original_format': 'JSON',
-                'original_spec_type': 'ODCS'
+                "asset_id": asset_id,
+                "original_raw": '{"id": "sales-data", "name": "Sales Data", "schema": {"fields": [{"name": "id", "type": "string"}]}}',
+                "original_format": "JSON",
+                "original_spec_type": "ODCS",
             },
-            format='json'
+            format="json",
         )
-        contract_id = contract_response.data['id']
+        # Check response status before accessing data
+        self.assertEqual(
+            contract_response.status_code,
+            status.HTTP_201_CREATED,
+            f"Contract creation failed: {contract_response.status_code} - {contract_response.data}",
+        )
+        contract_id = contract_response.data["id"]
 
         validate_response = self.client.post(
-            f'/api/v1/contracts/{contract_id}/validate/',
-            {'async': False},
-            format='json'
+            f"/api/v1/contracts/{contract_id}/validate/", {"async": False}, format="json"
         )
         # Service availability was checked in setUpClass, so 500 would be a real error
         # Allow 200 OK (validation completed) or 202 Accepted (async validation)
@@ -226,56 +232,52 @@ class CompleteUserJourneysE2ETest(TestCase):
 
         # 4. Attach and activate
         self.client.post(
-            f'/api/v1/assets/{asset_id}/datasets/',
-            {'dataset_id': dataset_id},
-            format='json'
+            f"/api/v1/assets/{asset_id}/datasets/", {"dataset_id": dataset_id}, format="json"
         )
 
         self.client.post(
-            f'/api/v1/assets/{asset_id}/contracts/',
-            {'contract_id': contract_id},
-            format='json'
+            f"/api/v1/assets/{asset_id}/contracts/", {"contract_id": contract_id}, format="json"
         )
 
         # Update contract to ACTIVE
         contract = Contract.objects.get(id=contract_id)
         contract.status = ContractStatus.ACTIVE
         from hub.apps.contracts.models import NormalizationStatus
+
         contract.normalization_status = NormalizationStatus.NORMALIZED_OK
         contract.save()
 
         # Update asset DQ and compliance status
         asset = Asset.objects.get(id=asset_id)
-        from hub.apps.assets.models import DQStatus, ComplianceStatus
+        from hub.apps.assets.models import ComplianceStatus, DQStatus
+
         asset.dq_status = DQStatus.PASS
         asset.compliance_status = ComplianceStatus.PASS
         asset.save()
 
         # Activate asset
         self.client.post(
-            f'/api/v1/assets/{asset_id}/activate/',
-            {'version': asset.version},
-            format='json'
+            f"/api/v1/assets/{asset_id}/activate/", {"version": asset.version}, format="json"
         )
 
         # 5. Publish to marketplace
         listing_response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': asset_id,
-                'title': 'Sales Data',
-                'short_description': 'Monthly sales data',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0
+                "asset_id": asset_id,
+                "title": "Sales Data",
+                "short_description": "Monthly sales data",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
             },
-            format='json'
+            format="json",
         )
-        listing_id = listing_response.data['id']
+        listing_id = listing_response.data["id"]
 
         self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
 
         # Verify final state
@@ -289,14 +291,10 @@ class CompleteUserJourneysE2ETest(TestCase):
         """Test complete data consumer journey: browse → purchase → access"""
         # Create provider and listing
         provider_tenant = Tenant.objects.create(
-            name="Provider",
-            slug="provider",
-            kyc_status=KYCStatus.VERIFIED
+            name="Provider", slug="provider", kyc_status=KYCStatus.VERIFIED
         )
         provider_user = User.objects.create_user(
-            email="provider@example.com",
-            password="testpass123",
-            tenant=provider_tenant
+            email="provider@example.com", password="testpass123", tenant=provider_tenant
         )
 
         asset = Asset.objects.create(
@@ -304,49 +302,43 @@ class CompleteUserJourneysE2ETest(TestCase):
             key="public-data",
             name="Public Data",
             status=AssetStatus.ACTIVE,
-            created_by=provider_user
+            created_by=provider_user,
         )
 
         provider_client = APIClient()
         provider_client.force_authenticate(user=provider_user)
 
         listing_response = provider_client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset.id),
-                'title': 'Public Data',
-                'short_description': 'Public dataset',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0
+                "asset_id": str(asset.id),
+                "title": "Public Data",
+                "short_description": "Public dataset",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
             },
-            format='json'
+            format="json",
         )
-        listing_id = listing_response.data['id']
+        listing_id = listing_response.data["id"]
 
         provider_client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
 
         # Consumer browses and purchases
-        search_response = self.client.get(
-            '/api/v1/marketplace/listings/search/',
-            {'q': 'public'}
-        )
+        search_response = self.client.get("/api/v1/marketplace/listings/search/", {"q": "public"})
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
         order_response = self.client.post(
-            '/api/v1/marketplace/orders/',
-            {'listing_id': listing_id},
-            format='json'
+            "/api/v1/marketplace/orders/", {"listing_id": listing_id}, format="json"
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
 
         # Verify order created
         # For auto-approved orders, response may have 'order' key
-        order_data = order_response.data.get('order', order_response.data)
-        order_id = order_data['id']
+        order_data = order_response.data.get("order", order_response.data)
+        order_id = order_data["id"]
         order = Order.objects.get(id=order_id)
         self.assertIsNotNone(order)
-

@@ -132,7 +132,8 @@ class DomainUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(
         max_length=255,
         required=False,
-        help_text="Domain name"
+        allow_blank=True,
+        help_text="Domain name (empty/whitespace rejected by service layer)"
     )
     description = serializers.CharField(
         required=False,
@@ -167,11 +168,9 @@ class DomainUpdateSerializer(serializers.Serializer):
     )
 
     def validate_name(self, value):
-        """Validate domain name if provided"""
-        if value is not None:
-            if not value.strip():
-                raise serializers.ValidationError("Domain name cannot be empty")
-            return value.strip()
+        """Pass through name; empty/whitespace is rejected by service layer (DataMeshBusinessRules)."""
+        if value is not None and isinstance(value, str):
+            return value.strip() if value.strip() else value
         return value
 
     def validate_resource_quota(self, value):

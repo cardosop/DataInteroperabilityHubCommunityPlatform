@@ -3,27 +3,30 @@ User Views
 
 REST API views for user management.
 """
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.shortcuts import get_object_or_404
-from django.db import transaction
-from django.utils import timezone
-from datetime import timedelta
-import uuid
 
-from .models import User, Role, UserRole, UserStatus
+import uuid
+from datetime import timedelta
+
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from hub.apps.audit.utils import log_user_operation
+from hub.apps.tenants.models import Tenant
+
+from .models import Role, User, UserRole, UserStatus
 from .serializers import (
-    UserSerializer,
+    RoleSerializer,
     UserCreateSerializer,
-    UserUpdateSerializer,
     UserInviteSerializer,
     UserRoleAssignmentSerializer,
-    RoleSerializer
+    UserSerializer,
+    UserUpdateSerializer,
 )
-from hub.apps.tenants.models import Tenant
-from hub.apps.audit.utils import log_user_operation
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -33,6 +36,7 @@ class UserViewSet(viewsets.ModelViewSet):
     Tenant-scoped: users can only see/manage users in their tenant.
     Platform admins can see all users.
     """
+
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
@@ -60,7 +64,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return User.objects.none()
 
         # Filter by status if provided
-        status_filter = self.request.query_params.get('status')
+        status_filter = self.request.query_params.get("status")
         if status_filter:
             queryset = queryset.filter(status=status_filter)
 
@@ -69,36 +73,57 @@ class UserViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """
-        Create a new user.
+        Create a new user via service layer.
 
         Creates user with optional role assignment and invitation.
         """
         # Set tenant from request user if not provided
         data = request.data.copy()
-        if 'tenant' not in data and hasattr(request.user, 'tenant') and request.user.tenant:
-            data['tenant'] = str(request.user.tenant.id)
+        tenant_id = None
+        if "tenant" not in data and hasattr(request.user, "tenant") and request.user.tenant:
+            tenant_id = str(request.user.tenant.id)
+            data["tenant"] = tenant_id
+        elif "tenant" in data:
+            tenant_id = str(data["tenant"])
 
         serializer = UserCreateSerializer(data=data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
+
+        # Use service layer for creation (Phase 24.7.2)
+        from hub.apps.users.services import UserService
+
+        if not tenant_id:
+            return Response(
+                {"error": "Tenant is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
+        try:
+            user = service.create_user(
+                tenant_id=tenant_id,
+                actor_user_id=str(request.user.id),
+                email=serializer.validated_data["email"],
+                password=serializer.validated_data.get("password"),
+                display_name=serializer.validated_data.get("display_name"),
+                status=serializer.validated_data.get("status"),
+                role_ids=serializer.validated_data.get("role_ids"),
+                send_invitation=serializer.validated_data.get("send_invitation", True),
+            )
+        except Exception as e:
+            from hub.apps.core.responses import handle_service_exception
+            from hub.apps.core.services.base import NotFoundError
+            from hub.apps.core.services.base import ValidationError as ServiceValidationError
+
+            if isinstance(e, (ServiceValidationError, NotFoundError)):
+                return handle_service_exception(e)
+            raise
 
         # Send invitation email if requested
         if serializer.validated_data.get("send_invitation", True):
             self._send_invitation_email(user)
 
-        # Log audit event
-        log_user_operation(
-            action="USER_CREATED",
-            user=user,
-            actor_user=request.user,
-            details={"email": user.email, "status": user.status},
-            request=request
-        )
-
-        return Response(
-            UserSerializer(user).data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
     def list(self, request, *args, **kwargs):
         """List users (tenant-scoped)"""
@@ -110,44 +135,113 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        """Update user (full update)"""
+        """Update user via service layer (full update)"""
         user = self.get_object()
         serializer = UserUpdateSerializer(user, data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
 
-        # Log audit event
-        log_user_operation(
-            action="USER_UPDATED",
-            user=user,
-            actor_user=request.user,
-            details=serializer.validated_data,
-            request=request
-        )
+        # Use service layer for update (Phase 24.7.2)
+        from hub.apps.core.responses import handle_service_exception
+        from hub.apps.core.services.base import NotFoundError
+        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+        from hub.apps.users.services import UserService
+
+        tenant_id = str(user.tenant.id) if user.tenant else None
+        if not tenant_id:
+            return Response(
+                {"error": "User must belong to a tenant"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
+        try:
+            # Extract update data (exclude read-only fields)
+            update_data = {
+                k: v
+                for k, v in serializer.validated_data.items()
+                if k not in getattr(serializer.Meta, "read_only_fields", [])
+            }
+            user = service.update_user(
+                user_id=str(user.id),
+                tenant_id=tenant_id,
+                actor_user_id=str(request.user.id),
+                **update_data,
+            )
+        except (ServiceValidationError, NotFoundError) as e:
+            return handle_service_exception(e)
 
         return Response(UserSerializer(user).data)
 
     @transaction.atomic
     def partial_update(self, request, *args, **kwargs):
-        """Update user (partial update)"""
+        """Update user via service layer (partial update)"""
         user = self.get_object()
         serializer = UserUpdateSerializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
 
-        # Log audit event
-        log_user_operation(
-            action="USER_UPDATED",
-            user=user,
-            actor_user=request.user,
-            details=serializer.validated_data,
-            request=request
-        )
+        # Use service layer for update (Phase 24.7.2)
+        from hub.apps.core.responses import handle_service_exception
+        from hub.apps.core.services.base import NotFoundError
+        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+        from hub.apps.users.services import UserService
+
+        tenant_id = str(user.tenant.id) if user.tenant else None
+        if not tenant_id:
+            return Response(
+                {"error": "User must belong to a tenant"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
+        try:
+            # Extract update data (exclude read-only fields)
+            update_data = {
+                k: v
+                for k, v in serializer.validated_data.items()
+                if k not in getattr(serializer.Meta, "read_only_fields", [])
+            }
+            user = service.update_user(
+                user_id=str(user.id),
+                tenant_id=tenant_id,
+                actor_user_id=str(request.user.id),
+                **update_data,
+            )
+        except (ServiceValidationError, NotFoundError) as e:
+            return handle_service_exception(e)
 
         return Response(UserSerializer(user).data)
 
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
+        """Delete user via service layer"""
+        user = self.get_object()
+
+        # Use service layer for deletion (Phase 24.7.2)
+        from hub.apps.core.responses import handle_service_exception
+        from hub.apps.core.services.base import NotFoundError
+        from hub.apps.users.services import UserService
+
+        tenant_id = str(user.tenant.id) if user.tenant else None
+        if not tenant_id:
+            return Response(
+                {"error": "User must belong to a tenant"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
+        try:
+            service.delete_user(
+                user_id=str(user.id),
+                tenant_id=tenant_id,
+                actor_user_id=str(request.user.id),
+            )
+        except NotFoundError as e:
+            return handle_service_exception(e)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @transaction.atomic
+    def destroy_old(self, request, *args, **kwargs):
         """
         Delete a user.
 
@@ -159,8 +253,7 @@ class UserViewSet(viewsets.ModelViewSet):
         # Prevent self-deletion
         if user.id == request.user.id:
             return Response(
-                {"error": "Users cannot delete themselves"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Users cannot delete themselves"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         # Check if user has resources
@@ -177,20 +270,18 @@ class UserViewSet(viewsets.ModelViewSet):
                 user=user,
                 actor_user=request.user,
                 details={"reason": "User has resources"},
-                request=request
+                request=request,
             )
 
-            return Response(
-                {"message": "User disabled (has resources)"},
-                status=status.HTTP_200_OK
-            )
+            return Response({"message": "User disabled (has resources)"}, status=status.HTTP_200_OK)
         else:
             # Hard delete: remove user completely
             user_id = user.id
-            tenant = request.user.tenant if hasattr(request.user, 'tenant') else None
+            tenant = request.user.tenant if hasattr(request.user, "tenant") else None
 
             # Log audit event BEFORE deleting user (to avoid FK constraint violation)
             from hub.apps.audit.utils import create_audit_event
+
             create_audit_event(
                 resource_type="USER",
                 action="USER_DELETED",
@@ -198,7 +289,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 tenant=tenant,
                 resource_id=str(user_id),
                 details={"user_id": str(user_id)},
-                request=request
+                request=request,
             )
 
             # Now delete the user
@@ -210,7 +301,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="invite")
     def invite(self, request):
         """
-        Invite a user to join the tenant.
+        Invite a user to join the tenant via service layer.
 
         Creates user with INVITED status and sends invitation email.
         """
@@ -222,54 +313,40 @@ class UserViewSet(viewsets.ModelViewSet):
         if not tenant:
             return Response(
                 {"error": "User must belong to a tenant to invite others"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Check if user already exists
-        email = serializer.validated_data["email"]
-        existing_user = User.objects.filter(email=email, tenant=tenant).first()
-        if existing_user:
-            return Response(
-                {"error": "User with this email already exists in tenant"},
-                status=status.HTTP_400_BAD_REQUEST
+        tenant_id = str(tenant.id)
+
+        # Use service layer for invitation (Phase 24.7.2)
+        from hub.apps.core.responses import handle_service_exception
+        from hub.apps.core.services.base import NotFoundError
+        from hub.apps.core.services.base import ValidationError as ServiceValidationError
+        from hub.apps.users.services import UserService
+
+        service = UserService(tenant_id=tenant_id, user_id=str(request.user.id))
+        try:
+            user = service.create_user(
+                tenant_id=tenant_id,
+                actor_user_id=str(request.user.id),
+                email=serializer.validated_data["email"],
+                display_name=serializer.validated_data.get("display_name"),
+                status=UserStatus.INVITED,
+                role_ids=serializer.validated_data.get("role_ids", []),
+                send_invitation=True,
             )
+        except (ServiceValidationError, NotFoundError) as e:
+            return handle_service_exception(e)
 
-        # Create invited user
-        user = User.objects.create_user(
-            email=email,
-            tenant=tenant,
-            display_name=serializer.validated_data.get("display_name"),
-            status=UserStatus.INVITED
-        )
-
-        # Generate invitation token
+        # Generate invitation token (service layer doesn't handle this yet)
         user.invitation_token = uuid.uuid4()
         user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
         user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
 
-        # Assign roles if provided
-        role_ids = serializer.validated_data.get("role_ids", [])
-        if role_ids:
-            roles = Role.objects.filter(id__in=role_ids, tenant=tenant)
-            for role in roles:
-                UserRole.objects.get_or_create(user=user, role=role)
-
         # Send invitation email
         self._send_invitation_email(user)
 
-        # Log audit event
-        log_user_operation(
-            action="USER_INVITED",
-            user=user,
-            actor_user=request.user,
-            details={"email": email},
-            request=request
-        )
-
-        return Response(
-            UserSerializer(user).data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
     @action(detail=True, methods=["post"], url_path="roles")
@@ -290,8 +367,7 @@ class UserViewSet(viewsets.ModelViewSet):
             role = Role.objects.get(id=role_id, tenant=user.tenant)
         except Role.DoesNotExist:
             return Response(
-                {"error": "Role not found or not in same tenant"},
-                status=status.HTTP_404_NOT_FOUND
+                {"error": "Role not found or not in same tenant"}, status=status.HTTP_404_NOT_FOUND
             )
 
         if action_type == "assign":
@@ -308,13 +384,10 @@ class UserViewSet(viewsets.ModelViewSet):
             user=user,
             actor_user=request.user,
             details={"role_id": str(role_id), "action": action_type},
-            request=request
+            request=request,
         )
 
-        return Response(
-            UserSerializer(user).data,
-            status=status.HTTP_200_OK
-        )
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
 
     def _user_has_resources(self, user) -> bool:
         """
@@ -324,21 +397,25 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         # Check for assets created by this user
         from hub.apps.assets.models import Asset
+
         if Asset.objects.filter(created_by=user).exists():
             return True
 
         # Check for datasets created by this user
         from hub.apps.datasets.models import Dataset
+
         if Dataset.objects.filter(created_by=user).exists():
             return True
 
         # Check for contracts created by this user
         from hub.apps.contracts.models import Contract
+
         if Contract.objects.filter(created_by=user).exists():
             return True
 
         # Check for files created by this user
         from hub.apps.files.models import File
+
         if File.objects.filter(created_by=user).exists():
             return True
 
@@ -346,8 +423,10 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def _send_invitation_email(self, user):
         """Send invitation email to user"""
-        from hub.apps.notifications.tasks import send_invitation_email
         import structlog
+
+        from hub.apps.notifications.tasks import send_invitation_email
+
         logger = structlog.get_logger(__name__)
 
         try:
@@ -357,9 +436,8 @@ class UserViewSet(viewsets.ModelViewSet):
             logger.warning(
                 "Failed to enqueue invitation email (Redis may be unavailable). User created but email not queued.",
                 user_id=str(user.id),
-                error=str(e)
+                error=str(e),
             )
-
 
 
 class RoleViewSet(viewsets.ReadOnlyModelViewSet):
@@ -368,6 +446,7 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
 
     Roles are created automatically when tenants are created.
     """
+
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
     permission_classes = [IsAuthenticated]
@@ -386,4 +465,3 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
             return Role.objects.filter(tenant=user.tenant)
 
         return Role.objects.none()
-

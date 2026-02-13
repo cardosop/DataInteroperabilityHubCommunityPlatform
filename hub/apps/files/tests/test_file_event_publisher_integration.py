@@ -4,35 +4,26 @@ Integration tests for FileEventPublisher.
 Tests event publishing using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
-from django.test import TestCase, override_settings
+
+from django.test import override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.files.models import File, FileStatus
-from hub.apps.core.events.service_publishers import FileEventPublisher
+
 from hub.apps.core.events.models import Event
+from hub.apps.core.events.service_publishers import FileEventPublisher
+from hub.apps.files.models import File, FileStatus
+from hub.apps.files.tests.test_base import FilesTestBase
 
 
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
 )
-class FileEventPublisherIntegrationTest(TestCase):
+class FileEventPublisherIntegrationTest(FilesTestBase):
     """Integration tests for FileEventPublisher using real EventPublisher."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
+        super().setUp()
 
         # Create a test service with FileEventPublisher
         class TestFileService(FileEventPublisher):
@@ -41,22 +32,20 @@ class FileEventPublisherIntegrationTest(TestCase):
                 self.user_id = user_id
                 super().__init__(tenant_id=tenant_id, user_id=user_id)
 
-        self.service = TestFileService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.service = TestFileService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-        # Create a test file
-        self.test_file = File.objects.create(
-            tenant=self.tenant,
-            created_by=self.user,
-            name="test_file.csv",
-            content_type="text/csv",
-            size=1024,
-            storage_path="test-bucket/test_file.csv",
-            status=FileStatus.ACTIVE,
-            content_sha256="abc123def456"
-        )
+        # Use self.file from FilesTestBase or create specific one
+        if not hasattr(self, "test_file") or self.file.name != "test_file.csv":
+            self.test_file = File.objects.create(
+                tenant=self.tenant,
+                created_by=self.user,
+                name="test_file.csv",
+                content_type="text/csv",
+                size=1024,
+                storage_path=f"{self.tenant.id}/test_file.csv",
+                status=FileStatus.ACTIVE,
+                content_sha256="abc123def456",
+            )
 
     def test_publish_file_created_event(self):
         """Test publishing file.created event with real EventPublisher."""
@@ -66,7 +55,7 @@ class FileEventPublisherIntegrationTest(TestCase):
             content_type=self.test_file.content_type,
             size=self.test_file.size,
             status=self.test_file.status,
-            content_sha256=self.test_file.content_sha256
+            content_sha256=self.test_file.content_sha256,
         )
 
         # Verify event was published
@@ -92,13 +81,13 @@ class FileEventPublisherIntegrationTest(TestCase):
         """Test publishing file.updated event with real EventPublisher."""
         changes = {
             "status": {"old": FileStatus.PENDING, "new": FileStatus.ACTIVE},
-            "size": {"old": 1024, "new": 2048}
+            "size": {"old": 1024, "new": 2048},
         }
         event_id = self.service.publish_file_updated(
             file_id=str(self.test_file.id),
             changes=changes,
             previous_status=FileStatus.PENDING.value,
-            new_status=FileStatus.ACTIVE.value
+            new_status=FileStatus.ACTIVE.value,
         )
 
         # Verify event was published
@@ -116,10 +105,7 @@ class FileEventPublisherIntegrationTest(TestCase):
     def test_publish_file_deleted_event(self):
         """Test publishing file.deleted event with real EventPublisher."""
         reason = "User requested deletion"
-        event_id = self.service.publish_file_deleted(
-            file_id=str(self.test_file.id),
-            reason=reason
-        )
+        event_id = self.service.publish_file_deleted(file_id=str(self.test_file.id), reason=reason)
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -139,7 +125,7 @@ class FileEventPublisherIntegrationTest(TestCase):
             file_size=self.test_file.size,
             content_type=self.test_file.content_type,
             upload_duration_ms=500,
-            content_sha256=self.test_file.content_sha256
+            content_sha256=self.test_file.content_sha256,
         )
 
         # Verify event was published
@@ -160,7 +146,7 @@ class FileEventPublisherIntegrationTest(TestCase):
         event_id = self.service.publish_file_downloaded(
             file_id=str(self.test_file.id),
             download_duration_ms=300,
-            download_size=self.test_file.size
+            download_size=self.test_file.size,
         )
 
         # Verify event was published
@@ -176,9 +162,7 @@ class FileEventPublisherIntegrationTest(TestCase):
 
     def test_publish_file_created_with_minimal_data(self):
         """Test publishing file.created event with only required fields."""
-        event_id = self.service.publish_file_created(
-            file_id=str(self.test_file.id)
-        )
+        event_id = self.service.publish_file_created(file_id=str(self.test_file.id))
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -198,8 +182,7 @@ class FileEventPublisherIntegrationTest(TestCase):
         """Test publishing file.updated event with only required fields."""
         changes = {"status": {"old": "PENDING", "new": "ACTIVE"}}
         event_id = self.service.publish_file_updated(
-            file_id=str(self.test_file.id),
-            changes=changes
+            file_id=str(self.test_file.id), changes=changes
         )
 
         # Verify event was published
@@ -216,9 +199,7 @@ class FileEventPublisherIntegrationTest(TestCase):
 
     def test_publish_file_deleted_without_reason(self):
         """Test publishing file.deleted event without reason."""
-        event_id = self.service.publish_file_deleted(
-            file_id=str(self.test_file.id)
-        )
+        event_id = self.service.publish_file_deleted(file_id=str(self.test_file.id))
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -233,9 +214,7 @@ class FileEventPublisherIntegrationTest(TestCase):
 
     def test_publish_file_uploaded_with_minimal_data(self):
         """Test publishing file.uploaded event with only required fields."""
-        event_id = self.service.publish_file_uploaded(
-            file_id=str(self.test_file.id)
-        )
+        event_id = self.service.publish_file_uploaded(file_id=str(self.test_file.id))
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -252,9 +231,7 @@ class FileEventPublisherIntegrationTest(TestCase):
 
     def test_publish_file_downloaded_with_minimal_data(self):
         """Test publishing file.downloaded event with only required fields."""
-        event_id = self.service.publish_file_downloaded(
-            file_id=str(self.test_file.id)
-        )
+        event_id = self.service.publish_file_downloaded(file_id=str(self.test_file.id))
 
         # Verify event was published
         self.assertIsNotNone(event_id)
@@ -269,9 +246,7 @@ class FileEventPublisherIntegrationTest(TestCase):
 
     def test_event_source_includes_tenant_and_user(self):
         """Test that events include tenant_id and user_id in source."""
-        event_id = self.service.publish_file_created(
-            file_id=str(self.test_file.id)
-        )
+        event_id = self.service.publish_file_created(file_id=str(self.test_file.id))
 
         event = Event.objects.get(event_id=event_id)
         self.assertEqual(str(event.tenant_id), str(self.tenant.id))
@@ -283,9 +258,7 @@ class FileEventPublisherIntegrationTest(TestCase):
     def test_event_timestamp_is_set(self):
         """Test that events have timestamp set."""
         before_publish = timezone.now()
-        event_id = self.service.publish_file_created(
-            file_id=str(self.test_file.id)
-        )
+        event_id = self.service.publish_file_created(file_id=str(self.test_file.id))
         after_publish = timezone.now()
 
         event = Event.objects.get(event_id=event_id)
@@ -293,4 +266,3 @@ class FileEventPublisherIntegrationTest(TestCase):
         # Verify timestamp is between before and after
         self.assertGreaterEqual(event.timestamp, before_publish)
         self.assertLessEqual(event.timestamp, after_publish)
-

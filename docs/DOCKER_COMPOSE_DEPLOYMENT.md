@@ -7,7 +7,7 @@ Complete guide for deploying the Data Interoperability Hub using Docker Compose 
 1. [Overview](#overview)
 2. [Prerequisites](#prerequisites)
 3. [Pre-Deployment Checklist](#pre-deployment-checklist)
-4. [Deployment Steps](#deployment-steps)
+4. [Deployment Steps](#deployment-steps) — [Step 0: Release gate (Phase 12A + sign-off)](#step-0-run-phase-12a-and-obtain-sign-off-release-gate) must be satisfied before proceeding
 5. [Post-Deployment Verification](#post-deployment-verification)
 6. [Troubleshooting](#troubleshooting)
 7. [Rollback Procedures](#rollback-procedures)
@@ -18,21 +18,43 @@ Complete guide for deploying the Data Interoperability Hub using Docker Compose 
 
 ## Overview
 
-The Data Interoperability Hub is deployed using Docker Compose, which orchestrates all services including:
+The Data Interoperability Hub is deployed using Docker Compose, which orchestrates **all services** in a single stack:
 
-- **Infrastructure Services**: PostgreSQL, Redis, MinIO, Fuseki
-- **Core Application Services**: API Service, Worker Service
-- **Workflow Services**: Workflow Engine, Workflow Registry
-- **Event Bus Services**: Event Bus Health, Event Schema Registry
+- **Infrastructure**: PostgreSQL, Redis (cache, queue, events, channels), MinIO, Fuseki, Redis exporters
+- **Core**: API Service, Worker Service, Frontend
+- **Workflow**: Workflow Engine, Workflow Registry
+- **Event Bus**: Event Bus Health, Event Schema Registry
 - **Microservices**: Semantic, DQ, Compliance, DataContract, Search, Observability, Webhook
-- **Monitoring Services**: Prometheus, Grafana, Jaeger, Alertmanager
-- **API Gateway**: Traefik
-- **Orchestration**: Prefect Server, Prefect Workers, Prefect Integration Service
+- **Gateways**: API Gateway, Traefik
+- **Orchestration**: Prefect Server, Prefect DB, Prefect Workers, Prefect Integration Service
+- **Monitoring**: Prometheus, Grafana, Jaeger, Alertmanager
+- **Support**: MailHog (dev), Mock Server (marketplace tests), CKAN test DB/Solr/Redis (optional), ODH Training Operator, ODH Inference Scheduler
+
+**Run all services:**
+
+```bash
+# Production-style full stack (docker-compose.yml)
+docker compose up -d
+
+# Development full stack with hot-reload (docker-compose.dev.yml)
+docker compose -f docker-compose.dev.yml up -d
+```
 
 **Deployment Environments:**
-- **Development**: Local development with hot-reload (`docker-compose.dev.yml`)
+- **Development**: Local development with hot-reload (`docker-compose.dev.yml`) — all services run via Docker Compose
 - **Staging**: Pre-production testing (`docker-compose.staging.yml`)
 - **Production**: Production deployment (`docker-compose.yml`)
+
+**Project approach**: Deployment is Docker Compose–based for development, staging, and production. Kubernetes (K8s) is used only where already in place (e.g. Prefect workers, scheduled ingestion); see [DEPLOYMENT_ORDER_SCHEDULED_INGESTION.md](DEPLOYMENT_ORDER_SCHEDULED_INGESTION.md) for that flow.
+
+**Release gate (deploy after green tests)**  
+Do **not** deploy to staging or production until the full test suite is green and (when gap remediation applies) sign-off is obtained. Use the **same suite and evidence location** every time:
+
+- **Suite**: Phase 12A full run — `./scripts/run_phase_12a_full_suites.sh` (backend unit/integration/E2E, frontend unit/E2E, security, performance, concurrency, regression). See [RUNBOOKS.md — Full test suite (Phase 12A-style)](RUNBOOKS.md#full-test-suite-phase-12a-style) and [TEST_EXECUTION_PLAN.md](TEST_EXECUTION_PLAN.md).
+- **Evidence location**: `test_reports_comprehensive/{date}/` (unit/, integration/, e2e/, security/, performance/, concurrency/, regression/, frontend-unit/, frontend-e2e/, `phase_12a_1_summary.json`, `phase_12a_3_summary.json`). Generate the test summary report with `./scripts/generate_test_summary_report.sh YYYY-MM-DD`.
+- **Sign-off**: When gap remediation applies, follow [RUNBOOKS.md — Gap remediation validation](RUNBOOKS.md#gap-remediation-validation). Release MUST NOT proceed until sign-off is obtained.
+
+Canonical release criteria: [RELEASE.md](RELEASE.md).
 
 ---
 
@@ -140,6 +162,15 @@ The Data Interoperability Hub is deployed using Docker Compose, which orchestrat
 - [ ] External service endpoints verified
 - [ ] SSL certificates prepared (if using HTTPS)
 
+### Test and sign-off verification (release gate)
+
+- [ ] Phase 12A full suite run and all critical suites green (`./scripts/run_phase_12a_full_suites.sh`)
+- [ ] Evidence present in `test_reports_comprehensive/{date}/` (see [EVIDENCE_COLLECTION_PLAN.md](EVIDENCE_COLLECTION_PLAN.md#directory-structure))
+- [ ] Test summary report generated (`./scripts/generate_test_summary_report.sh YYYY-MM-DD`)
+- [ ] Sign-off obtained when gap remediation applies (see [RUNBOOKS.md — Gap remediation validation](RUNBOOKS.md#gap-remediation-validation))
+
+Full release gate: [RELEASE.md](RELEASE.md).
+
 ### Backup Verification
 
 - [ ] Database backup created (if upgrading)
@@ -157,6 +188,28 @@ The Data Interoperability Hub is deployed using Docker Compose, which orchestrat
 ---
 
 ## Deployment Steps
+
+### Step 0: Run Phase 12A and obtain sign-off (release gate)
+
+Before deploying to staging or production, ensure the same test suite and evidence layout are used so deployment is consistent with "green Phase 12A + sign-off":
+
+1. **Run full Phase 12A suite**:
+   ```bash
+   ./scripts/run_phase_12a_full_suites.sh
+   ```
+   Ensure all critical suites are green; fix failures at root cause before proceeding. Backend-only option: `./scripts/run_phase_12a_backend_suites.sh` if frontend/12A.3 are not required for the change.
+
+2. **Evidence location**: Artifacts are written to `test_reports_comprehensive/YYYY-MM-DD/` (set `DATE` to override). See [EVIDENCE_COLLECTION_PLAN.md](EVIDENCE_COLLECTION_PLAN.md#directory-structure).
+
+3. **Generate test summary report**:
+   ```bash
+   ./scripts/generate_test_summary_report.sh YYYY-MM-DD
+   ```
+   Use the date of the run. Verify the report contains execution summary and evidence links.
+
+4. **Sign-off** (when gap remediation applies): Product/tech lead confirms per [RUNBOOKS.md — Gap remediation validation](RUNBOOKS.md#gap-remediation-validation). Release MUST NOT proceed until sign-off is obtained.
+
+If any of the above is not satisfied, do not proceed to Step 1. Fix issues and re-run the suite.
 
 ### Step 1: Prepare Environment
 
@@ -395,6 +448,14 @@ export ENVIRONMENT=staging
 export COMPOSE_FILE=docker-compose.yml
 export ENVIRONMENT=production
 ```
+
+#### 1.4 Test runtime (integration and E2E)
+
+For running integration and E2E tests against a Compose stack:
+
+- **Compose file**: Use `docker-compose.dev.yml` (service `api-service`) or `docker-compose.test.yml` (service `api-service-test`). With `docker-compose.test.yml`, set `export COMPOSE_FILE=docker-compose.test.yml` before starting the stack and before running Phase 12A scripts so they target `api-service-test`.
+- **Required env for pytest**: Set `PYTEST_DOCKER_COMPOSE_RUNTIME=1` when using `--docker-compose-runtime` so integration and E2E run consistently.
+- **Commands and minimal services**: See [TEST_EXECUTION_PLAN — Docker Compose and test runtime](./TEST_EXECUTION_PLAN.md#docker-compose-and-test-runtime-integration-and-e2e) for which compose file to use, how to start the stack, and how to run `pytest tests/integration/ -v --docker-compose-runtime` and E2E with no silent dependency gaps.
 
 ### Step 2: Validate Configuration
 
@@ -644,6 +705,28 @@ curl http://localhost:4200/health
 open http://localhost:4201
 ```
 
+#### 9.3 Configure Prefect Worker for Scheduled Ingestion
+
+The Prefect worker requires hub API configuration to execute scheduled ingestion flows:
+
+```bash
+# Set hub API configuration in .env file
+HUB_BASE_URL=http://api-service:8000
+HUB_WORKER_API_KEY=<your-api-key>
+
+# Generate API key if needed (from api-service container)
+docker compose exec api-service python hub/manage.py create_api_key \
+  --scopes scheduled_ingestion:internal
+
+# Restart prefect-worker to pick up configuration
+docker compose restart prefect-worker
+
+# Verify worker can reach hub API
+docker compose exec prefect-worker curl -f http://api-service:8000/health
+```
+
+**Note**: The Prefect worker image includes the scheduled ingestion flow and tasks via volume mount (`./services/prefect-integration:/app:ro`). For production, consider building a custom worker image that includes the workflows.
+
 ### Step 10: Complete Deployment
 
 #### 10.1 Start All Remaining Services
@@ -853,7 +936,94 @@ docker compose -f ${COMPOSE_FILE} logs postgres | tail -50
 3. **Check database exists**: Verify POSTGRES_DB is created
 4. **Restart database**: `docker compose -f ${COMPOSE_FILE} restart postgres`
 
-#### Issue 3: Health Checks Failing
+#### Issue 2b: Postgres or Prefect-DB taking forever to start (old/corrupt data)
+
+**Symptoms:**
+- `postgres` or `prefect-db` container stays in "health: starting" or "starting" for many minutes
+- Logs show "syncing data directory (fsync)" or "database system was not properly shut down; automatic recovery in progress"
+- Dependent services (api-service, prefect-server, etc.) never start
+
+**Solution: reset Postgres-related volumes and bring the stack up clean:**
+
+```bash
+# From repo root (removes pgdata, prefect-db-data, ckan-test-db-data and starts fresh)
+./scripts/reset_postgres_volumes_and_up.sh --detach
+```
+
+If you see "container name already in use" errors, run once:
+
+```bash
+docker rm -f $(docker ps -aq --filter 'name=hub-') 2>/dev/null
+docker compose up -d
+```
+
+Then run migrations and recreate users as needed (see "Initial deployment" in this doc).
+
+#### Issue 2c: API or services — "no pg_hba.conf entry ... no encryption" (main postgres)
+
+**Symptoms:**
+- api-service (or other services) fail to start; logs show: `connection to server at "postgres" ... failed: FATAL: no pg_hba.conf entry for host "…", user "hub", database "hub", no encryption`
+
+**Cause:** The main PostgreSQL (hub-postgres) by default may only allow SSL from remote hosts; Django and others connect without SSL.
+
+**Fix for existing postgres volume (one-off):** Run once, then restart api-service (and any other service that uses postgres):
+
+```bash
+docker compose exec postgres sh -c 'echo "host all all 0.0.0.0/0 scram-sha-256" >> "$PGDATA/pg_hba.conf"'
+docker compose exec postgres psql -U hub -d template1 -c "SELECT pg_reload_conf();"
+docker compose restart api-service
+```
+
+**If API then fails with "database \"hub\" does not exist":** Create the database and restart:
+
+```bash
+docker compose exec postgres psql -U hub -d template1 -c "CREATE DATABASE hub;"
+docker compose restart api-service
+```
+
+**New installs:** The repo mounts `infrastructure/postgres/02-pg-hba-host.sh` into postgres initdb so the rule is added on first creation. For existing pgdata volume, use the one-off above or reset volumes (see Issue 2b).
+
+#### Issue 2d: Prefect server — "no pg_hba.conf entry ... no encryption" (prefect-db)
+
+**Symptoms:**
+- Prefect server logs: `InvalidAuthorizationSpecificationError: no pg_hba.conf entry for host "…", user "prefect", database "prefect", no encryption`
+
+**Cause:** The Prefect DB (PostgreSQL) by default may only allow SSL connections from remote hosts; Prefect uses asyncpg, which connects without SSL unless configured.
+
+**Fix for existing prefect-db volume (one-off):** Run once so prefect-db allows non-SSL connections, then reload config and restart Prefect server. Use `template1` for the reload (it always exists):
+
+```bash
+docker compose exec prefect-db sh -c 'echo "host all all 0.0.0.0/0 scram-sha-256" >> "$PGDATA/pg_hba.conf"'
+docker compose exec prefect-db psql -U prefect -d template1 -c "SELECT pg_reload_conf();"
+docker compose restart prefect-server
+```
+
+**If Prefect then fails with "database \"prefect\" does not exist":** The volume was likely created without `POSTGRES_DB=prefect`. Create the database and restart Prefect:
+
+```bash
+docker compose exec prefect-db psql -U prefect -d template1 -c "CREATE DATABASE prefect;"
+docker compose restart prefect-server
+```
+
+**New installs:** The repo mounts `infrastructure/prefect-db/02-pg-hba-host.sh` into prefect-db's initdb; that script adds the same rule on first database creation. If you already had prefect-db-data, use the one-off above or remove the volume and bring the stack up again (see Issue 2b for volume reset).
+
+#### Issue 2e: API service unhealthy or Prefect server restart loop
+
+**Symptoms:**
+- `api-service` shows "unhealthy" in `docker compose ps`
+- `prefect-server` restarts repeatedly (e.g. "Restarting (0)" or "Up X seconds (health: starting)" then restarts)
+
+**Causes and fixes (already applied in this repo):**
+- **Prefect 3**: Use `prefect server start --host 0.0.0.0`. Set Redis messaging env vars (`PREFECT_MESSAGING_BROKER`, `PREFECT_REDIS_MESSAGING_*`) and depend on `redis-queue` so the server has a messaging broker. Health endpoint is `/api/health`; healthcheck uses `http://localhost:4200/api/health` with `start_period: 120s`.
+- **API (Django)**: The compose healthcheck uses **liveness** only: `http://localhost:8000/health/live/`. That endpoint always returns 200 if the process is up (no DB/Redis check), so the container is marked healthy once Django is serving. Use `GET /health/` for **readiness** (returns 503 when DB or Redis is down).
+
+**If still unhealthy after a clean start:**
+- Check API liveness: `docker compose exec api-service curl -s http://localhost:8000/health/live/`
+- Check API readiness: `docker compose exec api-service curl -s http://localhost:8000/health/`
+- Check Prefect health: `docker compose exec prefect-server curl -s http://localhost:4200/api/health`
+- Inspect logs: `docker compose logs api-service --tail=100` and `docker compose logs prefect-server --tail=100`
+
+#### Issue 3: Health checks failing
 
 **Symptoms:**
 - Health check endpoints return errors
@@ -1001,6 +1171,8 @@ docker system df -v
 ---
 
 ## Rollback Procedures
+
+If a **release fails** after deployment (e.g. critical errors, failed health checks, misconfiguration), roll back **application** (previous image/version) or **configuration** (restore previous config) using the scenarios below. No new tooling is required. After rollback, fix the root cause and re-run Phase 12A; obtain sign-off again before re-release. See [RUNBOOKS.md — Deployment and rollback](RUNBOOKS.md#deployment-and-rollback) for the release gate and evidence location.
 
 ### Rollback Scenarios
 

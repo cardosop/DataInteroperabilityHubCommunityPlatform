@@ -39,8 +39,8 @@ These tests verify that Docker Compose services:
    - Tests API service backend connectivity
 
 5. **TestDockerComposeServiceDependencies**: Dependency tests
-   - Tests workflow-engine dependencies (postgres, redis)
-   - Tests event-bus dependencies (postgres, redis)
+   - Tests workflow-engine dependencies (postgres, redis-cache)
+   - Tests event-bus dependencies (postgres, redis-cache)
    - Tests API service dependencies
    - Tests dependency health conditions
    - Tests graceful failure without dependencies
@@ -64,24 +64,24 @@ These tests verify that Docker Compose services:
 # Keep services running after tests
 ./scripts/run_docker_compose_integration_tests.sh --keep-services
 
-# Start specific services only
-./scripts/run_docker_compose_integration_tests.sh --services postgres,redis,workflow-engine-service
+# Start specific services only (use redis-cache, not redis — matches docker-compose.yml)
+./scripts/run_docker_compose_integration_tests.sh --services postgres,redis-cache,workflow-engine-service
 ```
 
 ### Option 2: Manual Docker Compose + pytest
 
 ```bash
-# Start services manually
-docker compose up -d postgres redis
+# Start services manually (docker-compose.yml uses redis-cache, not redis)
+docker compose up -d postgres redis-cache minio fuseki
 docker compose up -d workflow-engine-service workflow-registry-service event-bus-health-service
 
 # Wait for services to be healthy
 sleep 30
 
-# Run tests
+# Run runtime tests (requires PYTEST_DOCKER_COMPOSE_RUNTIME=1)
+export PYTEST_DOCKER_COMPOSE_RUNTIME=1
 pytest tests/integration/test_docker_compose_deployment.py \
     -v \
-    --docker-compose-runtime \
     -m "integration and docker_compose_runtime"
 ```
 
@@ -91,6 +91,14 @@ pytest tests/integration/test_docker_compose_deployment.py \
 # Run only static validation tests (no Docker Compose runtime required)
 pytest tests/integration/test_docker_compose_deployment.py::TestDockerComposeDeployment -v
 ```
+
+### Runtime tests (optional)
+
+Runtime tests (service startup, health checks, communication, dependencies) are **skipped by default**. They use real Docker Compose and real HTTP — no mocks.
+
+- **Enable:** Set `PYTEST_DOCKER_COMPOSE_RUNTIME=1` before running pytest.
+- **Start services first:** Use `./scripts/run_docker_compose_integration_tests.sh` or start compose manually, then run pytest with the same env.
+- **CI:** Normal CI runs do not set this variable, so only static validation runs. To run runtime tests in CI, add a dedicated job that sets `PYTEST_DOCKER_COMPOSE_RUNTIME=1` and starts a minimal compose stack.
 
 ## Test Coverage
 
@@ -127,8 +135,8 @@ pytest tests/integration/test_docker_compose_deployment.py::TestDockerComposeDep
 ### Dependency Tests (Runtime)
 
 - ✅ Workflow engine depends on postgres
-- ✅ Workflow engine depends on redis
-- ✅ Event bus depends on postgres and redis
+- ✅ Workflow engine depends on redis-cache
+- ✅ Event bus depends on postgres and redis-cache
 - ✅ API service depends on infrastructure
 - ✅ Dependency health conditions work
 - ✅ Services fail gracefully without dependencies
@@ -145,7 +153,7 @@ Loaded YAML configuration from docker-compose.yml.
 DockerComposeManager instance for managing Docker Compose lifecycle.
 
 ### infrastructure_services
-List of infrastructure service names (postgres, redis, minio, fuseki).
+List of infrastructure service names (postgres, redis-cache, minio, fuseki) — matches docker-compose.yml.
 
 ### application_services
 List of application service names (workflow-engine-service, etc.).
@@ -160,8 +168,8 @@ The `DockerComposeManager` class provides utilities for managing Docker Compose:
 ```python
 manager = DockerComposeManager(compose_file)
 
-# Start services
-manager.start_services(['postgres', 'redis'], wait=True)
+# Start services (use redis-cache to match docker-compose.yml)
+manager.start_services(['postgres', 'redis-cache'], wait=True)
 
 # Check service status
 status = manager.get_service_status('workflow-engine-service')

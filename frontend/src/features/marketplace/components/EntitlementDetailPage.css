@@ -1,0 +1,133 @@
+.entitlement-detail-page {
+  padding: var(--spacing-lg);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.btn-back {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-back:hover {
+  background: var(--color-background-secondary);
+  border-color: var(--color-primary);
+}
+
+.entitlement-detail-header {
+  margin-bottom: var(--spacing-xl);
+}
+
+.entitlement-detail-title-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.entitlement-detail-title-section h1 {
+  margin: 0;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.entitlement-detail-content {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  gap: var(--spacing-xl);
+}
+
+.entitlement-detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.entitlement-section {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.entitlement-section h2 {
+  margin: 0 0 var(--spacing-md) 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.entitlement-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.entitlement-info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) 0;
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.entitlement-info-item:last-child {
+  border-bottom: none;
+}
+
+.entitlement-info-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.entitlement-info-value {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  font-family: monospace;
+}
+
+.entitlement-detail-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.entitlement-actions-card {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg);
+  position: sticky;
+  top: var(--spacing-lg);
+}
+
+.btn-large {
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-size: var(--font-size-base);
+  margin-bottom: var(--spacing-lg);
+}
+
+.entitlement-success-message {
+  padding: var(--spacing-md);
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+  border-radius: var(--border-radius-md);
+  text-align: center;
+  font-weight: var(--font-weight-medium);
+}
+
+@media (max-width: 968px) {
+  .entitlement-detail-content {
+    grid-template-columns: 1fr;
+  }
+
+  .entitlement-actions-card {
+    position: static;
+  }
+}

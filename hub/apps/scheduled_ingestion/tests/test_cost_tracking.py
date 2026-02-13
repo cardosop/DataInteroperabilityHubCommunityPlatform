@@ -82,7 +82,9 @@ class CostTrackingTest(TestCase):
         self.assertGreater(cost.storage_cost_usd, Decimal('0.0'))
         self.assertGreater(cost.compute_cost_usd, Decimal('0.0'))
         self.assertGreater(cost.network_cost_usd, Decimal('0.0'))
-        self.assertIn('cost_breakdown_json', cost.cost_breakdown_json)
+        self.assertIn('storage', cost.cost_breakdown_json)
+        self.assertIn('compute', cost.cost_breakdown_json)
+        self.assertIn('network', cost.cost_breakdown_json)
     
     def test_get_cost_report(self):
         """Test getting cost report"""

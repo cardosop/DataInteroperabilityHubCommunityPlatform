@@ -4,16 +4,22 @@ Integration tests for MarketplaceEventPublisher.
 Tests event publishing integration with real services and database operations.
 Verifies that events are properly published during actual service operations.
 """
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
-from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob, MarketplaceMapping
-from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
-from hub.apps.core.events.models import Event
+
 from hub.apps.assets.models import Asset
+from hub.apps.core.events.models import Event
+from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
+from hub.apps.integrations.models import (
+    MarketplaceConnection,
+    MarketplaceMapping,
+    MarketplaceSyncJob,
+)
+from hub.apps.integrations.services import MarketplaceIntegrationService
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 
 
 @override_settings(
@@ -26,35 +32,43 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # CRITICAL: Disconnect semantic service signals to prevent timeouts
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create MarketplaceEventPublisher instance
         self.publisher = MarketplaceEventPublisher(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create service instance
         self.service = MarketplaceIntegrationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            request_id="test-request-123"
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
         )
 
         self.config = {
             "api_key": "test-api-key-123",
             "endpoint": "https://api.example.com",
-            "timeout": 30
+            "timeout": 30,
         }
 
     def test_publish_connection_events_integration(self):
@@ -65,13 +79,13 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Integration Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Verify connection.created event was published by service
-        events = Event.objects.filter(
-            event_type="integration.connection.created"
-        ).order_by('-timestamp')
+        events = Event.objects.filter(event_type="integration.connection.created").order_by(
+            "-timestamp"
+        )
         self.assertGreaterEqual(events.count(), 1)
 
         # Now test our MarketplaceEventPublisher methods
@@ -81,7 +95,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             connection_id=str(connection.id),
             changes=changes,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify marketplace.connection.updated event was published
@@ -97,7 +111,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             marketplace_type=connection.marketplace_type,
             name=connection.name,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify marketplace.connection.deleted event was published
@@ -114,7 +128,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Sync Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Create sync job
@@ -122,7 +136,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             tenant=self.tenant,
             connection=connection,
             direction=SyncDirection.PULL.value,
-            status=SyncStatus.PENDING.value
+            status=SyncStatus.PENDING.value,
         )
 
         # Publish sync.started event
@@ -131,7 +145,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             connection_id=str(connection.id),
             direction=sync_job.direction,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify marketplace.sync.started event was published
@@ -152,7 +166,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             items_synced=10,
             items_failed=0,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify marketplace.sync.completed event was published
@@ -171,15 +185,12 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Mapping Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Create asset
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            created_by=self.user,
-            name="Test Asset",
-            source_type="FEDERATED"
+            tenant=self.tenant, created_by=self.user, name="Test Asset", source_type="FEDERATED"
         )
 
         # Create mapping using service
@@ -188,26 +199,24 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             hub_asset_id=str(asset.id),
             external_listing_id="ext-listing-123",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify integration.mapping.created event was published by service
-        events = Event.objects.filter(
-            event_type="integration.mapping.created"
-        ).order_by('-timestamp')
+        events = Event.objects.filter(event_type="integration.mapping.created").order_by(
+            "-timestamp"
+        )
         self.assertGreaterEqual(events.count(), 1)
 
         # Now test our MarketplaceEventPublisher methods
         # Update mapping and publish event
-        changes = {
-            "external_listing_id": {"old": "ext-listing-123", "new": "ext-listing-456"}
-        }
+        changes = {"external_listing_id": {"old": "ext-listing-123", "new": "ext-listing-456"}}
         event_id = self.publisher.publish_mapping_updated(
             mapping_id=str(mapping.id),
             connection_id=str(connection.id),
             changes=changes,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify marketplace.mapping.updated event was published
@@ -224,7 +233,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             hub_asset_id=str(asset.id),
             external_listing_id=mapping.external_listing_id,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify marketplace.mapping.deleted event was published
@@ -241,7 +250,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Failed Sync Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Create sync job
@@ -249,7 +258,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             tenant=self.tenant,
             connection=connection,
             direction=SyncDirection.PULL.value,
-            status=SyncStatus.FAILED.value
+            status=SyncStatus.FAILED.value,
         )
 
         # Publish sync.failed event
@@ -257,7 +266,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
         error_details = {
             "error_code": "TIMEOUT",
             "retry_count": 3,
-            "last_attempt": timezone.now().isoformat()
+            "last_attempt": timezone.now().isoformat(),
         }
         event_id = self.publisher.publish_sync_failed(
             sync_job_id=str(sync_job.id),
@@ -266,7 +275,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             error_message=error_message,
             error_details=error_details,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Verify marketplace.sync.failed event was published
@@ -280,6 +289,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
     def test_event_deduplication_works(self):
         """Test that event deduplication works correctly."""
         from django.conf import settings
+
         from hub.apps.core.events.deduplication import get_redis_client
 
         # Check if Redis is available for deduplication
@@ -300,7 +310,7 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         event_id_2 = self.publisher.publish_connection_created(
@@ -308,25 +318,196 @@ class MarketplaceEventPublisherIntegrationTest(TestCase):
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         if redis_available:
             # When Redis is available, deduplication should work
             # Verify both calls return the same event ID (deduplication)
-            self.assertEqual(event_id_1, event_id_2, "Event deduplication should return same event ID when Redis is available")
+            self.assertEqual(
+                event_id_1,
+                event_id_2,
+                "Event deduplication should return same event ID when Redis is available",
+            )
 
             # Verify only one event exists in database
             events = Event.objects.filter(event_id=event_id_1)
-            self.assertEqual(events.count(), 1, "Only one event should exist when deduplication works")
+            self.assertEqual(
+                events.count(), 1, "Only one event should exist when deduplication works"
+            )
         else:
             # When Redis is unavailable, deduplication is skipped (fail-open behavior)
             # Events will be published separately, which is expected behavior
             # Verify both events were published successfully
-            self.assertIsNotNone(event_id_1, "First event should be published even when Redis is unavailable")
-            self.assertIsNotNone(event_id_2, "Second event should be published even when Redis is unavailable")
+            self.assertIsNotNone(
+                event_id_1, "First event should be published even when Redis is unavailable"
+            )
+            self.assertIsNotNone(
+                event_id_2, "Second event should be published even when Redis is unavailable"
+            )
 
             # Both events should exist in database (deduplication skipped)
             events = Event.objects.filter(event_id__in=[event_id_1, event_id_2])
-            self.assertEqual(events.count(), 2, "Both events should exist when deduplication is unavailable")
+            self.assertEqual(
+                events.count(), 2, "Both events should exist when deduplication is unavailable"
+            )
 
+    def test_publish_connection_created_with_missing_required_fields(self):
+        """Test error handling when publishing connection.created event with missing fields"""
+        # Test with None connection_id
+        with self.assertRaises((ValueError, TypeError)):
+            self.publisher.publish_connection_created(
+                connection_id=None,  # type: ignore[arg-type]
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name="Test Connection",
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+            )
+
+    def test_publish_sync_failed_with_empty_error_message(self):
+        """Test error handling when publishing sync.failed event with empty error message"""
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Error Test Connection",
+            config=self.config,
+        )
+
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=connection,
+            direction=SyncDirection.PULL.value,
+            status=SyncStatus.FAILED.value,
+        )
+
+        # Should handle empty error message gracefully
+        event_id = self.publisher.publish_sync_failed(
+            sync_job_id=str(sync_job.id),
+            connection_id=str(connection.id),
+            direction=sync_job.direction,
+            error_message="",  # Empty error message
+            error_details={},
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Event should still be published
+        self.assertIsNotNone(event_id)
+        event = Event.objects.get(event_id=event_id)
+        self.assertEqual(event.event_type, "marketplace.sync.failed")
+
+    def test_publish_mapping_updated_with_invalid_mapping_id(self):
+        """Test error handling when publishing mapping.updated event with invalid mapping ID"""
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Invalid Mapping Test Connection",
+            config=self.config,
+        )
+
+        # Should handle invalid mapping ID gracefully
+        event_id = self.publisher.publish_mapping_updated(
+            mapping_id="invalid-mapping-id",
+            connection_id=str(connection.id),
+            changes={"field": {"old": "old_value", "new": "new_value"}},
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Event should still be published (event publishing doesn't validate mapping existence)
+        self.assertIsNotNone(event_id)
+        event = Event.objects.get(event_id=event_id)
+        self.assertEqual(event.event_type, "marketplace.mapping.updated")
+
+    def test_event_publisher_handles_missing_tenant_id(self):
+        """Test error handling when tenant_id is missing"""
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Missing Tenant Test Connection",
+            config=self.config,
+        )
+
+        # Should handle missing tenant_id gracefully (may use publisher's tenant_id)
+        event_id = self.publisher.publish_connection_created(
+            connection_id=str(connection.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Test Connection",
+            tenant_id=None,  # Missing tenant_id
+            user_id=str(self.user.id),
+        )
+
+        # Event should still be published (publisher has tenant_id from initialization)
+        self.assertIsNotNone(event_id)
+        event = Event.objects.get(event_id=event_id)
+        self.assertEqual(event.event_type, "marketplace.connection.created")
+
+    def test_event_publisher_handles_missing_user_id(self):
+        """Test error handling when user_id is missing"""
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Missing User Test Connection",
+            config=self.config,
+        )
+
+        # Should handle missing user_id gracefully (may use publisher's user_id)
+        event_id = self.publisher.publish_connection_created(
+            connection_id=str(connection.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Test Connection",
+            tenant_id=str(self.tenant.id),
+            user_id=None,  # Missing user_id
+        )
+
+        # Event should still be published (publisher has user_id from initialization)
+        self.assertIsNotNone(event_id)
+        event = Event.objects.get(event_id=event_id)
+        self.assertEqual(event.event_type, "marketplace.connection.created")
+
+    def test_event_publisher_handles_large_payload(self):
+        """Test error handling when event payload is very large"""
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Large Payload Test Connection",
+            config=self.config,
+        )
+
+        # Create large changes dictionary
+        large_changes = {
+            f"field_{i}": {"old": f"old_value_{i}", "new": f"new_value_{i}"} for i in range(100)
+        }
+
+        # Should handle large payload gracefully
+        event_id = self.publisher.publish_connection_updated(
+            connection_id=str(connection.id),
+            changes=large_changes,
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        # Event should still be published
+        self.assertIsNotNone(event_id)
+        event = Event.objects.get(event_id=event_id)
+        self.assertEqual(event.event_type, "marketplace.connection.updated")
+        self.assertEqual(len(event.data["changes"]), 100)
+
+    def tearDown(self):
+        """Reconnect signals after test"""
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass

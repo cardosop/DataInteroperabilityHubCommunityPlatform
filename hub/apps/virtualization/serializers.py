@@ -164,7 +164,8 @@ class VirtualDatasetUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(
         max_length=255,
         required=False,
-        help_text="Virtual dataset name"
+        allow_blank=True,
+        help_text="Virtual dataset name (empty/whitespace rejected by service layer)"
     )
     description = serializers.CharField(
         required=False,
@@ -203,13 +204,11 @@ class VirtualDatasetUpdateSerializer(serializers.Serializer):
     )
 
     def validate_name(self, value):
-        """Validate dataset name if provided"""
-        if value is not None:
-            if not value.strip():
-                raise serializers.ValidationError("Virtual dataset name cannot be empty")
-            if len(value.strip()) > 255:
+        """Pass through name; empty/whitespace rejected by VirtualizationBusinessRules in service."""
+        if value is not None and isinstance(value, str):
+            if value.strip() and len(value.strip()) > 255:
                 raise serializers.ValidationError("Virtual dataset name cannot exceed 255 characters")
-            return value.strip()
+            return value.strip() if value.strip() else value
         return value
 
     def validate_query(self, value):

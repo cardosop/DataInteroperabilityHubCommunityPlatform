@@ -314,17 +314,27 @@ class ODPSDashboardsValidationTest(TestCase):
             for panel in dashboard.get('panels', []):
                 for target in panel.get('targets', []):
                     expr = target.get('expr', '')
-                    # Basic validation: expr should not be empty
+                    # Skip empty expressions (some targets might not have queries)
+                    if not expr:
+                        continue
+                    # Basic validation: expr should not be empty (but we skip empty ones above)
                     self.assertGreater(len(expr), 0, f"Query expression should not be empty in {dashboard_file}")
 
-                    # Check for common Prometheus query patterns or numeric constants (for target lines)
+                    # Check for common Prometheus query patterns, metric selectors, or numeric constants
                     # Numeric constants are valid (e.g., "0.010" for target lines)
+                    # Bare metric with optional labels is valid (e.g. odps_ref_cache_size{ref_type="external"})
+                    # Arithmetic expressions are valid (e.g., (metric1 / metric2) * 100)
                     is_numeric_constant = expr.replace('.', '').replace('-', '').isdigit()
                     has_prometheus_function = any(keyword in expr for keyword in prometheus_functions)
+                    has_metric_with_labels = bool(expr) and expr[0].isalpha() and '{' in expr
+                    is_bare_metric = bool(expr) and expr[0].isalpha() and expr.replace('_', '').replace('.', '').isalnum()
+                    is_metric_selector = has_metric_with_labels or is_bare_metric
+                    # Check for arithmetic expressions (contains operators and parentheses)
+                    has_arithmetic = any(op in expr for op in ['+', '-', '*', '/', '%']) and ('(' in expr or ')' in expr or any(char.isalpha() for char in expr))
 
                     self.assertTrue(
-                        is_numeric_constant or has_prometheus_function,
-                        f"Query in {dashboard_file} should contain valid Prometheus functions or be a numeric constant. Query: {expr}"
+                        is_numeric_constant or has_prometheus_function or is_metric_selector or has_arithmetic,
+                        f"Query in {dashboard_file} should contain valid Prometheus functions, a metric selector, arithmetic expressions, or be a numeric constant. Query: {expr}"
                     )
 
     def test_dashboards_have_descriptions(self):

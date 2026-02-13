@@ -1,0 +1,278 @@
+# Documentation Audit Report
+
+**Audit Date**: 2026-01-26T16:37:50.701056
+**Total Files Analyzed**: 252
+
+## Summary
+
+### Files by Category
+
+- **Architecture**: 39 files
+- **Api**: 106 files
+- **Developer**: 8 files
+- **Operational**: 12 files
+- **User**: 25 files
+- **Other**: 62 files
+
+## Keyword References
+
+### Contracts
+- **Files referencing**: 156
+
+  - `ARCHITECTURE.md` (architecture)
+  - `API_NAMING_VALIDATION_RULES.md` (api)
+  - `MONITORING.md` (operational)
+  - `REDIS_INSTANCE_SEPARATION_DESIGN.md` (architecture)
+  - `DEVELOPMENT_GUIDE.md` (developer)
+  - `MARKETPLACE_AWS_GUIDE.md` (user)
+  - `README.md` (other)
+  - `PHASE_10_5_TESTS_EXECUTION_STATUS.md` (other)
+  - `SERVICE_INTEGRATION_PATTERNS.md` (architecture)
+  - `BUG_PREVENTION_PATTERNS.md` (other)
+  - ... and 146 more
+
+### Odcs
+- **Files referencing**: 38
+
+  - `ARCHITECTURE.md` (architecture)
+  - `README.md` (other)
+  - `SERVICE_INTEGRATION_PATTERNS.md` (architecture)
+  - `RUNBOOKS.md` (operational)
+  - `WEBHOOK_API.md` (api)
+  - `MARKETPLACE_INTEGRATION_USER_GUIDE.md` (architecture)
+  - `FEATURES.md` (user)
+  - `EVENT_TYPES_REFERENCE.md` (other)
+  - `EVENT_BUS.md` (other)
+  - `ODCS_TO_ODPS_MIGRATION_GUIDE.md` (user)
+  - ... and 28 more
+
+### Workflows
+- **Files referencing**: 102
+
+  - `ARCHITECTURE.md` (architecture)
+  - `TRANSFORMATION_REMOVAL_COMPLETE.md` (other)
+  - `API_NAMING_VALIDATION_RULES.md` (api)
+  - `MONITORING.md` (operational)
+  - `DEVELOPMENT_GUIDE.md` (developer)
+  - `PHASE_10_5_TESTS_EXECUTION_STATUS.md` (other)
+  - `SERVICE_INTEGRATION_PATTERNS.md` (architecture)
+  - `RUNBOOKS.md` (operational)
+  - `WORKFLOW_EXECUTION_INVESTIGATION_COMPLETE.md` (other)
+  - `MARKETPLACE_INTEGRATION_USER_GUIDE.md` (architecture)
+  - ... and 92 more
+
+### Events
+- **Files referencing**: 102
+
+  - `ARCHITECTURE.md` (architecture)
+  - `TRANSFORMATION_REMOVAL_COMPLETE.md` (other)
+  - `EVENT_BUS_ARCHITECTURE_DECISION.md` (architecture)
+  - `MONITORING.md` (operational)
+  - `REDIS_INSTANCE_SEPARATION_DESIGN.md` (architecture)
+  - `DEVELOPMENT_GUIDE.md` (developer)
+  - `README.md` (other)
+  - `SERVICE_INTEGRATION_PATTERNS.md` (architecture)
+  - `WORKFLOW_EXECUTION_INVESTIGATION_COMPLETE.md` (other)
+  - `REDIS_INSTANCE_SEPARATION_ARCHITECTURE_REVIEW.md` (architecture)
+  - ... and 92 more
+
+### Websockets
+- **Files referencing**: 61
+
+  - `ARCHITECTURE.md` (architecture)
+  - `REDIS_INSTANCE_SEPARATION_DESIGN.md` (architecture)
+  - `README.md` (other)
+  - `SERVICE_INTEGRATION_PATTERNS.md` (architecture)
+  - `REDIS_INSTANCE_SEPARATION_ARCHITECTURE_REVIEW.md` (architecture)
+  - `FINAL_DOCUMENTATION_SUMMARY.md` (other)
+  - `EVENT_BUS_PERFORMANCE_ANALYSIS.md` (other)
+  - `EVENT_BUS.md` (other)
+  - `TRANSFORMATION_REMOVAL_VALIDATION_COMPLETE.md` (other)
+  - `BUSINESS_LOGIC_INTEGRATION.md` (architecture)
+  - ... and 51 more
+
+### Marketplace
+- **Files referencing**: 141
+
+  - `ARCHITECTURE.md` (architecture)
+  - `MARKETPLACE_CKAN_GUIDE.md` (user)
+  - `REDIS_INSTANCE_SEPARATION_DESIGN.md` (architecture)
+  - `MARKETPLACE_AWS_GUIDE.md` (user)
+  - `SERVICE_INTEGRATION_PATTERNS.md` (architecture)
+  - `RUNBOOKS.md` (operational)
+  - `MARKETPLACE_API_REFERENCE.md` (api)
+  - `MARKETPLACE_INTEGRATION_USER_GUIDE.md` (architecture)
+  - `FEATURES.md` (user)
+  - `MARKETPLACE_COLLIBRA_GUIDE.md` (user)
+  - ... and 131 more
+
+### Model Serving
+- **Files referencing**: 12
+
+  - `BUSINESS_LOGIC_INTEGRATION.md` (architecture)
+  - `PHASE_10_5_TESTS_IMPLEMENTATION_SUMMARY.md` (other)
+  - `PHASE_10_5_TESTS_COMPLETE_SUMMARY.md` (other)
+  - `PHASE_10_5_TESTS_FINAL_STATUS.md` (other)
+  - `USE_CASES.md` (other)
+  - `PHASE_10_5_TESTS_EXECUTION_REPORT.md` (other)
+  - `SERVICES_ARCHITECTURE.md` (architecture)
+  - `USER_PERSONAS.md` (user)
+  - `PHASE_10_5_TESTS_VALIDATION_SUMMARY.md` (other)
+  - `api-audit/api-performance-requirements.md` (api)
+  - ... and 2 more
+
+### Baas
+- **Files referencing**: 5
+
+  - `PHASE_10_5_TESTS_IMPLEMENTATION_SUMMARY.md` (other)
+  - `PHASE_10_5_TESTS_COMPLETE_SUMMARY.md` (other)
+  - `PHASE_10_5_TESTS_FINAL_STATUS.md` (other)
+  - `PHASE_10_5_TESTS_EXECUTION_REPORT.md` (other)
+  - `PHASE_10_5_TESTS_VALIDATION_SUMMARY.md` (other)
+
+### Odh
+- **Files referencing**: 5
+
+  - `PHASE_10_5_TESTS_IMPLEMENTATION_SUMMARY.md` (other)
+  - `PHASE_10_5_TESTS_COMPLETE_SUMMARY.md` (other)
+  - `PHASE_10_5_TESTS_FINAL_STATUS.md` (other)
+  - `PHASE_10_5_TESTS_EXECUTION_REPORT.md` (other)
+  - `PHASE_10_5_TESTS_VALIDATION_SUMMARY.md` (other)
+
+## Usage Guides
+
+### Found
+
+
+### Missing
+
+- ❌ MARKETPLACE_USAGE.md
+- ❌ BAAS_USAGE.md
+- ❌ ODH_USAGE.md
+- ❌ MODEL_SERVING_USAGE.md
+
+## File Details
+
+### By Category
+
+### Architecture
+
+- `ARCHITECTURE.md`
+- `BACKEND_ARCHITECTURE.md`
+- `BUSINESS_LOGIC_INTEGRATION.md`
+- `DOCKER_COMPOSE_STRUCTURE.md`
+- `EVENT_BUS_ARCHITECTURE_DECISION.md`
+- `MARKETPLACE_INTEGRATION_FRAMEWORK.md`
+- `MARKETPLACE_INTEGRATION_USER_GUIDE.md`
+- `ODPS_INTEGRATION_GUIDE.md`
+- `REDIS_INSTANCE_SEPARATION_ARCHITECTURE_REVIEW.md`
+- `REDIS_INSTANCE_SEPARATION_DESIGN.md`
+- `REDIS_INSTANCE_SEPARATION_DESIGN_REVIEW.md`
+- `SERVICES_ARCHITECTURE.md`
+- `SERVICE_INTEGRATION_PATTERNS.md`
+- `UI/ANALYTICS_INTEGRATION.md`
+- `UI/API_INTEGRATION.md`
+- `UI/DESIGN_PRINCIPLES.md`
+- `UI/DESIGN_SYSTEM.md`
+- `UI/FRONTEND_ARCHITECTURE.md`
+- `UI/RESPONSIVE_DESIGN.md`
+- `api-audit/BUSINESS_LOGIC_INTEGRATION_DOCUMENTATION_TEST_RESULTS.md`
+- ... and 19 more
+
+### Api
+
+- `API_BEST_PRACTICES.md`
+- `API_ENDPOINTS_REFERENCE.md`
+- `API_ERROR_CODES.md`
+- `API_NAMING_STANDARDS.md`
+- `API_NAMING_VALIDATION_RULES.md`
+- `API_REFERENCE.md`
+- `API_STANDARDS.md`
+- `API_TESTING_GUIDE.md`
+- `API_USABILITY.md`
+- `API_VERSIONING_POLICY.md`
+- `GRAPHQL_API.md`
+- `MARKETPLACE_API_REFERENCE.md`
+- `WEBHOOK_API.md`
+- `WEBSOCKET_API.md`
+- `api-audit/API_CLIENT_USAGE_SEARCH_TEST_RESULTS.md`
+- `api-audit/CONSOLIDATION_SUMMARY.md`
+- `api-audit/ENDPOINT_TESTING_GUIDE.md`
+- `api-audit/ENDPOINT_TESTING_SUMMARY.md`
+- `api-audit/EXTRACTION_SUMMARY.md`
+- `api-audit/GAP_ANALYSIS_SUMMARY.md`
+- ... and 86 more
+
+### Developer
+
+- `DEVELOPER_ONBOARDING.md`
+- `DEVELOPMENT_GUIDE.md`
+- `MARKETPLACE_CONNECTOR_DEVELOPMENT_GUIDE.md`
+- `TESTING_GUIDE.md`
+- `UI/DEVELOPER_EXPERIENCE.md`
+- `UI/TESTING_STRATEGY.md`
+- `connectors/DEVELOPMENT.md`
+- `testing/CONNECTOR_E2E_TESTING.md`
+
+### Operational
+
+- `DOCKER_COMPOSE_DEPLOYMENT.md`
+- `KUBERNETES_DEPLOYMENT.md`
+- `MONITORING.md`
+- `RUNBOOKS.md`
+- `SERVICE_DEPLOYMENT_GUIDE.md`
+- `TRANSFORMATION_REMOVAL_DEPLOYMENT_CHECKLIST.md`
+- `TRANSFORMATION_REMOVAL_DEPLOYMENT_GUIDE.md`
+- `TRANSFORMATION_REMOVAL_MONITORING.md`
+- `TROUBLESHOOTING.md`
+- `UI/DEPLOYMENT.md`
+- `infrastructure/DATABASE_RECOVERY_TROUBLESHOOTING.md`
+- `runbooks/marketplace-connector-deployment.md`
+
+### User
+
+- `BUSINESS_RULES_FRAMEWORK_GUIDE.md`
+- `ENDPOINT_PATTERN_MIGRATION_GUIDE.md`
+- `FEATURES.md`
+- `MARKETPLACE_AWS_GUIDE.md`
+- `MARKETPLACE_AZURE_GUIDE.md`
+- `MARKETPLACE_CKAN_GUIDE.md`
+- `MARKETPLACE_COLLIBRA_GUIDE.md`
+- `MARKETPLACE_DATABRICKS_GUIDE.md`
+- `MARKETPLACE_DATARADE_GUIDE.md`
+- `MARKETPLACE_DAWEX_GUIDE.md`
+- `MARKETPLACE_ESRI_GUIDE.md`
+- `MARKETPLACE_GCP_GUIDE.md`
+- `MARKETPLACE_IBM_GUIDE.md`
+- `MARKETPLACE_NASDAQ_GUIDE.md`
+- `MARKETPLACE_ORACLE_GUIDE.md`
+- `MARKETPLACE_SALESFORCE_GUIDE.md`
+- `MARKETPLACE_SAP_GUIDE.md`
+- `MARKETPLACE_SNOWFLAKE_GUIDE.md`
+- `MARKETPLACE_USER_JOURNEYS.md`
+- `ODCS_TO_ODPS_MIGRATION_GUIDE.md`
+- ... and 5 more
+
+### Other
+
+- `BUG_PREVENTION_PATTERNS.md`
+- `BUSINESS_RULES_FRAMEWORK_REVIEW.md`
+- `CACHING_STRATEGY.md`
+- `CODE_QUALITY_STANDARDS.md`
+- `CONNECTION_VALIDATION_IMPLEMENTATION_SUMMARY.md`
+- `ERROR_HANDLING.md`
+- `EVENT_BUS.md`
+- `EVENT_BUS_PERFORMANCE_ANALYSIS.md`
+- `EVENT_TYPES_REFERENCE.md`
+- `FINAL_DOCUMENTATION_SUMMARY.md`
+- `JOB_QUEUE.md`
+- `KAFKA_RABBITMQ_EVALUATION.md`
+- `KAFKA_RABBITMQ_PERFORMANCE_COMPARISON.md`
+- `MARKETPLACE_USE_CASES.md`
+- `ODCS_VERSION_SUPPORT.md`
+- `PHASE_10_5_TESTS_COMPLETE_SUMMARY.md`
+- `PHASE_10_5_TESTS_EXECUTION_REPORT.md`
+- `PHASE_10_5_TESTS_EXECUTION_STATUS.md`
+- `PHASE_10_5_TESTS_FINAL_STATUS.md`
+- `PHASE_10_5_TESTS_FIXES_APPLIED.md`
+- ... and 42 more

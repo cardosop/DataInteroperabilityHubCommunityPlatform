@@ -30,21 +30,26 @@ from typing import Any, Dict, List
 
 try:
     import pytest
+
     HAS_PYTEST = True
 except ImportError:
     HAS_PYTEST = False
+
     # Create a dummy pytest module for Django test runner compatibility
     class DummyPytest:
         class mark:
             @staticmethod
             def django_db(**kwargs):
                 return lambda f: f
+
             @staticmethod
             def integration(f):
                 return f
+
     pytest = DummyPytest()
 
 from django.contrib.auth import get_user_model
+from django.db.models.signals import post_save
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework import status
@@ -61,14 +66,10 @@ from hub.apps.contracts.models import (
 )
 from hub.apps.datasets.models import Dataset, DatasetKind
 from hub.apps.files.models import File, FileStatus
+from hub.apps.semantic.signals import asset_saved, contract_saved
 from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
-from hub.apps.users.models import Role, UserRole
-from hub.apps.semantic.signals import contract_saved, asset_saved
-from hub.apps.semantic.utils import map_contract_to_semantic, map_asset_to_semantic
-from django.db.models.signals import post_save
-from unittest.mock import patch
 from hub.apps.tenants.signals import create_default_roles
-from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
     AssetFactory,
     ContractFactory,
@@ -111,27 +112,14 @@ class AssetManagementOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseI
         post_save.disconnect(asset_saved, sender=Asset)
         # Disconnect tenant signal to prevent slow role creation (6-8 second delay per tenant)
         post_save.disconnect(create_default_roles, sender=Tenant)
-
-        # Also patch the semantic mapping functions and service client directly to ensure they don't run
-        # This is a defense-in-depth approach in case signals are reconnected
-        # Patch at multiple levels to catch all entry points
-        self.semantic_patcher = patch('hub.apps.semantic.utils.map_contract_to_semantic', return_value=None)
-        self.semantic_patcher.start()
-        self.asset_semantic_patcher = patch('hub.apps.semantic.utils.map_asset_to_semantic', return_value=None)
-        self.asset_semantic_patcher.start()
-
-        # Patch the SemanticServiceClient to prevent any HTTP calls
-        mock_client = patch('hub.apps.semantic.service_client.SemanticServiceClient')
-        self.semantic_client_patcher = mock_client.start()
-        mock_instance = self.semantic_client_patcher.return_value
-        mock_instance.map_contract.return_value = {'contract_uri': 'test://contract/test'}
-        mock_instance.map_asset.return_value = {'asset_uri': 'test://asset/test'}
+        # Semantic mapping is already skipped in test mode via is_test_mode() in hub.apps.semantic.signals.
 
         self.client = APIClient()
 
         # Create tenant (optimized: signal already disconnected)
         # Use unique name/slug to avoid conflicts between tests
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
             name=f"Test Tenant {unique_id}",
@@ -215,14 +203,6 @@ class AssetManagementOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseI
 
     def tearDown(self):
         """Clean up test fixtures"""
-        # Stop semantic mapping patches
-        if hasattr(self, 'semantic_patcher'):
-            self.semantic_patcher.stop()
-        if hasattr(self, 'asset_semantic_patcher'):
-            self.asset_semantic_patcher.stop()
-        if hasattr(self, 'semantic_client_patcher'):
-            self.semantic_client_patcher.stop()
-
         # Reconnect signals after test
         post_save.connect(contract_saved, sender=Contract)
         post_save.connect(asset_saved, sender=Asset)
@@ -235,8 +215,9 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
 
     def test_contract_first_flow_success_odcs(self):
         """Test successful contract-first flow with ODCS contract"""
-        import time
         import logging
+        import time
+
         logger = logging.getLogger(__name__)
 
         from django.urls import reverse
@@ -261,7 +242,9 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
         }
         asset_url = "/api/v1/assets/"
         asset_response = self.client.post(asset_url, asset_data, format="json")
-        print(f"[TEST] Step 2 completed in {time.time() - step_start:.2f}s, status: {asset_response.status_code}")
+        print(
+            f"[TEST] Step 2 completed in {time.time() - step_start:.2f}s, status: {asset_response.status_code}"
+        )
         self.assertEqual(asset_response.status_code, status.HTTP_201_CREATED)
         asset_id = asset_response.data["id"]
         print(f"[TEST] Asset created: {asset_id}")
@@ -276,7 +259,9 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
         }
         contract_url = reverse("contract-list")
         contract_response = self.client.post(contract_url, contract_data, format="json")
-        print(f"[TEST] Step 3 completed in {time.time() - step_start:.2f}s, status: {contract_response.status_code}")
+        print(
+            f"[TEST] Step 3 completed in {time.time() - step_start:.2f}s, status: {contract_response.status_code}"
+        )
         self.assertEqual(contract_response.status_code, status.HTTP_201_CREATED)
         contract_id = contract_response.data["id"]
         print(f"[TEST] Contract created: {contract_id}")
@@ -287,14 +272,16 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
         # Use direct URL path since reverse() may not work with DRF router actions
         validate_url = f"/api/v1/contracts/{contract_id}/validate/"
         validate_response = self.client.post(validate_url, {}, format="json")
-        print(f"[TEST] Step 4 completed in {time.time() - step_start:.2f}s, status: {validate_response.status_code}")
+        print(
+            f"[TEST] Step 4 completed in {time.time() - step_start:.2f}s, status: {validate_response.status_code}"
+        )
         self.assertIn(validate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
         # Step 5: User can edit contract if needed (tested via update)
         # Step 6-7: Upload data file
         # Create a sample CSV file
-        import tempfile
         import os
+        import tempfile
 
         print("[TEST] Step 5: Creating temporary CSV file...")
         step_start = time.time()
@@ -309,6 +296,7 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
             step_start = time.time()
             # Use proper file upload flow: init -> upload to MinIO -> complete
             import hashlib
+
             with open(temp_file_path, "rb") as f:
                 file_content = f.read()
             file_size = len(file_content)
@@ -321,11 +309,13 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
                     "name": "orders.csv",
                     "content_type": "text/csv",
                     "size": file_size,
-                    "upload_method": "sdk"
+                    "upload_method": "sdk",
                 },
-                format="json"
+                format="json",
             )
-            print(f"[TEST] Step 6a (init) completed in {time.time() - step_start:.2f}s, status: {file_init_response.status_code}")
+            print(
+                f"[TEST] Step 6a (init) completed in {time.time() - step_start:.2f}s, status: {file_init_response.status_code}"
+            )
             self.assertEqual(file_init_response.status_code, status.HTTP_201_CREATED)
             file_id = file_init_response.data["file_id"]
             print(f"[TEST] File upload initialized: {file_id}")
@@ -333,21 +323,26 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
             # Upload file to MinIO using storage client (real implementation, no mocks)
             print("[TEST] Step 6b: Uploading file content to MinIO...")
             step_start = time.time()
-            from hub.apps.files.storage import S3StorageClient
             from io import BytesIO
+
+            from hub.apps.files.storage import S3StorageClient
+
             storage_client = S3StorageClient()
             try:
                 storage_client.save_file(
                     tenant_id=str(self.tenant.id),
                     file_id=str(file_id),
-                    file_content=BytesIO(file_content)
+                    file_content=BytesIO(file_content),
                 )
                 print(f"[TEST] Step 6b (MinIO upload) completed in {time.time() - step_start:.2f}s")
             except Exception as storage_error:
                 # If MinIO is not available, skip file operations but continue test
-                print(f"[TEST] Step 6b (MinIO upload) failed: {storage_error}, skipping file operations")
+                print(
+                    f"[TEST] Step 6b (MinIO upload) failed: {storage_error}, skipping file operations"
+                )
                 # Create file record manually for test continuation
                 from hub.apps.files.models import File, FileStatus
+
                 file_obj = File.objects.get(id=file_id)
                 file_obj.status = FileStatus.ACTIVE
                 file_obj.content_sha256 = content_sha256
@@ -359,10 +354,14 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
             file_complete_response = self.client.post(
                 f"/api/v1/files/{file_id}/complete/",
                 {"content_sha256": content_sha256},
-                format="json"
+                format="json",
             )
-            print(f"[TEST] Step 6c (complete) completed in {time.time() - step_start:.2f}s, status: {file_complete_response.status_code}")
-            self.assertIn(file_complete_response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
+            print(
+                f"[TEST] Step 6c (complete) completed in {time.time() - step_start:.2f}s, status: {file_complete_response.status_code}"
+            )
+            self.assertIn(
+                file_complete_response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED]
+            )
             print(f"[TEST] File upload completed: {file_id}")
 
             # Attach file to dataset
@@ -375,7 +374,9 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
             }
             dataset_url = reverse("dataset-list")
             dataset_response = self.client.post(dataset_url, dataset_data, format="json")
-            print(f"[TEST] Step 7 completed in {time.time() - step_start:.2f}s, status: {dataset_response.status_code}")
+            print(
+                f"[TEST] Step 7 completed in {time.time() - step_start:.2f}s, status: {dataset_response.status_code}"
+            )
             self.assertEqual(dataset_response.status_code, status.HTTP_201_CREATED)
             dataset_id = dataset_response.data["id"]
             print(f"[TEST] Dataset created: {dataset_id}")
@@ -388,8 +389,12 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
             attach_response = self.client.post(
                 attach_dataset_url, {"dataset_id": dataset_id}, format="json"
             )
-            print(f"[TEST] Step 8 completed in {time.time() - step_start:.2f}s, status: {attach_response.status_code}")
-            self.assertIn(attach_response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
+            print(
+                f"[TEST] Step 8 completed in {time.time() - step_start:.2f}s, status: {attach_response.status_code}"
+            )
+            self.assertIn(
+                attach_response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED]
+            )
 
             # Step 8-9: System compares schemas and runs checks
             # Step 10: Activate asset if checks pass
@@ -400,19 +405,30 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
             asset_version = asset_detail_response.data.get("version", 1)
             # Use direct URL path since reverse() may not work with DRF router actions
             activate_url = f"/api/v1/assets/{asset_id}/activate/"
-            activate_response = self.client.post(activate_url, {"version": asset_version}, format="json")
-            print(f"[TEST] Step 9 completed in {time.time() - step_start:.2f}s, status: {activate_response.status_code}")
+            activate_response = self.client.post(
+                activate_url, {"version": asset_version}, format="json"
+            )
+            print(
+                f"[TEST] Step 9 completed in {time.time() - step_start:.2f}s, status: {activate_response.status_code}"
+            )
             # Activation may fail if requirements not met (contract status, validation, etc.)
             # This is acceptable - the test verifies the flow works, not that activation always succeeds
             if activate_response.status_code not in [status.HTTP_200_OK, status.HTTP_202_ACCEPTED]:
-                print(f"[TEST] Activation returned {activate_response.status_code}: {activate_response.data if hasattr(activate_response, 'data') else 'No data'}")
-            self.assertIn(activate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_400_BAD_REQUEST])
+                print(
+                    f"[TEST] Activation returned {activate_response.status_code}: {activate_response.data if hasattr(activate_response, 'data') else 'No data'}"
+                )
+            self.assertIn(
+                activate_response.status_code,
+                [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_400_BAD_REQUEST],
+            )
 
             # Verify asset status
             print("[TEST] Step 10: Verifying asset status...")
             step_start = time.time()
             asset_response = self.client.get(f"/api/v1/assets/{asset_id}/")
-            print(f"[TEST] Step 10 completed in {time.time() - step_start:.2f}s, status: {asset_response.status_code}")
+            print(
+                f"[TEST] Step 10 completed in {time.time() - step_start:.2f}s, status: {asset_response.status_code}"
+            )
             self.assertEqual(asset_response.status_code, status.HTTP_200_OK)
             # Asset may be in DRAFT or ACTIVE depending on checks and activation result
             self.assertIn(asset_response.data["status"], [AssetStatus.DRAFT, AssetStatus.ACTIVE])
@@ -456,7 +472,9 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
             validate_url = f"/api/v1/contracts/{contract_id}/validate/"
             validate_response = self.client.post(validate_url, {}, format="json")
             # Validation should fail or return errors
-            self.assertIn(validate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+            self.assertIn(
+                validate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+            )
             if validate_response.status_code == status.HTTP_200_OK:
                 # Check for validation errors
                 validation_data = validate_response.data
@@ -476,7 +494,11 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.dpo_user)
 
         # Create asset with contract
-        asset_data = {"key": "schema-mismatch-asset", "name": "Schema Mismatch Asset", "onboarding_mode": "contract-first"}
+        asset_data = {
+            "key": "schema-mismatch-asset",
+            "name": "Schema Mismatch Asset",
+            "onboarding_mode": "contract-first",
+        }
         asset_url = "/api/v1/assets/"
         asset_response = self.client.post(asset_url, asset_data, format="json")
         asset_id = asset_response.data["id"]
@@ -492,8 +514,8 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
         contract_id = contract_response.data["id"]
 
         # Upload data with mismatched schema
-        import tempfile
         import os
+        import tempfile
 
         csv_content = "order_id,customer_id,wrong_field\nORD001,CUST001,WRONG"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
@@ -507,7 +529,11 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
                 file_response = self.client.post(file_url, file_data, format="multipart")
                 if file_response.status_code == status.HTTP_201_CREATED:
                     file_id = file_response.data["id"]
-                    dataset_data = {"name": "Mismatched Dataset", "file_id": file_id, "kind": DatasetKind.FILE}
+                    dataset_data = {
+                        "name": "Mismatched Dataset",
+                        "file_id": file_id,
+                        "kind": DatasetKind.FILE,
+                    }
                     dataset_url = reverse("dataset-list")
                     dataset_response = self.client.post(dataset_url, dataset_data, format="json")
                     if dataset_response.status_code == status.HTTP_201_CREATED:
@@ -520,7 +546,11 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
                         # Should fail or warn about schema mismatch
                         self.assertIn(
                             attach_response.status_code,
-                            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY],
+                            [
+                                status.HTTP_200_OK,
+                                status.HTTP_400_BAD_REQUEST,
+                                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            ],
                         )
         finally:
             if os.path.exists(temp_file_path):
@@ -533,7 +563,11 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.dpo_user)
 
         # Create asset with contract that has compliance restrictions
-        asset_data = {"key": "compliance-fail-asset", "name": "Compliance Fail Asset", "onboarding_mode": "contract-first"}
+        asset_data = {
+            "key": "compliance-fail-asset",
+            "name": "Compliance Fail Asset",
+            "onboarding_mode": "contract-first",
+        }
         asset_url = "/api/v1/assets/"
         asset_response = self.client.post(asset_url, asset_data, format="json")
         asset_id = asset_response.data["id"]
@@ -554,7 +588,9 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
         activate_url = f"/api/v1/assets/{asset_id}/activate/"
         activate_response = self.client.post(activate_url, {}, format="json")
         # Activation may fail or asset may remain in DRAFT
-        self.assertIn(activate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertIn(
+            activate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+        )
 
     def test_contract_first_flow_performance(self):
         """Test performance target: contract-first flow should complete in reasonable time"""
@@ -565,7 +601,11 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
         start_time = time.time()
 
         # Create asset
-        asset_data = {"key": "performance-test-asset", "name": "Performance Test Asset", "onboarding_mode": "contract-first"}
+        asset_data = {
+            "key": "performance-test-asset",
+            "name": "Performance Test Asset",
+            "onboarding_mode": "contract-first",
+        }
         asset_url = "/api/v1/assets/"
         asset_response = self.client.post(asset_url, asset_data, format="json")
         asset_id = asset_response.data["id"]
@@ -582,7 +622,9 @@ class UCAM002ContractFirstFlowTest(AssetManagementOriginalUseCasesTestBase):
 
         elapsed_time = (time.time() - start_time) * 1000  # Convert to milliseconds
         # Contract creation should be < 2000ms per API requirements
-        self.assertLess(elapsed_time, 5000, f"Contract creation took {elapsed_time}ms, exceeds 5000ms threshold")
+        self.assertLess(
+            elapsed_time, 5000, f"Contract creation took {elapsed_time}ms, exceeds 5000ms threshold"
+        )
 
 
 class UCAM003ContractOnlyFlowTest(AssetManagementOriginalUseCasesTestBase):
@@ -635,7 +677,11 @@ class UCAM003ContractOnlyFlowTest(AssetManagementOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.dpo_user)
 
         # Create contract-only asset
-        asset_data = {"key": "later-data-asset", "name": "Later Data Asset", "onboarding_mode": "contract-only"}
+        asset_data = {
+            "key": "later-data-asset",
+            "name": "Later Data Asset",
+            "onboarding_mode": "contract-only",
+        }
         asset_url = "/api/v1/assets/"
         asset_response = self.client.post(asset_url, asset_data, format="json")
         asset_id = asset_response.data["id"]
@@ -651,10 +697,12 @@ class UCAM003ContractOnlyFlowTest(AssetManagementOriginalUseCasesTestBase):
         contract_id = contract_response.data["id"]
 
         # Later: Attach data
-        import tempfile
         import os
+        import tempfile
 
-        csv_content = "order_id,customer_id,order_date,total_amount\nORD001,CUST001,2025-01-15,100.50"
+        csv_content = (
+            "order_id,customer_id,order_date,total_amount\nORD001,CUST001,2025-01-15,100.50"
+        )
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             f.write(csv_content)
             temp_file_path = f.name
@@ -666,7 +714,11 @@ class UCAM003ContractOnlyFlowTest(AssetManagementOriginalUseCasesTestBase):
                 file_response = self.client.post(file_url, file_data, format="multipart")
                 if file_response.status_code == status.HTTP_201_CREATED:
                     file_id = file_response.data["id"]
-                    dataset_data = {"name": "Orders Dataset", "file_id": file_id, "kind": DatasetKind.FILE}
+                    dataset_data = {
+                        "name": "Orders Dataset",
+                        "file_id": file_id,
+                        "kind": DatasetKind.FILE,
+                    }
                     dataset_url = reverse("dataset-list")
                     dataset_response = self.client.post(dataset_url, dataset_data, format="json")
                     if dataset_response.status_code == status.HTTP_201_CREATED:
@@ -675,7 +727,10 @@ class UCAM003ContractOnlyFlowTest(AssetManagementOriginalUseCasesTestBase):
                         attach_response = self.client.post(
                             attach_dataset_url, {"dataset_id": dataset_id}, format="json"
                         )
-                        self.assertIn(attach_response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
+                        self.assertIn(
+                            attach_response.status_code,
+                            [status.HTTP_200_OK, status.HTTP_201_CREATED],
+                        )
         finally:
             if os.path.exists(temp_file_path):
                 os.unlink(temp_file_path)
@@ -710,9 +765,13 @@ class UCAM004UpdateAssetMetadataTest(AssetManagementOriginalUseCasesTestBase):
         update_response = self.client.patch(update_url, update_data, format="json")
         # Update may fail with 400 if validation fails (e.g., domain/tags format)
         if update_response.status_code != status.HTTP_200_OK:
-            print(f"[TEST] Update returned {update_response.status_code}: {update_response.data if hasattr(update_response, 'data') else 'No data'}")
+            print(
+                f"[TEST] Update returned {update_response.status_code}: {update_response.data if hasattr(update_response, 'data') else 'No data'}"
+            )
         # Accept 200 or 400 (validation error is acceptable for comprehensive testing)
-        self.assertIn(update_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertIn(
+            update_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+        )
 
         # Verify updates
         asset_response = self.client.get(update_url)
@@ -736,9 +795,13 @@ class UCAM004UpdateAssetMetadataTest(AssetManagementOriginalUseCasesTestBase):
         update_response = self.client.patch(update_url, update_data, format="json")
         # Update may fail with 400 if validation fails (e.g., domain/tags format)
         if update_response.status_code != status.HTTP_200_OK:
-            print(f"[TEST] Update returned {update_response.status_code}: {update_response.data if hasattr(update_response, 'data') else 'No data'}")
+            print(
+                f"[TEST] Update returned {update_response.status_code}: {update_response.data if hasattr(update_response, 'data') else 'No data'}"
+            )
         # Accept 200 or 400 (validation error is acceptable for comprehensive testing)
-        self.assertIn(update_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertIn(
+            update_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+        )
 
         # Verify only name changed
         asset_response = self.client.get(update_url)
@@ -755,15 +818,21 @@ class UCAM004UpdateAssetMetadataTest(AssetManagementOriginalUseCasesTestBase):
 
         # Try to update with different user (should fail if no permission)
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
-        other_user = UserFactory.create_user(tenant=self.tenant, email=f"other-{unique_id}@example.com")
+        other_user = UserFactory.create_user(
+            tenant=self.tenant, email=f"other-{unique_id}@example.com"
+        )
         self.client.force_authenticate(user=other_user)
 
         update_data = {"name": "Unauthorized Update"}
         update_url = f"/api/v1/assets/{asset.id}/"
         update_response = self.client.patch(update_url, update_data, format="json")
         # Should fail with 403, 404, or 400 (validation error)
-        self.assertIn(update_response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST])
+        self.assertIn(
+            update_response.status_code,
+            [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST],
+        )
 
     def test_update_asset_metadata_performance(self):
         """Test performance target: update should be < 500ms"""
@@ -780,7 +849,9 @@ class UCAM004UpdateAssetMetadataTest(AssetManagementOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
-        self.assertLess(elapsed_time, 1000, f"Update took {elapsed_time}ms, exceeds 1000ms threshold")
+        self.assertLess(
+            elapsed_time, 1000, f"Update took {elapsed_time}ms, exceeds 1000ms threshold"
+        )
 
 
 class UCAM005DeleteAssetTest(AssetManagementOriginalUseCasesTestBase):
@@ -792,7 +863,9 @@ class UCAM005DeleteAssetTest(AssetManagementOriginalUseCasesTestBase):
 
         self.client.force_authenticate(user=self.dpo_user)
 
-        asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, status=AssetStatus.DRAFT)
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.dpo_user, status=AssetStatus.DRAFT
+        )
 
         delete_url = f"/api/v1/assets/{asset.id}/"
         delete_response = self.client.delete(delete_url)
@@ -824,7 +897,12 @@ class UCAM005DeleteAssetTest(AssetManagementOriginalUseCasesTestBase):
         # Should fail with 400 or 409 if dependencies exist
         self.assertIn(
             delete_response.status_code,
-            [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT, status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
+            [
+                status.HTTP_200_OK,
+                status.HTTP_204_NO_CONTENT,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_409_CONFLICT,
+            ],
         )
 
     def test_delete_asset_unauthorized(self):
@@ -834,14 +912,20 @@ class UCAM005DeleteAssetTest(AssetManagementOriginalUseCasesTestBase):
         asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user)
 
         import uuid
+
         unique_id = str(uuid.uuid4())[:8]
-        other_user = UserFactory.create_user(tenant=self.tenant, email=f"other-{unique_id}@example.com")
+        other_user = UserFactory.create_user(
+            tenant=self.tenant, email=f"other-{unique_id}@example.com"
+        )
         self.client.force_authenticate(user=other_user)
 
         delete_url = f"/api/v1/assets/{asset.id}/"
         delete_response = self.client.delete(delete_url)
         # Should fail with 403, 404, or succeed with 204 if permissions allow
-        self.assertIn(delete_response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND, status.HTTP_204_NO_CONTENT])
+        self.assertIn(
+            delete_response.status_code,
+            [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND, status.HTTP_204_NO_CONTENT],
+        )
 
 
 class UCAM006ActivateAssetTest(AssetManagementOriginalUseCasesTestBase):
@@ -868,11 +952,18 @@ class UCAM006ActivateAssetTest(AssetManagementOriginalUseCasesTestBase):
         asset_detail_response = self.client.get(f"/api/v1/assets/{asset.id}/")
         asset_version = asset_detail_response.data.get("version", 1)
         activate_url = f"/api/v1/assets/{asset.id}/activate/"
-        activate_response = self.client.post(activate_url, {"version": asset_version}, format="json")
+        activate_response = self.client.post(
+            activate_url, {"version": asset_version}, format="json"
+        )
         # Activation may fail if requirements not met (acceptable)
         if activate_response.status_code not in [status.HTTP_200_OK, status.HTTP_202_ACCEPTED]:
-            print(f"[TEST] Activation returned {activate_response.status_code}: {activate_response.data if hasattr(activate_response, 'data') else 'No data'}")
-        self.assertIn(activate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_400_BAD_REQUEST])
+            print(
+                f"[TEST] Activation returned {activate_response.status_code}: {activate_response.data if hasattr(activate_response, 'data') else 'No data'}"
+            )
+        self.assertIn(
+            activate_response.status_code,
+            [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_400_BAD_REQUEST],
+        )
 
         # Verify asset is activated
         asset_response = self.client.get(f"/api/v1/assets/{asset.id}/")
@@ -886,7 +977,9 @@ class UCAM006ActivateAssetTest(AssetManagementOriginalUseCasesTestBase):
 
         self.client.force_authenticate(user=self.dpo_user)
 
-        asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, status=AssetStatus.DRAFT)
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.dpo_user, status=AssetStatus.DRAFT
+        )
         # Create contract without validation
         contract = ContractFactory.create_contract(
             tenant=self.tenant, asset=asset, validation_status=ValidationStatus.ERROR
@@ -895,7 +988,9 @@ class UCAM006ActivateAssetTest(AssetManagementOriginalUseCasesTestBase):
         activate_url = f"/api/v1/assets/{asset.id}/activate/"
         activate_response = self.client.post(activate_url, {}, format="json")
         # May succeed but asset may remain DRAFT, or fail
-        self.assertIn(activate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertIn(
+            activate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+        )
 
     def test_activate_asset_with_failed_dq(self):
         """Test activation fails when DQ checks fail"""
@@ -913,7 +1008,9 @@ class UCAM006ActivateAssetTest(AssetManagementOriginalUseCasesTestBase):
         activate_url = f"/api/v1/assets/{asset.id}/activate/"
         activate_response = self.client.post(activate_url, {}, format="json")
         # Should fail or asset should remain DRAFT
-        self.assertIn(activate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertIn(
+            activate_response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
+        )
 
     def test_activate_asset_performance(self):
         """Test performance target: activation should be < 2000ms"""
@@ -921,7 +1018,9 @@ class UCAM006ActivateAssetTest(AssetManagementOriginalUseCasesTestBase):
 
         self.client.force_authenticate(user=self.dpo_user)
 
-        asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, status=AssetStatus.DRAFT)
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.dpo_user, status=AssetStatus.DRAFT
+        )
         contract = ContractFactory.create_contract(
             tenant=self.tenant,
             asset=asset,
@@ -934,13 +1033,20 @@ class UCAM006ActivateAssetTest(AssetManagementOriginalUseCasesTestBase):
         asset_detail_response = self.client.get(f"/api/v1/assets/{asset.id}/")
         asset_version = asset_detail_response.data.get("version", 1)
         activate_url = f"/api/v1/assets/{asset.id}/activate/"
-        activate_response = self.client.post(activate_url, {"version": asset_version}, format="json")
+        activate_response = self.client.post(
+            activate_url, {"version": asset_version}, format="json"
+        )
         elapsed_time = (time.time() - start_time) * 1000
 
         # Activation may fail if requirements not met (acceptable for performance test)
         if activate_response.status_code not in [status.HTTP_200_OK, status.HTTP_202_ACCEPTED]:
-            print(f"[TEST] Activation returned {activate_response.status_code}: {activate_response.data if hasattr(activate_response, 'data') else 'No data'}")
-        self.assertIn(activate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_400_BAD_REQUEST])
+            print(
+                f"[TEST] Activation returned {activate_response.status_code}: {activate_response.data if hasattr(activate_response, 'data') else 'No data'}"
+            )
+        self.assertIn(
+            activate_response.status_code,
+            [status.HTTP_200_OK, status.HTTP_202_ACCEPTED, status.HTTP_400_BAD_REQUEST],
+        )
         # Note: Activation may be async, so this is a best-effort check
         if elapsed_time < 5000:  # Allow some buffer for async operations
             pass
@@ -955,11 +1061,15 @@ class UCAM007DeactivateAssetTest(AssetManagementOriginalUseCasesTestBase):
 
         self.client.force_authenticate(user=self.dpo_user)
 
-        asset = AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, status=AssetStatus.ACTIVE)
+        asset = AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.dpo_user, status=AssetStatus.ACTIVE
+        )
 
         # Update asset status to RETIRED (deactivate)
         update_url = f"/api/v1/assets/{asset.id}/"
-        update_response = self.client.patch(update_url, {"status": AssetStatus.RETIRED}, format="json")
+        update_response = self.client.patch(
+            update_url, {"status": AssetStatus.RETIRED}, format="json"
+        )
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
 
         # Verify asset is retired
@@ -1015,7 +1125,10 @@ class UCAM009LinkAssetsTest(AssetManagementOriginalUseCasesTestBase):
         # Check current dependencies
         deps_response = self.client.get(dependencies_url)
         # Should return 200 with dependencies list, or 404 if endpoint doesn't exist, or 500 if error
-        self.assertIn(deps_response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND, status.HTTP_500_INTERNAL_SERVER_ERROR])
+        self.assertIn(
+            deps_response.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND, status.HTTP_500_INTERNAL_SERVER_ERROR],
+        )
         # Note: Actual linking implementation may differ based on API design
 
 
@@ -1029,8 +1142,12 @@ class UCAM010SearchAssetsTest(AssetManagementOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.dpo_user)
 
         # Create test assets
-        AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, name="Customer Orders")
-        AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, name="Product Catalog")
+        AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.dpo_user, name="Customer Orders"
+        )
+        AssetFactory.create_asset(
+            tenant=self.tenant, created_by=self.dpo_user, name="Product Catalog"
+        )
         AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, name="Sales Data")
 
         # Search for "Customer"
@@ -1089,7 +1206,11 @@ class UCAM010SearchAssetsTest(AssetManagementOriginalUseCasesTestBase):
         self.client.force_authenticate(user=self.dpo_user)
 
         AssetFactory.create_asset(
-            tenant=self.tenant, created_by=self.dpo_user, name="Sales Orders", domain="sales", status=AssetStatus.ACTIVE
+            tenant=self.tenant,
+            created_by=self.dpo_user,
+            name="Sales Orders",
+            domain="sales",
+            status=AssetStatus.ACTIVE,
         )
         AssetFactory.create_asset(
             tenant=self.tenant, created_by=self.dpo_user, name="Marketing Data", domain="marketing"
@@ -1109,7 +1230,9 @@ class UCAM010SearchAssetsTest(AssetManagementOriginalUseCasesTestBase):
 
         # Create multiple assets
         for i in range(50):
-            AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, name=f"Asset {i}")
+            AssetFactory.create_asset(
+                tenant=self.tenant, created_by=self.dpo_user, name=f"Asset {i}"
+            )
 
         start_time = time.time()
         search_url = "/api/v1/assets/"
@@ -1117,7 +1240,9 @@ class UCAM010SearchAssetsTest(AssetManagementOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
-        self.assertLess(elapsed_time, 1000, f"Search took {elapsed_time}ms, exceeds 1000ms threshold")
+        self.assertLess(
+            elapsed_time, 1000, f"Search took {elapsed_time}ms, exceeds 1000ms threshold"
+        )
 
     def test_search_assets_empty_results(self):
         """Test search with no results"""
@@ -1139,7 +1264,9 @@ class UCAM010SearchAssetsTest(AssetManagementOriginalUseCasesTestBase):
 
         # Create many assets
         for i in range(30):
-            AssetFactory.create_asset(tenant=self.tenant, created_by=self.dpo_user, name=f"Pagination Asset {i}")
+            AssetFactory.create_asset(
+                tenant=self.tenant, created_by=self.dpo_user, name=f"Pagination Asset {i}"
+            )
 
         search_url = "/api/v1/assets/"
         # First page

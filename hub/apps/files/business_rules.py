@@ -799,6 +799,151 @@ class FilesBusinessRules(BusinessRules):
             )
         return self._validate_file_access(file, user, access_type="WRITE")
 
+    def validate_file_for_create(
+        self,
+        tenant: Any,
+        name: str,
+        size: int,
+        content_type: str,
+        upload_method: str = "browser",
+        user: Optional[User] = None,
+    ) -> ValidationResult:
+        """
+        Validate file creation (init upload): tenant, size, type, name, storage quota.
+
+        Args:
+            tenant: Tenant instance
+            name: File name
+            size: File size in bytes
+            content_type: MIME type
+            upload_method: "browser" or "sdk"
+            user: Optional user for context
+
+        Returns:
+            ValidationResult; invalid if size/type/name/quota fail.
+        """
+        result = ValidationResult(is_valid=True)
+        # Upload validation (size, type, name)
+        upload_result = self.validate_upload(
+            filename=name,
+            file_size=size,
+            content_type=content_type,
+            upload_method=upload_method,
+            tenant=tenant,
+            user=user,
+            validation_type="all",
+        )
+        result = result.combine(upload_result)
+        if not result.is_valid:
+            return result
+        # Storage quota (tenant + file_size)
+        quota_result = self.validate_storage_quota(
+            file=None,
+            tenant=tenant,
+            file_size=size,
+        )
+        result = result.combine(quota_result)
+        return result
+
+    def validate_file_for_update(
+        self,
+        file: File,
+        tenant: Any,
+        user: Optional[User] = None,
+        new_status: Optional[str] = None,
+    ) -> ValidationResult:
+        """
+        Validate file update (e.g. complete upload): file must be PENDING or UPLOADING
+        for status transition to ACTIVE; user must have write access.
+
+        Args:
+            file: File instance to update
+            tenant: Tenant instance (must match file.tenant)
+            user: User performing the update
+            new_status: Target status (e.g. ACTIVE for complete_upload)
+
+        Returns:
+            ValidationResult; invalid if state or permissions fail.
+        """
+        errors: List[str] = []
+        details: Dict[str, Any] = {'update_validation': 'file_update'}
+
+        if file.tenant_id != tenant.id:
+            errors.append(
+                f"File tenant_id ({file.tenant_id}) does not match provided tenant ({tenant.id})"
+            )
+            details['tenant_match'] = False
+        else:
+            details['tenant_match'] = True
+
+        if new_status == FileStatus.ACTIVE:
+            if file.status not in (FileStatus.PENDING, FileStatus.UPLOADING):
+                errors.append(
+                    f"File is not in a state that allows completion (current: {file.status}). "
+                    "Only PENDING or UPLOADING can be completed."
+                )
+                details['state_allowed'] = False
+            else:
+                details['state_allowed'] = True
+
+        if errors:
+            return ValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=[],
+                details=details,
+            )
+
+        if user:
+            write_result = self.validate_file_write_access(file=file, user=user)
+            result = ValidationResult(is_valid=True, details=details).combine(write_result)
+            return result
+
+        return ValidationResult(is_valid=True, errors=[], warnings=[], details=details)
+
+    def validate_file_for_destroy(
+        self,
+        file: File,
+        tenant: Any,
+        user: Optional[User] = None,
+    ) -> ValidationResult:
+        """
+        Validate file deletion: tenant match and user has write access.
+
+        Args:
+            file: File instance to delete
+            tenant: Tenant instance (must match file.tenant)
+            user: User performing the delete
+
+        Returns:
+            ValidationResult; invalid if tenant mismatch or no write access.
+        """
+        errors: List[str] = []
+        details: Dict[str, Any] = {'destroy_validation': 'file_destroy'}
+
+        if file.tenant_id != tenant.id:
+            errors.append(
+                f"File tenant_id ({file.tenant_id}) does not match provided tenant ({tenant.id})"
+            )
+            details['tenant_match'] = False
+        else:
+            details['tenant_match'] = True
+
+        if errors:
+            return ValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=[],
+                details=details,
+            )
+
+        if user:
+            write_result = self.validate_file_write_access(file=file, user=user)
+            result = ValidationResult(is_valid=True, details=details).combine(write_result)
+            return result
+
+        return ValidationResult(is_valid=True, errors=[], warnings=[], details=details)
+
     def validate_upload(
         self,
         filename: str,

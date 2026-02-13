@@ -77,6 +77,24 @@ class TenantSuspensionMiddlewareTest(TestCase):
         response = self.middleware.process_request(request)
         
         self.assertIsNone(response)  # Health check is allowed
+
+    def test_auth_paths_bypass_middleware(self):
+        """Test that /api/v1/auth/ paths bypass subscription/suspension checks."""
+        self.tenant.suspend()
+        request = self.factory.post("/api/v1/auth/logout/")
+        request.tenant = self.tenant
+        request.tenant_id = str(self.tenant.id)
+        response = self.middleware.process_request(request)
+        self.assertIsNone(response, "Auth paths must be allowed regardless of subscription/suspension")
+
+    def test_auth_sessions_revoke_bypass_middleware(self):
+        """Test that POST /api/v1/auth/sessions/<id>/revoke/ bypasses subscription check."""
+        self.tenant.suspend()
+        request = self.factory.post("/api/v1/auth/sessions/00000000-0000-0000-0000-000000000001/revoke/")
+        request.tenant = self.tenant
+        request.tenant_id = str(self.tenant.id)
+        response = self.middleware.process_request(request)
+        self.assertIsNone(response, "Session revoke must be allowed regardless of subscription/suspension")
     
     def test_middleware_is_callable(self):
         """Test that middleware is callable (Django 6 pattern)"""

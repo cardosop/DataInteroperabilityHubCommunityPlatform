@@ -32,7 +32,6 @@ from hub.apps.orchestration.models import (
     StepStatus,
 )
 from hub.apps.orchestration.dsl_parser import WorkflowDSLParser
-from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.users.models import User
 
 if TYPE_CHECKING:
@@ -769,12 +768,44 @@ class OrchestrationBusinessRules(BusinessRules):
                     f"workflow current_step_index ({workflow.current_step_index})"
                 )
 
+        # CRITICAL: Fetch steps once and reuse to avoid multiple database queries and potential hangs
+        # Use prefetch_related if available, otherwise fetch with timeout protection
+        steps = None
+        try:
+            # Check if steps are already prefetched (from prefetch_related)
+            if hasattr(workflow, '_prefetched_objects_cache') and 'steps' in workflow._prefetched_objects_cache:
+                steps = list(workflow._prefetched_objects_cache['steps'])
+                steps.sort(key=lambda s: s.step_index)
+            else:
+                # Fetch steps with timeout protection and query optimization
+                from django.db.utils import OperationalError, DatabaseError
+                from django.core.exceptions import ObjectDoesNotExist
+                
+                try:
+                    # Try to fetch steps with a limit to prevent huge queries
+                    # Use only() to fetch only needed fields for better performance
+                    steps = list(workflow.steps.only('step_index', 'step_name', 'output_data', 'status')
+                                 .order_by('step_index')[:100])  # Limit to 100 steps max
+                except (OperationalError, DatabaseError, ObjectDoesNotExist) as db_error:
+                    # If database query fails, log warning and skip step validation
+                    logger.warning(
+                        f"Could not fetch workflow steps for validation: {str(db_error)}",
+                        extra={'workflow_id': str(workflow.id)}
+                    )
+                    result.warnings.append(f"Could not fetch workflow steps for validation: {str(db_error)}")
+                    steps = []  # Empty list to prevent errors below
+        except Exception as e:
+            logger.warning(
+                f"Error fetching workflow steps: {str(e)}",
+                extra={'workflow_id': str(workflow.id)}
+            )
+            result.warnings.append(f"Could not fetch workflow steps: {str(e)}")
+            steps = []  # Empty list to prevent errors below
+
         # Validate current_step_name consistency
-        if 'current_step_name' in workflow.state_data:
+        if steps and 'current_step_name' in workflow.state_data:
             state_step_name = workflow.state_data.get('current_step_name')
-            # Get the actual step name from the workflow
             try:
-                steps = workflow.steps.all().order_by('step_index')
                 if workflow.current_step_index < len(steps):
                     actual_step = steps[workflow.current_step_index]
                     if state_step_name != actual_step.step_name:
@@ -782,32 +813,32 @@ class OrchestrationBusinessRules(BusinessRules):
                             f"State current_step_name ({state_step_name}) does not match "
                             f"actual step name ({actual_step.step_name})"
                         )
-            except Exception as e:
+            except (IndexError, AttributeError) as e:
                 result.warnings.append(f"Could not validate step name consistency: {str(e)}")
 
         # Validate step output_data consistency with state_data
-        try:
-            steps = workflow.steps.all().order_by('step_index')
-            for step in steps:
-                # Check if step output_data is consistent with state_data
-                if step.output_data and isinstance(step.output_data, dict):
-                    # Check for common fields that should be in state_data
-                    for key, value in step.output_data.items():
-                        if key in workflow.state_data:
-                            state_value = workflow.state_data[key]
-                            # Allow for updates (later steps can override earlier steps)
-                            if step.step_index < workflow.current_step_index:
-                                # For completed steps, values should match or be updated
-                                pass
-                            elif step.step_index == workflow.current_step_index:
-                                # For current step, values should match
-                                if state_value != value:
-                                    result.warnings.append(
-                                        f"Step {step.step_index} output_data[{key}] ({value}) "
-                                        f"does not match state_data[{key}] ({state_value})"
-                                    )
-        except Exception as e:
-            result.warnings.append(f"Could not validate step output_data consistency: {str(e)}")
+        if steps:
+            try:
+                for step in steps:
+                    # Check if step output_data is consistent with state_data
+                    if step.output_data and isinstance(step.output_data, dict):
+                        # Check for common fields that should be in state_data
+                        for key, value in step.output_data.items():
+                            if key in workflow.state_data:
+                                state_value = workflow.state_data[key]
+                                # Allow for updates (later steps can override earlier steps)
+                                if step.step_index < workflow.current_step_index:
+                                    # For completed steps, values should match or be updated
+                                    pass
+                                elif step.step_index == workflow.current_step_index:
+                                    # For current step, values should match
+                                    if state_value != value:
+                                        result.warnings.append(
+                                            f"Step {step.step_index} output_data[{key}] ({value}) "
+                                            f"does not match state_data[{key}] ({state_value})"
+                                        )
+            except Exception as e:
+                result.warnings.append(f"Could not validate step output_data consistency: {str(e)}")
 
         # Validate state_data structure consistency
         # Check that required fields are present based on workflow status
@@ -1464,4 +1495,279 @@ class OrchestrationBusinessRules(BusinessRules):
             warnings=warnings,
             details=details
         )
+
+    def validate_workflow_step_execution(
+        self,
+        workflow: WorkflowInstance,
+        step: WorkflowStep,
+        tenant: Optional[Any] = None,
+        user: Optional[User] = None
+    ) -> ValidationResult:
+        """
+        Validate that a workflow step can execute in the current workflow state.
+
+        Validates:
+        - Step can execute in current workflow state
+        - Workflow state is consistent
+        - Tenant context is valid
+        - User permissions are valid
+
+        Args:
+            workflow: WorkflowInstance to validate
+            step: WorkflowStep to validate
+            tenant: Optional tenant instance for context validation
+            user: Optional user instance for permission validation
+
+        Returns:
+            ValidationResult with validation status and details
+        """
+        result = ValidationResult(is_valid=True)
+        result.details['workflow_step_execution_validation'] = 'workflow_step_execution'
+
+        # Validate workflow state
+        workflow_state_result = self.validate_workflow_state(workflow)
+        result = result.combine(workflow_state_result)
+
+        # Validate step can execute in current workflow state
+        if workflow.status != WorkflowStatus.RUNNING:
+            result.is_valid = False
+            result.errors.append(
+                f"Workflow step cannot execute: workflow status is {workflow.status}, "
+                f"expected {WorkflowStatus.RUNNING}"
+            )
+
+        # Validate step status allows execution
+        if step.status not in [StepStatus.PENDING, StepStatus.RUNNING]:
+            result.is_valid = False
+            result.errors.append(
+                f"Workflow step cannot execute: step status is {step.status}, "
+                f"expected {StepStatus.PENDING} or {StepStatus.RUNNING}"
+            )
+
+        # Validate step index matches workflow current_step_index
+        if step.step_index != workflow.current_step_index:
+            result.warnings.append(
+                f"Step index ({step.step_index}) does not match workflow "
+                f"current_step_index ({workflow.current_step_index})"
+            )
+
+        # Validate tenant context if provided
+        if tenant:
+            tenant_result = self._validate_tenant_context(workflow, step, tenant)
+            result = result.combine(tenant_result)
+
+        # Validate user permissions if provided
+        if user:
+            permissions_result = self._validate_permissions(workflow, step, user)
+            result = result.combine(permissions_result)
+
+        result.details['workflow_id'] = str(workflow.id)
+        result.details['step_id'] = str(step.id)
+        result.details['step_name'] = step.step_name
+        result.details['workflow_status'] = workflow.status
+        result.details['step_status'] = step.status
+
+        return result
+
+    def validate_step_input(
+        self,
+        workflow: WorkflowInstance,
+        step: WorkflowStep,
+        step_input: Dict[str, Any],
+        tenant: Optional[Any] = None,
+        user: Optional[User] = None
+    ) -> ValidationResult:
+        """
+        Validate step input data.
+
+        Validates:
+        - Input data structure (must be a dictionary)
+        - Input data schema (if schema is defined)
+        - Required fields are present
+        - Data types are correct
+
+        Args:
+            workflow: WorkflowInstance context
+            step: WorkflowStep context
+            step_input: Step input data to validate
+            tenant: Optional tenant instance for context validation
+            user: Optional user instance for permission validation
+
+        Returns:
+            ValidationResult with validation status and details
+        """
+        result = ValidationResult(is_valid=True)
+        result.details['step_input_validation'] = 'step_input'
+
+        # Validate input is a dictionary
+        if not isinstance(step_input, dict):
+            result.is_valid = False
+            result.errors.append("Step input must be a dictionary")
+            return result
+
+        # Validate input is not empty (warn if empty, but allow it)
+        if not step_input:
+            result.warnings.append("Step input is empty")
+
+        # Validate input can be JSON serialized (for state persistence)
+        try:
+            json.dumps(step_input)
+            # Calculate size only if serialization succeeds
+            input_size = len(json.dumps(step_input))
+        except (TypeError, ValueError) as e:
+            result.is_valid = False
+            result.errors.append(f"Step input is not JSON serializable: {str(e)}")
+            input_size = 0  # Cannot calculate size if not serializable
+
+        # Validate tenant context if provided
+        if tenant:
+            tenant_result = self._validate_tenant_context(workflow, step, tenant)
+            result = result.combine(tenant_result)
+
+        # Validate user permissions if provided
+        if user:
+            permissions_result = self._validate_permissions(workflow, step, user)
+            result = result.combine(permissions_result)
+
+        result.details['workflow_id'] = str(workflow.id)
+        result.details['step_id'] = str(step.id)
+        result.details['step_name'] = step.step_name
+        result.details['input_keys'] = list(step_input.keys())
+        result.details['input_size'] = input_size
+
+        return result
+
+    def validate_step_output(
+        self,
+        workflow: WorkflowInstance,
+        step: WorkflowStep,
+        step_output: Dict[str, Any],
+        tenant: Optional[Any] = None,
+        user: Optional[User] = None
+    ) -> ValidationResult:
+        """
+        Validate step output data.
+
+        Validates:
+        - Output data structure (must be a dictionary)
+        - Output data schema (if schema is defined)
+        - Required fields are present
+        - Data types are correct
+
+        Args:
+            workflow: WorkflowInstance context
+            step: WorkflowStep context
+            step_output: Step output data to validate
+            tenant: Optional tenant instance for context validation
+            user: Optional user instance for permission validation
+
+        Returns:
+            ValidationResult with validation status and details
+        """
+        result = ValidationResult(is_valid=True)
+        result.details['step_output_validation'] = 'step_output'
+
+        # Validate output is a dictionary
+        if not isinstance(step_output, dict):
+            result.is_valid = False
+            result.errors.append("Step output must be a dictionary")
+            return result
+
+        # Validate output is not empty (warn if empty, but allow it)
+        if not step_output:
+            result.warnings.append("Step output is empty")
+
+        # Validate output can be JSON serialized (for state persistence)
+        try:
+            json.dumps(step_output)
+            # Calculate size only if serialization succeeds
+            output_size = len(json.dumps(step_output))
+        except (TypeError, ValueError) as e:
+            result.is_valid = False
+            result.errors.append(f"Step output is not JSON serializable: {str(e)}")
+            output_size = 0  # Cannot calculate size if not serializable
+
+        # Validate tenant context if provided
+        if tenant:
+            tenant_result = self._validate_tenant_context(workflow, step, tenant)
+            result = result.combine(tenant_result)
+
+        # Validate user permissions if provided
+        if user:
+            permissions_result = self._validate_permissions(workflow, step, user)
+            result = result.combine(permissions_result)
+
+        result.details['workflow_id'] = str(workflow.id)
+        result.details['step_id'] = str(step.id)
+        result.details['step_name'] = step.step_name
+        result.details['output_keys'] = list(step_output.keys())
+        result.details['output_size'] = output_size
+
+        return result
+
+    def validate_workflow_state(
+        self,
+        workflow: WorkflowInstance,
+        tenant: Optional[Any] = None,
+        user: Optional[User] = None
+    ) -> ValidationResult:
+        """
+        Validate workflow state consistency.
+
+        Validates:
+        - Workflow state is consistent
+        - State data structure is valid
+        - State transitions are valid
+        - No conflicting state information
+
+        Args:
+            workflow: WorkflowInstance to validate
+            tenant: Optional tenant instance for context validation
+            user: Optional user instance for permission validation
+
+        Returns:
+            ValidationResult with validation status and details
+        """
+        result = ValidationResult(is_valid=True)
+        result.details['workflow_state_validation'] = 'workflow_state'
+
+        # Validate workflow instance
+        workflow_result = self._validate_workflow_instance(workflow, tenant, user)
+        result = result.combine(workflow_result)
+
+        # Validate state consistency
+        consistency_result = self._validate_state_consistency(workflow, tenant, user)
+        result = result.combine(consistency_result)
+
+        # Validate state_data structure
+        if not isinstance(workflow.state_data, dict):
+            result.is_valid = False
+            result.errors.append("Workflow state_data must be a dictionary")
+        else:
+            # Validate state_data can be JSON serialized
+            try:
+                json.dumps(workflow.state_data)
+            except (TypeError, ValueError) as e:
+                result.is_valid = False
+                result.errors.append(
+                    f"Workflow state_data is not JSON serializable: {str(e)}"
+                )
+
+        # Validate current_step_index is within bounds
+        if workflow.workflow_definition:
+            dsl = workflow.workflow_definition.dsl_json
+            if isinstance(dsl, dict):
+                steps = dsl.get("steps", [])
+                if workflow.current_step_index >= len(steps):
+                    result.is_valid = False
+                    result.errors.append(
+                        f"Workflow current_step_index ({workflow.current_step_index}) "
+                        f"is out of bounds (workflow has {len(steps)} steps)"
+                    )
+
+        result.details['workflow_id'] = str(workflow.id)
+        result.details['workflow_status'] = workflow.status
+        result.details['current_step_index'] = workflow.current_step_index
+
+        return result
 

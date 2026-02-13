@@ -223,7 +223,6 @@ class ABACEngineTest(TestCase):
             access_type="READ",
             masking_strategy="FORMAT_PRESERVING",
             masking_config={"show_last": 4},
-            created_by=self.user
         )
         
         result = ABACEngine.evaluate_access(
@@ -261,7 +260,6 @@ class ABACEngineTest(TestCase):
             dataset=self.dataset,
             field_name="email",
             access_type="NONE",  # Deny access
-            created_by=self.user
         )
         
         result = ABACEngine.evaluate_access(

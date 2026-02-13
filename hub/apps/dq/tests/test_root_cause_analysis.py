@@ -80,8 +80,10 @@ class RootCauseAnalyzerTest(TestCase):
         """Helper to create DQ run"""
         job = Job.objects.create(
             tenant=self.tenant,
-            job_type=JobType.DQ_CHECK,
+            type=JobType.DQ_RUN,
             status=JobStatus.COMPLETED,
+            resource_type="DQ_RUN",
+            resource_id=self.dataset.id,
             created_by=self.user
         )
         
@@ -131,7 +133,14 @@ class RootCauseAnalyzerTest(TestCase):
     
     def test_analyze_root_cause_schema_change(self):
         """Test root cause analysis for schema changes"""
-        # Create parent dataset with different schema
+        # Use a separate asset so (tenant, asset, version) stays unique (self.dataset uses self.asset v1)
+        asset_schema = Asset.objects.create(
+            tenant=self.tenant,
+            key="schema-asset",
+            name="Schema Test Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
         parent_file = File.objects.create(
             tenant=self.tenant,
             name="parent.csv",
@@ -145,7 +154,7 @@ class RootCauseAnalyzerTest(TestCase):
         
         parent_dataset = Dataset.objects.create(
             tenant=self.tenant,
-            asset=self.asset,
+            asset=asset_schema,
             file=parent_file,
             schema_json={"fields": [{"name": "col1", "type": "string", "data_type": "string", "nullable": True}]},
             format="CSV",
@@ -157,7 +166,7 @@ class RootCauseAnalyzerTest(TestCase):
         # Create child dataset with schema change
         child_dataset = Dataset.objects.create(
             tenant=self.tenant,
-            asset=self.asset,
+            asset=asset_schema,
             file=self.file,
             schema_json={"fields": [
                 {"name": "col1", "type": "string", "data_type": "string", "nullable": True},
@@ -186,7 +195,8 @@ class RootCauseAnalyzerTest(TestCase):
     
     def test_analyze_root_cause_volume_change(self):
         """Test root cause analysis for volume changes"""
-        # Create historical runs with consistent volume
+        # Create historical runs with consistent volume (unique version per dataset)
+        historical_datasets = []
         for i in range(5):
             historical_file = File.objects.create(
                 tenant=self.tenant,
@@ -198,19 +208,39 @@ class RootCauseAnalyzerTest(TestCase):
                 content_sha256=f"hist{i}",
                 created_by=self.user
             )
-            
+            # Use version=i+2 so (tenant, asset, version) is unique per iteration
+            # (version=1 is already used by self.dataset in setUp)
             historical_dataset = Dataset.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
                 file=historical_file,
                 schema_json={"fields": [{"name": "col1", "type": "string"}]},
                 format="CSV",
-                version=1,
+                version=i + 2,
                 row_count=1000,  # Consistent volume
                 created_by=self.user
             )
+            historical_datasets.append(historical_dataset)
             
-            self._create_dq_run(
+            # Create DQ run associated with this historical dataset
+            job = Job.objects.create(
+                tenant=self.tenant,
+                type=JobType.DQ_RUN,
+                status=JobStatus.COMPLETED,
+                resource_type="DQ_RUN",
+                resource_id=historical_dataset.id,
+                created_by=self.user
+            )
+            
+            DQRun.objects.create(
+                tenant=self.tenant,
+                asset=self.asset,
+                dataset=historical_dataset,
+                job=job,
+                profile_key="intake_basic_gx",
+                engine=DQEngine.GREAT_EXPECTATIONS,
+                status=DQRunStatus.SUCCEEDED,
+                overall_status="PASS",
                 quality_score=90.0,
                 completed_at=timezone.now() - timedelta(days=5-i)
             )

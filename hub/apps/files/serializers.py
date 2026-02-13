@@ -3,11 +3,17 @@ File Storage Serializers
 """
 from rest_framework import serializers
 from .models import File, FileStatus
-from .validators import validate_file_size, validate_file_type, get_chunk_size, calculate_chunk_count
+from .validators import get_chunk_size, calculate_chunk_count
 
 
 class FileInitSerializer(serializers.Serializer):
-    """Serializer for file upload initialization"""
+    """Serializer for file upload initialization.
+
+    Validates only field presence and format. Domain validation (file size,
+    file type, storage quota) is done in FileService via FilesBusinessRules
+    so that REST and workflows share the same rules and return 400 with
+    code BUSINESS_RULES_VALIDATION on invalid.
+    """
     name = serializers.CharField(max_length=255, help_text="Original filename")
     content_type = serializers.CharField(max_length=100, help_text="MIME type")
     size = serializers.IntegerField(min_value=0, help_text="File size in bytes (0 for empty files)")
@@ -18,18 +24,7 @@ class FileInitSerializer(serializers.Serializer):
     )
 
     def validate(self, data):
-        """Validate file size and type"""
-        size = data['size']
-        upload_method = data.get('upload_method', 'browser')
-        name = data['name']
-        content_type = data.get('content_type')
-
-        # Validate file size
-        validate_file_size(size, upload_method)
-
-        # Validate file type
-        validate_file_type(name, content_type)
-
+        """Structural validation only; domain rules run in FileService."""
         return data
 
 

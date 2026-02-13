@@ -11,6 +11,7 @@ import logging
 import time
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.utils import OperationalError as DjangoOperationalError
 from django.utils import timezone
 from typing import Optional
 
@@ -104,24 +105,43 @@ class Command(BaseCommand):
             logger.warning(f"Could not register workflow tasks: {e}", exc_info=True)
 
         total_processed = 0
+        db_retry_delay = 5
+        db_retry_max_delay = 60
 
         try:
             while True:
-                processed = self._process_batch(workflow_engine, batch_size)
-                total_processed += processed
+                try:
+                    processed = self._process_batch(workflow_engine, batch_size)
+                    total_processed += processed
+                    # Reset retry delay on success (DB was reachable)
+                    db_retry_delay = 5
 
-                if processed > 0:
+                    if processed > 0:
+                        self.stdout.write(
+                            self.style.SUCCESS(
+                                f'Processed {processed} workflow(s) (total: {total_processed})'
+                            )
+                        )
+
+                    if run_once:
+                        break
+
+                except DjangoOperationalError as e:
+                    logger.warning(
+                        "Database unavailable (will retry): %s", e, exc_info=True
+                    )
                     self.stdout.write(
-                        self.style.SUCCESS(
-                            f'Processed {processed} workflow(s) (total: {total_processed})'
+                        self.style.WARNING(
+                            f'Database unavailable, retrying in {db_retry_delay}s: {e}'
                         )
                     )
+                    time.sleep(db_retry_delay)
+                    db_retry_delay = min(db_retry_delay * 2, db_retry_max_delay)
+                    continue
 
-                if run_once:
-                    break
-
-                # Sleep before next poll
-                time.sleep(poll_interval)
+                # Sleep before next poll (skip when run_once)
+                if not run_once:
+                    time.sleep(poll_interval)
 
         except KeyboardInterrupt:
             self.stdout.write(

@@ -3,27 +3,28 @@ Unit tests for VirtualizationBusinessRules.
 
 Tests all validation methods using real services and models (no mocks/stubs).
 """
-from django.test import TestCase
-from django.core.exceptions import ValidationError as DjangoValidationError
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.test import TestCase
+
+from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.registry import get_registry
-from hub.apps.virtualization.business_rules import (
-    VirtualizationBusinessRules,
-    VirtualizationRuleExecutionContext,
-    QueryExecutionBusinessRules,
-    ResultBusinessRules,
-)
-from hub.apps.virtualization.models import (
-    VirtualDataset,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionMode
-)
 from hub.apps.core.services.base import ValidationError
-from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
+from hub.apps.virtualization.business_rules import (
+    QueryExecutionBusinessRules,
+    ResultBusinessRules,
+    VirtualizationBusinessRules,
+    VirtualizationRuleExecutionContext,
+)
+from hub.apps.virtualization.models import (
+    QueryExecutionMode,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
+)
 
 
 class VirtualizationBusinessRulesTest(TestCase):
@@ -31,29 +32,22 @@ class VirtualizationBusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
 
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.business_rules = VirtualizationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create test asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
         # Valid SQL query
@@ -74,7 +68,7 @@ class VirtualizationBusinessRulesTest(TestCase):
             "fields": [
                 {"name": "id", "type": "integer"},
                 {"name": "name", "type": "string"},
-                {"name": "age", "type": "integer"}
+                {"name": "age", "type": "integer"},
             ]
         }
 
@@ -84,7 +78,7 @@ class VirtualizationBusinessRulesTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb",
-                "asset_id": str(self.asset.id)
+                "asset_id": str(self.asset.id),
             }
         ]
 
@@ -103,8 +97,7 @@ class VirtualizationBusinessRulesTest(TestCase):
     def test_initialization_with_tenant_and_user(self):
         """Test initialization with tenant_id and user_id"""
         rules = VirtualizationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
         self.assertEqual(rules.tenant_id, str(self.tenant.id))
         self.assertEqual(rules.user_id, str(self.user.id))
@@ -133,14 +126,14 @@ class VirtualizationBusinessRulesTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
 
         context = VirtualizationRuleExecutionContext(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             virtual_dataset=virtual_dataset,
-            query="SELECT * FROM users"
+            query="SELECT * FROM users",
         )
 
         self.assertEqual(context.tenant_id, str(self.tenant.id))
@@ -150,10 +143,10 @@ class VirtualizationBusinessRulesTest(TestCase):
 
         # Test to_dict()
         context_dict = context.to_dict()
-        self.assertEqual(context_dict['tenant_id'], str(self.tenant.id))
-        self.assertEqual(context_dict['user_id'], str(self.user.id))
-        self.assertEqual(context_dict['virtual_dataset_id'], str(virtual_dataset.id))
-        self.assertIn('query_preview', context_dict)
+        self.assertEqual(context_dict["tenant_id"], str(self.tenant.id))
+        self.assertEqual(context_dict["user_id"], str(self.user.id))
+        self.assertEqual(context_dict["virtual_dataset_id"], str(virtual_dataset.id))
+        self.assertIn("query_preview", context_dict)
 
 
 class QuerySyntaxValidationTest(TestCase):
@@ -161,25 +154,18 @@ class QuerySyntaxValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
 
     def test_validate_query_syntax_empty_query(self):
         """Test validate_query_syntax with empty query."""
-        result = self.business_rules.validate_query_syntax(
-            "",
-            QueryType.SQL,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_query_syntax("", QueryType.SQL, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -189,9 +175,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with valid SQL query."""
         query = "SELECT id, name FROM users WHERE age > 18"
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.SQL,
-            raise_on_error=False
+            query, QueryType.SQL, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -203,9 +187,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with SQL query containing forbidden keyword."""
         query = "DROP TABLE users"
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.SQL,
-            raise_on_error=False
+            query, QueryType.SQL, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -215,9 +197,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with SQL query missing required keyword."""
         query = "FROM users WHERE age > 18"
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.SQL,
-            raise_on_error=False
+            query, QueryType.SQL, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -227,9 +207,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with SQL query with unbalanced parentheses."""
         query = "SELECT id FROM users WHERE (age > 18"
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.SQL,
-            raise_on_error=False
+            query, QueryType.SQL, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -239,9 +217,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with SQL SELECT * without LIMIT."""
         query = "SELECT * FROM users"
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.SQL,
-            raise_on_error=False
+            query, QueryType.SQL, raise_on_error=False
         )
 
         # Should be valid but with warning
@@ -259,9 +235,7 @@ class QuerySyntaxValidationTest(TestCase):
         }
         """
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.SPARQL,
-            raise_on_error=False
+            query, QueryType.SPARQL, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -271,9 +245,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with SPARQL query containing forbidden keyword."""
         query = "INSERT DATA { <s> <p> <o> . }"
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.SPARQL,
-            raise_on_error=False
+            query, QueryType.SPARQL, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -283,9 +255,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with SPARQL query with unbalanced braces."""
         query = "SELECT ?name WHERE { ?person foaf:name ?name ."
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.SPARQL,
-            raise_on_error=False
+            query, QueryType.SPARQL, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -295,9 +265,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with federated query."""
         query = "SELECT * FROM source1 UNION SELECT * FROM source2"
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.FEDERATED,
-            raise_on_error=False
+            query, QueryType.FEDERATED, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -306,9 +274,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax with REST query."""
         query = '{"method": "GET", "url": "/api/users"}'
         result = self.business_rules.validate_query_syntax(
-            query,
-            QueryType.REST,
-            raise_on_error=False
+            query, QueryType.REST, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -317,11 +283,7 @@ class QuerySyntaxValidationTest(TestCase):
         """Test validate_query_syntax raises exception when raise_on_error=True."""
         query = "DROP TABLE users"
         with self.assertRaises(ValidationError) as context:
-            self.business_rules.validate_query_syntax(
-                query,
-                QueryType.SQL,
-                raise_on_error=True
-            )
+            self.business_rules.validate_query_syntax(query, QueryType.SQL, raise_on_error=True)
 
         self.assertEqual(context.exception.code, "INVALID_QUERY_SYNTAX")
 
@@ -331,15 +293,12 @@ class SchemaAlignmentValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
 
@@ -352,12 +311,11 @@ class SchemaAlignmentValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Schema is optional, so validation should pass with warning
@@ -366,12 +324,7 @@ class SchemaAlignmentValidationTest(TestCase):
 
     def test_validate_schema_alignment_valid_schema(self):
         """Test validate_schema_alignment with valid schema."""
-        schema = {
-            "fields": [
-                {"name": "id", "type": "integer"},
-                {"name": "name", "type": "string"}
-            ]
-        }
+        schema = {"fields": [{"name": "id", "type": "integer"}, {"name": "name", "type": "string"}]}
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -379,12 +332,11 @@ class SchemaAlignmentValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema=schema,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -400,7 +352,7 @@ class SchemaAlignmentValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema={"fields": []},  # Valid schema
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         # Update to invalid schema using update() to bypass model validation
@@ -410,8 +362,7 @@ class SchemaAlignmentValidationTest(TestCase):
         virtual_dataset.refresh_from_db()
 
         result = self.business_rules.validate_schema_alignment(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -419,12 +370,7 @@ class SchemaAlignmentValidationTest(TestCase):
 
     def test_validate_schema_alignment_fields_array_format(self):
         """Test validate_schema_alignment with fields array format."""
-        schema = {
-            "fields": [
-                {"name": "id", "type": "integer"},
-                {"name": "name", "type": "string"}
-            ]
-        }
+        schema = {"fields": [{"name": "id", "type": "integer"}, {"name": "name", "type": "string"}]}
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -432,12 +378,11 @@ class SchemaAlignmentValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema=schema,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -445,10 +390,7 @@ class SchemaAlignmentValidationTest(TestCase):
 
     def test_validate_schema_alignment_fields_dict_format(self):
         """Test validate_schema_alignment with fields dict format."""
-        schema = {
-            "id": {"type": "integer"},
-            "name": {"type": "string"}
-        }
+        schema = {"id": {"type": "integer"}, "name": {"type": "string"}}
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -456,12 +398,11 @@ class SchemaAlignmentValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema=schema,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -469,10 +410,7 @@ class SchemaAlignmentValidationTest(TestCase):
     def test_validate_schema_alignment_missing_field_name(self):
         """Test validate_schema_alignment with field missing name."""
         schema = {
-            "fields": [
-                {"type": "integer"},  # Missing name
-                {"name": "name", "type": "string"}
-            ]
+            "fields": [{"type": "integer"}, {"name": "name", "type": "string"}]  # Missing name
         }
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -481,12 +419,11 @@ class SchemaAlignmentValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema=schema,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -494,12 +431,7 @@ class SchemaAlignmentValidationTest(TestCase):
 
     def test_validate_schema_alignment_column_extraction(self):
         """Test validate_schema_alignment with SQL column extraction."""
-        schema = {
-            "fields": [
-                {"name": "id", "type": "integer"},
-                {"name": "name", "type": "string"}
-            ]
-        }
+        schema = {"fields": [{"name": "id", "type": "integer"}, {"name": "name", "type": "string"}]}
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -507,12 +439,11 @@ class SchemaAlignmentValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema=schema,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_schema_alignment(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -531,7 +462,7 @@ class SchemaAlignmentValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema={"fields": []},  # Valid schema
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         # Update to invalid schema using update() to bypass model validation
@@ -541,10 +472,7 @@ class SchemaAlignmentValidationTest(TestCase):
         virtual_dataset.refresh_from_db()
 
         with self.assertRaises(ValidationError) as context:
-            self.business_rules.validate_schema_alignment(
-                virtual_dataset,
-                raise_on_error=True
-            )
+            self.business_rules.validate_schema_alignment(virtual_dataset, raise_on_error=True)
 
         self.assertEqual(context.exception.code, "INVALID_SCHEMA_ALIGNMENT")
 
@@ -554,24 +482,18 @@ class SourceCompatibilityValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
 
         # Create test asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
     def test_validate_source_compatibility_no_sources_sparql(self):
@@ -583,12 +505,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT ?name WHERE { ?person foaf:name ?name . }",
             query_type=QueryType.SPARQL,
             sources=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Sources are optional for SPARQL
@@ -603,12 +524,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -621,7 +541,7 @@ class SourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb",
-                "asset_id": str(self.asset.id)
+                "asset_id": str(self.asset.id),
             }
         ]
         virtual_dataset = VirtualDataset.objects.create(
@@ -631,12 +551,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -647,7 +566,7 @@ class SourceCompatibilityValidationTest(TestCase):
         sources = [
             {
                 "type": "sparql",  # SPARQL source not compatible with SQL query
-                "endpoint": "http://example.com/sparql"
+                "endpoint": "http://example.com/sparql",
             }
         ]
         virtual_dataset = VirtualDataset.objects.create(
@@ -657,12 +576,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -670,12 +588,7 @@ class SourceCompatibilityValidationTest(TestCase):
 
     def test_validate_source_compatibility_missing_source_type(self):
         """Test validate_source_compatibility with missing source type."""
-        sources = [
-            {
-                "host": "localhost",
-                "database": "testdb"
-            }
-        ]
+        sources = [{"host": "localhost", "database": "testdb"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -683,12 +596,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -699,7 +611,7 @@ class SourceCompatibilityValidationTest(TestCase):
         sources = [
             {
                 "type": "postgresql",
-                "host": "localhost"
+                "host": "localhost",
                 # Missing 'database' field
             }
         ]
@@ -710,12 +622,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -724,12 +635,13 @@ class SourceCompatibilityValidationTest(TestCase):
     def test_validate_source_compatibility_nonexistent_asset(self):
         """Test validate_source_compatibility with nonexistent asset."""
         import uuid
+
         sources = [
             {
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb",
-                "asset_id": str(uuid.uuid4())  # Non-existent asset
+                "asset_id": str(uuid.uuid4()),  # Non-existent asset
             }
         ]
         virtual_dataset = VirtualDataset.objects.create(
@@ -739,16 +651,20 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(any("non-existent" in error.lower() or "does not exist" in error.lower() for error in result.errors))
+        self.assertTrue(
+            any(
+                "non-existent" in error.lower() or "does not exist" in error.lower()
+                for error in result.errors
+            )
+        )
 
     def test_validate_source_compatibility_valid_asset(self):
         """Test validate_source_compatibility with valid asset."""
@@ -757,7 +673,7 @@ class SourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb",
-                "asset_id": str(self.asset.id)
+                "asset_id": str(self.asset.id),
             }
         ]
         virtual_dataset = VirtualDataset.objects.create(
@@ -767,12 +683,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -781,12 +696,7 @@ class SourceCompatibilityValidationTest(TestCase):
 
     def test_validate_source_compatibility_rest_source(self):
         """Test validate_source_compatibility with REST source."""
-        sources = [
-            {
-                "type": "rest",
-                "url": "http://example.com/api/users"
-            }
-        ]
+        sources = [{"type": "rest", "url": "http://example.com/api/users"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -794,12 +704,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query='{"method": "GET", "url": "/api/users"}',
             query_type=QueryType.REST,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -819,16 +728,17 @@ class SourceCompatibilityValidationTest(TestCase):
             query='{"method": "GET", "url": "/api/users"}',
             query_type=QueryType.REST,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
-        self.assertTrue(any("url" in error.lower() or "endpoint" in error.lower() for error in result.errors))
+        self.assertTrue(
+            any("url" in error.lower() or "endpoint" in error.lower() for error in result.errors)
+        )
 
     def test_validate_source_compatibility_raises_exception(self):
         """Test validate_source_compatibility raises exception when raise_on_error=True."""
@@ -839,14 +749,11 @@ class SourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         with self.assertRaises(ValidationError) as context:
-            self.business_rules.validate_source_compatibility(
-                virtual_dataset,
-                raise_on_error=True
-            )
+            self.business_rules.validate_source_compatibility(virtual_dataset, raise_on_error=True)
 
         self.assertEqual(context.exception.code, "INVALID_SOURCE_COMPATIBILITY")
 
@@ -856,33 +763,23 @@ class CrossSourceCompatibilityValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create test assets
         self.asset1 = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset-1",
-            name="Test Asset 1",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset-1", name="Test Asset 1", status=AssetStatus.ACTIVE
         )
         self.asset2 = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset-2",
-            name="Test Asset 2",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset-2", name="Test Asset 2", status=AssetStatus.ACTIVE
         )
 
         # Create datasets with schemas for assets
@@ -891,10 +788,7 @@ class CrossSourceCompatibilityValidationTest(TestCase):
 
         # Create file for asset1
         file1 = File.objects.create(
-            tenant=self.tenant,
-            name="test1.csv",
-            size=1000,
-            content_type="text/csv"
+            tenant=self.tenant, name="test1.csv", size=1000, content_type="text/csv"
         )
         self.dataset1 = Dataset.objects.create(
             tenant=self.tenant,
@@ -904,19 +798,16 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "integer"},
                     {"name": "name", "type": "string"},
-                    {"name": "age", "type": "integer"}
+                    {"name": "age", "type": "integer"},
                 ]
             },
             format="CSV",
-            version=1
+            version=1,
         )
 
         # Create file for asset2
         file2 = File.objects.create(
-            tenant=self.tenant,
-            name="test2.csv",
-            size=1000,
-            content_type="text/csv"
+            tenant=self.tenant, name="test2.csv", size=1000, content_type="text/csv"
         )
         self.dataset2 = Dataset.objects.create(
             tenant=self.tenant,
@@ -926,11 +817,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "integer"},
                     {"name": "name", "type": "string"},
-                    {"name": "age", "type": "integer"}
+                    {"name": "age", "type": "integer"},
                 ]
             },
             format="CSV",
-            version=1
+            version=1,
         )
 
     def test_validate_cross_source_compatibility_single_source(self):
@@ -940,7 +831,7 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb",
-                "asset_id": str(self.asset1.id)
+                "asset_id": str(self.asset1.id),
             }
         ]
         virtual_dataset = VirtualDataset.objects.create(
@@ -950,12 +841,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Single source - validation should pass (no cross-source checks needed)
@@ -972,12 +862,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             query="SELECT ?name WHERE { ?person foaf:name ?name . }",
             query_type=QueryType.SPARQL,
             sources=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # No sources - validation should pass
@@ -990,14 +879,14 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb1",
-                "asset_id": str(self.asset1.id)
+                "asset_id": str(self.asset1.id),
             },
             {
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb2",
-                "asset_id": str(self.asset2.id)
-            }
+                "asset_id": str(self.asset2.id),
+            },
         ]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -1006,12 +895,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name, age FROM users",
             query_type=QueryType.FEDERATED,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -1023,18 +911,13 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         """Test validate_cross_source_compatibility with misaligned schemas."""
         # Create asset with different schema
         asset3 = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset-3",
-            name="Test Asset 3",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset-3", name="Test Asset 3", status=AssetStatus.ACTIVE
         )
         from hub.apps.datasets.models import Dataset
         from hub.apps.files.models import File
+
         file3 = File.objects.create(
-            tenant=self.tenant,
-            name="test3.csv",
-            size=1000,
-            content_type="text/csv"
+            tenant=self.tenant, name="test3.csv", size=1000, content_type="text/csv"
         )
         dataset3 = Dataset.objects.create(
             tenant=self.tenant,
@@ -1044,11 +927,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "integer"},
                     {"name": "email", "type": "string"},  # Different field
-                    {"name": "age", "type": "integer"}
+                    {"name": "age", "type": "integer"},
                 ]
             },
             format="CSV",
-            version=1
+            version=1,
         )
 
         sources = [
@@ -1056,14 +939,14 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb1",
-                "asset_id": str(self.asset1.id)
+                "asset_id": str(self.asset1.id),
             },
             {
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb3",
-                "asset_id": str(asset3.id)
-            }
+                "asset_id": str(asset3.id),
+            },
         ]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -1072,12 +955,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name, age FROM users",
             query_type=QueryType.FEDERATED,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Should have warnings about schema misalignment
@@ -1088,18 +970,13 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         """Test validate_cross_source_compatibility with incompatible data types."""
         # Create asset with incompatible type
         asset4 = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset-4",
-            name="Test Asset 4",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset-4", name="Test Asset 4", status=AssetStatus.ACTIVE
         )
         from hub.apps.datasets.models import Dataset
         from hub.apps.files.models import File
+
         file4 = File.objects.create(
-            tenant=self.tenant,
-            name="test4.csv",
-            size=1000,
-            content_type="text/csv"
+            tenant=self.tenant, name="test4.csv", size=1000, content_type="text/csv"
         )
         dataset4 = Dataset.objects.create(
             tenant=self.tenant,
@@ -1109,11 +986,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "string"},  # Incompatible: integer vs string
                     {"name": "name", "type": "string"},
-                    {"name": "age", "type": "integer"}
+                    {"name": "age", "type": "integer"},
                 ]
             },
             format="CSV",
-            version=1
+            version=1,
         )
 
         sources = [
@@ -1121,14 +998,14 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb1",
-                "asset_id": str(self.asset1.id)
+                "asset_id": str(self.asset1.id),
             },
             {
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb4",
-                "asset_id": str(asset4.id)
-            }
+                "asset_id": str(asset4.id),
+            },
         ]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -1137,12 +1014,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name, age FROM users",
             query_type=QueryType.FEDERATED,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Should have warnings about type incompatibility
@@ -1154,17 +1030,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
     def test_validate_cross_source_compatibility_cross_tenant_access(self):
         """Test validate_cross_source_compatibility with cross-tenant sources."""
         # Create another tenant
-        other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
-        )
+        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
-            tenant=other_tenant,
-            key="other-asset",
-            name="Other Asset",
-            status=AssetStatus.ACTIVE
+            tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.ACTIVE
         )
 
         sources = [
@@ -1172,14 +1042,14 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb1",
-                "asset_id": str(self.asset1.id)
+                "asset_id": str(self.asset1.id),
             },
             {
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "otherdb",
-                "asset_id": str(other_asset.id)
-            }
+                "asset_id": str(other_asset.id),
+            },
         ]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -1188,52 +1058,54 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.FEDERATED,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Should fail due to cross-tenant access without entitlement
         self.assertFalse(result.is_valid)
-        self.assertTrue(any("entitlement" in error.lower() or "cross-tenant" in error.lower() for error in result.errors))
+        self.assertTrue(
+            any(
+                "entitlement" in error.lower() or "cross-tenant" in error.lower()
+                for error in result.errors
+            )
+        )
 
     def test_validate_cross_source_compatibility_with_entitlement(self):
         """Test validate_cross_source_compatibility with cross-tenant source and entitlement."""
         from hub.apps.tenants.models import KYCStatus
+
         # Create another tenant
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
-            tenant=other_tenant,
-            key="other-asset",
-            name="Other Asset",
-            status=AssetStatus.ACTIVE
+            tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.ACTIVE
         )
 
         # Create listing and entitlement
         from hub.apps.marketplace.models import (
-            Entitlement, EntitlementStatus, Listing, ListingStatus, PricingModel
+            Entitlement,
+            EntitlementStatus,
+            Listing,
+            ListingStatus,
+            PricingModel,
         )
+
         listing = Listing.objects.create(
             tenant=other_tenant,
             asset=other_asset,
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
-            metadata_json={"title": "Test Listing"}
+            metadata_json={"title": "Test Listing"},
         )
         entitlement = Entitlement.objects.create(
-            tenant=self.tenant,
-            listing=listing,
-            asset=other_asset,
-            status=EntitlementStatus.ACTIVE
+            tenant=self.tenant, listing=listing, asset=other_asset, status=EntitlementStatus.ACTIVE
         )
 
         sources = [
@@ -1241,14 +1113,14 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb1",
-                "asset_id": str(self.asset1.id)
+                "asset_id": str(self.asset1.id),
             },
             {
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "otherdb",
-                "asset_id": str(other_asset.id)
-            }
+                "asset_id": str(other_asset.id),
+            },
         ]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -1257,12 +1129,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.FEDERATED,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_source_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Should pass with valid entitlement
@@ -1273,17 +1144,11 @@ class CrossSourceCompatibilityValidationTest(TestCase):
     def test_validate_cross_source_compatibility_raises_exception(self):
         """Test validate_cross_source_compatibility raises exception when raise_on_error=True."""
         # Create another tenant
-        other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
-        )
+        other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
-            tenant=other_tenant,
-            key="other-asset",
-            name="Other Asset",
-            status=AssetStatus.ACTIVE
+            tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.ACTIVE
         )
 
         sources = [
@@ -1291,14 +1156,14 @@ class CrossSourceCompatibilityValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb1",
-                "asset_id": str(self.asset1.id)
+                "asset_id": str(self.asset1.id),
             },
             {
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "otherdb",
-                "asset_id": str(other_asset.id)
-            }
+                "asset_id": str(other_asset.id),
+            },
         ]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -1307,13 +1172,12 @@ class CrossSourceCompatibilityValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.FEDERATED,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         with self.assertRaises(ValidationError) as context:
             self.business_rules.validate_cross_source_compatibility(
-                virtual_dataset,
-                raise_on_error=True
+                virtual_dataset, raise_on_error=True
             )
 
         self.assertEqual(context.exception.code, "INVALID_CROSS_SOURCE_COMPATIBILITY")
@@ -1324,21 +1188,17 @@ class QueryExecutionBusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
 
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.business_rules = QueryExecutionBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create test virtual dataset
@@ -1348,7 +1208,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
             name="Test Virtual Dataset",
             query="SELECT id, name FROM users WHERE age > 18",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
     def test_initialization_without_parameters(self):
@@ -1367,9 +1227,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
         """Test SQL query optimization"""
         query = "SELECT   id,   name   FROM   users   WHERE   age > 18"
         result = self.business_rules.optimize_query(
-            query=query,
-            query_type=QueryType.SQL,
-            raise_on_error=False
+            query=query, query_type=QueryType.SQL, raise_on_error=False
         )
 
         self.assertIn("optimized_query", result)
@@ -1383,9 +1241,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
         """Test SQL query optimization with SELECT * warning"""
         query = "SELECT * FROM users"
         result = self.business_rules.optimize_query(
-            query=query,
-            query_type=QueryType.SQL,
-            raise_on_error=False
+            query=query, query_type=QueryType.SQL, raise_on_error=False
         )
 
         self.assertTrue(len(result["warnings"]) > 0)
@@ -1402,9 +1258,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
         }
         """
         result = self.business_rules.optimize_query(
-            query=query,
-            query_type=QueryType.SPARQL,
-            raise_on_error=False
+            query=query, query_type=QueryType.SPARQL, raise_on_error=False
         )
 
         self.assertIn("optimized_query", result)
@@ -1413,9 +1267,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
     def test_optimize_query_empty_query(self):
         """Test query optimization with empty query"""
         result = self.business_rules.optimize_query(
-            query="",
-            query_type=QueryType.SQL,
-            raise_on_error=False
+            query="", query_type=QueryType.SQL, raise_on_error=False
         )
 
         self.assertGreater(len(result["errors"]), 0)
@@ -1425,9 +1277,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
         """Test that optimize_query raises exception when raise_on_error=True"""
         with self.assertRaises(ValidationError):
             self.business_rules.optimize_query(
-                query="",
-                query_type=QueryType.SQL,
-                raise_on_error=True
+                query="", query_type=QueryType.SQL, raise_on_error=True
             )
 
     def test_select_execution_mode_sync_simple_query(self):
@@ -1440,12 +1290,11 @@ class QueryExecutionBusinessRulesTest(TestCase):
             query="SELECT id FROM users LIMIT 10",
             query_type=QueryType.SQL,
             sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         mode = self.business_rules.select_execution_mode(
-            virtual_dataset=virtual_dataset,
-            force_async=False
+            virtual_dataset=virtual_dataset, force_async=False
         )
 
         self.assertEqual(mode, QueryExecutionMode.SYNC)
@@ -1460,12 +1309,11 @@ class QueryExecutionBusinessRulesTest(TestCase):
             query="SELECT u.id, p.name FROM users u JOIN profiles p ON u.id = p.user_id WHERE u.age > 18",
             query_type=QueryType.SQL,
             sources=[{"type": "postgresql", "host": "localhost", "database": "testdb"}],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         mode = self.business_rules.select_execution_mode(
-            virtual_dataset=virtual_dataset,
-            force_async=False
+            virtual_dataset=virtual_dataset, force_async=False
         )
 
         self.assertEqual(mode, QueryExecutionMode.ASYNC)
@@ -1480,14 +1328,13 @@ class QueryExecutionBusinessRulesTest(TestCase):
             query_type=QueryType.SQL,
             sources=[
                 {"type": "postgresql", "host": "localhost", "database": "testdb1"},
-                {"type": "postgresql", "host": "localhost", "database": "testdb2"}
+                {"type": "postgresql", "host": "localhost", "database": "testdb2"},
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         mode = self.business_rules.select_execution_mode(
-            virtual_dataset=virtual_dataset,
-            force_async=False
+            virtual_dataset=virtual_dataset, force_async=False
         )
 
         self.assertEqual(mode, QueryExecutionMode.ASYNC)
@@ -1495,8 +1342,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
     def test_select_execution_mode_force_async(self):
         """Test execution mode selection with force_async=True"""
         mode = self.business_rules.select_execution_mode(
-            virtual_dataset=self.virtual_dataset,
-            force_async=True
+            virtual_dataset=self.virtual_dataset, force_async=True
         )
 
         self.assertEqual(mode, QueryExecutionMode.ASYNC)
@@ -1507,7 +1353,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
         mode = self.business_rules.select_execution_mode(
             virtual_dataset=self.virtual_dataset,
             estimated_result_size=large_size,
-            force_async=False
+            force_async=False,
         )
 
         self.assertEqual(mode, QueryExecutionMode.ASYNC)
@@ -1515,9 +1361,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
     def test_validate_timeout_success(self):
         """Test successful timeout validation"""
         result = self.business_rules.validate_timeout(
-            timeout_seconds=300,
-            execution_mode=QueryExecutionMode.SYNC,
-            raise_on_error=False
+            timeout_seconds=300, execution_mode=QueryExecutionMode.SYNC, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -1527,29 +1371,23 @@ class QueryExecutionBusinessRulesTest(TestCase):
     def test_validate_timeout_default_sync(self):
         """Test timeout validation with default for SYNC mode"""
         result = self.business_rules.validate_timeout(
-            timeout_seconds=None,
-            execution_mode=QueryExecutionMode.SYNC,
-            raise_on_error=False
+            timeout_seconds=None, execution_mode=QueryExecutionMode.SYNC, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
         self.assertEqual(
-            result.details["validated_timeout"],
-            QueryExecutionBusinessRules.DEFAULT_SYNC_TIMEOUT
+            result.details["validated_timeout"], QueryExecutionBusinessRules.DEFAULT_SYNC_TIMEOUT
         )
 
     def test_validate_timeout_default_async(self):
         """Test timeout validation with default for ASYNC mode"""
         result = self.business_rules.validate_timeout(
-            timeout_seconds=None,
-            execution_mode=QueryExecutionMode.ASYNC,
-            raise_on_error=False
+            timeout_seconds=None, execution_mode=QueryExecutionMode.ASYNC, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
         self.assertEqual(
-            result.details["validated_timeout"],
-            QueryExecutionBusinessRules.DEFAULT_ASYNC_TIMEOUT
+            result.details["validated_timeout"], QueryExecutionBusinessRules.DEFAULT_ASYNC_TIMEOUT
         )
 
     def test_validate_timeout_below_minimum(self):
@@ -1557,15 +1395,17 @@ class QueryExecutionBusinessRulesTest(TestCase):
         result = self.business_rules.validate_timeout(
             timeout_seconds=30,  # Below MIN_TIMEOUT_SECONDS
             execution_mode=QueryExecutionMode.SYNC,
-            raise_on_error=False
+            raise_on_error=False,
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        # Should be auto-corrected to minimum
+        self.assertTrue(
+            any("minimum" in e.lower() and "timeout" in e.lower() for e in result.errors),
+            f"Expected error about timeout/minimum, got: {result.errors}",
+        )
         self.assertEqual(
-            result.details["validated_timeout"],
-            QueryExecutionBusinessRules.MIN_TIMEOUT_SECONDS
+            result.details["validated_timeout"], QueryExecutionBusinessRules.MIN_TIMEOUT_SECONDS
         )
 
     def test_validate_timeout_above_maximum(self):
@@ -1573,15 +1413,17 @@ class QueryExecutionBusinessRulesTest(TestCase):
         result = self.business_rules.validate_timeout(
             timeout_seconds=10000,  # Above MAX_TIMEOUT_SECONDS
             execution_mode=QueryExecutionMode.SYNC,
-            raise_on_error=False
+            raise_on_error=False,
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        # Should be auto-corrected to maximum
+        self.assertTrue(
+            any("maximum" in e.lower() and "timeout" in e.lower() for e in result.errors),
+            f"Expected error about timeout/maximum, got: {result.errors}",
+        )
         self.assertEqual(
-            result.details["validated_timeout"],
-            QueryExecutionBusinessRules.MAX_TIMEOUT_SECONDS
+            result.details["validated_timeout"], QueryExecutionBusinessRules.MAX_TIMEOUT_SECONDS
         )
 
     def test_validate_timeout_high_sync_warning(self):
@@ -1589,7 +1431,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
         result = self.business_rules.validate_timeout(
             timeout_seconds=900,  # 15 minutes - high for SYNC
             execution_mode=QueryExecutionMode.SYNC,
-            raise_on_error=False
+            raise_on_error=False,
         )
 
         self.assertTrue(result.is_valid)
@@ -1602,7 +1444,7 @@ class QueryExecutionBusinessRulesTest(TestCase):
             self.business_rules.validate_timeout(
                 timeout_seconds=30,  # Below minimum
                 execution_mode=QueryExecutionMode.SYNC,
-                raise_on_error=True
+                raise_on_error=True,
             )
 
 
@@ -1611,21 +1453,17 @@ class ResultBusinessRulesTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
 
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.business_rules = ResultBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
     def test_initialization_without_parameters(self):
@@ -1643,9 +1481,7 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_result_caching_success(self):
         """Test successful result caching validation"""
         result = self.business_rules.validate_result_caching(
-            cache_enabled=True,
-            cache_ttl=3600,
-            raise_on_error=False
+            cache_enabled=True, cache_ttl=3600, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -1655,8 +1491,7 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_result_caching_disabled(self):
         """Test result caching validation with caching disabled"""
         result = self.business_rules.validate_result_caching(
-            cache_enabled=False,
-            raise_on_error=False
+            cache_enabled=False, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -1665,57 +1500,41 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_result_caching_default_ttl(self):
         """Test result caching validation with default TTL"""
         result = self.business_rules.validate_result_caching(
-            cache_enabled=True,
-            cache_ttl=None,
-            raise_on_error=False
+            cache_enabled=True, cache_ttl=None, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
         self.assertEqual(
-            result.details["validated_cache_ttl"],
-            ResultBusinessRules.DEFAULT_CACHE_TTL
+            result.details["validated_cache_ttl"], ResultBusinessRules.DEFAULT_CACHE_TTL
         )
 
     def test_validate_result_caching_below_minimum(self):
         """Test result caching validation with TTL below minimum"""
         result = self.business_rules.validate_result_caching(
-            cache_enabled=True,
-            cache_ttl=30,  # Below MIN_CACHE_TTL
-            raise_on_error=False
+            cache_enabled=True, cache_ttl=30, raise_on_error=False  # Below MIN_CACHE_TTL
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         # Should be auto-corrected to minimum
-        self.assertEqual(
-            result.details["validated_cache_ttl"],
-            ResultBusinessRules.MIN_CACHE_TTL
-        )
+        self.assertEqual(result.details["validated_cache_ttl"], ResultBusinessRules.MIN_CACHE_TTL)
 
     def test_validate_result_caching_above_maximum(self):
         """Test result caching validation with TTL above maximum"""
         result = self.business_rules.validate_result_caching(
-            cache_enabled=True,
-            cache_ttl=100000,  # Above MAX_CACHE_TTL
-            raise_on_error=False
+            cache_enabled=True, cache_ttl=100000, raise_on_error=False  # Above MAX_CACHE_TTL
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         # Should be auto-corrected to maximum
-        self.assertEqual(
-            result.details["validated_cache_ttl"],
-            ResultBusinessRules.MAX_CACHE_TTL
-        )
+        self.assertEqual(result.details["validated_cache_ttl"], ResultBusinessRules.MAX_CACHE_TTL)
 
     def test_validate_result_caching_large_result_warning(self):
         """Test result caching validation with large result size (should warn)"""
         large_size = 150 * 1024 * 1024  # 150MB
         result = self.business_rules.validate_result_caching(
-            cache_enabled=True,
-            cache_ttl=3600,
-            result_size=large_size,
-            raise_on_error=False
+            cache_enabled=True, cache_ttl=3600, result_size=large_size, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -1726,18 +1545,12 @@ class ResultBusinessRulesTest(TestCase):
         """Test that validate_result_caching raises exception when raise_on_error=True"""
         with self.assertRaises(ValidationError):
             self.business_rules.validate_result_caching(
-                cache_enabled=True,
-                cache_ttl=30,  # Below minimum
-                raise_on_error=True
+                cache_enabled=True, cache_ttl=30, raise_on_error=True  # Below minimum
             )
 
     def test_validate_pagination_page_based_success(self):
         """Test successful page-based pagination validation"""
-        result = self.business_rules.validate_pagination(
-            page=1,
-            page_size=50,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_pagination(page=1, page_size=50, raise_on_error=False)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -1746,11 +1559,7 @@ class ResultBusinessRulesTest(TestCase):
 
     def test_validate_pagination_offset_based_success(self):
         """Test successful offset-based pagination validation"""
-        result = self.business_rules.validate_pagination(
-            offset=0,
-            limit=50,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_pagination(offset=0, limit=50, raise_on_error=False)
 
         self.assertTrue(result.is_valid)
         self.assertEqual(len(result.errors), 0)
@@ -1759,11 +1568,7 @@ class ResultBusinessRulesTest(TestCase):
 
     def test_validate_pagination_mutually_exclusive_error(self):
         """Test pagination validation with both page and offset (should error)"""
-        result = self.business_rules.validate_pagination(
-            page=1,
-            offset=0,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_pagination(page=1, offset=0, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -1772,149 +1577,101 @@ class ResultBusinessRulesTest(TestCase):
     def test_validate_pagination_default_page_size(self):
         """Test pagination validation with default page_size"""
         result = self.business_rules.validate_pagination(
-            page=1,
-            page_size=None,
-            raise_on_error=False
+            page=1, page_size=None, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
         self.assertEqual(
-            result.details["validated_page_size"],
-            ResultBusinessRules.DEFAULT_PAGE_SIZE
+            result.details["validated_page_size"], ResultBusinessRules.DEFAULT_PAGE_SIZE
         )
 
     def test_validate_pagination_default_limit(self):
         """Test pagination validation with default limit"""
-        result = self.business_rules.validate_pagination(
-            offset=0,
-            limit=None,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_pagination(offset=0, limit=None, raise_on_error=False)
 
         self.assertTrue(result.is_valid)
-        self.assertEqual(
-            result.details["validated_limit"],
-            ResultBusinessRules.DEFAULT_LIMIT
-        )
+        self.assertEqual(result.details["validated_limit"], ResultBusinessRules.DEFAULT_LIMIT)
 
     def test_validate_pagination_page_below_minimum(self):
         """Test pagination validation with page below minimum"""
         result = self.business_rules.validate_pagination(
-            page=0,  # Below MIN_PAGE_NUMBER
-            page_size=50,
-            raise_on_error=False
+            page=0, page_size=50, raise_on_error=False  # Below MIN_PAGE_NUMBER
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         # Should be auto-corrected to minimum
-        self.assertEqual(
-            result.details["validated_page"],
-            ResultBusinessRules.MIN_PAGE_NUMBER
-        )
+        self.assertEqual(result.details["validated_page"], ResultBusinessRules.MIN_PAGE_NUMBER)
 
     def test_validate_pagination_page_size_below_minimum(self):
         """Test pagination validation with page_size below minimum"""
         result = self.business_rules.validate_pagination(
-            page=1,
-            page_size=0,  # Below MIN_PAGE_SIZE
-            raise_on_error=False
+            page=1, page_size=0, raise_on_error=False  # Below MIN_PAGE_SIZE
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         # Should be auto-corrected to minimum
-        self.assertEqual(
-            result.details["validated_page_size"],
-            ResultBusinessRules.MIN_PAGE_SIZE
-        )
+        self.assertEqual(result.details["validated_page_size"], ResultBusinessRules.MIN_PAGE_SIZE)
 
     def test_validate_pagination_page_size_above_maximum(self):
         """Test pagination validation with page_size above maximum"""
         result = self.business_rules.validate_pagination(
-            page=1,
-            page_size=2000,  # Above MAX_PAGE_SIZE
-            raise_on_error=False
+            page=1, page_size=2000, raise_on_error=False  # Above MAX_PAGE_SIZE
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         # Should be auto-corrected to maximum
-        self.assertEqual(
-            result.details["validated_page_size"],
-            ResultBusinessRules.MAX_PAGE_SIZE
-        )
+        self.assertEqual(result.details["validated_page_size"], ResultBusinessRules.MAX_PAGE_SIZE)
 
     def test_validate_pagination_offset_below_minimum(self):
         """Test pagination validation with offset below minimum"""
         result = self.business_rules.validate_pagination(
-            offset=-1,  # Below MIN_OFFSET
-            limit=50,
-            raise_on_error=False
+            offset=-1, limit=50, raise_on_error=False  # Below MIN_OFFSET
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         # Should be auto-corrected to minimum
-        self.assertEqual(
-            result.details["validated_offset"],
-            ResultBusinessRules.MIN_OFFSET
-        )
+        self.assertEqual(result.details["validated_offset"], ResultBusinessRules.MIN_OFFSET)
 
     def test_validate_pagination_limit_below_minimum(self):
         """Test pagination validation with limit below minimum"""
         result = self.business_rules.validate_pagination(
-            offset=0,
-            limit=0,  # Below MIN_LIMIT
-            raise_on_error=False
+            offset=0, limit=0, raise_on_error=False  # Below MIN_LIMIT
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         # Should be auto-corrected to minimum
-        self.assertEqual(
-            result.details["validated_limit"],
-            ResultBusinessRules.MIN_LIMIT
-        )
+        self.assertEqual(result.details["validated_limit"], ResultBusinessRules.MIN_LIMIT)
 
     def test_validate_pagination_limit_above_maximum(self):
         """Test pagination validation with limit above maximum"""
         result = self.business_rules.validate_pagination(
-            offset=0,
-            limit=2000,  # Above MAX_LIMIT
-            raise_on_error=False
+            offset=0, limit=2000, raise_on_error=False  # Above MAX_LIMIT
         )
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
         # Should be auto-corrected to maximum
-        self.assertEqual(
-            result.details["validated_limit"],
-            ResultBusinessRules.MAX_LIMIT
-        )
+        self.assertEqual(result.details["validated_limit"], ResultBusinessRules.MAX_LIMIT)
 
     def test_validate_pagination_no_pagination_default_limit(self):
         """Test pagination validation with no pagination specified (should apply default limit)"""
         result = self.business_rules.validate_pagination(
-            page=None,
-            offset=None,
-            limit=None,
-            raise_on_error=False
+            page=None, offset=None, limit=None, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
-        self.assertEqual(
-            result.details["validated_limit"],
-            ResultBusinessRules.DEFAULT_LIMIT
-        )
+        self.assertEqual(result.details["validated_limit"], ResultBusinessRules.DEFAULT_LIMIT)
 
     def test_validate_pagination_raises_on_error(self):
         """Test that validate_pagination raises exception when raise_on_error=True"""
         with self.assertRaises(ValidationError):
             self.business_rules.validate_pagination(
-                page=1,
-                offset=0,  # Mutually exclusive
-                raise_on_error=True
+                page=1, offset=0, raise_on_error=True  # Mutually exclusive
             )
 
 
@@ -1923,33 +1680,26 @@ class CrossTenantAccessValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
 
-        self.other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant"
-        )
+        self.other_tenant = Tenant.objects.create(name="Other Tenant", slug="other-tenant")
 
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.other_user = User.objects.create_user(
             email="other@example.com",
             password="testpass123",
             tenant=self.other_tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         self.business_rules = VirtualizationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create assets in both tenants
@@ -1957,22 +1707,29 @@ class CrossTenantAccessValidationTest(TestCase):
             tenant=self.tenant,
             key="same-tenant-asset",
             name="Same Tenant Asset",
-            status=AssetStatus.ACTIVE[0] if isinstance(AssetStatus.ACTIVE, tuple) else AssetStatus.ACTIVE
+            status=(
+                AssetStatus.ACTIVE[0]
+                if isinstance(AssetStatus.ACTIVE, tuple)
+                else AssetStatus.ACTIVE
+            ),
         )
 
         self.asset_other_tenant = Asset.objects.create(
             tenant=self.other_tenant,
             key="other-tenant-asset",
             name="Other Tenant Asset",
-            status=AssetStatus.ACTIVE[0] if isinstance(AssetStatus.ACTIVE, tuple) else AssetStatus.ACTIVE
+            status=(
+                AssetStatus.ACTIVE[0]
+                if isinstance(AssetStatus.ACTIVE, tuple)
+                else AssetStatus.ACTIVE
+            ),
         )
 
         # Add DATA_VIEWER role to user for query execution
         from hub.apps.users.models import Role, UserRole
+
         role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_VIEWER",
-            defaults={"description": "Data viewer role"}
+            tenant=self.tenant, name="DATA_VIEWER", defaults={"description": "Data viewer role"}
         )
         UserRole.objects.get_or_create(user=self.user, role=role)
 
@@ -1988,19 +1745,16 @@ class CrossTenantAccessValidationTest(TestCase):
                     "type": "postgresql",
                     "host": "localhost",
                     "database": "testdb",
-                    "asset_id": str(self.asset_same_tenant.id)
+                    "asset_id": str(self.asset_same_tenant.id),
                 }
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
     def test_validate_cross_tenant_access_missing_tenant_id(self):
         """Test cross-tenant access validation without tenant_id"""
         rules = VirtualizationBusinessRules(user_id=str(self.user.id))
-        result = rules.validate_cross_tenant_access(
-            self.virtual_dataset,
-            raise_on_error=False
-        )
+        result = rules.validate_cross_tenant_access(self.virtual_dataset, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(any("tenant_id is required" in error for error in result.errors))
@@ -2008,10 +1762,7 @@ class CrossTenantAccessValidationTest(TestCase):
     def test_validate_cross_tenant_access_missing_user_id(self):
         """Test cross-tenant access validation without user_id"""
         rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
-        result = rules.validate_cross_tenant_access(
-            self.virtual_dataset,
-            raise_on_error=False
-        )
+        result = rules.validate_cross_tenant_access(self.virtual_dataset, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(any("user_id is required" in error for error in result.errors))
@@ -2025,12 +1776,11 @@ class CrossTenantAccessValidationTest(TestCase):
             query="SELECT ?name WHERE { ?person foaf:name ?name . }",
             query_type=QueryType.SPARQL,
             sources=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_tenant_access(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2039,8 +1789,7 @@ class CrossTenantAccessValidationTest(TestCase):
     def test_validate_cross_tenant_access_same_tenant_source(self):
         """Test cross-tenant access validation with same-tenant source"""
         result = self.business_rules.validate_cross_tenant_access(
-            self.virtual_dataset,
-            raise_on_error=False
+            self.virtual_dataset, raise_on_error=False
         )
 
         # Should pass - same tenant source
@@ -2060,15 +1809,14 @@ class CrossTenantAccessValidationTest(TestCase):
                     "type": "postgresql",
                     "host": "localhost",
                     "database": "otherdb",
-                    "asset_id": str(self.asset_other_tenant.id)
+                    "asset_id": str(self.asset_other_tenant.id),
                 }
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_tenant_access(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Should fail - cross-tenant source without permission
@@ -2079,8 +1827,7 @@ class CrossTenantAccessValidationTest(TestCase):
     def test_validate_cross_tenant_access_query_execution_authorization(self):
         """Test query execution authorization check"""
         result = self.business_rules.validate_cross_tenant_access(
-            self.virtual_dataset,
-            raise_on_error=False
+            self.virtual_dataset, raise_on_error=False
         )
 
         self.assertIn("query_execution_authorized", result.details["cross_tenant_access_checks"])
@@ -2091,13 +1838,14 @@ class CrossTenantAccessValidationTest(TestCase):
     def test_validate_cross_tenant_access_result_filtering_same_tenant(self):
         """Test result data filtering validation with same-tenant sources"""
         result = self.business_rules.validate_cross_tenant_access(
-            self.virtual_dataset,
-            raise_on_error=False
+            self.virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
         filtering_details = result.details["cross_tenant_access_checks"]["result_filtering_details"]
-        self.assertTrue(filtering_details["tenant_isolation_checks"].get("all_sources_same_tenant", False))
+        self.assertTrue(
+            filtering_details["tenant_isolation_checks"].get("all_sources_same_tenant", False)
+        )
 
     def test_validate_cross_tenant_access_result_filtering_cross_tenant(self):
         """Test result data filtering validation with cross-tenant sources"""
@@ -2110,7 +1858,11 @@ class CrossTenantAccessValidationTest(TestCase):
 
         # Create entitlement for cross-tenant access
         from hub.apps.marketplace.models import (
-            Entitlement, EntitlementStatus, Listing, ListingStatus, PricingModel
+            Entitlement,
+            EntitlementStatus,
+            Listing,
+            ListingStatus,
+            PricingModel,
         )
         from hub.apps.tenants.models import KYCStatus
 
@@ -2122,13 +1874,13 @@ class CrossTenantAccessValidationTest(TestCase):
             asset=self.asset_other_tenant,
             status=ListingStatus.PUBLISHED,
             pricing_model=PricingModel.FREE,
-            metadata_json={"title": "Test Listing"}
+            metadata_json={"title": "Test Listing"},
         )
         entitlement = Entitlement.objects.create(
             tenant=self.tenant,
             listing=listing,
             asset=self.asset_other_tenant,
-            status=EntitlementStatus.ACTIVE
+            status=EntitlementStatus.ACTIVE,
         )
 
         virtual_dataset = VirtualDataset.objects.create(
@@ -2142,15 +1894,14 @@ class CrossTenantAccessValidationTest(TestCase):
                     "type": "postgresql",
                     "host": "localhost",
                     "database": "otherdb",
-                    "asset_id": str(self.asset_other_tenant.id)
+                    "asset_id": str(self.asset_other_tenant.id),
                 }
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_tenant_access(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Should validate result filtering
@@ -2162,18 +1913,14 @@ class CrossTenantAccessValidationTest(TestCase):
         """Test that validate_cross_tenant_access raises exception when raise_on_error=True"""
         rules = VirtualizationBusinessRules(user_id=str(self.user.id))
         with self.assertRaises(ValidationError) as context:
-            rules.validate_cross_tenant_access(
-                self.virtual_dataset,
-                raise_on_error=True
-            )
+            rules.validate_cross_tenant_access(self.virtual_dataset, raise_on_error=True)
 
         self.assertEqual(context.exception.code, "MISSING_TENANT_ID")
 
     def test_validate_cross_tenant_access_with_governance_service_integration(self):
         """Test integration with GovernanceService for access checks"""
         result = self.business_rules.validate_cross_tenant_access(
-            self.virtual_dataset,
-            raise_on_error=False
+            self.virtual_dataset, raise_on_error=False
         )
 
         # Should have source access checks
@@ -2197,21 +1944,22 @@ class CrossTenantAccessValidationTest(TestCase):
                     "type": "postgresql",
                     "host": "localhost",
                     "database": "testdb",
-                    "asset_id": str(self.asset_same_tenant.id)
+                    "asset_id": str(self.asset_same_tenant.id),
                 }
             ],
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_cross_tenant_access(
-            wrong_tenant_dataset,
-            raise_on_error=False
+            wrong_tenant_dataset, raise_on_error=False
         )
 
         # Validation should run successfully
         self.assertIn("cross_tenant_access_checks", result.details)
         # Check that result filtering details are present (when sources exist)
-        filtering_details = result.details["cross_tenant_access_checks"].get("result_filtering_details", {})
+        filtering_details = result.details["cross_tenant_access_checks"].get(
+            "result_filtering_details", {}
+        )
         if filtering_details:
             # If filtering details exist, check tenant isolation checks
             self.assertIn("tenant_isolation_checks", filtering_details)
@@ -2226,24 +1974,18 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
 
         # Create test asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE
         )
 
     def test_validate_source_configuration_valid_sources(self):
@@ -2253,7 +1995,7 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
                 "type": "postgresql",
                 "host": "localhost",
                 "database": "testdb",
-                "asset_id": str(self.asset.id)
+                "asset_id": str(self.asset.id),
             }
         ]
         virtual_dataset = VirtualDataset.objects.create(
@@ -2263,12 +2005,11 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_configuration(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2276,12 +2017,7 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
 
     def test_validate_source_configuration_unsupported_source_type(self):
         """Test validate_source_configuration with unsupported source type."""
-        sources = [
-            {
-                "type": "unsupported_type",
-                "host": "localhost"
-            }
-        ]
+        sources = [{"type": "unsupported_type", "host": "localhost"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -2289,12 +2025,11 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_configuration(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -2302,13 +2037,7 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
 
     def test_validate_source_configuration_invalid_host_format(self):
         """Test validate_source_configuration with invalid host format."""
-        sources = [
-            {
-                "type": "postgresql",
-                "host": "invalid..host..name",
-                "database": "testdb"
-            }
-        ]
+        sources = [{"type": "postgresql", "host": "invalid..host..name", "database": "testdb"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -2316,12 +2045,11 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_configuration(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Should have warnings about invalid host format
@@ -2329,12 +2057,7 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
 
     def test_validate_source_configuration_invalid_url_format(self):
         """Test validate_source_configuration with invalid URL format."""
-        sources = [
-            {
-                "type": "rest",
-                "url": "not-a-valid-url"
-            }
-        ]
+        sources = [{"type": "rest", "url": "not-a-valid-url"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -2342,12 +2065,11 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
             query='{"method": "GET"}',
             query_type=QueryType.REST,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_configuration(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -2355,12 +2077,7 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
 
     def test_validate_source_configuration_invalid_bucket_name(self):
         """Test validate_source_configuration with invalid S3 bucket name."""
-        sources = [
-            {
-                "type": "s3",
-                "bucket": "Invalid.Bucket.Name"  # Invalid bucket name
-            }
-        ]
+        sources = [{"type": "s3", "bucket": "Invalid.Bucket.Name"}]  # Invalid bucket name
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -2368,12 +2085,11 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
             query="SELECT * FROM s3://bucket/file",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_configuration(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -2381,11 +2097,7 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
 
     def test_validate_source_configuration_raises_exception(self):
         """Test validate_source_configuration raises exception when raise_on_error=True."""
-        sources = [
-            {
-                "type": "unsupported_type"
-            }
-        ]
+        sources = [{"type": "unsupported_type"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -2393,14 +2105,11 @@ class VirtualDatasetSourceConfigurationValidationTest(TestCase):
             query="SELECT id FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         with self.assertRaises(ValidationError) as context:
-            self.business_rules.validate_source_configuration(
-                virtual_dataset,
-                raise_on_error=True
-            )
+            self.business_rules.validate_source_configuration(virtual_dataset, raise_on_error=True)
 
         self.assertEqual(context.exception.code, "INVALID_SOURCE_CONFIGURATION")
 
@@ -2410,15 +2119,12 @@ class VirtualDatasetQueryMappingValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
 
@@ -2430,13 +2136,10 @@ class VirtualDatasetQueryMappingValidationTest(TestCase):
             name="Test Dataset",
             query="SELECT id, name FROM users WHERE age > 18",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
-        result = self.business_rules.validate_query_mapping(
-            virtual_dataset,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_query_mapping(virtual_dataset, raise_on_error=False)
 
         self.assertTrue(result.is_valid)
         self.assertIn("query_mapping_checks", result.details)
@@ -2450,16 +2153,13 @@ class VirtualDatasetQueryMappingValidationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         # Update to empty query bypassing model validation
         VirtualDataset.objects.filter(id=virtual_dataset.id).update(query="")
         virtual_dataset.refresh_from_db()
 
-        result = self.business_rules.validate_query_mapping(
-            virtual_dataset,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_query_mapping(virtual_dataset, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(any("empty" in error.lower() for error in result.errors))
@@ -2473,16 +2173,13 @@ class VirtualDatasetQueryMappingValidationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         # Update to invalid query type bypassing model validation
         VirtualDataset.objects.filter(id=virtual_dataset.id).update(query_type="INVALID_TYPE")
         virtual_dataset.refresh_from_db()
 
-        result = self.business_rules.validate_query_mapping(
-            virtual_dataset,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_query_mapping(virtual_dataset, raise_on_error=False)
 
         self.assertFalse(result.is_valid)
         self.assertTrue(any("not supported" in error.lower() for error in result.errors))
@@ -2503,13 +2200,10 @@ class VirtualDatasetQueryMappingValidationTest(TestCase):
             name="Test Dataset",
             query=query,
             query_type=QueryType.SPARQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
-        result = self.business_rules.validate_query_mapping(
-            virtual_dataset,
-            raise_on_error=False
-        )
+        result = self.business_rules.validate_query_mapping(virtual_dataset, raise_on_error=False)
 
         self.assertTrue(result.is_valid)
         checks = result.details.get("query_mapping_checks", {})
@@ -2524,17 +2218,14 @@ class VirtualDatasetQueryMappingValidationTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
         # Update to empty query bypassing model validation
         VirtualDataset.objects.filter(id=virtual_dataset.id).update(query="")
         virtual_dataset.refresh_from_db()
 
         with self.assertRaises(ValidationError) as context:
-            self.business_rules.validate_query_mapping(
-                virtual_dataset,
-                raise_on_error=True
-            )
+            self.business_rules.validate_query_mapping(virtual_dataset, raise_on_error=True)
 
         self.assertEqual(context.exception.code, "INVALID_QUERY_MAPPING")
 
@@ -2544,19 +2235,15 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         self.virtual_dataset = VirtualDataset.objects.create(
@@ -2565,20 +2252,15 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
             name="Test Dataset",
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
     def test_validate_caching_configuration_valid_config(self):
         """Test validate_caching_configuration with valid cache config."""
-        cache_config = {
-            "enabled": True,
-            "ttl": 3600
-        }
+        cache_config = {"enabled": True, "ttl": 3600}
 
         result = self.business_rules.validate_caching_configuration(
-            self.virtual_dataset,
-            cache_config=cache_config,
-            raise_on_error=False
+            self.virtual_dataset, cache_config=cache_config, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2586,14 +2268,10 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
 
     def test_validate_caching_configuration_disabled(self):
         """Test validate_caching_configuration with caching disabled."""
-        cache_config = {
-            "enabled": False
-        }
+        cache_config = {"enabled": False}
 
         result = self.business_rules.validate_caching_configuration(
-            self.virtual_dataset,
-            cache_config=cache_config,
-            raise_on_error=False
+            self.virtual_dataset, cache_config=cache_config, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2602,15 +2280,10 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
 
     def test_validate_caching_configuration_invalid_ttl(self):
         """Test validate_caching_configuration with invalid TTL."""
-        cache_config = {
-            "enabled": True,
-            "ttl": 30  # Below minimum
-        }
+        cache_config = {"enabled": True, "ttl": 30}  # Below minimum
 
         result = self.business_rules.validate_caching_configuration(
-            self.virtual_dataset,
-            cache_config=cache_config,
-            raise_on_error=False
+            self.virtual_dataset, cache_config=cache_config, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -2618,16 +2291,10 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
 
     def test_validate_caching_configuration_valid_key_prefix(self):
         """Test validate_caching_configuration with valid cache key prefix."""
-        cache_config = {
-            "enabled": True,
-            "ttl": 3600,
-            "key_prefix": "virtual_query"
-        }
+        cache_config = {"enabled": True, "ttl": 3600, "key_prefix": "virtual_query"}
 
         result = self.business_rules.validate_caching_configuration(
-            self.virtual_dataset,
-            cache_config=cache_config,
-            raise_on_error=False
+            self.virtual_dataset, cache_config=cache_config, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2639,13 +2306,11 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
         cache_config = {
             "enabled": True,
             "ttl": 3600,
-            "key_prefix": "invalid prefix with spaces"  # Invalid characters
+            "key_prefix": "invalid prefix with spaces",  # Invalid characters
         }
 
         result = self.business_rules.validate_caching_configuration(
-            self.virtual_dataset,
-            cache_config=cache_config,
-            raise_on_error=False
+            self.virtual_dataset, cache_config=cache_config, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -2656,13 +2321,11 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
         cache_config = {
             "enabled": True,
             "ttl": 3600,
-            "key": f"virtual_query:{self.virtual_dataset.id}:abc123:def456"
+            "key": f"virtual_query:{self.virtual_dataset.id}:abc123:def456",
         }
 
         result = self.business_rules.validate_caching_configuration(
-            self.virtual_dataset,
-            cache_config=cache_config,
-            raise_on_error=False
+            self.virtual_dataset, cache_config=cache_config, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2671,16 +2334,10 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
 
     def test_validate_caching_configuration_invalid_cache_key(self):
         """Test validate_caching_configuration with invalid cache key."""
-        cache_config = {
-            "enabled": True,
-            "ttl": 3600,
-            "key": "a" * 300  # Exceeds max length
-        }
+        cache_config = {"enabled": True, "ttl": 3600, "key": "a" * 300}  # Exceeds max length
 
         result = self.business_rules.validate_caching_configuration(
-            self.virtual_dataset,
-            cache_config=cache_config,
-            raise_on_error=False
+            self.virtual_dataset, cache_config=cache_config, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -2688,15 +2345,10 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
 
     def test_validate_caching_configuration_generated_key(self):
         """Test validate_caching_configuration with generated cache key."""
-        cache_config = {
-            "enabled": True,
-            "ttl": 3600
-        }
+        cache_config = {"enabled": True, "ttl": 3600}
 
         result = self.business_rules.validate_caching_configuration(
-            self.virtual_dataset,
-            cache_config=cache_config,
-            raise_on_error=False
+            self.virtual_dataset, cache_config=cache_config, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2705,16 +2357,11 @@ class VirtualDatasetCachingConfigurationValidationTest(TestCase):
 
     def test_validate_caching_configuration_raises_exception(self):
         """Test validate_caching_configuration raises exception when raise_on_error=True."""
-        cache_config = {
-            "enabled": True,
-            "ttl": 30  # Below minimum
-        }
+        cache_config = {"enabled": True, "ttl": 30}  # Below minimum
 
         with self.assertRaises(ValidationError) as context:
             self.business_rules.validate_caching_configuration(
-                self.virtual_dataset,
-                cache_config=cache_config,
-                raise_on_error=True
+                self.virtual_dataset, cache_config=cache_config, raise_on_error=True
             )
 
         self.assertEqual(context.exception.code, "INVALID_CACHING_CONFIGURATION")
@@ -2725,26 +2372,18 @@ class VirtualDatasetSchemaValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(tenant_id=str(self.tenant.id))
 
     def test_validate_virtual_dataset_schema_valid_schema(self):
         """Test validate_virtual_dataset_schema with valid schema."""
-        schema = {
-            "fields": [
-                {"name": "id", "type": "integer"},
-                {"name": "name", "type": "string"}
-            ]
-        }
+        schema = {"fields": [{"name": "id", "type": "integer"}, {"name": "name", "type": "string"}]}
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -2752,12 +2391,11 @@ class VirtualDatasetSchemaValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema=schema,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_virtual_dataset_schema(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2772,12 +2410,11 @@ class VirtualDatasetSchemaValidationTest(TestCase):
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
             schema=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_virtual_dataset_schema(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         # Schema is optional, so validation should pass with warning
@@ -2790,19 +2427,15 @@ class QueryLanguageCompatibilityTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
     def test_validate_query_language_compatibility_no_sources(self):
@@ -2814,12 +2447,11 @@ class QueryLanguageCompatibilityTest(TestCase):
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
             sources=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_query_language_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2828,16 +2460,8 @@ class QueryLanguageCompatibilityTest(TestCase):
     def test_validate_query_language_compatibility_sql_with_sql_sources(self):
         """Test SQL query with SQL-compatible sources."""
         sources = [
-            {
-                "type": "postgresql",
-                "host": "localhost",
-                "database": "testdb"
-            },
-            {
-                "type": "mysql",
-                "host": "localhost",
-                "database": "testdb"
-            }
+            {"type": "postgresql", "host": "localhost", "database": "testdb"},
+            {"type": "mysql", "host": "localhost", "database": "testdb"},
         ]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -2846,12 +2470,11 @@ class QueryLanguageCompatibilityTest(TestCase):
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_query_language_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2862,12 +2485,7 @@ class QueryLanguageCompatibilityTest(TestCase):
 
     def test_validate_query_language_compatibility_sql_with_incompatible_source(self):
         """Test SQL query with incompatible source type."""
-        sources = [
-            {
-                "type": "sparql",
-                "endpoint": "http://example.com/sparql"
-            }
-        ]
+        sources = [{"type": "sparql", "endpoint": "http://example.com/sparql"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -2875,12 +2493,11 @@ class QueryLanguageCompatibilityTest(TestCase):
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_query_language_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -2890,15 +2507,8 @@ class QueryLanguageCompatibilityTest(TestCase):
     def test_validate_query_language_compatibility_federated_mixed_languages(self):
         """Test federated query with mixed SQL and SPARQL sources."""
         sources = [
-            {
-                "type": "postgresql",
-                "host": "localhost",
-                "database": "testdb"
-            },
-            {
-                "type": "sparql",
-                "endpoint": "http://example.com/sparql"
-            }
+            {"type": "postgresql", "host": "localhost", "database": "testdb"},
+            {"type": "sparql", "endpoint": "http://example.com/sparql"},
         ]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
@@ -2907,12 +2517,11 @@ class QueryLanguageCompatibilityTest(TestCase):
             query="FEDERATED QUERY",
             query_type=QueryType.FEDERATED,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_query_language_compatibility(
-            virtual_dataset,
-            raise_on_error=False
+            virtual_dataset, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)  # Federated queries allow mixed languages
@@ -2935,19 +2544,15 @@ class SourceConnectionValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.business_rules = VirtualizationBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
     def test_validate_source_connections_no_sources(self):
@@ -2959,13 +2564,11 @@ class SourceConnectionValidationTest(TestCase):
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
             sources=None,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_connections(
-            virtual_dataset,
-            test_connectivity=True,
-            raise_on_error=False
+            virtual_dataset, test_connectivity=True, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -2973,13 +2576,7 @@ class SourceConnectionValidationTest(TestCase):
 
     def test_validate_source_connections_test_disabled(self):
         """Test source connection validation with connectivity testing disabled."""
-        sources = [
-            {
-                "type": "postgresql",
-                "host": "localhost",
-                "database": "testdb"
-            }
-        ]
+        sources = [{"type": "postgresql", "host": "localhost", "database": "testdb"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -2987,13 +2584,11 @@ class SourceConnectionValidationTest(TestCase):
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_connections(
-            virtual_dataset,
-            test_connectivity=False,
-            raise_on_error=False
+            virtual_dataset, test_connectivity=False, raise_on_error=False
         )
 
         self.assertTrue(result.is_valid)
@@ -3015,13 +2610,11 @@ class SourceConnectionValidationTest(TestCase):
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_connections(
-            virtual_dataset,
-            test_connectivity=True,
-            raise_on_error=False
+            virtual_dataset, test_connectivity=True, raise_on_error=False
         )
 
         self.assertFalse(result.is_valid)
@@ -3029,13 +2622,7 @@ class SourceConnectionValidationTest(TestCase):
 
     def test_validate_source_connections_valid_config(self):
         """Test source connection validation with valid configuration."""
-        sources = [
-            {
-                "type": "postgresql",
-                "host": "localhost",
-                "database": "testdb"
-            }
-        ]
+        sources = [{"type": "postgresql", "host": "localhost", "database": "testdb"}]
         virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -3043,13 +2630,11 @@ class SourceConnectionValidationTest(TestCase):
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
             sources=sources,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         result = self.business_rules.validate_source_connections(
-            virtual_dataset,
-            test_connectivity=True,
-            raise_on_error=False
+            virtual_dataset, test_connectivity=True, raise_on_error=False
         )
 
         # Connection test may fail if database is not accessible, but config should be valid
@@ -3061,25 +2646,12 @@ class SourceConnectionValidationTest(TestCase):
     def test_map_source_type_to_connector_type(self):
         """Test _map_source_type_to_connector_type mapping."""
         self.assertEqual(
-            self.business_rules._map_source_type_to_connector_type("postgresql"),
-            "DATABASE"
+            self.business_rules._map_source_type_to_connector_type("postgresql"), "DATABASE"
         )
         self.assertEqual(
-            self.business_rules._map_source_type_to_connector_type("mysql"),
-            "DATABASE"
+            self.business_rules._map_source_type_to_connector_type("mysql"), "DATABASE"
         )
-        self.assertEqual(
-            self.business_rules._map_source_type_to_connector_type("rest"),
-            "HTTP"
-        )
-        self.assertEqual(
-            self.business_rules._map_source_type_to_connector_type("s3"),
-            "S3"
-        )
-        self.assertIsNone(
-            self.business_rules._map_source_type_to_connector_type("sparql")
-        )
-        self.assertIsNone(
-            self.business_rules._map_source_type_to_connector_type("graphql")
-        )
-
+        self.assertEqual(self.business_rules._map_source_type_to_connector_type("rest"), "HTTP")
+        self.assertEqual(self.business_rules._map_source_type_to_connector_type("s3"), "S3")
+        self.assertIsNone(self.business_rules._map_source_type_to_connector_type("sparql"))
+        self.assertIsNone(self.business_rules._map_source_type_to_connector_type("graphql"))

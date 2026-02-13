@@ -8,16 +8,15 @@ Tests verify:
 - Error handling with context
 - File path and line number in error messages
 """
+
 import json
 import tempfile
-import yaml
 from pathlib import Path
+
+import yaml
 from django.test import TestCase
 
-from hub.apps.contracts.odps_parser import (
-    ODPSParser,
-    ODPSValidationError
-)
+from hub.apps.contracts.odps_parser import ODPSParser, ODPSValidationError
 
 
 class ODPSParserYAMLTest(TestCase):
@@ -133,18 +132,15 @@ class ODPSParserJSONTest(TestCase):
 
     def test_parse_valid_json(self):
         """Test parsing valid JSON ODPS document"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-product", "name": "Test Product"}}
+                },
             }
-        })
+        )
 
         result = ODPSParser.parse(json_content, format="json")
 
@@ -155,10 +151,9 @@ class ODPSParserJSONTest(TestCase):
 
     def test_parse_json_with_file_path(self):
         """Test JSON parsing with file path context"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1"
-        })
+        json_content = json.dumps(
+            {"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1"}
+        )
 
         result = ODPSParser.parse(json_content, file_path="/path/to/file.json", format="json")
 
@@ -167,7 +162,9 @@ class ODPSParserJSONTest(TestCase):
 
     def test_parse_json_error_invalid_syntax(self):
         """Test JSON parsing error handling for invalid syntax"""
-        invalid_json = '{"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1", invalid}'
+        invalid_json = (
+            '{"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1", invalid}'
+        )
 
         with self.assertRaises(ODPSValidationError) as cm:
             ODPSParser.parse(invalid_json, format="json")
@@ -269,10 +266,9 @@ product:
 
     def test_parse_with_auto_detection_json(self):
         """Test parsing with automatic format detection (JSON)"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1"
-        })
+        json_content = json.dumps(
+            {"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1"}
+        )
 
         result = ODPSParser.parse(json_content)
 
@@ -310,19 +306,15 @@ class ODPSParserFileTest(TestCase):
 
     def test_parse_file_json(self):
         """Test parsing ODPS from JSON file"""
-        json_content = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product"
-                    }
-                }
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {"details": {"en": {"productID": "test-product"}}},
             }
-        })
+        )
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write(json_content)
             f.flush()
             temp_path = f.name
@@ -332,7 +324,11 @@ class ODPSParserFileTest(TestCase):
 
             self.assertIsInstance(result, dict)
             self.assertEqual(result["version"], "4.1")
-            self.assertEqual(result["file_path"], temp_path) if hasattr(result, "file_path") else None
+            (
+                self.assertEqual(result["file_path"], temp_path)
+                if hasattr(result, "file_path")
+                else None
+            )
         finally:
             Path(temp_path).unlink()
 
@@ -347,7 +343,7 @@ product:
       productID: "test-product"
 """
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             f.flush()
             temp_path = f.name
@@ -369,7 +365,7 @@ product:
         """Test parsing error for file with invalid content"""
         invalid_content = '{"schema": "https://opendataproducts.org/schema/v4.1", invalid}'
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write(invalid_content)
             f.flush()
             temp_path = f.name
@@ -388,8 +384,8 @@ product:
     def test_parse_file_encoding_error(self):
         """Test parsing error for file with encoding issues"""
         # Create a file with binary content that can't be decoded as UTF-8
-        with tempfile.NamedTemporaryFile(mode='wb', suffix='.bin', delete=False) as f:
-            f.write(b'\xff\xfe\x00\x01')  # Invalid UTF-8 sequence
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".bin", delete=False) as f:
+            f.write(b"\xff\xfe\x00\x01")  # Invalid UTF-8 sequence
             f.flush()
             temp_path = f.name
 
@@ -477,3 +473,242 @@ product:
         self.assertIn("File:", error_str)
         self.assertIn("/test.json", error_str)
 
+    # Edge cases and error handling tests
+    def test_parse_yaml_with_special_characters(self):
+        """Test YAML parsing with special characters (single-quoted YAML: '' escapes quote)."""
+        # In YAML single-quoted strings, '' is the escape for a single quote
+        yaml_content = """
+schema: https://opendataproducts.org/schema/v4.1
+version: "4.1"
+product:
+  details:
+    en:
+      name: 'Product <>&"'''
+      description: 'Desc <>&"'''
+"""
+        result = ODPSParser.parse(yaml_content, format="yaml")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["product"]["details"]["en"]["name"], 'Product <>&"\'')
+
+    def test_parse_yaml_with_unicode(self):
+        """Test YAML parsing with unicode characters."""
+        yaml_content = """
+schema: https://opendataproducts.org/schema/v4.1
+version: "4.1"
+product:
+  details:
+    en:
+      name: "产品名称"
+      description: "Descripción"
+"""
+        result = ODPSParser.parse(yaml_content, format="yaml")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["product"]["details"]["en"]["name"], "产品名称")
+
+    def test_parse_yaml_with_very_long_content(self):
+        """Test YAML parsing with very long content."""
+        long_description = "A" * 100000
+        yaml_content = f"""
+schema: https://opendataproducts.org/schema/v4.1
+version: "4.1"
+product:
+  details:
+    en:
+      name: "Long Product"
+      description: "{long_description}"
+"""
+        result = ODPSParser.parse(yaml_content, format="yaml")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(len(result["product"]["details"]["en"]["description"]), 100000)
+
+    def test_parse_yaml_with_none_input(self):
+        """Test YAML parsing with None input."""
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.parse(None, format="yaml")
+
+    def test_parse_yaml_with_whitespace_only(self):
+        """Test YAML parsing with whitespace-only content."""
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.parse("   \n\t  ", format="yaml")
+
+    def test_parse_json_with_special_characters(self):
+        """Test JSON parsing with special characters."""
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {"details": {"en": {"name": "Product <>&\"'"}}},
+            }
+        )
+        result = ODPSParser.parse(json_content, format="json")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["product"]["details"]["en"]["name"], "Product <>&\"'")
+
+    def test_parse_json_with_unicode(self):
+        """Test JSON parsing with unicode characters."""
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {"details": {"en": {"name": "产品名称"}}},
+            }
+        )
+        result = ODPSParser.parse(json_content, format="json")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["product"]["details"]["en"]["name"], "产品名称")
+
+    def test_parse_json_with_none_input(self):
+        """Test JSON parsing with None input."""
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.parse(None, format="json")
+
+    def test_parse_json_with_whitespace_only(self):
+        """Test JSON parsing with whitespace-only content."""
+        with self.assertRaises(ODPSValidationError):
+            ODPSParser.parse("   \n\t  ", format="json")
+
+    def test_detect_format_with_none_input(self):
+        """Test format detection with None input."""
+        detected = ODPSParser.detect_format(None)
+        # May return None or default format
+        self.assertIsNotNone(detected)
+
+    def test_detect_format_with_empty_string(self):
+        """Test format detection with empty string."""
+        detected = ODPSParser.detect_format("")
+        # May return None or default format
+        self.assertIsNotNone(detected)
+
+    def test_detect_format_with_whitespace_only(self):
+        """Test format detection with whitespace-only content."""
+        detected = ODPSParser.detect_format("   \n\t  ")
+        # May return None or default format
+        self.assertIsNotNone(detected)
+
+    def test_parse_file_with_nonexistent_path(self):
+        """Test parsing file with nonexistent path."""
+        with self.assertRaises(FileNotFoundError):
+            ODPSParser.parse_file("/nonexistent/path/file.yaml")
+
+    def test_parse_file_with_empty_file(self):
+        """Test parsing empty file."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("")
+            temp_path = f.name
+
+        try:
+            with self.assertRaises(ODPSValidationError):
+                ODPSParser.parse_file(temp_path)
+        finally:
+            Path(temp_path).unlink()
+
+    def test_parse_file_with_very_long_path(self):
+        """Test parsing file with very long path."""
+        long_path = "/" + "a" * 1000 + "/file.json"
+        with self.assertRaises((FileNotFoundError, OSError)):
+            ODPSParser.parse_file(long_path)
+
+    def test_parse_file_with_special_characters_in_path(self):
+        """Test parsing file with special characters in path."""
+        # Create file with special characters in name
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, prefix='test-<>&"'
+        ) as f:
+            json_content = json.dumps({"schema": "https://opendataproducts.org/schema/v4.1"})
+            f.write(json_content)
+            temp_path = f.name
+
+        try:
+            result = ODPSParser.parse_file(temp_path)
+            self.assertIsInstance(result, dict)
+        finally:
+            Path(temp_path).unlink()
+
+    def test_parse_with_invalid_format(self):
+        """Test parsing with invalid format parameter."""
+        content = '{"schema": "https://opendataproducts.org/schema/v4.1"}'
+        with self.assertRaises((ODPSValidationError, ValueError)):
+            ODPSParser.parse(content, format="invalid_format")
+
+    def test_parse_with_none_format(self):
+        """Test parsing with None format (should auto-detect)."""
+        json_content = json.dumps({"schema": "https://opendataproducts.org/schema/v4.1"})
+        result = ODPSParser.parse(json_content, format=None)
+        self.assertIsInstance(result, dict)
+
+    def test_error_context_with_none_file_path(self):
+        """Test error context when file_path is None."""
+        invalid_json = '{"invalid": json}'
+        with self.assertRaises(ODPSValidationError) as cm:
+            ODPSParser.parse(invalid_json, file_path=None, format="json")
+
+        error = cm.exception
+        # Should handle None file_path gracefully
+        self.assertIsNotNone(error.message)
+
+    def test_error_context_with_empty_file_path(self):
+        """Test error context when file_path is empty."""
+        invalid_json = '{"invalid": json}'
+        with self.assertRaises(ODPSValidationError) as cm:
+            ODPSParser.parse(invalid_json, file_path="", format="json")
+
+        error = cm.exception
+        # Should handle empty file_path gracefully
+        self.assertIsNotNone(error.message)
+
+    def test_parse_yaml_with_deep_nesting(self):
+        """Test YAML parsing with deeply nested structure."""
+        yaml_content = """
+schema: https://opendataproducts.org/schema/v4.1
+version: "4.1"
+level1:
+  level2:
+    level3:
+      level4:
+        level5:
+          level6:
+            level7:
+              level8:
+                level9:
+                  level10:
+                    value: "deep"
+"""
+        result = ODPSParser.parse(yaml_content, format="yaml")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(
+            result["level1"]["level2"]["level3"]["level4"]["level5"]["level6"]["level7"]["level8"][
+                "level9"
+            ]["level10"]["value"],
+            "deep",
+        )
+
+    def test_parse_json_with_deep_nesting(self):
+        """Test JSON parsing with deeply nested structure."""
+        json_content = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "level1": {
+                    "level2": {
+                        "level3": {
+                            "level4": {
+                                "level5": {
+                                    "level6": {
+                                        "level7": {
+                                            "level8": {"level9": {"level10": {"value": "deep"}}}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        )
+        result = ODPSParser.parse(json_content, format="json")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(
+            result["level1"]["level2"]["level3"]["level4"]["level5"]["level6"]["level7"]["level8"][
+                "level9"
+            ]["level10"]["value"],
+            "deep",
+        )

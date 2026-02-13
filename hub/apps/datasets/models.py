@@ -43,7 +43,9 @@ class Dataset(models.Model):
         "files.File",
         on_delete=models.CASCADE,
         related_name="datasets",
-        help_text="File this dataset is based on"
+        null=True,
+        blank=True,
+        help_text="File this dataset is based on (nullable for external-ref or pending upload)"
     )
     schema_json = models.JSONField(
         null=True,
@@ -150,7 +152,8 @@ class Dataset(models.Model):
     
     def __str__(self):
         asset_name = self.asset.name if self.asset else "No Asset"
-        return f"{asset_name} - {self.file.name} (v{self.version}, {self.format})"
+        file_name = self.file.name if self.file else "No file"
+        return f"{asset_name} - {file_name} (v{self.version}, {self.format})"
 
 
 class SchemaVersion(models.Model):

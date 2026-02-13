@@ -734,6 +734,10 @@ Errors are returned in a consistent format:
 
 ## Additional Resources
 
-- [ODH Documentation](https://opendatahub.io/)
-- [DataHub CLI Main README](../README.md)
-- [DataHub API Documentation](https://api-docs.example.com/)
+- **[CLI README](../README.md)** - Complete CLI documentation
+- **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management
+- **[Marketplace Usage Guide](MARKETPLACE_USAGE.md)** - Marketplace integration
+- **[BaaS Usage Guide](BAAS_USAGE.md)** - BaaS platform commands
+- **[Model Serving Usage Guide](MODEL_SERVING_USAGE.md)** - Model serving and A/B testing
+- **[API Reference](../../docs/API_REFERENCE.md)** - Complete API documentation
+- [ODH Documentation](https://opendatahub.io/) - External ODH documentation

@@ -20,7 +20,7 @@ django.setup()
 
 from django.utils import timezone
 from hub.apps.auth.models import APIKey
-from hub.apps.tenants.models import Tenant, TenantStatus
+from hub.apps.tenants.models import Tenant, TenantStatus, TenantConfig
 from django.contrib.auth import get_user_model
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -190,6 +190,83 @@ class TestAPIGatewayMiddleware:
         # Default to FREE for unknown tier
         unknown_limit = middleware._get_tier_limit('UNKNOWN')
         assert unknown_limit == 1000
+
+    @pytest.mark.asyncio
+    async def test_check_rate_limits_tenant_limit_enforced_429(self, middleware, tenant, user):
+        """When tenant has custom limit via TenantConfig.rate_limits, that limit is enforced; 429 on exceed."""
+        from asgiref.sync import sync_to_async
+
+        tenant_id, user_id = str(tenant.id), str(user.id)
+
+        def setup_tenant_config_and_key():
+            t = Tenant.objects.get(pk=tenant_id)
+            u = User.objects.get(pk=user_id)
+            config, _ = TenantConfig.objects.get_or_create(tenant=t, defaults={})
+            config.rate_limits = {"api_gateway_requests_per_hour": 2}
+            config.save()
+            plaintext_key = APIKey.generate_key()
+            APIKey.objects.create(
+                tenant=t,
+                user=u,
+                key_hash=APIKey.hash_key(plaintext_key),
+                name="Test Key",
+                scopes=["read"],
+            )
+            return plaintext_key
+
+        plaintext_key = await sync_to_async(setup_tenant_config_and_key)()
+        validate_key = sync_to_async(middleware.api_key_manager.validate_api_key)
+        api_key_info = await validate_key(plaintext_key)
+        assert api_key_info is not None
+        request_id = "test-tenant-limit-429"
+        allowed1, info1 = await middleware._check_rate_limits(api_key_info, request_id)
+        assert allowed1 is True
+        allowed2, info2 = await middleware._check_rate_limits(api_key_info, request_id)
+        assert allowed2 is True
+        allowed3, info3 = await middleware._check_rate_limits(api_key_info, request_id)
+        assert allowed3 is False
+        assert info3.get("limit") == 2
+        assert info3.get("remaining") == 0
+        assert "retry_after" in info3
+        assert "reset_time" in info3
+
+    @pytest.mark.asyncio
+    async def test_check_rate_limits_api_key_limit_enforced_429(self, middleware, tenant, user):
+        """When API key has rate_limit_per_hour set, that limit is enforced; 429 on exceed."""
+        from asgiref.sync import sync_to_async
+
+        tenant_id, user_id = str(tenant.id), str(user.id)
+
+        def setup_api_key_with_limit():
+            t = Tenant.objects.get(pk=tenant_id)
+            u = User.objects.get(pk=user_id)
+            plaintext_key = APIKey.generate_key()
+            APIKey.objects.create(
+                tenant=t,
+                user=u,
+                key_hash=APIKey.hash_key(plaintext_key),
+                name="Test Key",
+                scopes=["read"],
+                rate_limit_per_hour=2,
+            )
+            return plaintext_key
+
+        plaintext_key = await sync_to_async(setup_api_key_with_limit)()
+        validate_key = sync_to_async(middleware.api_key_manager.validate_api_key)
+        api_key_info = await validate_key(plaintext_key)
+        assert api_key_info is not None
+        assert getattr(api_key_info, "rate_limit_per_hour", None) == 2
+        request_id = "test-apikey-limit-429"
+        allowed1, _ = await middleware._check_rate_limits(api_key_info, request_id)
+        assert allowed1 is True
+        allowed2, _ = await middleware._check_rate_limits(api_key_info, request_id)
+        assert allowed2 is True
+        allowed3, info3 = await middleware._check_rate_limits(api_key_info, request_id)
+        assert allowed3 is False
+        assert info3.get("limit") == 2
+        assert info3.get("remaining") == 0
+        assert "retry_after" in info3
+        assert "reset_time" in info3
 
     @pytest.mark.asyncio
     async def test_middleware_routing_unknown_route(self, middleware, api_key):

@@ -4,20 +4,30 @@ E2E tests for MarketplaceIntegrationService marketplace event publishing.
 Tests end-to-end workflows to verify marketplace events are published correctly
 throughout the entire lifecycle of marketplace operations.
 """
+
 import pytest
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob, MarketplaceMapping
-from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus, DataMarketplaceConnector, MarketplaceListing
+from hub.apps.assets.models import Asset, AssetSourceType
+from hub.apps.core.events.models import Event
+from hub.apps.core.services.base import NotFoundError, ValidationError
+from hub.apps.integrations.base import (
+    DataMarketplaceConnector,
+    MarketplaceListing,
+    MarketplaceType,
+    SyncDirection,
+    SyncStatus,
+)
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
-from hub.apps.core.services.base import ValidationError, NotFoundError
+from hub.apps.integrations.models import (
+    MarketplaceConnection,
+    MarketplaceMapping,
+    MarketplaceSyncJob,
+)
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-from hub.apps.core.events.models import Event
-from hub.apps.assets.models import Asset, AssetSourceType
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -32,24 +42,30 @@ class MarketplaceEventPublishingE2ETest(TestCase):
 
     def setUp(self):
         """Set up test data"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        # CRITICAL: Disconnect semantic service signals to prevent timeouts
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
         self.service = MarketplaceIntegrationService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            request_id="test-request-123"
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id), request_id="test-request-123"
         )
         self.config = {
             "api_key": "test-api-key-123",
             "endpoint": "https://api.example.com",
-            "timeout": 30
+            "timeout": 30,
         }
 
         # Register test connectors for E2E tests
@@ -75,7 +91,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
                 return MarketplaceListing(
                     marketplace_id=listing_id,
                     marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
-                    title="Test Listing"
+                    title="Test Listing",
                 )
 
             def list_resources(self, listing_id: str):
@@ -94,7 +110,9 @@ class MarketplaceEventPublishingE2ETest(TestCase):
                 return destination_path
 
         factory = MarketplaceConnectorFactory()
-        factory.register_connector(MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestSnowflakeConnector)
+        factory.register_connector(
+            MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE, TestSnowflakeConnector
+        )
 
     def test_connection_lifecycle_publishes_marketplace_events(self):
         """E2E test: Verify marketplace events are published throughout connection lifecycle"""
@@ -104,12 +122,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config=self.config
+            config=self.config,
         )
 
-        created_events = Event.objects.filter(
-            event_type="marketplace.connection.created"
-        )
+        created_events = Event.objects.filter(event_type="marketplace.connection.created")
         self.assertEqual(created_events.count(), 1)
         created_event = created_events.first()
         self.assertEqual(created_event.data["connection_id"], str(connection.id))
@@ -120,12 +136,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Updated Connection",
-            is_active=False
+            is_active=False,
         )
 
-        updated_events = Event.objects.filter(
-            event_type="marketplace.connection.updated"
-        )
+        updated_events = Event.objects.filter(event_type="marketplace.connection.updated")
         self.assertEqual(updated_events.count(), 1)
         updated_event = updated_events.first()
         self.assertEqual(updated_event.data["connection_id"], str(connection.id))
@@ -136,12 +150,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            reason="E2E test deletion"
+            reason="E2E test deletion",
         )
 
-        deleted_events = Event.objects.filter(
-            event_type="marketplace.connection.deleted"
-        )
+        deleted_events = Event.objects.filter(event_type="marketplace.connection.deleted")
         self.assertEqual(deleted_events.count(), 1)
         deleted_event = deleted_events.first()
         self.assertEqual(deleted_event.data["connection_id"], str(connection.id))
@@ -154,7 +166,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Create asset
@@ -162,7 +174,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Asset",
-            source_type=AssetSourceType.FEDERATED
+            source_type=AssetSourceType.FEDERATED,
         )
 
         # Create mapping - should publish marketplace.mapping.created
@@ -171,12 +183,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             hub_asset_id=str(asset.id),
             external_listing_id="ext-listing-123",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
-        created_events = Event.objects.filter(
-            event_type="marketplace.mapping.created"
-        )
+        created_events = Event.objects.filter(event_type="marketplace.mapping.created")
         self.assertEqual(created_events.count(), 1)
         created_event = created_events.first()
         self.assertEqual(created_event.data["mapping_id"], str(mapping.id))
@@ -186,12 +196,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             mapping_id=str(mapping.id),
             external_listing_id="ext-listing-456",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
-        updated_events = Event.objects.filter(
-            event_type="marketplace.mapping.updated"
-        )
+        updated_events = Event.objects.filter(event_type="marketplace.mapping.updated")
         self.assertEqual(updated_events.count(), 1)
         updated_event = updated_events.first()
         self.assertEqual(updated_event.data["mapping_id"], str(mapping.id))
@@ -201,12 +209,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             mapping_id=str(mapping.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            reason="E2E test deletion"
+            reason="E2E test deletion",
         )
 
-        deleted_events = Event.objects.filter(
-            event_type="marketplace.mapping.deleted"
-        )
+        deleted_events = Event.objects.filter(event_type="marketplace.mapping.deleted")
         self.assertEqual(deleted_events.count(), 1)
         deleted_event = deleted_events.first()
         self.assertEqual(deleted_event.data["mapping_id"], str(mapping.id))
@@ -219,7 +225,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Start sync - should publish marketplace.sync.started
@@ -227,12 +233,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            listing_ids=["listing-1"]
+            listing_ids=["listing-1"],
         )
 
-        started_events = Event.objects.filter(
-            event_type="marketplace.sync.started"
-        )
+        started_events = Event.objects.filter(event_type="marketplace.sync.started")
         self.assertEqual(started_events.count(), 1)
         started_event = started_events.first()
         self.assertEqual(started_event.data["sync_job_id"], str(sync_job.id))
@@ -261,7 +265,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config=self.config
+            config=self.config,
         )
 
         # Create asset
@@ -269,7 +273,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="Test Asset",
-            source_type=AssetSourceType.FEDERATED
+            source_type=AssetSourceType.FEDERATED,
         )
 
         # Start PUSH sync - should publish marketplace.sync.started
@@ -277,12 +281,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_ids=[str(asset.id)]
+            asset_ids=[str(asset.id)],
         )
 
-        started_events = Event.objects.filter(
-            event_type="marketplace.sync.started"
-        )
+        started_events = Event.objects.filter(event_type="marketplace.sync.started")
         self.assertEqual(started_events.count(), 1)
         started_event = started_events.first()
         self.assertEqual(started_event.data["sync_job_id"], str(sync_job.id))
@@ -296,11 +298,10 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             user_id=str(self.user.id),
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="E2E Test Connection",
-            config=self.config
+            config=self.config,
         )
         self.assertEqual(
-            Event.objects.filter(event_type="marketplace.connection.created").count(),
-            1
+            Event.objects.filter(event_type="marketplace.connection.created").count(), 1
         )
 
         # Step 2: Create asset
@@ -308,7 +309,7 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             tenant=self.tenant,
             created_by=self.user,
             name="E2E Test Asset",
-            source_type=AssetSourceType.FEDERATED
+            source_type=AssetSourceType.FEDERATED,
         )
 
         # Step 3: Create mapping
@@ -317,29 +318,21 @@ class MarketplaceEventPublishingE2ETest(TestCase):
             hub_asset_id=str(asset.id),
             external_listing_id="e2e-listing-123",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
-        self.assertEqual(
-            Event.objects.filter(event_type="marketplace.mapping.created").count(),
-            1
-        )
+        self.assertEqual(Event.objects.filter(event_type="marketplace.mapping.created").count(), 1)
 
         # Step 4: Start sync
         sync_job = self.service.sync_assets_to_marketplace(
             connection_id=str(connection.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            asset_ids=[str(asset.id)]
+            asset_ids=[str(asset.id)],
         )
-        self.assertEqual(
-            Event.objects.filter(event_type="marketplace.sync.started").count(),
-            1
-        )
+        self.assertEqual(Event.objects.filter(event_type="marketplace.sync.started").count(), 1)
 
         # Verify all marketplace events were published
-        all_marketplace_events = Event.objects.filter(
-            event_type__startswith="marketplace."
-        )
+        all_marketplace_events = Event.objects.filter(event_type__startswith="marketplace.")
         self.assertGreaterEqual(all_marketplace_events.count(), 3)
 
         # Verify event types
@@ -348,3 +341,77 @@ class MarketplaceEventPublishingE2ETest(TestCase):
         self.assertIn("marketplace.mapping.created", event_types)
         self.assertIn("marketplace.sync.started", event_types)
 
+    def test_event_publishing_with_invalid_connection_id(self):
+        """Test event publishing error handling with invalid connection ID"""
+        from hub.apps.core.services.base import NotFoundError
+
+        # Try to get non-existent connection
+        with self.assertRaises(NotFoundError):
+            self.service.get_connection(
+                connection_id="invalid-connection-id",
+                tenant_id=str(self.tenant.id),
+            )
+
+    def test_event_publishing_with_invalid_sync_job_id(self):
+        """Test event publishing error handling with invalid sync job ID"""
+        from hub.apps.core.services.base import NotFoundError
+
+        # Try to get non-existent sync job
+        with self.assertRaises(NotFoundError):
+            self.service.get_sync_job(
+                sync_job_id="invalid-sync-job-id",
+                tenant_id=str(self.tenant.id),
+            )
+
+    def test_event_publishing_with_empty_listing_ids(self):
+        """Test event publishing error handling with empty listing IDs"""
+        # Create connection
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+            name="Test Connection",
+            config=self.config,
+        )
+
+        # Try sync with empty listing IDs
+        try:
+            sync_job = self.service.sync_from_marketplace(
+                connection_id=str(connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                listing_ids=[],
+            )
+            # Should handle gracefully
+            self.assertIsNotNone(sync_job)
+        except (ValueError, TypeError):
+            # Expected if empty list is invalid
+            pass
+
+    def test_event_publishing_with_none_tenant_id(self):
+        """Test event publishing error handling with None tenant ID"""
+        from hub.apps.core.services.base import ValidationError
+
+        # Try to create connection with None tenant_id
+        with self.assertRaises((ValidationError, TypeError)):
+            self.service.create_connection(
+                tenant_id=None,  # type: ignore[arg-type]
+                user_id=str(self.user.id),
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
+                name="Test Connection",
+                config=self.config,
+            )
+
+    def tearDown(self):
+        """Reconnect signals after test"""
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass

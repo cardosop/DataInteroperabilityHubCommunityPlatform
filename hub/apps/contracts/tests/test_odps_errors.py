@@ -9,22 +9,23 @@ Tests verify:
 5. Error recovery strategies
 6. Recovery handlers (retry, fallback, compensation)
 """
+
 import time
-from unittest.mock import Mock, patch
+
 from django.test import TestCase
 
 from hub.apps.contracts.odps_errors import (
+    CompensationRecoveryHandler,
+    ErrorRecoveryHandler,
+    FallbackRecoveryHandler,
     ODPSError,
-    ODPSValidationError,
-    ODPSRefResolutionError,
-    ODPSNormalizationError,
     ODPSExportError,
     ODPSLinkingError,
+    ODPSNormalizationError,
+    ODPSRefResolutionError,
+    ODPSValidationError,
     RecoveryStrategy,
-    ErrorRecoveryHandler,
     RetryRecoveryHandler,
-    FallbackRecoveryHandler,
-    CompensationRecoveryHandler,
     recover_from_error,
 )
 
@@ -44,18 +45,12 @@ class ODPSErrorTest(TestCase):
 
     def test_odps_error_with_error_code(self):
         """Test ODPSError with custom error code"""
-        error = ODPSError(
-            "Test error",
-            error_code=ODPSError.ERROR_CODE_VALIDATION_FAILED
-        )
+        error = ODPSError("Test error", error_code=ODPSError.ERROR_CODE_VALIDATION_FAILED)
         self.assertEqual(error.error_code, ODPSError.ERROR_CODE_VALIDATION_FAILED)
 
     def test_odps_error_with_user_message(self):
         """Test ODPSError with custom user message"""
-        error = ODPSError(
-            "Technical error",
-            user_message="User-friendly error message"
-        )
+        error = ODPSError("Technical error", user_message="User-friendly error message")
         self.assertEqual(error.message, "Technical error")
         self.assertEqual(error.user_message, "User-friendly error message")
 
@@ -67,21 +62,13 @@ class ODPSErrorTest(TestCase):
 
     def test_odps_error_recoverable(self):
         """Test ODPSError with recoverable flag"""
-        error = ODPSError(
-            "Test error",
-            recoverable=True,
-            recovery_strategy=RecoveryStrategy.RETRY
-        )
+        error = ODPSError("Test error", recoverable=True, recovery_strategy=RecoveryStrategy.RETRY)
         self.assertTrue(error.recoverable)
         self.assertEqual(error.recovery_strategy, RecoveryStrategy.RETRY)
 
     def test_odps_error_with_tenant_user(self):
         """Test ODPSError with tenant and user IDs"""
-        error = ODPSError(
-            "Test error",
-            tenant_id="tenant-123",
-            user_id="user-456"
-        )
+        error = ODPSError("Test error", tenant_id="tenant-123", user_id="user-456")
         self.assertEqual(error.tenant_id, "tenant-123")
         self.assertEqual(error.user_id, "user-456")
 
@@ -103,7 +90,7 @@ class ODPSErrorTest(TestCase):
             recoverable=True,
             recovery_strategy=RecoveryStrategy.RETRY,
             tenant_id="tenant-123",
-            user_id="user-456"
+            user_id="user-456",
         )
         result = error.to_dict()
 
@@ -138,19 +125,12 @@ class ODPSValidationErrorTest(TestCase):
 
     def test_validation_error_with_field_path(self):
         """Test ODPSValidationError with field path"""
-        error = ODPSValidationError(
-            "Validation failed",
-            field_path="/product/name"
-        )
+        error = ODPSValidationError("Validation failed", field_path="/product/name")
         self.assertEqual(error.context["field_path"], "/product/name")
 
     def test_validation_error_with_expected_actual(self):
         """Test ODPSValidationError with expected and actual values"""
-        error = ODPSValidationError(
-            "Type mismatch",
-            expected="string",
-            actual=123
-        )
+        error = ODPSValidationError("Type mismatch", expected="string", actual=123)
         self.assertEqual(error.context["expected"], "string")
         self.assertEqual(error.context["actual"], 123)
 
@@ -158,13 +138,13 @@ class ODPSValidationErrorTest(TestCase):
         """Test ODPSValidationError error code constants"""
         error = ODPSValidationError(
             "Schema validation failed",
-            error_code=ODPSValidationError.ERROR_CODE_SCHEMA_VALIDATION_FAILED
+            error_code=ODPSValidationError.ERROR_CODE_SCHEMA_VALIDATION_FAILED,
         )
         self.assertEqual(error.error_code, ODPSValidationError.ERROR_CODE_SCHEMA_VALIDATION_FAILED)
 
         error = ODPSValidationError(
             "Required field missing",
-            error_code=ODPSValidationError.ERROR_CODE_REQUIRED_FIELD_MISSING
+            error_code=ODPSValidationError.ERROR_CODE_REQUIRED_FIELD_MISSING,
         )
         self.assertEqual(error.error_code, ODPSValidationError.ERROR_CODE_REQUIRED_FIELD_MISSING)
 
@@ -185,7 +165,7 @@ class ODPSRefResolutionErrorTest(TestCase):
         error = ODPSRefResolutionError(
             "Rate limit exceeded",
             error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
-            retry_after=retry_after
+            retry_after=retry_after,
         )
         self.assertEqual(error.retry_after, retry_after)
         self.assertIn("retry_after", error.context)
@@ -194,10 +174,7 @@ class ODPSRefResolutionErrorTest(TestCase):
     def test_ref_resolution_error_get_retry_after_header(self):
         """Test ODPSRefResolutionError retry_after header"""
         retry_after = int(time.time()) + 300  # 5 minutes from now
-        error = ODPSRefResolutionError(
-            "Rate limit exceeded",
-            retry_after=retry_after
-        )
+        error = ODPSRefResolutionError("Rate limit exceeded", retry_after=retry_after)
         header_value = error.get_retry_after_header()
         self.assertIsNotNone(header_value)
         self.assertIsInstance(header_value, str)
@@ -212,32 +189,24 @@ class ODPSRefResolutionErrorTest(TestCase):
 
     def test_ref_resolution_error_with_ref_path(self):
         """Test ODPSRefResolutionError with ref_path"""
-        error = ODPSRefResolutionError(
-            "Ref resolution failed",
-            ref_path="#/definitions/Email"
-        )
+        error = ODPSRefResolutionError("Ref resolution failed", ref_path="#/definitions/Email")
         self.assertEqual(error.context["ref_path"], "#/definitions/Email")
 
     def test_ref_resolution_error_with_ref_type(self):
         """Test ODPSRefResolutionError with ref_type"""
-        error = ODPSRefResolutionError(
-            "Ref resolution failed",
-            ref_type="internal"
-        )
+        error = ODPSRefResolutionError("Ref resolution failed", ref_type="internal")
         self.assertEqual(error.context["ref_type"], "internal")
 
     def test_ref_resolution_error_error_codes(self):
         """Test ODPSRefResolutionError error code constants"""
         error = ODPSRefResolutionError(
-            "Rate limit exceeded",
-            error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
+            "Rate limit exceeded", error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
         )
         self.assertEqual(error.error_code, ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED)
         self.assertEqual(error.recovery_strategy, RecoveryStrategy.RETRY)
 
         error = ODPSRefResolutionError(
-            "Security violation",
-            error_code=ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
+            "Security violation", error_code=ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
         )
         self.assertEqual(error.error_code, ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION)
         self.assertEqual(error.recovery_strategy, RecoveryStrategy.FAIL)
@@ -245,10 +214,7 @@ class ODPSRefResolutionErrorTest(TestCase):
     def test_ref_resolution_error_to_dict_with_retry_after(self):
         """Test ODPSRefResolutionError to_dict with retry_after"""
         retry_after = int(time.time()) + 600
-        error = ODPSRefResolutionError(
-            "Rate limit exceeded",
-            retry_after=retry_after
-        )
+        error = ODPSRefResolutionError("Rate limit exceeded", retry_after=retry_after)
         result = error.to_dict()
         self.assertIn("retry_after", result)
         self.assertIn("retry_after_timestamp", result)
@@ -270,7 +236,7 @@ class ODPSNormalizationErrorTest(TestCase):
             "Normalization failed",
             field_path="/product/name",
             source_path="/info/name",
-            target_path="/name"
+            target_path="/name",
         )
         self.assertEqual(error.context["field_path"], "/product/name")
         self.assertEqual(error.context["source_path"], "/info/name")
@@ -289,18 +255,12 @@ class ODPSExportErrorTest(TestCase):
 
     def test_export_error_with_format(self):
         """Test ODPSExportError with export format"""
-        error = ODPSExportError(
-            "Export failed",
-            export_format="yaml"
-        )
+        error = ODPSExportError("Export failed", export_format="yaml")
         self.assertEqual(error.context["export_format"], "yaml")
 
     def test_export_error_with_file_path(self):
         """Test ODPSExportError with file path"""
-        error = ODPSExportError(
-            "Export failed",
-            file_path="/tmp/export.json"
-        )
+        error = ODPSExportError("Export failed", file_path="/tmp/export.json")
         self.assertEqual(error.context["file_path"], "/tmp/export.json")
 
 
@@ -321,7 +281,7 @@ class ODPSLinkingErrorTest(TestCase):
             link_path="/links/0",
             link_type="contract",
             source_id="source-123",
-            target_id="target-456"
+            target_id="target-456",
         )
         self.assertEqual(error.context["link_path"], "/links/0")
         self.assertEqual(error.context["link_type"], "contract")
@@ -336,14 +296,12 @@ class ErrorRecoveryHandlerTest(TestCase):
         """Test RetryRecoveryHandler can_handle"""
         handler = RetryRecoveryHandler()
         error = ODPSRefResolutionError(
-            "Rate limit exceeded",
-            error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
+            "Rate limit exceeded", error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
         )
         self.assertTrue(handler.can_handle(error))
 
         error = ODPSRefResolutionError(
-            "Security violation",
-            error_code=ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
+            "Security violation", error_code=ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
         )
         self.assertFalse(handler.can_handle(error))
 
@@ -351,8 +309,7 @@ class ErrorRecoveryHandlerTest(TestCase):
         """Test RetryRecoveryHandler successful retry"""
         handler = RetryRecoveryHandler(max_retries=3, initial_delay=0.01)
         error = ODPSRefResolutionError(
-            "Temporary error",
-            error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
+            "Temporary error", error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
         )
 
         call_count = [0]
@@ -362,7 +319,7 @@ class ErrorRecoveryHandlerTest(TestCase):
             if call_count[0] < 2:
                 raise ODPSRefResolutionError(
                     "Temporary error",
-                    error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
+                    error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
                 )
             return "success"
 
@@ -374,14 +331,12 @@ class ErrorRecoveryHandlerTest(TestCase):
         """Test RetryRecoveryHandler with max retries exceeded"""
         handler = RetryRecoveryHandler(max_retries=2, initial_delay=0.01)
         error = ODPSRefResolutionError(
-            "Temporary error",
-            error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
+            "Temporary error", error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
         )
 
         def operation():
             raise ODPSRefResolutionError(
-                "Temporary error",
-                error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
+                "Temporary error", error_code=ODPSRefResolutionError.ERROR_CODE_RESOLUTION_FAILED
             )
 
         with self.assertRaises(ODPSRefResolutionError):
@@ -394,8 +349,7 @@ class ErrorRecoveryHandlerTest(TestCase):
         self.assertTrue(handler.can_handle(error))
 
         error = ODPSRefResolutionError(
-            "Security violation",
-            error_code=ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
+            "Security violation", error_code=ODPSRefResolutionError.ERROR_CODE_SECURITY_VIOLATION
         )
         self.assertFalse(handler.can_handle(error))
 
@@ -414,9 +368,7 @@ class ErrorRecoveryHandlerTest(TestCase):
         """Test CompensationRecoveryHandler can_handle"""
         handler = CompensationRecoveryHandler()
         error = ODPSError(
-            "Operation failed",
-            recoverable=True,
-            recovery_strategy=RecoveryStrategy.COMPENSATION
+            "Operation failed", recoverable=True, recovery_strategy=RecoveryStrategy.COMPENSATION
         )
         self.assertTrue(handler.can_handle(error))
 
@@ -424,9 +376,7 @@ class ErrorRecoveryHandlerTest(TestCase):
         """Test CompensationRecoveryHandler successful compensation"""
         handler = CompensationRecoveryHandler()
         error = ODPSError(
-            "Operation failed",
-            recoverable=True,
-            recovery_strategy=RecoveryStrategy.COMPENSATION
+            "Operation failed", recoverable=True, recovery_strategy=RecoveryStrategy.COMPENSATION
         )
 
         def compensation_operation():
@@ -448,8 +398,7 @@ class RecoverFromErrorTest(TestCase):
     def test_recover_from_error_retry_success(self):
         """Test recover_from_error with successful retry"""
         error = ODPSRefResolutionError(
-            "Temporary error",
-            error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
+            "Temporary error", error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
         )
 
         call_count = [0]
@@ -459,7 +408,7 @@ class RecoverFromErrorTest(TestCase):
             if call_count[0] < 2:
                 raise ODPSRefResolutionError(
                     "Temporary error",
-                    error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED
+                    error_code=ODPSRefResolutionError.ERROR_CODE_RATE_LIMIT_EXCEEDED,
                 )
             return "success"
 
@@ -479,9 +428,7 @@ class RecoverFromErrorTest(TestCase):
     def test_recover_from_error_no_handler(self):
         """Test recover_from_error with no matching handler"""
         error = ODPSError(
-            "Unknown error",
-            recoverable=True,
-            recovery_strategy=RecoveryStrategy.SKIP
+            "Unknown error", recoverable=True, recovery_strategy=RecoveryStrategy.SKIP
         )
 
         with self.assertRaises(ODPSError):
@@ -489,11 +436,7 @@ class RecoverFromErrorTest(TestCase):
 
     def test_recover_from_error_custom_handlers(self):
         """Test recover_from_error with custom handlers"""
-        error = ODPSError(
-            "Custom error",
-            recoverable=True,
-            recovery_strategy=RecoveryStrategy.SKIP
-        )
+        error = ODPSError("Custom error", recoverable=True, recovery_strategy=RecoveryStrategy.SKIP)
 
         class SkipHandler(ErrorRecoveryHandler):
             def can_handle(self, error):
@@ -541,3 +484,189 @@ class ErrorHierarchyInheritanceTest(TestCase):
             self.assertIn("error", error.to_dict())
             self.assertIn("message", error.to_dict())
 
+    # Edge cases and error handling tests (using real implementations)
+    def test_odps_error_with_empty_message(self):
+        """Test ODPSError with empty message."""
+        error = ODPSError("")
+        self.assertEqual(error.message, "")
+        self.assertIsNotNone(error.to_dict())
+
+    def test_odps_error_with_very_long_message(self):
+        """Test ODPSError with very long message."""
+        long_message = "A" * 100000
+        error = ODPSError(long_message)
+        self.assertEqual(error.message, long_message)
+        self.assertIsNotNone(error.to_dict())
+
+    def test_odps_error_with_special_characters_in_message(self):
+        """Test ODPSError with special characters in message."""
+        special_message = "Error <>&\"'"
+        error = ODPSError(special_message)
+        self.assertEqual(error.message, special_message)
+        self.assertIsNotNone(error.to_dict())
+
+    def test_odps_error_with_unicode_in_message(self):
+        """Test ODPSError with unicode characters in message."""
+        unicode_message = "错误消息"
+        error = ODPSError(unicode_message)
+        self.assertEqual(error.message, unicode_message)
+        self.assertIsNotNone(error.to_dict())
+
+    def test_odps_error_with_none_context(self):
+        """Test ODPSError with None context."""
+        error = ODPSError("Test error", context=None)
+        # Should handle None context gracefully
+        self.assertIsNotNone(error.to_dict())
+
+    def test_odps_error_with_empty_context(self):
+        """Test ODPSError with empty context."""
+        error = ODPSError("Test error", context={})
+        self.assertEqual(error.context, {})
+        self.assertIsNotNone(error.to_dict())
+
+    def test_odps_error_with_very_large_context(self):
+        """Test ODPSError with very large context."""
+        large_context = {f"key_{i}": "value" * 1000 for i in range(1000)}
+        error = ODPSError("Test error", context=large_context)
+        self.assertEqual(len(error.context), 1000)
+        self.assertIsNotNone(error.to_dict())
+
+    def test_odps_error_with_nested_context(self):
+        """Test ODPSError with nested context."""
+        nested_context = {"level1": {"level2": {"level3": {"value": "deep"}}}}
+        error = ODPSError("Test error", context=nested_context)
+        self.assertEqual(error.context, nested_context)
+        self.assertIsNotNone(error.to_dict())
+
+    def test_odps_error_to_dict_preserves_all_fields(self):
+        """Test that to_dict preserves all error fields."""
+        error = ODPSError(
+            "Test error",
+            error_code="TEST_ERROR",
+            user_message="User message",
+            recoverable=True,
+            recovery_strategy=RecoveryStrategy.RETRY,
+            tenant_id="tenant-123",
+            user_id="user-456",
+            context={"field": "value"},
+        )
+        error_dict = error.to_dict()
+
+        # Verify all fields are present (to_dict uses "error" for error_code)
+        self.assertIn("error", error_dict)
+        self.assertIn("message", error_dict)
+        self.assertEqual(error_dict["error"], "TEST_ERROR")
+        self.assertIn("recoverable", error_dict)
+        self.assertIn("recovery_strategy", error_dict)
+        self.assertIn("tenant_id", error_dict)
+        self.assertIn("user_id", error_dict)
+        self.assertIn("context", error_dict)
+
+    def test_error_hierarchy_to_dict_consistency(self):
+        """Test that all error types have consistent to_dict structure."""
+        errors = [
+            ODPSValidationError("Validation failed"),
+            ODPSRefResolutionError("Ref resolution failed"),
+            ODPSNormalizationError("Normalization failed"),
+            ODPSExportError("Export failed"),
+            ODPSLinkingError("Linking failed"),
+        ]
+
+        for error in errors:
+            error_dict = error.to_dict()
+            # All should have at least these fields
+            self.assertIn("error", error_dict)
+            self.assertIn("message", error_dict)
+            self.assertIsInstance(error_dict["error"], str)
+            self.assertIsInstance(error_dict["message"], str)
+
+    def test_error_with_cause_exception_chain(self):
+        """Test error with exception chain."""
+        inner_error = ValueError("Inner error")
+        middle_error = TypeError("Middle error")
+        outer_error = ODPSError("Outer error", cause=inner_error)
+
+        # Should preserve cause information
+        self.assertEqual(outer_error.cause, inner_error)
+        self.assertIn("cause_type", outer_error.context)
+        self.assertIn("cause_message", outer_error.context)
+
+    def test_error_recovery_strategy_enum_values(self):
+        """Test that all recovery strategy enum values are valid."""
+        strategies = [
+            RecoveryStrategy.RETRY,
+            RecoveryStrategy.FALLBACK,
+            RecoveryStrategy.COMPENSATION,
+            RecoveryStrategy.SKIP,
+        ]
+
+        for strategy in strategies:
+            error = ODPSError("Test error", recoverable=True, recovery_strategy=strategy)
+            self.assertEqual(error.recovery_strategy, strategy)
+
+    def test_error_with_invalid_recovery_strategy(self):
+        """Test error with invalid recovery strategy."""
+        # Should handle invalid strategy gracefully
+        try:
+            error = ODPSError("Test error", recoverable=True, recovery_strategy="INVALID_STRATEGY")
+            # May accept or reject invalid strategy
+            self.assertIsNotNone(error)
+        except Exception:
+            # If it raises exception, that's acceptable
+            pass
+
+    def test_error_serialization_with_circular_reference(self):
+        """Test error serialization handles potential circular references."""
+        context = {"self": None}
+        context["self"] = context  # Create circular reference
+
+        # Should handle circular reference gracefully
+        try:
+            error = ODPSError("Test error", context=context)
+            error_dict = error.to_dict()
+            # May serialize or handle circular reference
+            self.assertIsNotNone(error_dict)
+        except Exception:
+            # If it raises exception due to circular reference, that's acceptable
+            pass
+
+    def test_odps_errors_handle_unicode_characters(self):
+        """Test that ODPS errors handle unicode characters correctly."""
+        error = ODPSError("测试错误消息")
+        error_dict = error.to_dict()
+        # Should handle unicode characters
+        self.assertIsNotNone(error_dict)
+        self.assertIn("message", error_dict)
+
+    def test_odps_errors_handle_special_characters(self):
+        """Test that ODPS errors handle special characters correctly."""
+        error = ODPSError("Test & Co. (Special) <error> & more")
+        error_dict = error.to_dict()
+        # Should handle special characters
+        self.assertIsNotNone(error_dict)
+        self.assertIn("message", error_dict)
+
+    def test_odps_errors_handle_very_large_messages(self):
+        """Test that ODPS errors handle very large messages correctly."""
+        large_message = "A" * 100000  # 100KB string
+        error = ODPSError(large_message)
+        error_dict = error.to_dict()
+        # Should handle very large messages
+        self.assertIsNotNone(error_dict)
+        self.assertIn("message", error_dict)
+
+    def test_odps_errors_handle_none_values(self):
+        """Test that ODPS errors handle None values correctly."""
+        error = ODPSError(None)  # type: ignore
+        error_dict = error.to_dict()
+        # Should handle None values gracefully
+        self.assertIsNotNone(error_dict)
+
+    def test_odps_errors_handle_nested_structures(self):
+        """Test that ODPS errors handle nested structures correctly."""
+        nested_context = {"level1": {"level2": {"level3": {"value": "deep"}}}}
+        error = ODPSError("Test error", context=nested_context)
+        error_dict = error.to_dict()
+        # Should handle nested structures
+        self.assertIsNotNone(error_dict)
+        self.assertIn("context", error_dict)

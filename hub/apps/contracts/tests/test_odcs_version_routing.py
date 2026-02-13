@@ -7,22 +7,24 @@ Tests verify:
 3. Version-specific normalizers are preferred over default
 4. All ODCS versions route correctly
 """
-from django.test import TestCase
-from unittest.mock import Mock, patch
 
-from hub.apps.contracts.normalization import (
-    get_normalizer,
-    register_normalizer,
-    _reset_normalizer_registry,
-    normalize_contract
-)
+from django.test import TestCase
+
 from hub.apps.contracts.models import OriginalSpecType
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import ODCSNormalizerV3_0_0_Preview
-from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
+from hub.apps.contracts.normalization import (
+    _reset_normalizer_registry,
+    get_normalizer,
+    normalize_contract,
+    register_normalizer,
+)
 from hub.apps.contracts.normalization.odcs_normalizer_default import ODCSNormalizerDefault
+from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import (
+    ODCSNormalizerV3_0_0_Preview,
+)
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
 
 
 class ODCSVersionRoutingTest(TestCase):
@@ -46,7 +48,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-1",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
@@ -60,7 +62,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-2",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.1", contract_data)
@@ -74,7 +76,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-3",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.0", contract_data)
@@ -88,7 +90,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-4",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.0-preview", contract_data)
@@ -102,7 +104,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-5",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "2.2.2", contract_data)
@@ -116,7 +118,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-6",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.1.0", contract_data)
@@ -130,7 +132,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-7",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "", contract_data)
@@ -145,7 +147,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-8",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "invalid", contract_data)
@@ -160,7 +162,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-9",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
@@ -176,7 +178,7 @@ class ODCSVersionRoutingTest(TestCase):
             "kind": "DataContract",
             "id": "test-10",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2.1", contract_data)
@@ -314,4 +316,3 @@ schema:
         # spec_version will be the detected version (3.1.0), but normalizer will be 3.0.2
         self.assertIsNotNone(hub_contract)
         self.assertEqual(len(errors), 0)
-

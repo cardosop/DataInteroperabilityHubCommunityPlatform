@@ -169,7 +169,12 @@ class RetentionPolicyEnforcer:
         
         result['resource_type'] = resource.__class__.__name__
         result['resource_id'] = str(resource.id)
-        
+
+        # Update policy before deleting resource; CASCADE can remove the policy
+        # when we delete its dataset/asset/file.
+        policy.last_enforced_at = timezone.now()
+        policy.save(update_fields=["last_enforced_at"])
+
         # Enforce action
         try:
             if policy.action == RetentionAction.SOFT_DELETE:
@@ -181,15 +186,11 @@ class RetentionPolicyEnforcer:
             elif policy.action == RetentionAction.ARCHIVE:
                 RetentionPolicyEnforcer._archive_resource(resource)
                 result['action'] = 'ARCHIVE'
-            
-            # Update policy
-            policy.last_enforced_at = timezone.now()
-            policy.save()
-            
+
             result['success'] = True
         except Exception as e:
             result['error'] = str(e)
-        
+
         return result
     
     @staticmethod
@@ -205,18 +206,19 @@ class RetentionPolicyEnforcer:
     
     @staticmethod
     def _hard_delete_resource(resource):
-        """Hard delete a resource (permanent removal)"""
-        # Delete associated files from storage
+        """Hard delete a resource (permanent removal).
+
+        Storage cleanup is best-effort; DB removal is always attempted so
+        enforcement can succeed even when storage is unavailable (e.g. tests).
+        """
         if hasattr(resource, 'file'):
             file_obj = resource.file
-            if file_obj:
+            if file_obj and getattr(file_obj, 'storage_path', None):
                 try:
                     storage_client = S3StorageClient()
                     storage_client.delete_file(file_obj.storage_path)
                 except Exception:
-                    pass  # Continue even if storage deletion fails
-        
-        # Delete the resource
+                    pass  # Continue so DB record is still removed below
         resource.delete()
     
     @staticmethod

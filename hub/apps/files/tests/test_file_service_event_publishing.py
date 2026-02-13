@@ -4,60 +4,44 @@ Integration tests for FileService event publishing.
 Tests event publishing using real FileService and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
-from django.test import TestCase, override_settings
+
+from django.test import override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.files.models import File, FileStatus
-from hub.apps.files.services import FileService
+
 from hub.apps.core.events.models import Event
+from hub.apps.files.models import File, FileStatus
+from hub.apps.files.tests.test_base import FilesTestBase
 
 
 @override_settings(
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
 )
-class FileServiceEventPublishingTest(TestCase):
+class FileServiceEventPublishingTest(FilesTestBase):
     """Integration tests for FileService event publishing using real EventPublisher."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
-
-        self.service = FileService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
-
-        # Create a test file
-        self.test_file = File.objects.create(
-            tenant=self.tenant,
-            created_by=self.user,
-            name="test_file.csv",
-            content_type="text/csv",
-            size=1024,
-            storage_path="test-bucket/test_file.csv",
-            status=FileStatus.ACTIVE,
-            content_sha256="abc123def456"
-        )
+        super().setUp()
+        # Use self.service from FilesTestBase
+        # Use self.file from FilesTestBase or create specific one
+        if not hasattr(self, "test_file") or self.file.name != "test_file.csv":
+            self.test_file = File.objects.create(
+                tenant=self.tenant,
+                created_by=self.user,
+                name="test_file.csv",
+                content_type="text/csv",
+                size=1024,
+                storage_path=f"{self.tenant.id}/test_file.csv",
+                status=FileStatus.ACTIVE,
+                content_sha256="abc123def456",
+            )
 
     def test_get_file_publishes_downloaded_event(self):
         """Test that get_file() publishes file.downloaded event."""
         event_count_before = Event.objects.filter(event_type="file.downloaded").count()
 
-        file_obj = self.service.get_file(
-            file_id=str(self.test_file.id)
-        )
+        file_obj = self.service.get_file(file_id=str(self.test_file.id))
 
         # Verify file was retrieved
         self.assertEqual(file_obj.id, self.test_file.id)
@@ -67,7 +51,7 @@ class FileServiceEventPublishingTest(TestCase):
         self.assertEqual(event_count_after, event_count_before + 1)
 
         # Verify event details
-        event = Event.objects.filter(event_type="file.downloaded").order_by('-timestamp').first()
+        event = Event.objects.filter(event_type="file.downloaded").order_by("-timestamp").first()
         self.assertIsNotNone(event)
         self.assertEqual(event.data["file_id"], str(self.test_file.id))
         self.assertEqual(event.data["download_size"], self.test_file.size)
@@ -79,9 +63,7 @@ class FileServiceEventPublishingTest(TestCase):
         """Test that validate_file_active() publishes file.updated event."""
         event_count_before = Event.objects.filter(event_type="file.updated").count()
 
-        file_obj = self.service.validate_file_active(
-            file_id=str(self.test_file.id)
-        )
+        file_obj = self.service.validate_file_active(file_id=str(self.test_file.id))
 
         # Verify file was validated
         self.assertEqual(file_obj.id, self.test_file.id)
@@ -92,7 +74,7 @@ class FileServiceEventPublishingTest(TestCase):
         self.assertEqual(event_count_after, event_count_before + 1)
 
         # Verify event details
-        event = Event.objects.filter(event_type="file.updated").order_by('-timestamp').first()
+        event = Event.objects.filter(event_type="file.updated").order_by("-timestamp").first()
         self.assertIsNotNone(event)
         self.assertEqual(event.data["file_id"], str(self.test_file.id))
         self.assertIn("validation", event.data["changes"])
@@ -110,7 +92,7 @@ class FileServiceEventPublishingTest(TestCase):
             content_type="application/json",
             size=2048,
             storage_path="test-bucket/new_file.json",
-            status=FileStatus.PENDING
+            status=FileStatus.PENDING,
         )
 
         # Publish file.created event using service
@@ -119,7 +101,7 @@ class FileServiceEventPublishingTest(TestCase):
             name=new_file.name,
             content_type=new_file.content_type,
             size=new_file.size,
-            status=new_file.status
+            status=new_file.status,
         )
 
         # Verify event was published
@@ -143,7 +125,7 @@ class FileServiceEventPublishingTest(TestCase):
             size=4096,
             storage_path="test-bucket/uploading_file.csv",
             status=FileStatus.UPLOADING,
-            created_at=timezone.now()
+            created_at=timezone.now(),
         )
 
         # Simulate upload completion
@@ -156,7 +138,7 @@ class FileServiceEventPublishingTest(TestCase):
             file_size=uploading_file.size,
             content_type=uploading_file.content_type,
             upload_duration_ms=upload_duration_ms,
-            content_sha256="sha256hash123"
+            content_sha256="sha256hash123",
         )
 
         # Verify event was published
@@ -179,20 +161,15 @@ class FileServiceEventPublishingTest(TestCase):
             content_type="text/csv",
             size=1024,
             storage_path="test-bucket/pending_file.csv",
-            status=FileStatus.PENDING
+            status=FileStatus.PENDING,
         )
 
         # Publish file.updated event for status change
         event_id = self.service.publish_file_updated(
             file_id=str(pending_file.id),
-            changes={
-                "status": {
-                    "old": FileStatus.PENDING.value,
-                    "new": FileStatus.ACTIVE.value
-                }
-            },
+            changes={"status": {"old": FileStatus.PENDING.value, "new": FileStatus.ACTIVE.value}},
             previous_status=FileStatus.PENDING.value,
-            new_status=FileStatus.ACTIVE.value
+            new_status=FileStatus.ACTIVE.value,
         )
 
         # Verify event was published
@@ -215,13 +192,12 @@ class FileServiceEventPublishingTest(TestCase):
             content_type="text/csv",
             size=1024,
             storage_path="test-bucket/file_to_delete.csv",
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
         )
 
         # Publish file.deleted event
         event_id = self.service.publish_file_deleted(
-            file_id=str(file_to_delete.id),
-            reason="User requested deletion"
+            file_id=str(file_to_delete.id), reason="User requested deletion"
         )
 
         # Verify event was published
@@ -238,9 +214,7 @@ class FileServiceEventPublishingTest(TestCase):
         # We can't easily simulate event publishing failure without mocking,
         # but we can verify the error handling code path exists
 
-        file_obj = self.service.get_file(
-            file_id=str(self.test_file.id)
-        )
+        file_obj = self.service.get_file(file_id=str(self.test_file.id))
 
         # Verify file was retrieved successfully
         self.assertEqual(file_obj.id, self.test_file.id)
@@ -248,9 +222,7 @@ class FileServiceEventPublishingTest(TestCase):
     def test_validate_file_active_handles_event_publishing_failure_gracefully(self):
         """Test that validate_file_active() handles event publishing failures gracefully."""
         # This test verifies that validation succeeds even if event publishing fails
-        file_obj = self.service.validate_file_active(
-            file_id=str(self.test_file.id)
-        )
+        file_obj = self.service.validate_file_active(file_id=str(self.test_file.id))
 
         # Verify file was validated successfully
         self.assertEqual(file_obj.id, self.test_file.id)
@@ -258,12 +230,10 @@ class FileServiceEventPublishingTest(TestCase):
 
     def test_event_source_includes_tenant_and_user(self):
         """Test that events include tenant_id and user_id in source."""
-        file_obj = self.service.get_file(
-            file_id=str(self.test_file.id)
-        )
+        file_obj = self.service.get_file(file_id=str(self.test_file.id))
 
         # Get the most recent file.downloaded event
-        event = Event.objects.filter(event_type="file.downloaded").order_by('-timestamp').first()
+        event = Event.objects.filter(event_type="file.downloaded").order_by("-timestamp").first()
         self.assertIsNotNone(event)
         self.assertEqual(str(event.tenant_id), str(self.tenant.id))
         self.assertEqual(str(event.user_id), str(self.user.id))
@@ -279,14 +249,11 @@ class FileServiceEventPublishingTest(TestCase):
 
         # Verify both events were published
         downloaded_events = Event.objects.filter(
-            event_type="file.downloaded",
-            data__file_id=str(self.test_file.id)
+            event_type="file.downloaded", data__file_id=str(self.test_file.id)
         )
         updated_events = Event.objects.filter(
-            event_type="file.updated",
-            data__file_id=str(self.test_file.id)
+            event_type="file.updated", data__file_id=str(self.test_file.id)
         )
 
         self.assertGreaterEqual(downloaded_events.count(), 1)
         self.assertGreaterEqual(updated_events.count(), 1)
-

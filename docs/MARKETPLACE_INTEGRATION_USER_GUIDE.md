@@ -541,3 +541,5 @@ For complete API documentation, see:
 - [Marketplace-Specific Guides](./) - Detailed configuration for each marketplace
 - [Workflow Documentation](../../docs/workflows/marketplace-sync.md)
 - [Security Best Practices](../../docs/security/marketplace-integration.md)
+- **CLI Usage**: [Marketplace CLI Usage Guide](../cli/docs/MARKETPLACE_USAGE.md) - Complete CLI commands for marketplace integration
+- **SDK Usage**: [Marketplace Python SDK Usage Guide](../sdk/python/docs/MARKETPLACE_USAGE.md) - Complete SDK APIs for marketplace integration

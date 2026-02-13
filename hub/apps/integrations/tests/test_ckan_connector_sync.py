@@ -8,29 +8,30 @@ No mocks or stubs - all tests use actual CKAN API endpoints.
 
 Uses centralized test utilities for consistent configuration.
 """
-import pytest
-import uuid
-from typing import Dict, Any
-from datetime import datetime
 
+import uuid
+from datetime import datetime
+from typing import Any, Dict
+
+import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.ckan_connector import CKANConnector
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
-    MarketplaceType,
     MarketplaceListing,
     MarketplaceResource,
-    SyncStatus,
+    MarketplaceType,
     SyncResult,
+    SyncStatus,
 )
-from hub.apps.core.services.base import NotFoundError
+from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    create_test_connector,
-    marketplace_available,
-    get_test_ckan_url,  # Backward compatibility
-    get_test_api_key,   # Backward compatibility
     # Backward compatibility (deprecated)
     ckan_available,
+    create_test_connector,
+    get_test_api_key,  # Backward compatibility
+    get_test_ckan_url,  # Backward compatibility
+    marketplace_available,
 )
 
 
@@ -46,7 +47,7 @@ def has_write_permissions() -> bool:
         return False
 
     try:
-        result = connector.authenticate({'api_key': api_key})
+        result = connector.authenticate({"api_key": api_key})
         return result
     except Exception:
         return False
@@ -94,14 +95,14 @@ class TestCKANConnectorSyncOperations(TestCase):
 
     def test_sync_pull_basic(self):
         """Test basic sync_pull operation."""
-        result = self.connector.sync_pull(options={'limit': 5})
+        result = self.connector.sync_pull(options={"limit": 5})
 
         self.assertIsInstance(result, SyncResult)
         self.assertEqual(result.status, SyncStatus.COMPLETED)
         self.assertGreater(result.total_items, 0)
         self.assertGreaterEqual(result.successful_items, 0)
-        self.assertIn('mappings', result.metadata)
-        self.assertIsInstance(result.metadata['mappings'], list)
+        self.assertIn("mappings", result.metadata)
+        self.assertIsInstance(result.metadata["mappings"], list)
 
     def test_sync_pull_with_listing_ids(self):
         """Test sync_pull with specific listing IDs."""
@@ -117,42 +118,35 @@ class TestCKANConnectorSyncOperations(TestCase):
         self.assertEqual(result.status, SyncStatus.COMPLETED)
         self.assertEqual(result.total_items, len(listing_ids))
         self.assertGreaterEqual(result.successful_items, 0)
-        self.assertIn('mappings', result.metadata)
-        self.assertEqual(len(result.metadata['mappings']), result.successful_items)
+        self.assertIn("mappings", result.metadata)
+        self.assertEqual(len(result.metadata["mappings"]), result.successful_items)
 
     def test_sync_pull_with_filters(self):
         """Test sync_pull with filters."""
-        result = self.connector.sync_pull(
-            filters={'limit': 3},
-            options={'limit': 3}
-        )
+        result = self.connector.sync_pull(filters={"limit": 3}, options={"limit": 3})
 
         self.assertIsInstance(result, SyncResult)
         self.assertLessEqual(result.total_items, 3)
-        self.assertIn('mappings', result.metadata)
+        self.assertIn("mappings", result.metadata)
 
     def test_sync_pull_dry_run(self):
         """Test sync_pull in dry-run mode."""
-        result = self.connector.sync_pull(
-            options={'dry_run': True, 'limit': 5}
-        )
+        result = self.connector.sync_pull(options={"dry_run": True, "limit": 5})
 
         self.assertIsInstance(result, SyncResult)
         self.assertEqual(result.status, SyncStatus.COMPLETED)
-        self.assertTrue(result.metadata.get('dry_run'))
+        self.assertTrue(result.metadata.get("dry_run"))
         # In dry-run, mappings should still be created for validation
-        self.assertIn('mappings', result.metadata)
+        self.assertIn("mappings", result.metadata)
 
     def test_sync_pull_without_resources(self):
         """Test sync_pull without fetching resources."""
-        result = self.connector.sync_pull(
-            options={'include_resources': False, 'limit': 3}
-        )
+        result = self.connector.sync_pull(options={"include_resources": False, "limit": 3})
 
         self.assertIsInstance(result, SyncResult)
-        self.assertFalse(result.metadata.get('include_resources'))
+        self.assertFalse(result.metadata.get("include_resources"))
         # Mappings should still be created
-        self.assertIn('mappings', result.metadata)
+        self.assertIn("mappings", result.metadata)
 
     def test_sync_pull_nonexistent_listing(self):
         """Test sync_pull with non-existent listing IDs."""
@@ -174,8 +168,7 @@ class TestCKANConnectorSyncOperations(TestCase):
         """Test sync_pull with filters that return no results."""
         # Use a filter that's unlikely to match anything
         result = self.connector.sync_pull(
-            filters={'q': f'nonexistent-search-term-{uuid.uuid4().hex[:8]}'},
-            options={'limit': 10}
+            filters={"q": f"nonexistent-search-term-{uuid.uuid4().hex[:8]}"}, options={"limit": 10}
         )
 
         self.assertIsInstance(result, SyncResult)
@@ -186,42 +179,40 @@ class TestCKANConnectorSyncOperations(TestCase):
 
     def test_sync_pull_mapping_structure(self):
         """Test that sync_pull returns properly structured mappings."""
-        result = self.connector.sync_pull(options={'limit': 1})
+        result = self.connector.sync_pull(options={"limit": 1})
 
         if result.total_items == 0:
             self.skipTest("No listings available for mapping test")
 
-        self.assertIn('mappings', result.metadata)
-        mappings = result.metadata['mappings']
+        self.assertIn("mappings", result.metadata)
+        mappings = result.metadata["mappings"]
 
         if mappings:
             mapping = mappings[0]
-            self.assertIn('listing_id', mapping)
-            self.assertIn('mapping', mapping)
+            self.assertIn("listing_id", mapping)
+            self.assertIn("mapping", mapping)
             # Verify mapping structure
-            asset_mapping = mapping['mapping']
+            asset_mapping = mapping["mapping"]
             self.assertIsNotNone(asset_mapping.asset_data)
-            self.assertEqual(asset_mapping.source_type, 'FEDERATED')
+            self.assertEqual(asset_mapping.source_type, "FEDERATED")
 
     def test_sync_push_raises_not_implemented(self):
         """Test that sync_push raises NotImplementedError (CKAN connector is harvest-only)."""
+
         def asset_data_provider(asset_id: str) -> Dict[str, Any]:
             return {
-                'id': asset_id,
-                'name': f'Test Asset {asset_id}',
-                'description': 'Test asset for sync_push',
-                'key': f'test-asset-{uuid.uuid4().hex[:8]}',
+                "id": asset_id,
+                "name": f"Test Asset {asset_id}",
+                "description": "Test asset for sync_push",
+                "key": f"test-asset-{uuid.uuid4().hex[:8]}",
             }
 
-        asset_ids = [f'test-asset-{uuid.uuid4().hex[:8]}' for _ in range(2)]
+        asset_ids = [f"test-asset-{uuid.uuid4().hex[:8]}" for _ in range(2)]
 
         with self.assertRaises(NotImplementedError) as context:
             self.connector.sync_push(
                 asset_ids=asset_ids,
-                options={
-                    'asset_data_provider': asset_data_provider,
-                    'dry_run': True
-                }
+                options={"asset_data_provider": asset_data_provider, "dry_run": True},
             )
 
         self.assertIn("harvest-only", str(context.exception).lower())
@@ -229,30 +220,31 @@ class TestCKANConnectorSyncOperations(TestCase):
 
     def test_sync_push_with_metadata_raises_not_implemented(self):
         """Test that sync_push with metadata raises NotImplementedError."""
+
         def asset_data_provider(asset_id: str) -> Dict[str, Any]:
             return {
-                'id': asset_id,
-                'name': f'Test Asset {asset_id}',
-                'description': 'Test asset with metadata',
-                'key': f'test-asset-{uuid.uuid4().hex[:8]}',
+                "id": asset_id,
+                "name": f"Test Asset {asset_id}",
+                "description": "Test asset with metadata",
+                "key": f"test-asset-{uuid.uuid4().hex[:8]}",
             }
 
         def odps_metadata_provider(asset_id: str) -> Dict[str, Any]:
             return {
-                'product_name': 'Test Product',
-                'version': '1.0.0',
+                "product_name": "Test Product",
+                "version": "1.0.0",
             }
 
-        asset_ids = [f'test-asset-{uuid.uuid4().hex[:8]}']
+        asset_ids = [f"test-asset-{uuid.uuid4().hex[:8]}"]
 
         with self.assertRaises(NotImplementedError):
             self.connector.sync_push(
                 asset_ids=asset_ids,
                 options={
-                    'asset_data_provider': asset_data_provider,
-                    'odps_metadata_provider': odps_metadata_provider,
-                    'dry_run': True
-                }
+                    "asset_data_provider": asset_data_provider,
+                    "odps_metadata_provider": odps_metadata_provider,
+                    "dry_run": True,
+                },
             )
 
     def test_sync_push_empty_asset_ids_raises_not_implemented(self):
@@ -262,29 +254,30 @@ class TestCKANConnectorSyncOperations(TestCase):
 
     def test_sync_push_missing_provider_raises_not_implemented(self):
         """Test that sync_push without asset_data_provider raises NotImplementedError (not ValueError)."""
-        asset_ids = ['test-asset-1']
+        asset_ids = ["test-asset-1"]
 
         with self.assertRaises(NotImplementedError):
             self.connector.sync_push(asset_ids=asset_ids, options={})
 
     def test_sync_push_force_update_raises_not_implemented(self):
         """Test that sync_push with force_update raises NotImplementedError."""
+
         def asset_data_provider(asset_id: str) -> Dict[str, Any]:
             return {
-                'id': asset_id,
-                'name': f'Updated Asset {asset_id}',
-                'description': 'Updated description',
-                'key': 'test-key',
+                "id": asset_id,
+                "name": f"Updated Asset {asset_id}",
+                "description": "Updated description",
+                "key": "test-key",
             }
 
         with self.assertRaises(NotImplementedError) as context:
             self.connector.sync_push(
-                asset_ids=['test-asset-1'],
+                asset_ids=["test-asset-1"],
                 options={
-                    'asset_data_provider': asset_data_provider,
-                    'force_update': True,
-                    'dry_run': True
-                }
+                    "asset_data_provider": asset_data_provider,
+                    "force_update": True,
+                    "dry_run": True,
+                },
             )
 
         self.assertIn("harvest-only", str(context.exception).lower())
@@ -292,39 +285,35 @@ class TestCKANConnectorSyncOperations(TestCase):
 
     def test_sync_push_error_handling_raises_not_implemented(self):
         """Test that sync_push with invalid asset data raises NotImplementedError."""
+
         def asset_data_provider(asset_id: str) -> Dict[str, Any]:
             return {}
 
-        asset_ids = ['test-asset-1']
+        asset_ids = ["test-asset-1"]
 
         with self.assertRaises(NotImplementedError):
             self.connector.sync_push(
                 asset_ids=asset_ids,
-                options={
-                    'asset_data_provider': asset_data_provider,
-                    'dry_run': True
-                }
+                options={"asset_data_provider": asset_data_provider, "dry_run": True},
             )
 
     def test_sync_push_partial_success_raises_not_implemented(self):
         """Test that sync_push raises NotImplementedError (CKAN connector is harvest-only)."""
+
         def asset_data_provider(asset_id: str) -> Dict[str, Any]:
             return {
-                'id': asset_id,
-                'name': f'Test Asset {asset_id}',
-                'description': 'Valid asset',
-                'key': f'test-asset-{uuid.uuid4().hex[:8]}',
+                "id": asset_id,
+                "name": f"Test Asset {asset_id}",
+                "description": "Valid asset",
+                "key": f"test-asset-{uuid.uuid4().hex[:8]}",
             }
 
-        asset_ids = ['asset-1', 'asset-2']
+        asset_ids = ["asset-1", "asset-2"]
 
         with self.assertRaises(NotImplementedError) as context:
             self.connector.sync_push(
                 asset_ids=asset_ids,
-                options={
-                    'asset_data_provider': asset_data_provider,
-                    'dry_run': True
-                }
+                options={"asset_data_provider": asset_data_provider, "dry_run": True},
             )
 
         self.assertIn("harvest-only", str(context.exception).lower())
@@ -332,21 +321,79 @@ class TestCKANConnectorSyncOperations(TestCase):
 
     def test_sync_operations_connection_error(self):
         """Test that sync operations handle connection errors gracefully."""
-        invalid_connector = CKANConnector(base_url='https://invalid-ckan-instance-xyz-12345.com')
+        invalid_connector = CKANConnector(base_url="https://invalid-ckan-instance-xyz-12345.com")
 
         # Test sync_pull - should return FAILED status, not raise exception
-        result = invalid_connector.sync_pull(options={'limit': 1})
+        result = invalid_connector.sync_pull(options={"limit": 1})
         self.assertIsInstance(result, SyncResult)
         self.assertEqual(result.status, SyncStatus.FAILED)
         self.assertGreater(len(result.errors), 0)
 
         # Test sync_push - should raise NotImplementedError (harvest-only)
         def asset_data_provider(asset_id: str) -> Dict[str, Any]:
-            return {'id': asset_id, 'name': 'Test'}
+            return {"id": asset_id, "name": "Test"}
 
         with self.assertRaises(NotImplementedError):
             invalid_connector.sync_push(
-                asset_ids=['test'],
-                options={'asset_data_provider': asset_data_provider}
+                asset_ids=["test"], options={"asset_data_provider": asset_data_provider}
             )
 
+    def test_sync_pull_with_zero_limit(self):
+        """Test sync_pull() edge case with zero limit"""
+        result = self.connector.sync_pull(options={"limit": 0})
+        self.assertIsInstance(result, SyncResult)
+        self.assertEqual(result.total_items, 0)
+        self.assertEqual(result.successful_items, 0)
+
+    def test_sync_pull_with_very_large_limit(self):
+        """Test sync_pull() edge case with very large limit"""
+        result = self.connector.sync_pull(options={"limit": 1000000})
+        self.assertIsInstance(result, SyncResult)
+        # Should handle large limit gracefully
+        self.assertLessEqual(result.total_items, 1000000)
+
+    def test_sync_pull_with_none_options(self):
+        """Test sync_pull() handles None options gracefully"""
+        result = self.connector.sync_pull(options=None)
+        self.assertIsInstance(result, SyncResult)
+        self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED])
+
+    def test_sync_pull_with_empty_options(self):
+        """Test sync_pull() handles empty options dictionary"""
+        result = self.connector.sync_pull(options={})
+        self.assertIsInstance(result, SyncResult)
+        self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED])
+
+    def test_sync_pull_with_invalid_filters(self):
+        """Test sync_pull() error handling with invalid filters"""
+        # Test with invalid filter structure
+        try:
+            result = self.connector.sync_pull(filters={"invalid": "filter"})
+            # Should handle gracefully or return empty results
+            self.assertIsInstance(result, SyncResult)
+        except (ValueError, TypeError):
+            # Expected if filters are validated strictly
+            pass
+
+    def test_sync_pull_with_none_filters(self):
+        """Test sync_pull() handles None filters gracefully"""
+        result = self.connector.sync_pull(filters=None)
+        self.assertIsInstance(result, SyncResult)
+        self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED])
+
+    def test_sync_pull_with_empty_listing_ids(self):
+        """Test sync_pull() edge case with empty listing_ids list"""
+        result = self.connector.sync_pull(listing_ids=[])
+        self.assertIsInstance(result, SyncResult)
+        self.assertEqual(result.total_items, 0)
+        self.assertEqual(result.successful_items, 0)
+
+    def test_sync_pull_with_invalid_listing_ids(self):
+        """Test sync_pull() error handling with invalid listing IDs"""
+        result = self.connector.sync_pull(listing_ids=["invalid-id-1", "invalid-id-2"])
+        self.assertIsInstance(result, SyncResult)
+        # Should complete but with errors or 0 successful items
+        if result.status == SyncStatus.FAILED:
+            self.assertGreater(len(result.errors), 0)
+        elif result.status == SyncStatus.COMPLETED:
+            self.assertEqual(result.successful_items, 0)

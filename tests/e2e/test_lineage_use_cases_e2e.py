@@ -525,11 +525,16 @@ class ImpactAnalysisE2ETest(E2ETestBase):
         super().setUp()
 
         # Create source contract
+        # ODCS requires: id, info.name, schema.fields (at least one field)
         self.source_contract_id = self.create_contract(
             asset_id=None,
             original_raw=json.dumps(
                 {
+                    "id": "impact-source-contract",
                     "info": {"name": "impact-source-contract", "title": "Impact Source Contract"},
+                    "schema": {
+                        "fields": [{"name": "source_field", "type": "string"}]
+                    },
                     "models": [
                         {
                             "name": "SourceModel",
@@ -554,13 +559,23 @@ class ImpactAnalysisE2ETest(E2ETestBase):
         source_contract.save()
 
         # Create dependent contract
+        # ODCS requires: id, info.name, schema.fields (at least one field)
         self.dependent_contract_id = self.create_contract(
             asset_id=None,
             original_raw=json.dumps(
                 {
+                    "id": "impact-dependent-contract",
                     "info": {
                         "name": "impact-dependent-contract",
                         "title": "Impact Dependent Contract",
+                    },
+                    "schema": {
+                        "fields": [
+                            {
+                                "name": "dependent_field",
+                                "type": "string",
+                            }
+                        ]
                     },
                     "models": [
                         {
@@ -711,11 +726,16 @@ class LineageAPIE2ETest(E2ETestBase):
         super().setUp()
 
         # Create contract via API
+        # ODCS requires: id, info.name, schema.fields (at least one field)
         self.contract_id = self.create_contract(
             asset_id=None,
             original_raw=json.dumps(
                 {
+                    "id": "api-test-contract",
                     "info": {"name": "api-test-contract", "title": "API Test Contract"},
+                    "schema": {
+                        "fields": [{"name": "api_field", "type": "string"}]
+                    },
                     "models": [
                         {"name": "APIModel", "fields": [{"name": "api_field", "type": "string"}]}
                     ],

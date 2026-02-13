@@ -68,7 +68,14 @@ class AccessRequestWorkflowTest(TestCase):
             content_sha256="abc123",
             created_by=self.user
         )
-    
+        self.dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            format="CSV",
+            schema_json={"fields": []},
+        )
+
     def test_create_access_request_no_approval(self):
         """Test creating access request without approval"""
         request = AccessRequestWorkflow.create_access_request(
@@ -248,7 +255,7 @@ class AccessRequestWorkflowTest(TestCase):
         request2 = AccessRequestWorkflow.create_access_request(
             tenant_id=str(self.tenant.id),
             requested_by_id=str(self.user.id),
-            dataset_id=str(self.asset.id),  # Different resource
+            dataset_id=str(self.dataset.id),
             reason="Request 2",
             requested_access_type="WRITE",
             requires_approval=False

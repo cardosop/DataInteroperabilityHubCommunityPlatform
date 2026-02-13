@@ -8,17 +8,20 @@ This ensures that:
 - Graceful degradation approach is documented
 - Examples are accurate
 """
+
 import json
 from pathlib import Path
 from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import get_normalizer
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import ODCSNormalizerV3_0_0_Preview
 from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import (
+    ODCSNormalizerV3_0_0_Preview,
+)
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
 
 
 class ODCSVersionSupportDocumentationTest(TestCase):
@@ -31,28 +34,28 @@ class ODCSVersionSupportDocumentationTest(TestCase):
             "3.0.2": {
                 "normalizer": ODCSNormalizerV3_0_2,
                 "status": "Current (Baseline)",
-                "description": "Latest stable version, recommended for new contracts"
+                "description": "Latest stable version, recommended for new contracts",
             },
             "3.0.1": {
                 "normalizer": ODCSNormalizerV3_0_1,
                 "status": "Supported",
-                "description": "Previous stable version, fully supported"
+                "description": "Previous stable version, fully supported",
             },
             "3.0.0": {
                 "normalizer": ODCSNormalizerV3_0_0,
                 "status": "Supported",
-                "description": "Initial 3.x release, fully supported"
+                "description": "Initial 3.x release, fully supported",
             },
             "3.0.0-preview": {
                 "normalizer": ODCSNormalizerV3_0_0_Preview,
                 "status": "Supported",
-                "description": "Preview version, gracefully handles incomplete features"
+                "description": "Preview version, gracefully handles incomplete features",
             },
             "2.2.2": {
                 "normalizer": ODCSNormalizerV2_2_2,
                 "status": "Supported (Legacy)",
-                "description": "Legacy version, gracefully degrades 3.x features"
-            }
+                "description": "Legacy version, gracefully degrades 3.x features",
+            },
         }
 
     def test_all_documented_versions_have_normalizers(self):
@@ -66,7 +69,7 @@ class ODCSVersionSupportDocumentationTest(TestCase):
                 self.assertIsNotNone(normalizer, f"Normalizer for {version} should exist")
                 self.assertTrue(
                     normalizer.supports(OriginalSpecType.ODCS, version, {}),
-                    f"Normalizer for {version} should support version {version}"
+                    f"Normalizer for {version} should support version {version}",
                 )
 
     def test_all_normalizers_are_documented(self):
@@ -92,8 +95,7 @@ class ODCSVersionSupportDocumentationTest(TestCase):
                     break
 
             self.assertIsNotNone(
-                supported_version,
-                f"Normalizer {normalizer_class.__name__} should be documented"
+                supported_version, f"Normalizer {normalizer_class.__name__} should be documented"
             )
 
     def test_version_detection_works_for_all_versions(self):
@@ -107,11 +109,7 @@ class ODCSVersionSupportDocumentationTest(TestCase):
                     "id": f"test-{version}",
                     "name": f"Test Contract {version}",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {"name": "id", "type": "string", "nullable": False}
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
 
                 # Get normalizer for this version
@@ -119,12 +117,11 @@ class ODCSVersionSupportDocumentationTest(TestCase):
 
                 # Verify normalizer is correct
                 self.assertIsNotNone(
-                    normalizer,
-                    f"Normalizer should be found for version {version}"
+                    normalizer, f"Normalizer should be found for version {version}"
                 )
                 self.assertTrue(
                     normalizer.supports(OriginalSpecType.ODCS, version, contract_data),
-                    f"Normalizer should support version {version}"
+                    f"Normalizer should support version {version}",
                 )
 
     def test_graceful_degradation_works(self):
@@ -141,11 +138,7 @@ class ODCSVersionSupportDocumentationTest(TestCase):
                     "id": f"test-{version}",
                     "name": f"Test Contract {version}",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {"name": "id", "type": "string", "nullable": False}
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
 
                 # Normalize
@@ -155,35 +148,37 @@ class ODCSVersionSupportDocumentationTest(TestCase):
                 # Verify normalization succeeds (graceful degradation)
                 self.assertIsNotNone(
                     result.hub_contract,
-                    f"Version {version} should normalize successfully (graceful degradation)"
+                    f"Version {version} should normalize successfully (graceful degradation)",
                 )
                 self.assertIn(
                     result.status,
-                    [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
-                    f"Version {version} should normalize with OK or WARNINGS status"
+                    [
+                        NormalizationStatus.NORMALIZED_OK,
+                        NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+                    ],
+                    f"Version {version} should normalize with OK or WARNINGS status",
                 )
 
     def test_documentation_file_exists(self):
         """Test that ODCS version support documentation file exists."""
         # Check if documentation file exists
-        docs_path = Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
+        docs_path = (
+            Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
+        )
 
         self.assertTrue(
-            docs_path.exists(),
-            "ODCS_VERSION_SUPPORT.md documentation file should exist"
+            docs_path.exists(), "ODCS_VERSION_SUPPORT.md documentation file should exist"
         )
 
         # Verify file is not empty
         content = docs_path.read_text()
-        self.assertGreater(
-            len(content),
-            0,
-            "ODCS_VERSION_SUPPORT.md should not be empty"
-        )
+        self.assertGreater(len(content), 0, "ODCS_VERSION_SUPPORT.md should not be empty")
 
     def test_documentation_mentions_all_versions(self):
         """Test that documentation mentions all supported versions."""
-        docs_path = Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
+        docs_path = (
+            Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
+        )
 
         if not docs_path.exists():
             self.skipTest("Documentation file does not exist")
@@ -201,13 +196,14 @@ class ODCSVersionSupportDocumentationTest(TestCase):
                 ]
 
                 self.assertTrue(
-                    any(version_mentions),
-                    f"Documentation should mention version {version}"
+                    any(version_mentions), f"Documentation should mention version {version}"
                 )
 
     def test_documentation_mentions_graceful_degradation(self):
         """Test that documentation mentions graceful degradation."""
-        docs_path = Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
+        docs_path = (
+            Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
+        )
 
         if not docs_path.exists():
             self.skipTest("Documentation file does not exist")
@@ -223,19 +219,20 @@ class ODCSVersionSupportDocumentationTest(TestCase):
         ]
 
         found_keywords = [
-            keyword for keyword in graceful_degradation_keywords
+            keyword
+            for keyword in graceful_degradation_keywords
             if keyword.lower() in content.lower()
         ]
 
         self.assertGreater(
-            len(found_keywords),
-            0,
-            "Documentation should mention graceful degradation approach"
+            len(found_keywords), 0, "Documentation should mention graceful degradation approach"
         )
 
     def test_documentation_mentions_version_specific_features(self):
         """Test that documentation mentions version-specific features."""
-        docs_path = Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
+        docs_path = (
+            Path(__file__).parent.parent.parent.parent.parent / "docs" / "ODCS_VERSION_SUPPORT.md"
+        )
 
         if not docs_path.exists():
             self.skipTest("Documentation file does not exist")
@@ -250,13 +247,113 @@ class ODCSVersionSupportDocumentationTest(TestCase):
         ]
 
         found_keywords = [
-            keyword for keyword in feature_keywords
-            if keyword.lower() in content.lower()
+            keyword for keyword in feature_keywords if keyword.lower() in content.lower()
         ]
 
         self.assertGreater(
-            len(found_keywords),
-            0,
-            "Documentation should mention version-specific features"
+            len(found_keywords), 0, "Documentation should mention version-specific features"
         )
 
+    def test_documentation_handles_unicode_characters(self):
+        """Test that documentation handling works with unicode characters."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-unicode",
+            "name": "测试合同",
+            "version": "1.0.0",
+            "description": "测试描述",
+            "schema": {"fields": [{"name": "字段名称", "type": "string"}]},
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle unicode characters
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "info" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["info"])
+
+    def test_documentation_handles_special_characters(self):
+        """Test that documentation handling works with special characters."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-special",
+            "name": "Test & Co. (Special)",
+            "version": "1.0.0",
+            "description": "Test <description> & more",
+            "schema": {"fields": [{"name": "field-name", "type": "string"}]},
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle special characters
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "info" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["info"])
+
+    def test_documentation_handles_very_large_documents(self):
+        """Test that documentation handling works with very large documents."""
+        large_description = "A" * 100000  # 100KB string
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-large",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": large_description,
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle very large documents
+        self.assertIsNotNone(result.hub_contract)
+
+    def test_documentation_handles_none_values(self):
+        """Test that documentation handling works with None values."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-none",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": None,  # None value
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(result.hub_contract)
+
+    def test_documentation_handles_nested_structures(self):
+        """Test that documentation handling works with nested structures."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-nested",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                ]
+            },
+        }
+
+        normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.2", contract_data)
+        result = normalizer.normalize(contract_data, spec_version="3.0.2")
+
+        # Should handle nested structures
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "schema" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["schema"])

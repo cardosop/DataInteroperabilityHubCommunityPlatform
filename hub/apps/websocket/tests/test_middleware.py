@@ -3,8 +3,21 @@ Comprehensive tests for WebSocket authentication middleware.
 """
 
 import pytest
-from channels.db import database_sync_to_async
+
+# Optional channels import
+try:
+    from channels.db import database_sync_to_async
+    CHANNELS_AVAILABLE = True
+except ImportError:
+    # Fallback to asgiref if channels not available
+    from asgiref.sync import sync_to_async
+    database_sync_to_async = sync_to_async
+    CHANNELS_AVAILABLE = False
+
 from django.contrib.auth import get_user_model
+
+# Skip tests if channels not available
+pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
 from django.db import connections, close_old_connections
 
 from hub.apps.auth.models import APIKey

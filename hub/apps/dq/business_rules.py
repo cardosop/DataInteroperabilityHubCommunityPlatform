@@ -219,10 +219,10 @@ class DQBusinessRules(BusinessRules):
         errors = []
         warnings = []
         details = {
-            'dq_run_id': str(dq_run.id),
-            'profile_key': dq_run.profile_key,
-            'engine': dq_run.engine,
-            'status': dq_run.status,
+            'dq_run_id': str(getattr(dq_run, 'id', None) or ''),
+            'profile_key': getattr(dq_run, 'profile_key', ''),
+            'engine': getattr(dq_run, 'engine', ''),
+            'status': getattr(dq_run, 'status', DQRunStatus.PENDING),
         }
 
         # Validate tenant context consistency

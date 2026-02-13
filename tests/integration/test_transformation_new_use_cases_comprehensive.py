@@ -52,15 +52,30 @@ pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
 class TransformationNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
     """Base test class for Transformation new use cases"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    @classmethod
+    def _fixture_teardown(cls):
+        """Override to skip database flush for integration tests.
+
+        TransactionTestCase tries to flush the database between tests, but this
+        fails with foreign key constraints. We use transaction rollback instead
+        which provides isolation without flushing.
+        """
+        # Don't flush - transactions are rolled back which provides isolation
+        pass
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
         self.client = APIClient()
 
-        # Create tenant
+        # Create tenant (use unique name/slug to avoid conflicts between tests)
+        unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {unique_id}",
+            slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -72,10 +87,10 @@ class TransformationNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolati
             defaults={"description": "Data Provider"},
         )
 
-        # Create users
+        # Create users (use unique emails to avoid conflicts between tests)
         self.dpo_user = UserFactory.create_user(
             tenant=self.tenant,
-            email="dpo@example.com",
+            email=f"dpo-{unique_id}@example.com",
         )
         UserRole.objects.get_or_create(user=self.dpo_user, role=self.data_provider_role)
 

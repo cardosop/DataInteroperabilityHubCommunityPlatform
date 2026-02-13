@@ -1,0 +1,73 @@
+.governance-retention-policy-detail-page {
+  padding: 2rem;
+}
+
+.governance-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.governance-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.governance-detail-content {
+  background: white;
+  border-radius: 4px;
+  padding: 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.governance-detail-content h1 {
+  margin: 0 0 2rem 0;
+}
+
+.governance-detail-section {
+  margin-bottom: 2rem;
+}
+
+.governance-detail-metadata {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.metadata-item label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #666;
+  text-transform: uppercase;
+}
+
+.metadata-item span,
+.metadata-item p {
+  font-size: 1rem;
+  color: #333;
+}
+
+.metadata-item a {
+  color: #0066cc;
+  text-decoration: none;
+  margin-top: 0.25rem;
+}
+
+.metadata-item a:hover {
+  text-decoration: underline;
+}
+
+.error-display {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #f8d7da;
+  color: #721c24;
+  border-radius: 4px;
+}

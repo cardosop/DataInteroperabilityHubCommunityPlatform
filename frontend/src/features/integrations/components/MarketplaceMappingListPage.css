@@ -1,0 +1,71 @@
+.mapping-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.mapping-list-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.mapping-list-header h1 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.mapping-list-table {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+
+.mapping-list-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mapping-list-table thead {
+  background: var(--color-gray-light);
+}
+
+.mapping-list-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.mapping-list-table td {
+  padding: var(--spacing-md);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.mapping-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.mapping-row:hover {
+  background: var(--color-gray-light);
+}
+
+.mapping-id {
+  font-family: monospace;
+  font-size: var(--font-size-sm);
+}
+
+.mapping-list-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.pagination-info {
+  color: var(--color-text-secondary);
+}

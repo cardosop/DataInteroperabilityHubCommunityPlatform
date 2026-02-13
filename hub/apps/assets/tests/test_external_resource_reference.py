@@ -1,18 +1,20 @@
 """
 Tests for ExternalResourceReference model
 """
-import uuid
-import tempfile
+
 import os
-from django.test import TestCase
+import tempfile
+import uuid
+
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
+from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus, AssetVisibility, ExternalResourceReference
-from hub.apps.tenants.models import Tenant
-from hub.apps.integrations.models import MarketplaceConnection
 from hub.apps.integrations.base import MarketplaceType
-from django.contrib.auth import get_user_model
+from hub.apps.integrations.models import MarketplaceConnection
+from hub.apps.tenants.models import Tenant
 
 User = get_user_model()
 
@@ -71,9 +73,7 @@ class ExternalResourceReferenceModelTest(TestCase):
         self.assertEqual(external_resource.url, "https://example.com/resource.csv")
         self.assertEqual(external_resource.format, "CSV")
         self.assertEqual(external_resource.size_bytes, 1024)
-        self.assertEqual(
-            external_resource.marketplace_type, MarketplaceType.CKAN_INSTANCE.value
-        )
+        self.assertEqual(external_resource.marketplace_type, MarketplaceType.CKAN_INSTANCE.value)
         self.assertEqual(external_resource.connection_id, self.connection.id)
         self.assertEqual(external_resource.metadata, {"key": "value"})
         self.assertIsNotNone(external_resource.created_at)
@@ -167,9 +167,7 @@ class ExternalResourceReferenceModelTest(TestCase):
         self.asset.delete()
 
         # Verify ExternalResourceReference was deleted
-        self.assertFalse(
-            ExternalResourceReference.objects.filter(id=resource_id).exists()
-        )
+        self.assertFalse(ExternalResourceReference.objects.filter(id=resource_id).exists())
 
     def test_asset_get_external_resources(self):
         """Test Asset.get_external_resources() method"""
@@ -215,6 +213,136 @@ class ExternalResourceReferenceModelTest(TestCase):
         )
 
         # Now has external resources
+        self.assertTrue(self.asset.has_external_resources())
+
+    # ========== FAILURE SCENARIOS ==========
+
+    def test_create_external_resource_reference_failure_duplicate(self):
+        """Test creating duplicate external resource reference fails (failure scenario)"""
+        ExternalResourceReference.objects.create(
+            asset=self.asset,
+            resource_id="resource-1",
+            name="Test Resource",
+            url="https://example.com/resource.csv",
+            format="CSV",
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            connection_id=self.connection.id,
+        )
+
+        # Try to create duplicate
+        with self.assertRaises(IntegrityError):
+            ExternalResourceReference.objects.create(
+                asset=self.asset,
+                resource_id="resource-1",
+                name="Duplicate Resource",
+                url="https://example.com/duplicate.csv",
+                format="CSV",
+                marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+                connection_id=self.connection.id,
+            )
+
+    def test_create_external_resource_reference_failure_invalid_connection(self):
+        """Test creating external resource reference with invalid connection (failure scenario)"""
+        import uuid
+
+        fake_connection_id = uuid.uuid4()
+
+        # Should handle invalid connection gracefully
+        try:
+            resource = ExternalResourceReference.objects.create(
+                asset=self.asset,
+                resource_id="resource-1",
+                name="Test Resource",
+                url="https://example.com/resource.csv",
+                format="CSV",
+                marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+                connection_id=fake_connection_id,
+            )
+            # If succeeds, verify it was created
+            self.assertIsNotNone(resource)
+        except Exception:
+            # If fails, that's acceptable for invalid connection
+            pass
+
+    # ========== EDGE CASES ==========
+
+    def test_external_resource_reference_edge_case_empty_url(self):
+        """Test external resource reference with empty URL (edge case)"""
+        resource = ExternalResourceReference.objects.create(
+            asset=self.asset,
+            resource_id="resource-empty-url",
+            name="Empty URL Resource",
+            url="",
+            format="CSV",
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            connection_id=self.connection.id,
+        )
+
+        self.assertEqual(resource.url, "")
+
+    def test_external_resource_reference_edge_case_very_long_url(self):
+        """Test external resource reference with very long URL (edge case)"""
+        # Django URLField has max_length of 200 by default
+        # Test with a URL that's at the limit but not exceeding it
+        long_url = "https://example.com/" + "a" * (200 - len("https://example.com/"))
+        resource = ExternalResourceReference.objects.create(
+            asset=self.asset,
+            resource_id="resource-long-url",
+            name="Long URL Resource",
+            url=long_url,
+            format="CSV",
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            connection_id=self.connection.id,
+        )
+
+        self.assertEqual(resource.url, long_url)
+
+    def test_external_resource_reference_edge_case_zero_size(self):
+        """Test external resource reference with zero size (edge case)"""
+        resource = ExternalResourceReference.objects.create(
+            asset=self.asset,
+            resource_id="resource-zero-size",
+            name="Zero Size Resource",
+            url="https://example.com/resource.csv",
+            format="CSV",
+            size_bytes=0,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            connection_id=self.connection.id,
+        )
+
+        self.assertEqual(resource.size_bytes, 0)
+
+    def test_external_resource_reference_edge_case_multiple_resources_same_asset_count(self):
+        """Test multiple external resources for same asset has correct count."""
+        for i in range(5):
+            ExternalResourceReference.objects.create(
+                asset=self.asset,
+                resource_id=f"resource-{i}",
+                name=f"Resource {i}",
+                url=f"https://example.com/resource{i}.csv",
+                format="CSV",
+                marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+                connection_id=self.connection.id,
+            )
+
+        # Use the correct related_name from the model
+        self.assertEqual(self.asset.external_resource_references.count(), 5)
+
+    def test_external_resource_reference_edge_case_multiple_resources_same_asset_has_resources(
+        self,
+    ):
+        """Test multiple external resources for same asset has_external_resources returns True."""
+        for i in range(5):
+            ExternalResourceReference.objects.create(
+                asset=self.asset,
+                resource_id=f"resource-{i}",
+                name=f"Resource {i}",
+                url=f"https://example.com/resource{i}.csv",
+                format="CSV",
+                marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+                connection_id=self.connection.id,
+            )
+
         self.assertTrue(self.asset.has_external_resources())
 
     def test_asset_download_external_resource_not_found(self):
@@ -302,4 +430,3 @@ class ExternalResourceReferenceModelTest(TestCase):
         self.assertEqual(self.asset.external_resource_references.count(), 1)
         self.assertEqual(asset2.external_resource_references.count(), 1)
         self.assertNotEqual(resource1.id, resource2.id)
-

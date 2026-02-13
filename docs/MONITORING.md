@@ -139,6 +139,21 @@ open http://localhost:16686
 # - Tags: error=true
 ```
 
+### W3C Trace Context and service coverage
+
+All request-handling services (api-service, API Gateway, FastAPI microservices) **SHOULD** use [W3C Trace Context](https://www.w3.org/TR/trace-context/) (`traceparent`, `tracestate` headers) and export spans to the same backend (Jaeger or OTLP) so that traces are continuous across the stack.
+
+| Service | W3C trace context / export to same backend | Notes |
+|--------|--------------------------------------------|-------|
+| **api-service** (Django) | **Yes** | `TraceIDMiddleware` and `SpanMiddleware` extract/emit traceparent; OpenTelemetry via `hub.apps.observability.otel_config` (Django + HTTPX instrumentation). Exports to Jaeger or OTLP per `OPENTELEMETRY_EXPORTER`. |
+| **API Gateway** (FastAPI) | **Yes** | `shared.tracing.setup_opentelemetry_fastapi`; FastAPI and HTTPX instrumentation; Jaeger exporter. Propagates W3C headers on forwarded requests. |
+| **semantic-service** (FastAPI) | **Yes** | `shared.tracing.setup_opentelemetry_fastapi`; FastAPI and HTTPX instrumentation; Jaeger exporter. |
+| **dq-service** (FastAPI) | **Not yet** | No OpenTelemetry instrumentation. To align: add `shared.tracing.setup_opentelemetry_fastapi` and instrument the app. |
+| **compliance-service** (FastAPI) | **Not yet** | No OpenTelemetry instrumentation. To align: add `shared.tracing.setup_opentelemetry_fastapi` and instrument the app. |
+| **webhook-service** (FastAPI) | **Not yet** | OpenTelemetry deps present but not wired in main. To align: add `shared.tracing.setup_opentelemetry_fastapi` and instrument the app. |
+
+Gateway and api-service both use W3C trace context: Django uses `hub.apps.api.middleware.tracing` (traceparent) and `get_trace_headers()` for outbound calls; OpenTelemetry SDK uses W3C by default. For full propagation details, see `infrastructure/tracing/README.md`.
+
 ## Dashboards
 
 ### Grafana
@@ -270,6 +285,169 @@ The Observability Service provides data observability:
 - **Data Freshness**: Track data update frequency
 - **Lineage Tracking**: Track data lineage
 - **Quality Metrics**: Track data quality trends
+
+## BaaS Platform Metrics
+
+### API Gateway Metrics
+
+The API Gateway (`services/api-gateway/`) exposes metrics for rate limiting and request routing:
+
+- `api_gateway_requests_total` - Total API requests
+- `api_gateway_request_duration_seconds` - Request duration
+- `api_gateway_rate_limit_exceeded_total` - Rate limit violations
+- `api_gateway_api_key_validations_total` - API key validations
+- `api_gateway_tier_requests_total{ tier="FREE|PRO|ENTERPRISE" }` - Requests by tier
+
+### Usage Tracking Metrics
+
+The UsageTrackingService exposes metrics for API usage:
+
+- `baas_usage_requests_total` - Total tracked requests
+- `baas_usage_requests_by_endpoint_total{ endpoint="/api/v1/assets/" }` - Requests by endpoint
+- `baas_usage_requests_by_tier_total{ tier="FREE|PRO|ENTERPRISE" }` - Requests by tier
+- `baas_usage_quota_remaining{ tier="FREE|PRO|ENTERPRISE" }` - Remaining quota
+- `baas_usage_response_time_seconds` - Response time histogram
+
+### Grafana Dashboard
+
+**BaaS Platform Dashboard** (`grafana/dashboards/baas-platform.json`):
+
+- **API Gateway Overview**: Request rate, error rate, rate limit violations
+- **Usage by Tier**: Requests, quota usage, quota remaining per tier
+- **Usage by Endpoint**: Top endpoints by request count and response time
+- **API Key Management**: API key creation, revocation, expiration
+
+**Key Panels**:
+- API Gateway Request Rate (requests/second)
+- Rate Limit Violations by Tier
+- Quota Usage Percentage by Tier
+- Top 10 Endpoints by Request Count
+- Average Response Time by Endpoint
+
+### Alert Definitions
+
+**BaaS Platform Alerts**:
+
+```yaml
+# Rate limit violations
+- alert: BaaSRateLimitViolationsHigh
+  expr: rate(api_gateway_rate_limit_exceeded_total[5m]) > 10
+  for: 5m
+  annotations:
+    summary: "High rate limit violations detected"
+
+# Quota exhaustion
+- alert: BaaSQuotaExhausted
+  expr: baas_usage_quota_remaining < 100
+  for: 1m
+  annotations:
+    summary: "API quota nearly exhausted for tier"
+
+# API key validation failures
+- alert: BaaSAPIKeyValidationFailures
+  expr: rate(api_gateway_api_key_validations_total{status="failed"}[5m]) > 5
+  for: 5m
+  annotations:
+    summary: "High API key validation failure rate"
+```
+
+### Monitoring Best Practices
+
+1. **Track Quota Usage**: Monitor quota remaining to prevent service disruption
+2. **Monitor Rate Limits**: Track rate limit violations to identify abuse or scaling needs
+3. **Endpoint Performance**: Monitor response times by endpoint to identify slow endpoints
+4. **Tier Distribution**: Track request distribution across tiers for capacity planning
+
+## ODH Integration Metrics
+
+### Model Registry Metrics
+
+The ModelRegistryBridgeService exposes metrics for model operations:
+
+- `odh_models_total` - Total ML models
+- `odh_models_by_status_total{ status="TRAINING|TRAINED|DEPLOYED|FAILED" }` - Models by status
+- `odh_models_by_type_total{ type="CLASSIFICATION|REGRESSION|..." }` - Models by type
+- `odh_model_operations_total{ operation="create|update|delete" }` - Model operations
+- `odh_model_sync_duration_seconds` - Model sync duration
+
+### Training Pipeline Metrics
+
+The ModelTrainingWorkflow exposes metrics for training operations:
+
+- `odh_training_jobs_total` - Total training jobs
+- `odh_training_jobs_by_status_total{ status="RUNNING|COMPLETED|FAILED" }` - Jobs by status
+- `odh_training_job_duration_seconds` - Training job duration
+- `odh_training_job_failures_total` - Failed training jobs
+- `odh_training_dataset_validation_duration_seconds` - Dataset validation duration
+
+### Inference Service Metrics
+
+The InferenceValidationService exposes metrics for inference operations:
+
+- `odh_inference_predictions_total` - Total predictions
+- `odh_inference_latency_seconds` - Inference latency histogram
+- `odh_inference_errors_total` - Inference errors
+- `odh_inference_validation_failures_total` - Input/output validation failures
+- `odh_inference_data_drift_score` - Data drift score gauge
+
+### Grafana Dashboard
+
+**ODH Integration Dashboard** (`grafana/dashboards/odh-integration.json`):
+
+- **Model Registry Overview**: Model count, status distribution, type distribution
+- **Training Pipeline**: Training job status, duration, success rate
+- **Inference Service**: Prediction rate, latency, error rate, data drift
+- **ODH Service Health**: ODH service availability and response times
+
+**Key Panels**:
+- ML Models by Status
+- Training Job Success Rate
+- Inference Prediction Rate (predictions/second)
+- Inference Latency (p50, p95, p99)
+- Data Drift Score Trend
+- ODH Service Response Time
+
+### Alert Definitions
+
+**ODH Integration Alerts**:
+
+```yaml
+# Training job failures
+- alert: ODHTrainingJobFailuresHigh
+  expr: rate(odh_training_job_failures_total[5m]) > 0.1
+  for: 5m
+  annotations:
+    summary: "High training job failure rate"
+
+# Inference latency high
+- alert: ODHInferenceLatencyHigh
+  expr: histogram_quantile(0.95, odh_inference_latency_seconds) > 0.5
+  for: 5m
+  annotations:
+    summary: "High inference latency (p95 > 500ms)"
+
+# Data drift detected
+- alert: ODHDataDriftDetected
+  expr: odh_inference_data_drift_score > 0.1
+  for: 10m
+  annotations:
+    summary: "Data drift detected in inference inputs"
+
+# ODH service unavailable
+- alert: ODHServiceUnavailable
+  expr: up{job="odh-service"} == 0
+  for: 1m
+  annotations:
+    summary: "ODH service is unavailable"
+```
+
+### Monitoring Best Practices
+
+1. **Model Lifecycle Tracking**: Monitor model status transitions (TRAINING → TRAINED → DEPLOYED)
+2. **Training Performance**: Track training job duration and success rate
+3. **Inference Quality**: Monitor inference latency, accuracy, and data drift
+4. **ODH Service Health**: Monitor ODH service availability and response times
+5. **Resource Usage**: Track resource consumption for training and inference
 
 ## Best Practices
 

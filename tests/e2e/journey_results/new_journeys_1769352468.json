@@ -1,0 +1,189 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 302.6072156429291
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-008-4d85146d",
+      "journey_name": "Create Transformation Pipeline for Asset",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1769352165.83789,
+      "end_time": 1769352468.4451056,
+      "duration": 302.6072156429291,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352165.8378992,
+          "end_time": 1769352167.6433954,
+          "duration": 1.8054962158203125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.6434143,
+          "end_time": 1769352167.64724,
+          "duration": 0.003825664520263672,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Transformation Pipeline API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.6472454,
+          "end_time": 1769352167.6472492,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Validate Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.6472776,
+          "end_time": 1769352167.6502337,
+          "duration": 0.0029561519622802734,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Validation Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.6502383,
+          "end_time": 1769352167.6502416,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Preview Transformation Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.650259,
+          "end_time": 1769352167.653785,
+          "duration": 0.003525972366333008,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Preview Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.653789,
+          "end_time": 1769352167.6537921,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Save Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.6538095,
+          "end_time": 1769352167.653812,
+          "duration": 2.384185791015625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Execute Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.6538136,
+          "end_time": 1769352167.658274,
+          "duration": 0.004460334777832031,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Execution Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.6582782,
+          "end_time": 1769352167.6582818,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Review Transformation Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352167.658306,
+          "end_time": 1769352468.4450638,
+          "duration": 300.7867579460144,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Sync Results with Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352468.4450874,
+          "end_time": 1769352468.4451017,
+          "duration": 1.430511474609375e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "42270a68-de53-4cb2-96c6-8887ce9a04ae",
+        "pipeline_id": "188e5ec9-25c6-4b1d-8483-e61016e8b272"
+      }
+    }
+  ],
+  "exported_at": "2026-01-25T14:47:48.445289"
+}

@@ -1,0 +1,137 @@
+.marketplace-connection-detail-page {
+  padding: var(--spacing-lg);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.marketplace-connection-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.marketplace-connection-detail-header .btn-back {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.5rem 0;
+}
+
+.marketplace-connection-detail-header .btn-back:hover {
+  text-decoration: underline;
+}
+
+.header-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.header-actions .btn-secondary,
+.header-actions .btn-danger {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.header-actions .btn-danger {
+  background: var(--color-error);
+  color: white;
+  border: none;
+}
+
+.header-actions .btn-danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.marketplace-connection-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.detail-section h1 {
+  margin: 0 0 var(--spacing-sm);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.detail-section h2 {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.detail-meta {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.connection-status-badge,
+.connection-type-badge {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.connection-status-badge.active {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.connection-status-badge.inactive {
+  background: var(--color-gray-light);
+  color: var(--color-gray-dark);
+}
+
+.connection-type-badge {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.detail-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-xs) var(--spacing-lg);
+  margin: 0;
+}
+
+.detail-list dt {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.detail-list dd {
+  margin: 0;
+}
+
+.detail-list dd code {
+  font-size: var(--font-size-sm);
+  background: var(--color-surface);
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+}
+
+.detail-list .error-text {
+  color: var(--color-error);
+}
+
+.config-json {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-md);
+  overflow-x: auto;
+  font-size: var(--font-size-sm);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

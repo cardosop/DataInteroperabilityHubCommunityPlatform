@@ -16,14 +16,17 @@ from unittest import TestCase
 from hub.apps.core.events.service_publishers import (
     AccessEventPublisher,
     AssetEventPublisher,
+    BaaSEventPublisher,
     ComplianceEventPublisher,
     ContractEventPublisher,
     DataMeshEventPublisher,
     DatasetEventPublisher,
     FileEventPublisher,
     IngestionEventPublisher,
+    IntegrationEventPublisher,
     LineageEventPublisher,
     MarketplaceEventPublisher,
+    MLEventPublisher,
     NormalizationEventPublisher,
     ObservabilityEventPublisher,
     ODPSEventPublisher,
@@ -32,7 +35,6 @@ from hub.apps.core.events.service_publishers import (
     QualityEventPublisher,
     SearchEventPublisher,
     TenantEventPublisher,
-    TransformationEventPublisher,
     VersionEventPublisher,
     VersioningEventPublisher,
     VirtualizationEventPublisher,
@@ -43,7 +45,7 @@ from hub.apps.core.events.service_publishers import (
 class EventPublishingDocumentationTest(TestCase):
     """Test event publishing documentation completeness."""
 
-    # All event publisher classes
+    # All event publisher classes (must match service_publishers.py)
     EVENT_PUBLISHERS = [
         ContractEventPublisher,
         AssetEventPublisher,
@@ -57,7 +59,6 @@ class EventPublishingDocumentationTest(TestCase):
         MarketplaceEventPublisher,
         WorkflowEventPublisher,
         ODPSEventPublisher,
-        TransformationEventPublisher,
         DataMeshEventPublisher,
         VirtualizationEventPublisher,
         FileEventPublisher,
@@ -68,6 +69,9 @@ class EventPublishingDocumentationTest(TestCase):
         NormalizationEventPublisher,
         PaymentEventPublisher,
         ObservabilityEventPublisher,
+        IntegrationEventPublisher,
+        BaaSEventPublisher,
+        MLEventPublisher,
     ]
 
     def setUp(self):
@@ -106,7 +110,6 @@ class EventPublishingDocumentationTest(TestCase):
             "MarketplaceEventPublisher",
             "WorkflowEventPublisher",
             "ODPSEventPublisher",
-            "TransformationEventPublisher",
             "DataMeshEventPublisher",
             "VirtualizationEventPublisher",
             "FileEventPublisher",
@@ -117,6 +120,9 @@ class EventPublishingDocumentationTest(TestCase):
             "NormalizationEventPublisher",
             "PaymentEventPublisher",
             "ObservabilityEventPublisher",
+            "IntegrationEventPublisher",
+            "BaaSEventPublisher",
+            "MLEventPublisher",
         ]
 
         for publisher_name in publisher_names:
@@ -151,7 +157,6 @@ class EventPublishingDocumentationTest(TestCase):
             "Marketplace Events",
             "Workflow Events",
             "ODPS Events",
-            "Transformation Events",
             "Data Mesh Events",
             "Virtualization Events",
             "File Events",
@@ -162,6 +167,9 @@ class EventPublishingDocumentationTest(TestCase):
             "Normalization Events",
             "Payment Events",
             "Observability Events",
+            "Integration Events",
+            "BaaS Events",
+            "ML Events",
         ]
 
         for category in event_categories:
@@ -279,8 +287,8 @@ class EventPublishingDocumentationTest(TestCase):
         """Test that we have the expected number of event publishers."""
         self.assertEqual(
             len(self.EVENT_PUBLISHERS),
-            23,
-            "Should have 23 event publishers"
+            25,
+            "Should have 25 event publishers"
         )
 
     def test_publisher_services_documented(self):
@@ -292,7 +300,7 @@ class EventPublishingDocumentationTest(TestCase):
             "ContractService",
             "AssetService",
             "DataMeshService",
-            "TransformationService",
+            "IntegrationService",
             "VirtualizationService",
         ]
 

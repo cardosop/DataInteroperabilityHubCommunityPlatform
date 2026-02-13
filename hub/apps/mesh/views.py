@@ -6,7 +6,7 @@ Django REST Framework views for Data Mesh domain management.
 
 import structlog
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.paginator import Paginator
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -25,8 +25,10 @@ from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.auth.permissions import HasAnyRole, HasAnyScope, HasRole, HasScope
+from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
 from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.tenants.request_tenant import get_request_tenant_id
 
 from .business_rules import DataMeshBusinessRules
 from .models import (
@@ -132,59 +134,17 @@ class DomainViewSet(viewsets.ModelViewSet):
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             queryset = DataMeshDomain.objects.all()
         else:
-            # Get tenant from request (set by middleware/authentication) or user
-            # Priority: request.tenant_id > request.tenant > user.tenant_id > user.tenant
-            tenant_id = None
-
-            # Try request.tenant_id first (set by authentication/middleware)
-            if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-                tenant_id = self.request.tenant_id
-                # Convert to UUID if it's a string
-                if isinstance(tenant_id, str):
-                    import uuid
-
-                    try:
-                        tenant_id = uuid.UUID(tenant_id)
-                    except (ValueError, TypeError):
-                        tenant_id = None
-
-            # Fallback to request.tenant object
-            if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
-                tenant_id = self.request.tenant.id
-
-            # Fallback to user.tenant_id (direct field access, most reliable)
-            # CRITICAL: Refresh user from DB to get fresh tenant_id (important for thread safety)
-            if not tenant_id and hasattr(user, "id") and user.id:
-                # Query user from database to get fresh tenant_id (works in LiveServerTestCase)
-                from django.contrib.auth import get_user_model
-
-                User = get_user_model()
-                try:
-                    db_user = User.objects.only("tenant_id").get(id=user.id)
-                    if db_user.tenant_id:
-                        tenant_id = db_user.tenant_id
-                except User.DoesNotExist:
-                    pass
-
-            # Last resort: get from user.tenant relationship
-            if not tenant_id and hasattr(user, "tenant") and user.tenant:
-                tenant_id = user.tenant.id
-
-            # Regular users can only see domains in their tenant
-            if tenant_id:
-                # Use tenant_id for filtering (more reliable than tenant object)
-                # Ensure tenant_id is a UUID for proper filtering
-                if isinstance(tenant_id, str):
-                    import uuid
-
-                    try:
-                        tenant_id = uuid.UUID(tenant_id)
-                    except (ValueError, TypeError):
-                        return DataMeshDomain.objects.none()
-                # Filter by tenant_id - this is the most reliable way
-                queryset = DataMeshDomain.objects.filter(tenant_id=tenant_id)
-            else:
+            # Phase 16: use central helper (docs/TENANT_ISOLATION.md)
+            tenant_id_str = get_request_tenant_id(self.request)
+            if not tenant_id_str:
                 return DataMeshDomain.objects.none()
+            import uuid
+
+            try:
+                tenant_id = uuid.UUID(tenant_id_str)
+            except (ValueError, TypeError):
+                return DataMeshDomain.objects.none()
+            queryset = DataMeshDomain.objects.filter(tenant_id=tenant_id)
 
         # Apply status filter if provided (only for list action, not for get_object)
         # get_object() should work regardless of status filter
@@ -228,6 +188,7 @@ class DomainViewSet(viewsets.ModelViewSet):
                 # Also set tenant object if available
                 if not hasattr(self.request, "tenant") or not self.request.tenant:
                     from hub.apps.tenants.models import Tenant
+
                     try:
                         self.request.tenant = Tenant.objects.get(id=tenant_id)
                     except Tenant.DoesNotExist:
@@ -321,9 +282,9 @@ class DomainViewSet(viewsets.ModelViewSet):
                 status=serializer.validated_data.get("status", DomainStatus.ACTIVE),
             )
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            return handle_service_exception(e)
         except ConflictError as e:
-            raise DRFValidationError(str(e))
+            return handle_service_exception(e)
         except DjangoValidationError as e:
             raise DRFValidationError(str(e))
 
@@ -365,7 +326,11 @@ class DomainViewSet(viewsets.ModelViewSet):
 
         try:
             page = paginator.page(page_number)
-        except Exception:
+        except (EmptyPage, PageNotAnInteger, ValueError) as e:
+            logger.debug(
+                "Pagination error, defaulting to page 1",
+                extra={"page_number": page_number, "error_type": type(e).__name__},
+            )
             page = paginator.page(1)
 
         # Get rate limit headers
@@ -443,11 +408,11 @@ class DomainViewSet(viewsets.ModelViewSet):
                 status=serializer.validated_data.get("status"),
             )
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            return handle_service_exception(e)
         except ConflictError as e:
-            raise DRFValidationError(str(e))
+            return handle_service_exception(e)
         except DjangoValidationError as e:
             raise DRFValidationError(str(e))
 
@@ -487,9 +452,16 @@ class DomainViewSet(viewsets.ModelViewSet):
                 tenant_id=tenant_id,
             )
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except ValidationError as e:
-            raise DRFValidationError(str(e))
+            return Response(
+                {
+                    "error": e.message,
+                    "code": getattr(e, "code", "VALIDATION_ERROR"),
+                    "details": getattr(e, "details", {}),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Get rate limit headers
         _, rate_limit_results = check_rate_limit(request)
@@ -539,13 +511,14 @@ class DomainViewSet(viewsets.ModelViewSet):
         business_rules = DataMeshBusinessRules(tenant_id=tenant_id, user_id=user_id)
         validation_result = business_rules.execute(
             domain=instance,
-            validation_type='ownership',
+            validation_type="ownership",
             new_owner_id=new_owner_id_str,
         )
 
         # Raise error if validation failed (matching previous behavior)
         if not validation_result.is_valid:
             from hub.apps.core.services.base import ValidationError
+
             raise ValidationError("; ".join(validation_result.errors))
 
         # Initialize service
@@ -560,7 +533,7 @@ class DomainViewSet(viewsets.ModelViewSet):
                 _owner_id_provided=True,  # Flag to indicate owner_id was explicitly provided
             )
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except ValidationError as e:
             raise DRFValidationError(str(e))
         except ConflictError as e:
@@ -710,7 +683,7 @@ class DomainViewSet(viewsets.ModelViewSet):
                 tenant_id=tenant_id,
             )
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except ValidationError as e:
             raise DRFValidationError(str(e))
         except DjangoValidationError as e:
@@ -781,7 +754,11 @@ class DomainViewSet(viewsets.ModelViewSet):
 
         try:
             page = paginator.page(page_number)
-        except Exception:
+        except (EmptyPage, PageNotAnInteger, ValueError) as e:
+            logger.debug(
+                "Pagination error, defaulting to page 1",
+                extra={"page_number": page_number, "error_type": type(e).__name__},
+            )
             page = paginator.page(1)
 
         # Get rate limit headers
@@ -849,7 +826,7 @@ class DomainViewSet(viewsets.ModelViewSet):
                 tenant_id=tenant_id,
             )
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except ValidationError as e:
             raise DRFValidationError(str(e))
         except DjangoValidationError as e:
@@ -911,7 +888,7 @@ class DomainViewSet(viewsets.ModelViewSet):
                 ),
             )
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except ValidationError as e:
             raise DRFValidationError(str(e))
         except DjangoValidationError as e:
@@ -990,7 +967,11 @@ class DomainViewSet(viewsets.ModelViewSet):
 
         try:
             page = paginator.page(page_number)
-        except Exception:
+        except (EmptyPage, PageNotAnInteger, ValueError) as e:
+            logger.debug(
+                "Pagination error, defaulting to page 1",
+                extra={"page_number": page_number, "error_type": type(e).__name__},
+            )
             page = paginator.page(1)
 
         # Get rate limit headers

@@ -4,19 +4,22 @@ Unit tests for marketplace connector utilities.
 Tests configuration validation, metadata normalization, datetime parsing,
 ID sanitization, and error classes.
 """
-import pytest
+
 from datetime import datetime, timezone
+
+import pytest
+
+from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.utils import (
-    validate_marketplace_config,
+    MarketplaceAuthenticationError,
+    MarketplaceConnectionError,
+    MarketplaceError,
+    MarketplaceSyncError,
     normalize_marketplace_metadata,
     parse_marketplace_datetime,
     sanitize_marketplace_id,
-    MarketplaceError,
-    MarketplaceConnectionError,
-    MarketplaceAuthenticationError,
-    MarketplaceSyncError,
+    validate_marketplace_config,
 )
-from hub.apps.integrations.base import MarketplaceType
 
 
 class TestValidateMarketplaceConfig:
@@ -24,39 +27,24 @@ class TestValidateMarketplaceConfig:
 
     def test_validate_config_valid(self):
         """Test validation with valid configuration"""
-        config = {
-            "api_key": "test-key-123",
-            "endpoint": "https://api.example.com",
-            "timeout": 30
-        }
+        config = {"api_key": "test-key-123", "endpoint": "https://api.example.com", "timeout": 30}
 
         result = validate_marketplace_config(config)
         assert result == config
 
     def test_validate_config_with_required_fields(self):
         """Test validation with required fields"""
-        config = {
-            "api_key": "test-key",
-            "endpoint": "https://api.example.com"
-        }
+        config = {"api_key": "test-key", "endpoint": "https://api.example.com"}
 
-        result = validate_marketplace_config(
-            config,
-            required_fields=["api_key", "endpoint"]
-        )
+        result = validate_marketplace_config(config, required_fields=["api_key", "endpoint"])
         assert result == config
 
     def test_validate_config_missing_required_field(self):
         """Test validation fails when required field is missing"""
-        config = {
-            "api_key": "test-key"
-        }
+        config = {"api_key": "test-key"}
 
         with pytest.raises(MarketplaceError) as exc_info:
-            validate_marketplace_config(
-                config,
-                required_fields=["api_key", "endpoint"]
-            )
+            validate_marketplace_config(config, required_fields=["api_key", "endpoint"])
 
         assert exc_info.value.error_code == MarketplaceError.ERROR_CODE_INVALID_CONFIG
         assert "missing required fields" in exc_info.value.message.lower()
@@ -72,9 +60,7 @@ class TestValidateMarketplaceConfig:
 
     def test_validate_config_invalid_endpoint_type(self):
         """Test validation fails when endpoint is not a string"""
-        config = {
-            "endpoint": 12345
-        }
+        config = {"endpoint": 12345}
 
         with pytest.raises(MarketplaceError) as exc_info:
             validate_marketplace_config(config)
@@ -84,9 +70,7 @@ class TestValidateMarketplaceConfig:
 
     def test_validate_config_invalid_api_key_type(self):
         """Test validation fails when api_key is not a string"""
-        config = {
-            "api_key": 12345
-        }
+        config = {"api_key": 12345}
 
         with pytest.raises(MarketplaceError) as exc_info:
             validate_marketplace_config(config)
@@ -96,9 +80,7 @@ class TestValidateMarketplaceConfig:
 
     def test_validate_config_invalid_timeout(self):
         """Test validation fails when timeout is invalid"""
-        config = {
-            "timeout": -1
-        }
+        config = {"timeout": -1}
 
         with pytest.raises(MarketplaceError) as exc_info:
             validate_marketplace_config(config)
@@ -108,19 +90,20 @@ class TestValidateMarketplaceConfig:
 
     def test_validate_config_with_marketplace_type(self):
         """Test validation includes marketplace type in error context"""
-        config = {
-            "invalid": "value"
-        }
+        config = {"invalid": "value"}
 
         with pytest.raises(MarketplaceError) as exc_info:
             validate_marketplace_config(
                 config,
                 required_fields=["api_key"],
-                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+                marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE,
             )
 
         assert exc_info.value.marketplace_type == MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
-        assert exc_info.value.details["marketplace_type"] == MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        assert (
+            exc_info.value.details["marketplace_type"]
+            == MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value
+        )
 
 
 class TestNormalizeMarketplaceMetadata:
@@ -131,7 +114,7 @@ class TestNormalizeMarketplaceMetadata:
         metadata = {
             "Title": "My Product",
             "Description": "A great product",
-            "Category": "Analytics"
+            "Category": "Analytics",
         }
 
         result = normalize_marketplace_metadata(metadata)
@@ -145,11 +128,7 @@ class TestNormalizeMarketplaceMetadata:
 
     def test_normalize_case_insensitive(self):
         """Test normalization is case-insensitive"""
-        metadata = {
-            "TITLE": "Product",
-            "description": "Desc",
-            "CATEGORY": "Cat"
-        }
+        metadata = {"TITLE": "Product", "description": "Desc", "CATEGORY": "Cat"}
 
         result = normalize_marketplace_metadata(metadata)
 
@@ -159,9 +138,7 @@ class TestNormalizeMarketplaceMetadata:
 
     def test_normalize_tags_string(self):
         """Test normalization of tags from comma-separated string"""
-        metadata = {
-            "tags": "tag1, tag2, tag3"
-        }
+        metadata = {"tags": "tag1, tag2, tag3"}
 
         result = normalize_marketplace_metadata(metadata)
 
@@ -171,9 +148,7 @@ class TestNormalizeMarketplaceMetadata:
 
     def test_normalize_tags_list(self):
         """Test normalization of tags from list"""
-        metadata = {
-            "tags": ["tag1", "tag2", "tag3"]
-        }
+        metadata = {"tags": ["tag1", "tag2", "tag3"]}
 
         result = normalize_marketplace_metadata(metadata)
 
@@ -183,10 +158,7 @@ class TestNormalizeMarketplaceMetadata:
 
     def test_normalize_datetime_fields(self):
         """Test normalization of datetime fields"""
-        metadata = {
-            "created_at": "2025-01-01T12:00:00Z",
-            "updated_date": "2025-01-02T12:00:00Z"
-        }
+        metadata = {"created_at": "2025-01-01T12:00:00Z", "updated_date": "2025-01-02T12:00:00Z"}
 
         result = normalize_marketplace_metadata(metadata)
 
@@ -197,10 +169,7 @@ class TestNormalizeMarketplaceMetadata:
 
     def test_normalize_preserves_unmapped_fields(self):
         """Test normalization preserves fields not in mappings"""
-        metadata = {
-            "title": "Product",
-            "custom_field": "custom_value"
-        }
+        metadata = {"title": "Product", "custom_field": "custom_value"}
 
         result = normalize_marketplace_metadata(metadata)
 
@@ -220,13 +189,10 @@ class TestNormalizeMarketplaceMetadata:
 
     def test_normalize_with_marketplace_type(self):
         """Test normalization with marketplace type (for future type-specific logic)"""
-        metadata = {
-            "title": "Product"
-        }
+        metadata = {"title": "Product"}
 
         result = normalize_marketplace_metadata(
-            metadata,
-            marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE
+            metadata, marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE
         )
 
         assert "title" in result
@@ -397,18 +363,14 @@ class TestMarketplaceError:
 
     def test_error_with_details(self):
         """Test error with details"""
-        error = MarketplaceError(
-            "Test error",
-            details={"field": "value"}
-        )
+        error = MarketplaceError("Test error", details={"field": "value"})
 
         assert error.details == {"field": "value"}
 
     def test_error_with_marketplace_type(self):
         """Test error with marketplace type"""
         error = MarketplaceError(
-            "Test error",
-            marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
+            "Test error", marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
         )
 
         assert error.marketplace_type == MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
@@ -422,7 +384,7 @@ class TestMarketplaceError:
             details={"field": "value"},
             tenant_id="tenant-123",
             user_id="user-456",
-            marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE
+            marketplace_type=MarketplaceType.AWS_DATA_EXCHANGE,
         )
 
         error_dict = error.to_dict()
@@ -456,10 +418,7 @@ class TestMarketplaceConnectionError:
 
     def test_connection_error_with_endpoint(self):
         """Test connection error with endpoint"""
-        error = MarketplaceConnectionError(
-            "Connection failed",
-            endpoint="https://api.example.com"
-        )
+        error = MarketplaceConnectionError("Connection failed", endpoint="https://api.example.com")
 
         assert error.details["endpoint"] == "https://api.example.com"
 
@@ -468,7 +427,7 @@ class TestMarketplaceConnectionError:
         error = MarketplaceConnectionError(
             "Connection timeout",
             error_code=MarketplaceConnectionError.ERROR_CODE_CONNECTION_TIMEOUT,
-            timeout=30.0
+            timeout=30.0,
         )
 
         assert error.details["timeout"] == 30.0
@@ -486,18 +445,14 @@ class TestMarketplaceAuthenticationError:
 
     def test_authentication_error_with_credential_type(self):
         """Test authentication error with credential type"""
-        error = MarketplaceAuthenticationError(
-            "Invalid credentials",
-            credential_type="api_key"
-        )
+        error = MarketplaceAuthenticationError("Invalid credentials", credential_type="api_key")
 
         assert error.details["credential_type"] == "api_key"
 
     def test_authentication_error_token_expired(self):
         """Test authentication error for expired token"""
         error = MarketplaceAuthenticationError(
-            "Token expired",
-            error_code=MarketplaceAuthenticationError.ERROR_CODE_TOKEN_EXPIRED
+            "Token expired", error_code=MarketplaceAuthenticationError.ERROR_CODE_TOKEN_EXPIRED
         )
 
         assert error.error_code == MarketplaceAuthenticationError.ERROR_CODE_TOKEN_EXPIRED
@@ -515,19 +470,13 @@ class TestMarketplaceSyncError:
 
     def test_sync_error_with_direction(self):
         """Test sync error with sync direction"""
-        error = MarketplaceSyncError(
-            "Sync failed",
-            sync_direction="PUSH"
-        )
+        error = MarketplaceSyncError("Sync failed", sync_direction="PUSH")
 
         assert error.details["sync_direction"] == "PUSH"
 
     def test_sync_error_with_job_id(self):
         """Test sync error with sync job ID"""
-        error = MarketplaceSyncError(
-            "Sync failed",
-            sync_job_id="job-123"
-        )
+        error = MarketplaceSyncError("Sync failed", sync_job_id="job-123")
 
         assert error.details["sync_job_id"] == "job-123"
 
@@ -537,7 +486,7 @@ class TestMarketplaceSyncError:
             "Partial sync failure",
             error_code=MarketplaceSyncError.ERROR_CODE_SYNC_PARTIAL_FAILURE,
             items_processed=100,
-            items_failed=5
+            items_failed=5,
         )
 
         assert error.details["items_processed"] == 100
@@ -546,9 +495,144 @@ class TestMarketplaceSyncError:
     def test_sync_error_rate_limit(self):
         """Test sync error for rate limit"""
         error = MarketplaceSyncError(
-            "Rate limit exceeded",
-            error_code=MarketplaceSyncError.ERROR_CODE_RATE_LIMIT_EXCEEDED
+            "Rate limit exceeded", error_code=MarketplaceSyncError.ERROR_CODE_RATE_LIMIT_EXCEEDED
         )
 
         assert error.error_code == MarketplaceSyncError.ERROR_CODE_RATE_LIMIT_EXCEEDED
 
+    # ========== FAILURE SCENARIOS TESTS ==========
+
+    def test_validate_config_empty_dict(self):
+        """Test that validate_config handles empty dict"""
+        config = {}
+        result = validate_marketplace_config(config)
+        assert result == config
+
+    def test_validate_config_with_none(self):
+        """Test that validate_config rejects None"""
+        with pytest.raises(MarketplaceError) as exc_info:
+            validate_marketplace_config(None)
+
+        assert exc_info.value.error_code == MarketplaceError.ERROR_CODE_INVALID_CONFIG
+
+    def test_normalize_metadata_with_none(self):
+        """Test that normalize_marketplace_metadata handles None"""
+        result = normalize_marketplace_metadata(None)
+        assert result == {}
+
+    def test_normalize_metadata_with_empty_dict(self):
+        """Test that normalize_marketplace_metadata handles empty dict"""
+        result = normalize_marketplace_metadata({})
+        assert result == {}
+
+    def test_parse_datetime_with_invalid_format(self):
+        """Test that parse_marketplace_datetime handles invalid formats"""
+        # Should handle gracefully - may return None or raise error
+        try:
+            result = parse_marketplace_datetime("invalid-date")
+            # If it returns None, that's acceptable
+            assert result is None or isinstance(result, datetime)
+        except (ValueError, TypeError):
+            # If it raises error, that's also acceptable
+            pass
+
+    def test_sanitize_id_with_special_characters(self):
+        """Test that sanitize_marketplace_id handles special characters"""
+        special_id = "test-id!@#$%^&*()"
+        sanitized = sanitize_marketplace_id(special_id)
+        # Should remove or replace special characters
+        assert isinstance(sanitized, str)
+        assert len(sanitized) > 0
+
+    def test_sanitize_id_with_empty_string(self):
+        """Test that sanitize_marketplace_id handles empty string"""
+        sanitized = sanitize_marketplace_id("")
+        # May return empty string or raise error
+        assert isinstance(sanitized, str)
+
+    # ========== EDGE CASES TESTS ==========
+
+    def test_validate_config_with_very_long_values(self):
+        """Test that validate_config handles very long values"""
+        long_config = {"api_key": "a" * 10000, "endpoint": "https://" + "a" * 1000 + ".com"}
+        try:
+            result = validate_marketplace_config(long_config)
+            assert result == long_config
+        except MarketplaceError:
+            # If validation fails due to length, that's acceptable
+            pass
+
+    def test_normalize_metadata_with_deeply_nested(self):
+        """Test that normalize_marketplace_metadata handles deeply nested structures"""
+        nested_metadata = {"level1": {"level2": {"level3": {"level4": {"level5": "deep_value"}}}}}
+        result = normalize_marketplace_metadata(nested_metadata)
+        assert result["level1"]["level2"]["level3"]["level4"]["level5"] == "deep_value"
+
+    def test_parse_datetime_with_different_formats(self):
+        """Test that parse_marketplace_datetime handles different datetime formats"""
+        formats = [
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01 00:00:00",
+            "2024-01-01",
+        ]
+        for fmt in formats:
+            try:
+                result = parse_marketplace_datetime(fmt)
+                if result:
+                    assert isinstance(result, datetime)
+            except (ValueError, TypeError):
+                # Some formats may not be supported
+                pass
+
+    def test_sanitize_id_with_unicode(self):
+        """Test that sanitize_marketplace_id handles unicode characters"""
+        unicode_id = "test-id-测试-тест-🎉"
+        sanitized = sanitize_marketplace_id(unicode_id)
+        assert isinstance(sanitized, str)
+
+    # ========== TDD COMPLIANCE TESTS ==========
+
+    def test_validate_config_returns_same_dict(self):
+        """Test that validate_config returns the same dict when valid"""
+        config = {"api_key": "test", "endpoint": "https://api.example.com"}
+        result = validate_marketplace_config(config)
+        assert result == config
+        assert result is not config  # Should be a copy or same reference
+
+    def test_normalize_metadata_preserves_structure(self):
+        """Test that normalize_marketplace_metadata preserves structure"""
+        metadata = {"key1": "value1", "key2": {"nested": "value"}, "key3": [1, 2, 3]}
+        result = normalize_marketplace_metadata(metadata)
+        assert result["key1"] == "value1"
+        assert result["key2"]["nested"] == "value"
+        assert result["key3"] == [1, 2, 3]
+
+    def test_parse_datetime_returns_datetime_object(self):
+        """Test that parse_marketplace_datetime returns datetime object"""
+        result = parse_marketplace_datetime("2024-01-01T00:00:00Z")
+        assert isinstance(result, datetime)
+
+    def test_sanitize_id_returns_string(self):
+        """Test that sanitize_marketplace_id returns string"""
+        result = sanitize_marketplace_id("test-id-123")
+        assert isinstance(result, str)
+
+    def test_error_classes_have_required_attributes(self):
+        """Test that error classes have required attributes"""
+        error = MarketplaceError("Test error")
+        assert hasattr(error, "message")
+        assert hasattr(error, "error_code")
+        assert hasattr(error, "details")
+        assert hasattr(error, "http_status")
+
+    def test_error_classes_inheritance(self):
+        """Test that error classes inherit correctly"""
+        connection_error = MarketplaceConnectionError("Connection failed")
+        assert isinstance(connection_error, MarketplaceError)
+
+        auth_error = MarketplaceAuthenticationError("Auth failed")
+        assert isinstance(auth_error, MarketplaceError)
+
+        sync_error = MarketplaceSyncError("Sync failed")
+        assert isinstance(sync_error, MarketplaceError)

@@ -1,0 +1,72 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0005888938903808594
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-005-a95cd410",
+      "journey_name": "Audit Access Logs",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1769317579.9164305,
+      "end_time": 1769317579.9170194,
+      "duration": 0.0005888938903808594,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "List Audit Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769317579.9164333,
+          "end_time": 1769317579.917008,
+          "duration": 0.0005745887756347656,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Filter Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769317579.9170115,
+          "end_time": 1769317579.9170144,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Export Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769317579.9170163,
+          "end_time": 1769317579.9170182,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "logs_count": 0,
+        "filtered_count": 0
+      }
+    }
+  ],
+  "exported_at": "2026-01-25T05:06:19.917082"
+}

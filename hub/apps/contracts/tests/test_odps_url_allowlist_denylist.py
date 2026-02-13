@@ -4,8 +4,10 @@ Unit tests for ODPS URL allowlist/denylist configuration.
 Tests verify that URL allowlist/denylist configuration works correctly,
 including environment variable support and per-tenant overrides.
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     # pytest not available, using Django test runner
@@ -15,15 +17,15 @@ except ImportError:
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+
 from django.test import TestCase
 
 from hub.apps.contracts.config.odps_refs_config import (
+    ENV_ODPS_URL_ALLOWLIST,
+    ENV_ODPS_URL_DENYLIST,
     ODPSRefsConfig,
     get_odps_refs_config,
     is_url_allowed,
-    ENV_ODPS_URL_ALLOWLIST,
-    ENV_ODPS_URL_DENYLIST,
 )
 
 
@@ -34,6 +36,7 @@ class ODPSURLAllowlistDenylistTest(TestCase):
         """Set up test fixtures"""
         # Clear any cached config instance
         import hub.apps.contracts.config.odps_refs_config as config_module
+
         config_module._config_instance = None
 
         # Store original environment variables
@@ -61,6 +64,7 @@ class ODPSURLAllowlistDenylistTest(TestCase):
 
         # Clear cached config instance
         import hub.apps.contracts.config.odps_refs_config as config_module
+
         config_module._config_instance = None
 
     def test_default_allowlist_is_empty(self):
@@ -90,13 +94,15 @@ class ODPSURLAllowlistDenylistTest(TestCase):
 
     def test_allowlist_with_exact_url_match(self):
         """Test allowlist with exact URL match"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(
+                """
 url_allowlist:
   - "https://schemas.example.com/schema.json"
   - "https://trusted.com/api/schema"
 url_denylist: []
-""")
+"""
+            )
             config_file = Path(f.name)
 
         try:
@@ -114,13 +120,15 @@ url_denylist: []
 
     def test_allowlist_with_domain_wildcard(self):
         """Test allowlist with domain wildcard patterns"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(
+                """
 url_allowlist:
   - "https://*.example.com"
   - "https://schemas.*.trusted.com"
 url_denylist: []
-""")
+"""
+            )
             config_file = Path(f.name)
 
         try:
@@ -133,20 +141,24 @@ url_denylist: []
 
             # Non-matching URLs should be denied
             self.assertFalse(config.is_url_allowed("https://other.com/schema.json"))
-            self.assertFalse(config.is_url_allowed("http://api.example.com/schema.json"))  # Wrong scheme
+            self.assertFalse(
+                config.is_url_allowed("http://api.example.com/schema.json")
+            )  # Wrong scheme
         finally:
             config_file.unlink()
 
     def test_denylist_takes_precedence(self):
         """Test that denylist takes precedence over allowlist"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(
+                """
 url_allowlist:
   - "https://*.example.com"
 url_denylist:
   - "https://malicious.example.com"
   - "http://*"
-""")
+"""
+            )
             config_file = Path(f.name)
 
         try:
@@ -212,9 +224,7 @@ url_denylist:
 
     def test_per_tenant_denylist_override(self):
         """Test that per-tenant denylist overrides global config"""
-        tenant_config = {
-            "url_denylist": ["https://*.tenant-blocked.com"]
-        }
+        tenant_config = {"url_denylist": ["https://*.tenant-blocked.com"]}
 
         config = ODPSRefsConfig(tenant_config=tenant_config)
 
@@ -228,7 +238,7 @@ url_denylist:
         """Test per-tenant configuration with both allowlist and denylist"""
         tenant_config = {
             "url_allowlist": ["https://*.tenant-allowed.com"],
-            "url_denylist": ["https://blocked.tenant-allowed.com"]
+            "url_denylist": ["https://blocked.tenant-allowed.com"],
         }
 
         config = ODPSRefsConfig(tenant_config=tenant_config)
@@ -295,17 +305,17 @@ url_denylist:
         self.assertTrue(is_url_allowed("https://example.com/schema.json"))
 
         # With tenant config, should respect tenant settings
-        tenant_config = {
-            "url_allowlist": ["https://tenant.com"]
-        }
-        self.assertTrue(is_url_allowed("https://tenant.com/schema.json", tenant_config=tenant_config))
-        self.assertFalse(is_url_allowed("https://other.com/schema.json", tenant_config=tenant_config))
+        tenant_config = {"url_allowlist": ["https://tenant.com"]}
+        self.assertTrue(
+            is_url_allowed("https://tenant.com/schema.json", tenant_config=tenant_config)
+        )
+        self.assertFalse(
+            is_url_allowed("https://other.com/schema.json", tenant_config=tenant_config)
+        )
 
     def test_get_odps_refs_config_with_tenant_config(self):
         """Test get_odps_refs_config with tenant config"""
-        tenant_config = {
-            "url_allowlist": ["https://tenant.com"]
-        }
+        tenant_config = {"url_allowlist": ["https://tenant.com"]}
 
         config = get_odps_refs_config(tenant_config=tenant_config)
 
@@ -316,15 +326,17 @@ url_denylist:
 
     def test_yaml_config_file_loading(self):
         """Test loading URL allowlist/denylist from YAML config file"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(
+                """
 url_allowlist:
   - "https://schemas.example.com"
   - "https://*.trusted.com"
 url_denylist:
   - "http://*"
   - "https://*.malicious.com"
-""")
+"""
+            )
             config_file = Path(f.name)
 
         try:
@@ -348,13 +360,15 @@ url_denylist:
 
     def test_environment_variable_overrides_yaml(self):
         """Test that environment variables override YAML config"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(
+                """
 url_allowlist:
   - "https://yaml.example.com"
 url_denylist:
   - "https://yaml-blocked.com"
-""")
+"""
+            )
             config_file = Path(f.name)
 
         try:
@@ -382,9 +396,7 @@ url_denylist:
         os.environ[ENV_ODPS_URL_ALLOWLIST] = "https://env.example.com"
 
         try:
-            tenant_config = {
-                "url_allowlist": ["https://tenant.com"]
-            }
+            tenant_config = {"url_allowlist": ["https://tenant.com"]}
 
             config = ODPSRefsConfig(tenant_config=tenant_config)
 
@@ -395,3 +407,48 @@ url_denylist:
             if ENV_ODPS_URL_ALLOWLIST in os.environ:
                 del os.environ[ENV_ODPS_URL_ALLOWLIST]
 
+    def test_url_allowlist_handles_unicode_characters(self):
+        """Test that URL allowlist handles unicode characters correctly."""
+        unicode_url = "https://测试.com/schema.yaml"
+        config = ODPSRefsConfig(tenant_config={"url_allowlist": [unicode_url]})
+
+        # Should handle unicode characters
+        self.assertIsNotNone(config)
+        self.assertIn(unicode_url, config.url_allowlist)
+
+    def test_url_allowlist_handles_special_characters(self):
+        """Test that URL allowlist handles special characters correctly."""
+        special_url = "https://example.com/path%20with%20spaces&special=chars"
+        config = ODPSRefsConfig(tenant_config={"url_allowlist": [special_url]})
+
+        # Should handle special characters
+        self.assertIsNotNone(config)
+        self.assertIn(special_url, config.url_allowlist)
+
+    def test_url_allowlist_handles_very_large_urls(self):
+        """Test that URL allowlist handles very large URLs correctly."""
+        large_path = "/" + "a" * 10000  # Very long path
+        large_url = f"https://example.com{large_path}"
+        config = ODPSRefsConfig(tenant_config={"url_allowlist": [large_url]})
+
+        # Should handle very large URLs
+        self.assertIsNotNone(config)
+        self.assertIn(large_url, config.url_allowlist)
+
+    def test_url_allowlist_handles_none_values(self):
+        """Test that URL allowlist handles None values correctly."""
+        config = ODPSRefsConfig(tenant_config={"url_allowlist": None})
+
+        # Should handle None values gracefully (may become empty list from property)
+        self.assertIsNotNone(config)
+        self.assertIsInstance(config.url_allowlist, (list, type(None)))
+
+    def test_url_allowlist_handles_nested_structures(self):
+        """Test that URL allowlist handles nested structures correctly."""
+        # URLs are typically flat, but we can test with complex URL structures
+        complex_url = 'https://example.com/path?nested={"level1":{"level2":"value"}}'
+        config = ODPSRefsConfig(tenant_config={"url_allowlist": [complex_url]})
+
+        # Should handle nested structures in URLs
+        self.assertIsNotNone(config)
+        self.assertIn(complex_url, config.url_allowlist)

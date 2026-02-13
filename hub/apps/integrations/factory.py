@@ -277,7 +277,10 @@ class MarketplaceConnectorFactory:
                                 kwargs['base_url'] = config['base_url']
                             elif 'endpoint' in config:
                                 kwargs['base_url'] = config['endpoint']
-                            if 'api_key' in config:
+                            # DadosGovBrConnector expects jwt_token, not api_key
+                            if 'jwt_token' in params and 'api_key' not in params:
+                                kwargs['jwt_token'] = config.get('jwt_token') or config.get('api_key') or ''
+                            elif 'api_key' in config:
                                 kwargs['api_key'] = config['api_key']
                     else:
                         # No instance_id, use direct config
@@ -285,7 +288,10 @@ class MarketplaceConnectorFactory:
                             kwargs['base_url'] = config['base_url']
                         elif 'endpoint' in config:
                             kwargs['base_url'] = config['endpoint']
-                        if 'api_key' in config:
+                        # DadosGovBrConnector expects jwt_token, not api_key
+                        if 'jwt_token' in params and 'api_key' not in params:
+                            kwargs['jwt_token'] = config.get('jwt_token') or config.get('api_key') or ''
+                        elif 'api_key' in config:
                             kwargs['api_key'] = config['api_key']
                     if 'tenant_id' in params and tenant_id:
                         kwargs['tenant_id'] = tenant_id

@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from django.db import transaction
 from django.utils import timezone
 
+from .business_rules import OrchestrationBusinessRules
 from .models import (
     WorkflowInstance,
     WorkflowStep,
@@ -55,6 +56,34 @@ class WorkflowCompensation:
             Updated WorkflowInstance
         """
         logger.info(f"Rolling back workflow instance {instance.id} from step {failed_step.step_index}")
+
+        # Get tenant and user for business rules validation
+        tenant = instance.tenant
+        user = instance.created_by
+
+        # Create business rules instance with tenant/user context
+        business_rules = OrchestrationBusinessRules(
+            tenant_id=str(tenant.id) if tenant else None,
+            user_id=str(user.id) if user else None
+        )
+
+        # Validate compensation can execute
+        compensation_validation_result = business_rules.validate_workflow_state(instance, tenant, user)
+        if not compensation_validation_result.is_valid:
+            # Log validation errors but don't block compensation (compensation should proceed)
+            logger.warning(
+                f"Compensation validation errors for workflow {instance.id}: "
+                f"{', '.join(compensation_validation_result.errors)}"
+            )
+
+        # Validate workflow state before compensation
+        workflow_state_result = business_rules.validate_workflow_state(instance, tenant, user)
+        if workflow_state_result.warnings:
+            # Log validation warnings (don't block compensation)
+            logger.warning(
+                f"Workflow state validation warnings before compensation: "
+                f"{', '.join(workflow_state_result.warnings)}"
+            )
 
         # Mark workflow as rolling back
         instance.status = WorkflowStatus.ROLLING_BACK
@@ -113,6 +142,33 @@ class WorkflowCompensation:
         """
         logger.info(f"Compensating step {step.step_name} (index {step.step_index})")
 
+        # Get tenant and user for business rules validation
+        tenant = instance.tenant
+        user = instance.created_by
+
+        # Create business rules instance with tenant/user context
+        business_rules = OrchestrationBusinessRules(
+            tenant_id=str(tenant.id) if tenant else None,
+            user_id=str(user.id) if user else None
+        )
+
+        # Validate compensation step using business rules
+        compensation_step_result = business_rules.validate_workflow_step_execution(instance, step, tenant, user)
+        if compensation_step_result.warnings:
+            # Log validation warnings (don't block compensation)
+            logger.warning(
+                f"Compensation step validation warnings for step {step.step_name}: "
+                f"{', '.join(compensation_step_result.warnings)}"
+            )
+
+        # Track compensation validation in metrics (if metrics are available)
+        # Note: This would require adding metrics, but for now we just log
+        logger.debug(
+            f"Compensation step validation for step {step.step_name}: "
+            f"is_valid={compensation_step_result.is_valid}, "
+            f"warnings={len(compensation_step_result.warnings)}"
+        )
+
         # Get step definition from workflow DSL
         dsl = instance.workflow_definition.dsl_json
         steps = dsl.get("steps", [])
@@ -148,8 +204,23 @@ class WorkflowCompensation:
             # Mark step as compensated
             step.mark_compensated(compensation_result)
 
-            logger.info(f"Step {step.step_name} compensated successfully")
-            return {"status": "compensated", "result": compensation_result}
+            # Include validation results in compensation logs
+            compensation_log_data = {
+                "status": "compensated",
+                "result": compensation_result,
+                "validation": {
+                    "is_valid": compensation_step_result.is_valid,
+                    "warnings": compensation_step_result.warnings,
+                    "details": compensation_step_result.details
+                }
+            }
+
+            logger.info(
+                f"Step {step.step_name} compensated successfully. "
+                f"Validation: is_valid={compensation_step_result.is_valid}, "
+                f"warnings={len(compensation_step_result.warnings)}"
+            )
+            return compensation_log_data
 
         except Exception as e:
             logger.exception(f"Error compensating step {step.step_name}: {str(e)}")

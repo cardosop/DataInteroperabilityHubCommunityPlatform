@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.012059926986694336
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-004-a8777385",
+      "journey_name": "Tune Recommendation Engine",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1769352492.5663745,
+      "end_time": 1769352492.5784345,
+      "duration": 0.012059926986694336,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Recommendation Model View Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352492.5716696,
+          "end_time": 1769352492.5716753,
+          "duration": 5.7220458984375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Model Tuning Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352492.5753634,
+          "end_time": 1769352492.5753675,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Model Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352492.5784297,
+          "end_time": 1769352492.578433,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-25T14:48:12.578498"
+}

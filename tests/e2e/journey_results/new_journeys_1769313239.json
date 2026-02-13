@@ -1,0 +1,136 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 23.927797079086304
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-007-82cd2762",
+      "journey_name": "Create Transformation Pipeline for Data",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1769313215.457899,
+      "end_time": 1769313239.3856962,
+      "duration": 23.927797079086304,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Data Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313215.457906,
+          "end_time": 1769313239.3695529,
+          "duration": 23.911646842956543,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313239.3695672,
+          "end_time": 1769313239.3728054,
+          "duration": 0.003238201141357422,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Transformation Pipeline API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313239.3728313,
+          "end_time": 1769313239.372834,
+          "duration": 2.6226043701171875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Design Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313239.3728364,
+          "end_time": 1769313239.372842,
+          "duration": 5.7220458984375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313239.3760927,
+          "end_time": 1769313239.3760962,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Preview Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313239.3792167,
+          "end_time": 1769313239.3792217,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Execution Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313239.3823886,
+          "end_time": 1769313239.3823922,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Data Download Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313239.3856914,
+          "end_time": 1769313239.3856947,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "f6d95b3e-5584-4fcb-bb85-3e0d6d356caf"
+      }
+    }
+  ],
+  "exported_at": "2026-01-25T03:53:59.385771"
+}

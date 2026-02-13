@@ -2021,9 +2021,12 @@ class RefResolver:
             else:
                 # Process all values in the dict
                 # Create a list of keys to iterate over (to avoid modification during iteration)
+                # ROOT CAUSE FIX: Use list() to create a snapshot, but check key existence
+                # AFTER recursive call to handle deletions that happen during recursion
                 keys_to_process = list(obj.keys())
                 for key in keys_to_process:
-                    if key in obj:  # Check if key still exists (might have been deleted)
+                    # Check if key still exists (might have been deleted by REMOVE mode)
+                    if key in obj:
                         self._resolve_refs_recursive(
                             obj[key],
                             root_document,

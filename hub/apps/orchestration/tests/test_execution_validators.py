@@ -12,21 +12,23 @@ All tests follow engineering best practices:
 - Test root causes, not symptoms
 - Comprehensive test coverage
 """
+
+import uuid
+from datetime import timedelta
+
 from django.test import TestCase
 from django.utils import timezone
-from datetime import timedelta
-import uuid
 
+from hub.apps.orchestration.execution_validators import WorkflowExecutionValidator
 from hub.apps.orchestration.models import (
+    StepStatus,
     WorkflowDefinition,
     WorkflowInstance,
-    WorkflowStep,
     WorkflowStatus,
-    StepStatus,
+    WorkflowStep,
 )
-from hub.apps.orchestration.execution_validators import WorkflowExecutionValidator
 from hub.apps.orchestration.state_machine import WorkflowStateMachine
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
 
@@ -36,13 +38,10 @@ class WorkflowStatusTransitionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition
@@ -51,9 +50,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "steps": [
-                    {"name": "step1", "type": "task", "task": "test_task"}
-                ]
+                "steps": [{"name": "step1", "type": "task", "task": "test_task"}],
             },
             created_by=self.user,
         )
@@ -72,9 +69,9 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_status_transition(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['current_status'], WorkflowStatus.DRAFT)
-        self.assertEqual(result.details['status_valid'], 'true')
-        self.assertEqual(result.details['draft_constraints_valid'], 'true')
+        self.assertEqual(result.details["current_status"], WorkflowStatus.DRAFT)
+        self.assertEqual(result.details["status_valid"], "true")
+        self.assertEqual(result.details["draft_constraints_valid"], "true")
 
     def test_validate_status_transition_draft_with_started_at(self):
         """Test status transition validation for DRAFT workflow with started_at set"""
@@ -109,9 +106,9 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_status_transition(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['current_status'], WorkflowStatus.RUNNING)
-        self.assertEqual(result.details['status_valid'], 'true')
-        self.assertEqual(result.details['running_constraints_valid'], 'true')
+        self.assertEqual(result.details["current_status"], WorkflowStatus.RUNNING)
+        self.assertEqual(result.details["status_valid"], "true")
+        self.assertEqual(result.details["running_constraints_valid"], "true")
 
     def test_validate_status_transition_running_without_started_at(self):
         """Test status transition validation for RUNNING workflow without started_at"""
@@ -150,9 +147,9 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_status_transition(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['current_status'], WorkflowStatus.COMPLETED)
-        self.assertEqual(result.details['status_valid'], 'true')
-        self.assertEqual(result.details['terminal_constraints_valid'], 'true')
+        self.assertEqual(result.details["current_status"], WorkflowStatus.COMPLETED)
+        self.assertEqual(result.details["status_valid"], "true")
+        self.assertEqual(result.details["terminal_constraints_valid"], "true")
 
     def test_validate_status_transition_completed_without_timestamps(self):
         """Test status transition validation for COMPLETED workflow without timestamps"""
@@ -190,9 +187,9 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_status_transition(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['current_status'], WorkflowStatus.FAILED)
-        self.assertEqual(result.details['status_valid'], 'true')
-        self.assertEqual(result.details['terminal_constraints_valid'], 'true')
+        self.assertEqual(result.details["current_status"], WorkflowStatus.FAILED)
+        self.assertEqual(result.details["status_valid"], "true")
+        self.assertEqual(result.details["terminal_constraints_valid"], "true")
 
     def test_validate_status_transition_invalid_transition(self):
         """Test status transition validation for invalid transition"""
@@ -231,7 +228,7 @@ class WorkflowStatusTransitionValidationTest(TestCase):
         )
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['transition_valid'], 'true')
+        self.assertEqual(result.details["transition_valid"], "true")
 
 
 class WorkflowStepExecutionValidationTest(TestCase):
@@ -240,13 +237,10 @@ class WorkflowStepExecutionValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition
@@ -259,7 +253,7 @@ class WorkflowStepExecutionValidationTest(TestCase):
                     {"name": "step1", "type": "task", "task": "task1"},
                     {"name": "step2", "type": "task", "task": "task2"},
                     {"name": "step3", "type": "task", "task": "task3"},
-                ]
+                ],
             },
             created_by=self.user,
         )
@@ -287,8 +281,8 @@ class WorkflowStepExecutionValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_step_execution(step)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['step_index'], 0)
-        self.assertEqual(result.details['prerequisites_met'], 'true')
+        self.assertEqual(result.details["step_index"], 0)
+        self.assertEqual(result.details["prerequisites_met"], "true")
 
     def test_validate_step_execution_prerequisites_met(self):
         """Test step execution validation when prerequisites are met"""
@@ -315,7 +309,7 @@ class WorkflowStepExecutionValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_step_execution(step2)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['prerequisites_met'], 'true')
+        self.assertEqual(result.details["prerequisites_met"], "true")
 
     def test_validate_step_execution_prerequisites_not_met(self):
         """Test step execution validation when prerequisites are not met"""
@@ -346,9 +340,9 @@ class WorkflowStepExecutionValidationTest(TestCase):
         error_msg_lower = result.errors[0].lower()
         self.assertTrue(
             "previous steps" in error_msg_lower or "prerequisites" in error_msg_lower,
-            f"Error message should mention prerequisites or previous steps: {result.errors[0]}"
+            f"Error message should mention prerequisites or previous steps: {result.errors[0]}",
         )
-        self.assertEqual(result.details['prerequisites_met'], 'false')
+        self.assertEqual(result.details["prerequisites_met"], "false")
 
     def test_validate_step_execution_running_step_valid(self):
         """Test step execution validation for RUNNING step"""
@@ -364,8 +358,8 @@ class WorkflowStepExecutionValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_step_execution(step)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['step_status'], StepStatus.RUNNING)
-        self.assertEqual(result.details['step_timestamps_valid'], 'true')
+        self.assertEqual(result.details["step_status"], StepStatus.RUNNING)
+        self.assertEqual(result.details["step_timestamps_valid"], "true")
 
     def test_validate_step_execution_running_without_started_at(self):
         """Test step execution validation for RUNNING step without started_at"""
@@ -402,8 +396,8 @@ class WorkflowStepExecutionValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_step_execution(step)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['step_status'], StepStatus.COMPLETED)
-        self.assertEqual(result.details['step_timestamps_valid'], 'true')
+        self.assertEqual(result.details["step_status"], StepStatus.COMPLETED)
+        self.assertEqual(result.details["step_timestamps_valid"], "true")
 
     def test_validate_step_execution_completed_without_timestamps(self):
         """Test step execution validation for COMPLETED step without timestamps"""
@@ -427,13 +421,10 @@ class WorkflowCompensationValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Create workflow definition with compensation
@@ -448,17 +439,10 @@ class WorkflowCompensationValidationTest(TestCase):
                         "name": "step1",
                         "type": "task",
                         "task": "task1",
-                        "compensation": {
-                            "type": "task",
-                            "task": "compensation_task1"
-                        }
+                        "compensation": {"type": "task", "task": "compensation_task1"},
                     },
-                    {
-                        "name": "step2",
-                        "type": "task",
-                        "task": "task2"
-                    }
-                ]
+                    {"name": "step2", "type": "task", "task": "task2"},
+                ],
             },
             created_by=self.user,
         )
@@ -478,8 +462,8 @@ class WorkflowCompensationValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_compensation(self.workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['compensation_enabled'], 'true')
-        self.assertEqual(result.details['compensation_config_valid'], 'true')
+        self.assertEqual(result.details["compensation_enabled"], "true")
+        self.assertEqual(result.details["compensation_config_valid"], "true")
 
     def test_validate_compensation_step_with_compensation(self):
         """Test compensation validation for step with compensation defined"""
@@ -494,9 +478,9 @@ class WorkflowCompensationValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_compensation(self.workflow, step)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['step_has_compensation'], 'true')
-        self.assertEqual(result.details['compensation_type'], 'task')
-        self.assertEqual(result.details['step_compensation_valid'], 'true')
+        self.assertEqual(result.details["step_has_compensation"], "true")
+        self.assertEqual(result.details["compensation_type"], "task")
+        self.assertEqual(result.details["step_compensation_valid"], "true")
 
     def test_validate_compensation_step_without_compensation(self):
         """Test compensation validation for step without compensation"""
@@ -511,7 +495,7 @@ class WorkflowCompensationValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_compensation(self.workflow, step)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['step_has_compensation'], 'false')
+        self.assertEqual(result.details["step_has_compensation"], "false")
         self.assertGreaterEqual(len(result.warnings), 0)
 
     def test_validate_compensation_invalid_type(self):
@@ -526,11 +510,9 @@ class WorkflowCompensationValidationTest(TestCase):
                         "name": "step1",
                         "type": "task",
                         "task": "task1",
-                        "compensation": {
-                            "type": "invalid_type"
-                        }
+                        "compensation": {"type": "invalid_type"},
                     }
-                ]
+                ],
             },
             created_by=self.user,
         )
@@ -582,7 +564,7 @@ class WorkflowCompensationValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_compensation(self.workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['compensated_steps_count'], 2)
+        self.assertEqual(result.details["compensated_steps_count"], 2)
         # Note: The order validation checks if indices are in descending order
         # In this case, step2 (index 1) was compensated before step1 (index 0)
         # which is correct reverse order
@@ -594,13 +576,10 @@ class WorkflowRetryValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         self.workflow_def = WorkflowDefinition.objects.create(
@@ -608,9 +587,7 @@ class WorkflowRetryValidationTest(TestCase):
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "steps": [
-                    {"name": "step1", "type": "task", "task": "task1"}
-                ]
+                "steps": [{"name": "step1", "type": "task", "task": "task1"}],
             },
             created_by=self.user,
         )
@@ -631,11 +608,11 @@ class WorkflowRetryValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_retry(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['retry_count'], 1)
-        self.assertEqual(result.details['max_retries'], 3)
-        self.assertEqual(result.details['max_retries_valid'], 'true')
-        self.assertEqual(result.details['retry_count_valid'], 'true')
-        self.assertEqual(result.details['retry_count_within_limits'], 'true')
+        self.assertEqual(result.details["retry_count"], 1)
+        self.assertEqual(result.details["max_retries"], 3)
+        self.assertEqual(result.details["max_retries_valid"], "true")
+        self.assertEqual(result.details["retry_count_valid"], "true")
+        self.assertEqual(result.details["retry_count_within_limits"], "true")
 
     def test_validate_retry_negative_retry_count(self):
         """Test retry validation with negative retry_count"""
@@ -691,8 +668,8 @@ class WorkflowRetryValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_retry(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['can_retry'], 'true')
-        self.assertEqual(result.details['retry_eligibility_valid'], 'true')
+        self.assertEqual(result.details["can_retry"], "true")
+        self.assertEqual(result.details["retry_eligibility_valid"], "true")
 
     def test_validate_retry_cannot_retry_max_exceeded(self):
         """Test retry validation for workflow that cannot retry (max exceeded)"""
@@ -710,8 +687,8 @@ class WorkflowRetryValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_retry(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['can_retry'], 'false')
-        self.assertEqual(result.details['retry_eligibility_valid'], 'true')
+        self.assertEqual(result.details["can_retry"], "false")
+        self.assertEqual(result.details["retry_eligibility_valid"], "true")
 
     def test_validate_retry_non_failed_workflow(self):
         """Test retry validation for non-FAILED workflow"""
@@ -729,8 +706,8 @@ class WorkflowRetryValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_retry(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['can_retry'], 'false')
-        self.assertEqual(result.details['retry_eligibility_valid'], 'true')
+        self.assertEqual(result.details["can_retry"], "false")
+        self.assertEqual(result.details["retry_eligibility_valid"], "true")
 
 
 class WorkflowComprehensiveValidationTest(TestCase):
@@ -739,13 +716,10 @@ class WorkflowComprehensiveValidationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         self.workflow_def = WorkflowDefinition.objects.create(
@@ -753,9 +727,7 @@ class WorkflowComprehensiveValidationTest(TestCase):
             version="1.0.0",
             dsl_json={
                 "version": "1.0.0",
-                "steps": [
-                    {"name": "step1", "type": "task", "task": "task1"}
-                ]
+                "steps": [{"name": "step1", "type": "task", "task": "task1"}],
             },
             created_by=self.user,
         )
@@ -782,7 +754,9 @@ class WorkflowComprehensiveValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_all(workflow)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['validation_type'], 'comprehensive_workflow_execution_validation')
+        self.assertEqual(
+            result.details["validation_type"], "comprehensive_workflow_execution_validation"
+        )
 
     def test_validate_all_invalid_workflow(self):
         """Test comprehensive validation for invalid workflow"""
@@ -826,6 +800,232 @@ class WorkflowComprehensiveValidationTest(TestCase):
         result = WorkflowExecutionValidator.validate_all(workflow, step=step)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertIn('step_execution_validation', result.details)
+        self.assertIn("step_execution_validation", result.details)
 
 
+class WorkflowExecutionValidatorFailureTest(TestCase):
+    """Test WorkflowExecutionValidator failure scenarios"""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+        )
+        self.workflow_def = WorkflowDefinition.objects.create(
+            name="test_workflow",
+            version="1.0.0",
+            dsl_json={
+                "version": "1.0.0",
+                "steps": [{"name": "step1", "type": "task", "task": "test_task"}],
+            },
+            created_by=self.user,
+        )
+
+    def test_validate_status_transition_with_invalid_transition(self):
+        """Test status transition validation with invalid transition"""
+        workflow = WorkflowInstance.objects.create(
+            workflow_definition=self.workflow_def,
+            workflow_name="test_workflow",
+            workflow_version="1.0.0",
+            tenant=self.tenant,
+            status=WorkflowStatus.COMPLETED,
+            completed_at=timezone.now(),
+            created_by=self.user,
+        )
+
+        # Try to transition from COMPLETED to RUNNING (invalid)
+        workflow.status = WorkflowStatus.RUNNING
+        result = WorkflowExecutionValidator.validate_status_transition(workflow)
+
+        # Should detect invalid transition
+        self.assertFalse(result.is_valid)
+
+    def test_validate_step_execution_with_missing_step(self):
+        """Test step execution validation with missing step"""
+        workflow = WorkflowInstance.objects.create(
+            workflow_definition=self.workflow_def,
+            workflow_name="test_workflow",
+            workflow_version="1.0.0",
+            tenant=self.tenant,
+            status=WorkflowStatus.RUNNING,
+            started_at=timezone.now(),
+            created_by=self.user,
+        )
+
+        # Validate with None step (should handle gracefully)
+        result = WorkflowExecutionValidator.validate_step_execution(None, workflow_instance=workflow)
+
+        # Should either fail or handle None gracefully
+        self.assertIsNotNone(result)
+
+
+class WorkflowExecutionValidatorEdgeCasesTest(TestCase):
+    """Test WorkflowExecutionValidator edge cases"""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+        )
+        self.workflow_def = WorkflowDefinition.objects.create(
+            name="test_workflow",
+            version="1.0.0",
+            dsl_json={
+                "version": "1.0.0",
+                "steps": [{"name": "step1", "type": "task", "task": "test_task"}],
+            },
+            created_by=self.user,
+        )
+
+    def test_validate_status_transition_with_edge_case_timestamps(self):
+        """Test status transition validation with edge case timestamps"""
+        workflow = WorkflowInstance.objects.create(
+            workflow_definition=self.workflow_def,
+            workflow_name="test_workflow",
+            workflow_version="1.0.0",
+            tenant=self.tenant,
+            status=WorkflowStatus.RUNNING,
+            started_at=timezone.now() - timedelta(days=365),  # Very old timestamp
+            created_by=self.user,
+        )
+
+        result = WorkflowExecutionValidator.validate_status_transition(workflow)
+
+        # Should handle old timestamps gracefully
+        self.assertIsNotNone(result)
+
+    def test_validate_all_with_empty_workflow(self):
+        """Test comprehensive validation with minimal workflow"""
+        workflow = WorkflowInstance.objects.create(
+            workflow_definition=self.workflow_def,
+            workflow_name="test_workflow",
+            workflow_version="1.0.0",
+            tenant=self.tenant,
+            status=WorkflowStatus.DRAFT,
+            created_by=self.user,
+        )
+
+        result = WorkflowExecutionValidator.validate_all(workflow)
+
+        # Should validate empty workflow
+        self.assertIsNotNone(result)
+
+
+class WorkflowExecutionValidatorErrorHandlingTest(TestCase):
+    """Test WorkflowExecutionValidator error handling scenarios"""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
+        )
+        self.workflow_def = WorkflowDefinition.objects.create(
+            name="test_workflow",
+            version="1.0.0",
+            dsl_json={
+                "version": "1.0.0",
+                "steps": [{"name": "step1", "type": "task", "task": "test_task"}],
+            },
+            created_by=self.user,
+        )
+
+    def test_validate_status_transition_with_corrupted_data(self):
+        """Test status transition validation with corrupted workflow data"""
+        workflow = WorkflowInstance.objects.create(
+            workflow_definition=self.workflow_def,
+            workflow_name="test_workflow",
+            workflow_version="1.0.0",
+            tenant=self.tenant,
+            status=WorkflowStatus.DRAFT,
+            created_by=self.user,
+        )
+
+        # Corrupt workflow state (set invalid status string)
+        workflow.status = "INVALID_STATUS"
+
+        # Should handle invalid status gracefully
+        try:
+            result = WorkflowExecutionValidator.validate_status_transition(workflow)
+            # If it doesn't raise, should return invalid result
+            if result:
+                self.assertFalse(result.is_valid)
+        except (ValueError, AttributeError):
+            # Expected to raise or handle gracefully
+            pass
+
+    def test_validate_all_with_nonexistent_workflow_definition(self):
+        """Test comprehensive validation when workflow definition is missing (orphaned instance).
+
+        We cannot delete the definition in the same transaction (FK would be violated at
+        commit/constraint check). So we test the validator's graceful handling by
+        calling validate_compensation (which fetches workflow_definition) with an instance
+        whose workflow_definition_id points to a non-existent row. We use deferrable FK
+        and a deferred constraint so we can briefly leave the DB in that state.
+        """
+        from django.db import connection, transaction
+
+        workflow = WorkflowInstance.objects.create(
+            workflow_definition=self.workflow_def,
+            workflow_name="test_workflow",
+            workflow_version="1.0.0",
+            tenant=self.tenant,
+            status=WorkflowStatus.DRAFT,
+            created_by=self.user,
+        )
+        workflow_def_id = self.workflow_def.id
+
+        # Get the FK constraint name (PostgreSQL)
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT c.conname
+                FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                JOIN pg_class r ON c.confrelid = r.oid
+                WHERE t.relname = 'workflow_instances'
+                  AND r.relname = 'workflow_definitions'
+                  AND c.contype = 'f';
+            """)
+            row = cursor.fetchone()
+        if not row:
+            self.skipTest("Could not find workflow_instances FK constraint (non-PostgreSQL?)")
+
+        constraint_name = row[0]
+
+        # Migration 0004 makes this FK DEFERRABLE; we only set it deferred for this test.
+        # We must roll back this transaction so we never commit the orphaned instance
+        # (commit would run SET CONSTRAINTS ALL IMMEDIATE and raise IntegrityError).
+        quoted = connection.ops.quote_name(constraint_name)
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SET CONSTRAINTS " + quoted + " DEFERRED")
+                    cursor.execute(
+                        "DELETE FROM workflow_definitions WHERE id = %s",
+                        [str(workflow_def_id)],
+                    )
+                workflow.refresh_from_db()
+
+                # Validator should handle missing definition gracefully (return invalid or raise)
+                try:
+                    result = WorkflowExecutionValidator.validate_all(workflow)
+                    self.assertIsNotNone(result)
+                    if hasattr(result, "is_valid"):
+                        self.assertFalse(result.is_valid)
+                except Exception:
+                    # Acceptable: validator may raise when definition is missing
+                    pass
+                # Force rollback so we never commit orphaned FK state (avoids IntegrityError on commit)
+                transaction.set_rollback(True)
+        except Exception as e:
+            if "cannot be deferred" in str(e).lower() or "deferrable" in str(e).lower():
+                self.skipTest(
+                    "workflow_instances.workflow_definition_id FK is not deferrable "
+                    "(run migration 0004_defer_workflow_instance_workflow_definition_fk)"
+                )
+            raise

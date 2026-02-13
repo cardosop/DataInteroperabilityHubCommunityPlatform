@@ -28,36 +28,18 @@ CACHE_PREFIX_ASSET_LIST = "asset:list"
 CACHE_PREFIX_ASSET_DETAIL = "asset:detail"
 CACHE_TAG_ASSET_LIST = "asset:list"  # Tag for bulk invalidation
 CACHE_TAG_ASSET_DETAIL = "asset:detail"  # Tag for bulk invalidation
+# Registry key for non-Redis: track list cache keys per tenant so we can invalidate on create/update/delete
+ASSET_LIST_REGISTRY_PREFIX = "asset:list:registry"
 
 
 def get_tenant_id_from_request(request) -> Optional[str]:
     """
-    Extract tenant ID from request.
+    Extract tenant ID from request (Phase 16: delegates to central helper).
 
-    Args:
-        request: Django request object
-
-    Returns:
-        Tenant ID as string or None
+    See hub.apps.tenants.request_tenant.get_request_tenant_id and docs/TENANT_ISOLATION.md.
     """
-    # Try request.tenant_id first (set by authentication/middleware)
-    if hasattr(request, "tenant_id") and request.tenant_id:
-        tenant_id = request.tenant_id
-        return str(tenant_id) if tenant_id else None
-
-    # Fallback to request.tenant object
-    if hasattr(request, "tenant") and request.tenant:
-        return str(request.tenant.id)
-
-    # Fallback to user.tenant_id
-    if hasattr(request, "user") and request.user:
-        user = request.user
-        if hasattr(user, "tenant_id") and user.tenant_id:
-            return str(user.tenant_id)
-        if hasattr(user, "tenant") and user.tenant:
-            return str(user.tenant.id)
-
-    return None
+    from hub.apps.tenants.request_tenant import get_request_tenant_id
+    return get_request_tenant_id(request)
 
 
 def hash_filters(query_params: Dict[str, Any]) -> str:
@@ -128,6 +110,11 @@ def cache_asset_list(
         total_count: Total count of results
         ttl: Time-to-live in seconds (default: CACHE_TTL_ASSET_LIST)
     """
+    # Validate tenant_id is not None or empty
+    if not tenant_id:
+        logger.warning("cache_asset_list_skipped", reason="Invalid tenant_id")
+        return
+    
     cache_key = get_asset_list_cache_key(tenant_id, filters_hash)
     ttl = ttl or CACHE_TTL_ASSET_LIST
 
@@ -137,27 +124,26 @@ def cache_asset_list(
     }
 
     try:
-        # Try to use cache tags if Redis is available
-        if hasattr(cache, 'set_many') and hasattr(cache, '_cache'):
-            # Check if using Redis cache backend
-            cache_backend = getattr(settings, 'CACHES', {}).get('default', {}).get('BACKEND', '')
-            if 'redis' in cache_backend.lower() or 'RedisCache' in cache_backend:
-                # Use cache tags for efficient invalidation
-                # Store data with tag
-                cache.set(cache_key, cache_data, timeout=ttl)
-                # Store key in tag set for bulk invalidation
-                tag_key = f"{CACHE_TAG_ASSET_LIST}:{tenant_id}"
-                tag_set = cache.get(tag_key, set())
-                if not isinstance(tag_set, set):
-                    tag_set = set()
-                tag_set.add(cache_key)
-                cache.set(tag_key, tag_set, timeout=ttl + 3600)  # Tag set expires later
-            else:
-                # Standard Django cache
-                cache.set(cache_key, cache_data, timeout=ttl)
-        else:
-            # Standard Django cache
+        cache_backend = getattr(settings, 'CACHES', {}).get('default', {}).get('BACKEND', '')
+        use_redis = 'redis' in cache_backend.lower() or 'RedisCache' in cache_backend
+
+        if use_redis:
+            # Use cache tags for efficient invalidation
             cache.set(cache_key, cache_data, timeout=ttl)
+            tag_key = f"{CACHE_TAG_ASSET_LIST}:{tenant_id}"
+            tag_set = cache.get(tag_key, set())
+            if not isinstance(tag_set, set):
+                tag_set = set()
+            tag_set.add(cache_key)
+            cache.set(tag_key, tag_set, timeout=ttl + 3600)  # Tag set expires later
+        else:
+            # Standard Django cache (LocMem etc.): register key for invalidation by tenant
+            cache.set(cache_key, cache_data, timeout=ttl)
+            registry_key = f"{ASSET_LIST_REGISTRY_PREFIX}:{tenant_id}"
+            keys_for_tenant = list(cache.get(registry_key) or [])
+            if cache_key not in keys_for_tenant:
+                keys_for_tenant.append(cache_key)
+                cache.set(registry_key, keys_for_tenant, timeout=ttl + 3600)
 
         logger.debug(
             "asset_list_cached",
@@ -229,6 +215,11 @@ def cache_asset_detail(
         asset_data: Asset data dictionary
         ttl: Time-to-live in seconds (default: CACHE_TTL_ASSET_DETAIL)
     """
+    # Validate asset_id is not None or empty
+    if not asset_id:
+        logger.warning("cache_asset_detail_skipped", reason="Invalid asset_id")
+        return
+    
     cache_key = get_asset_detail_cache_key(asset_id)
     ttl = ttl or CACHE_TTL_ASSET_DETAIL
 
@@ -288,17 +279,14 @@ def invalidate_asset_list_cache(tenant_id: Optional[str] = None) -> None:
     """
     try:
         if tenant_id:
-            # Invalidate specific tenant's list cache
-            # Try to use cache tags if Redis is available
             cache_backend = getattr(settings, 'CACHES', {}).get('default', {}).get('BACKEND', '')
-            if 'redis' in cache_backend.lower() or 'RedisCache' in cache_backend:
-                # Get all keys for this tenant's list cache
+            use_redis = 'redis' in cache_backend.lower() or 'RedisCache' in cache_backend
+
+            if use_redis:
                 tag_key = f"{CACHE_TAG_ASSET_LIST}:{tenant_id}"
                 tag_set = cache.get(tag_key, set())
                 if isinstance(tag_set, set) and tag_set:
-                    # Delete all cached list queries for this tenant
                     cache.delete_many(list(tag_set))
-                    # Clear tag set
                     cache.delete(tag_key)
                     logger.info(
                         "asset_list_cache_invalidated",
@@ -306,23 +294,30 @@ def invalidate_asset_list_cache(tenant_id: Optional[str] = None) -> None:
                         keys_invalidated=len(tag_set)
                     )
                 else:
-                    # Fallback: use pattern-based invalidation if Redis supports it
-                    # Pattern: asset:list:{tenant_id}:*
-                    # Note: Django cache doesn't support pattern deletion natively
-                    # In production, use Redis directly or maintain a key registry
                     logger.debug(
                         "asset_list_cache_invalidation_skipped",
                         tenant_id=tenant_id,
                         reason="No tag set found"
                     )
             else:
-                # Standard Django cache - can't invalidate by pattern
-                # In production, maintain a registry of cache keys
-                logger.debug(
-                    "asset_list_cache_invalidation_limited",
-                    tenant_id=tenant_id,
-                    message="Pattern-based invalidation not supported"
-                )
+                # Non-Redis: delete keys from per-tenant registry (set in cache_asset_list)
+                registry_key = f"{ASSET_LIST_REGISTRY_PREFIX}:{tenant_id}"
+                keys_for_tenant = cache.get(registry_key)
+                if keys_for_tenant:
+                    for key in keys_for_tenant:
+                        cache.delete(key)
+                    cache.delete(registry_key)
+                    logger.info(
+                        "asset_list_cache_invalidated",
+                        tenant_id=tenant_id,
+                        keys_invalidated=len(keys_for_tenant)
+                    )
+                else:
+                    logger.debug(
+                        "asset_list_cache_invalidation_skipped",
+                        tenant_id=tenant_id,
+                        reason="No registry found"
+                    )
         else:
             # Invalidate all list caches
             # This is expensive - use sparingly

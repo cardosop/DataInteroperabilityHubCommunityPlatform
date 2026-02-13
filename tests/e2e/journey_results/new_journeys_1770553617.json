@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.020539522171020508
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-009-1fce2620",
+      "journey_name": "Integrate with Developer Portal",
+      "persona": "External Developer",
+      "status": "completed",
+      "start_time": 1770553617.014083,
+      "end_time": 1770553617.0346224,
+      "duration": 0.020539522171020508,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Developer Portal Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553617.0195894,
+          "end_time": 1770553617.0195963,
+          "duration": 6.9141387939453125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: API Documentation Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553617.0240266,
+          "end_time": 1770553617.0240335,
+          "duration": 6.9141387939453125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: API Key Generation Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553617.030316,
+          "end_time": 1770553617.0303233,
+          "duration": 7.152557373046875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: API Usage Monitoring Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553617.034614,
+          "end_time": 1770553617.0346205,
+          "duration": 6.4373016357421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:26:57.034739"
+}

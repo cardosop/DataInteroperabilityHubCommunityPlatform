@@ -69,7 +69,7 @@ check_docker_compose() {
         print_error "Docker is not installed or not in PATH"
         exit 1
     fi
-    
+
     if ! docker compose version &> /dev/null; then
         print_error "Docker Compose is not available"
         exit 1
@@ -81,15 +81,15 @@ wait_for_service_healthy() {
     local service_name=$1
     local timeout=${2:-300}
     local elapsed=0
-    
+
     print_info "Waiting for $service_name to be healthy..."
-    
+
     while [ $elapsed -lt $timeout ]; do
         if docker compose ps --format json "$service_name" | grep -q '"Health":"healthy"'; then
             print_info "$service_name is healthy"
             return 0
         fi
-        
+
         # Check if service is running (even if not healthy yet)
         local state=$(docker compose ps --format json "$service_name" | grep -o '"State":"[^"]*"' | cut -d'"' -f4)
         if [ "$state" != "running" ]; then
@@ -97,11 +97,11 @@ wait_for_service_healthy() {
             docker compose logs --tail=50 "$service_name"
             return 1
         fi
-        
+
         sleep 2
         elapsed=$((elapsed + 2))
     done
-    
+
     print_error "$service_name failed to become healthy within ${timeout}s"
     docker compose logs --tail=100 "$service_name"
     return 1
@@ -110,25 +110,25 @@ wait_for_service_healthy() {
 # Function to start services
 start_services() {
     print_info "Starting Docker Compose services..."
-    
+
     if [ -n "$SERVICES_TO_START" ]; then
         # Start specific services
         IFS=',' read -ra SERVICES <<< "$SERVICES_TO_START"
         docker compose up -d "${SERVICES[@]}"
-        
+
         # Wait for each service
         for service in "${SERVICES[@]}"; do
             wait_for_service_healthy "$service"
         done
     else
-        # Start infrastructure services first
+        # Start infrastructure services first (docker-compose.yml uses redis-cache, not redis)
         print_info "Starting infrastructure services..."
-        docker compose up -d postgres redis minio fuseki
-        
+        docker compose up -d postgres redis-cache minio fuseki
+
         # Wait for infrastructure
         wait_for_service_healthy "postgres"
-        wait_for_service_healthy "redis"
-        
+        wait_for_service_healthy "redis-cache"
+
         # Start application services
         print_info "Starting application services..."
         docker compose up -d \
@@ -138,14 +138,14 @@ start_services() {
             event-schema-registry-service \
             api-service \
             worker-service
-        
+
         # Wait for application services
         wait_for_service_healthy "workflow-engine-service"
         wait_for_service_healthy "workflow-registry-service"
         wait_for_service_healthy "event-bus-health-service"
         wait_for_service_healthy "event-schema-registry-service"
     fi
-    
+
     print_info "All services are healthy"
 }
 
@@ -155,7 +155,7 @@ stop_services() {
         print_info "Keeping services running (--keep-services flag set)"
         return
     fi
-    
+
     print_info "Stopping Docker Compose services..."
     docker compose down -v || true
     print_info "Services stopped"
@@ -164,13 +164,13 @@ stop_services() {
 # Function to run tests
 run_tests() {
     print_info "Running Docker Compose integration tests..."
-    
+
     # Set environment variables for pytest
     export PYTEST_DOCKER_COMPOSE_RUNTIME=1
     export SKIP_DJANGO_SETUP=1
     # Unset DJANGO_SETTINGS_MODULE to prevent pytest-django from loading Django
     unset DJANGO_SETTINGS_MODULE
-    
+
     # Run tests with coverage
     pytest \
         tests/integration/test_docker_compose_deployment.py \
@@ -182,38 +182,38 @@ run_tests() {
         --cov-report=html:tests/integration/coverage_html \
         --cov-fail-under=95 \
         "$@"
-    
+
     local exit_code=$?
-    
+
     if [ $exit_code -eq 0 ]; then
         print_info "All tests passed!"
     else
         print_error "Some tests failed (exit code: $exit_code)"
     fi
-    
+
     return $exit_code
 }
 
 # Main execution
 main() {
     print_info "Starting Docker Compose integration test runner"
-    
+
     # Check prerequisites
     check_docker_compose
-    
+
     # Trap to ensure cleanup
     trap 'stop_services' EXIT
-    
+
     # Start services
     start_services
-    
+
     # Run tests
     run_tests
     local test_exit_code=$?
-    
+
     # Cleanup (handled by trap, but explicit for clarity)
     stop_services
-    
+
     exit $test_exit_code
 }
 

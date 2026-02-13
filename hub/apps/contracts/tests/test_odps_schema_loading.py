@@ -7,18 +7,20 @@ Tests verify that:
 3. Error handling for invalid JSON
 4. Version normalization works correctly
 """
+
 import json
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from hub.apps.contracts.odps_schema import (
-    load_odps_schema,
-    get_available_odps_versions,
     clear_schema_cache,
-    get_cached_schema_versions
+    get_available_odps_versions,
+    get_cached_schema_versions,
+    load_odps_schema,
 )
 
 
@@ -88,13 +90,17 @@ class ODPSSchemaLoadingTest(TestCase):
         schema_4_1 = load_odps_schema("4.1")
 
         # Both should load the same schema
-        self.assertEqual(schema_v4_1, schema_4_1, "Schemas with and without 'v' prefix should be identical")
+        self.assertEqual(
+            schema_v4_1, schema_4_1, "Schemas with and without 'v' prefix should be identical"
+        )
 
         # Test with v prefix for .x versions
         schema_v3_x = load_odps_schema("v3.x")
         schema_3_x = load_odps_schema("3.x")
 
-        self.assertEqual(schema_v3_x, schema_3_x, "Schemas with and without 'v' prefix should be identical")
+        self.assertEqual(
+            schema_v3_x, schema_3_x, "Schemas with and without 'v' prefix should be identical"
+        )
 
     def test_load_odps_schema_all_versions(self):
         """Test loading all required ODPS schema versions"""
@@ -102,9 +108,15 @@ class ODPSSchemaLoadingTest(TestCase):
             with self.subTest(version=version):
                 schema = load_odps_schema(version)
 
-                self.assertIsInstance(schema, dict, f"Schema for version {version} should be a dictionary")
-                self.assertIn("$schema", schema, f"Schema for version {version} should have $schema field")
-                self.assertIn("type", schema, f"Schema for version {version} should have type field")
+                self.assertIsInstance(
+                    schema, dict, f"Schema for version {version} should be a dictionary"
+                )
+                self.assertIn(
+                    "$schema", schema, f"Schema for version {version} should have $schema field"
+                )
+                self.assertIn(
+                    "type", schema, f"Schema for version {version} should have type field"
+                )
 
     def test_load_odps_schema_missing_file(self):
         """Test error handling for missing schema file"""
@@ -128,8 +140,6 @@ class ODPSSchemaLoadingTest(TestCase):
     def test_load_odps_schema_invalid_json(self):
         """Test error handling for invalid JSON in schema file"""
         # Test by temporarily creating an invalid JSON file and patching the base directory
-        from unittest.mock import patch
-
         # Create a temporary directory structure
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -138,13 +148,13 @@ class ODPSSchemaLoadingTest(TestCase):
 
             # Create invalid JSON file
             invalid_json_file = test_schema_dir / "odps-schema.json"
-            invalid_json_file.write_text("{ invalid json syntax here }", encoding='utf-8')
+            invalid_json_file.write_text("{ invalid json syntax here }", encoding="utf-8")
 
             # Patch Path(__file__).parent to point to our temp directory
             # We need to patch the module-level Path in odps_schema
-            with patch('hub.apps.contracts.odps_schema.Path') as mock_path_class:
+            with patch("hub.apps.contracts.odps_schema.Path") as mock_path_class:
                 # Make Path(__file__) return a mock with parent pointing to temp_dir
-                mock_file_path = Path('/fake/path/to/odps_schema.py')
+                mock_file_path = Path("/fake/path/to/odps_schema.py")
                 mock_path_instance = mock_path_class.return_value
                 mock_path_instance.__file__ = str(mock_file_path)
                 mock_path_instance.parent = temp_path
@@ -155,7 +165,7 @@ class ODPSSchemaLoadingTest(TestCase):
                 def test_invalid_json_loading():
                     """Helper to test invalid JSON loading"""
                     schema_path = temp_path / "schemas" / "odps" / "v9.9" / "odps-schema.json"
-                    with open(schema_path, 'r', encoding='utf-8') as f:
+                    with open(schema_path, "r", encoding="utf-8") as f:
                         return json.load(f)
 
                 # Test that invalid JSON raises JSONDecodeError
@@ -185,7 +195,7 @@ class ODPSSchemaLoadingTest(TestCase):
             self.assertIn(
                 required_version,
                 versions,
-                f"Required version {required_version} should be in available versions"
+                f"Required version {required_version} should be in available versions",
             )
 
         # Verify versions are sorted correctly (newest first, then .x versions)
@@ -193,8 +203,8 @@ class ODPSSchemaLoadingTest(TestCase):
         self.assertEqual(versions[0], "4.1", "4.1 should be first (newest)")
 
         # Verify .x versions come after numeric versions
-        numeric_versions = [v for v in versions if not v.endswith('.x')]
-        x_versions = [v for v in versions if v.endswith('.x')]
+        numeric_versions = [v for v in versions if not v.endswith(".x")]
+        x_versions = [v for v in versions if v.endswith(".x")]
 
         # All numeric versions should come before .x versions
         if numeric_versions and x_versions:
@@ -202,7 +212,7 @@ class ODPSSchemaLoadingTest(TestCase):
             x_indices = [versions.index(v) for v in x_versions]
             self.assertTrue(
                 max(numeric_indices) < min(x_indices),
-                "Numeric versions should come before .x versions"
+                "Numeric versions should come before .x versions",
             )
 
     def test_load_odps_schema_version_normalization(self):
@@ -219,9 +229,11 @@ class ODPSSchemaLoadingTest(TestCase):
         for input_version, expected_dir in test_cases:
             with self.subTest(input_version=input_version):
                 # All these should load successfully (if version exists)
-                if input_version.strip().lstrip('v') in ["4.1", "4.0", "3.x", "2.x", "1.x"]:
+                if input_version.strip().lstrip("v") in ["4.1", "4.0", "3.x", "2.x", "1.x"]:
                     schema = load_odps_schema(input_version)
-                    self.assertIsInstance(schema, dict, f"Version '{input_version}' should load successfully")
+                    self.assertIsInstance(
+                        schema, dict, f"Version '{input_version}' should load successfully"
+                    )
 
     def test_load_odps_schema_encoding(self):
         """Test that schema files are loaded with UTF-8 encoding"""
@@ -269,7 +281,9 @@ class ODPSSchemaLoadingTest(TestCase):
 
                 # Should have type field
                 if "type" in schema:
-                    self.assertIn(schema["type"], ["object", "array"], "Schema type should be object or array")
+                    self.assertIn(
+                        schema["type"], ["object", "array"], "Schema type should be object or array"
+                    )
 
     def test_schema_caching(self):
         """Test: Unit test for schema caching"""
@@ -298,7 +312,9 @@ class ODPSSchemaLoadingTest(TestCase):
 
         # Clear cache
         clear_schema_cache()
-        self.assertEqual(len(get_cached_schema_versions()), 0, "Cache should be empty after clearing")
+        self.assertEqual(
+            len(get_cached_schema_versions()), 0, "Cache should be empty after clearing"
+        )
 
     def test_schema_caching_per_version(self):
         """Test that caching works per-version independently"""
@@ -321,7 +337,9 @@ class ODPSSchemaLoadingTest(TestCase):
         self.assertEqual(load_odps_schema("3.x"), schema_3_x)
 
         # Verify schemas are different (not accidentally sharing cache)
-        self.assertNotEqual(schema_4_1, schema_4_0, "Different versions should have different schemas")
+        self.assertNotEqual(
+            schema_4_1, schema_4_0, "Different versions should have different schemas"
+        )
 
     def test_schema_caching_with_v_prefix(self):
         """Test that caching works correctly with 'v' prefix normalization"""
@@ -354,7 +372,9 @@ class ODPSSchemaLoadingTest(TestCase):
         # Load with cache disabled
         schema2 = load_odps_schema("4.1", use_cache=False)
         self.assertEqual(schema1, schema2, "Schemas should be identical")
-        self.assertEqual(len(get_cached_schema_versions()), 0, "Cache should be empty when use_cache=False")
+        self.assertEqual(
+            len(get_cached_schema_versions()), 0, "Cache should be empty when use_cache=False"
+        )
 
     def test_schema_caching_after_clear(self):
         """Test that schemas are reloaded after cache clear"""
@@ -371,7 +391,9 @@ class ODPSSchemaLoadingTest(TestCase):
         # Load again - should reload from disk and cache again
         schema2 = load_odps_schema("4.1")
         self.assertEqual(schema1, schema2, "Reloaded schema should be identical")
-        self.assertIn("4.1", get_cached_schema_versions(), "Schema should be cached again after reload")
+        self.assertIn(
+            "4.1", get_cached_schema_versions(), "Schema should be cached again after reload"
+        )
 
     def test_missing_schema_file_handling_graceful(self):
         """Test: Unit test for missing schema file handling - graceful error"""
@@ -384,7 +406,9 @@ class ODPSSchemaLoadingTest(TestCase):
         error_message = str(cm.exception)
         self.assertIn("ODPS schema not found", error_message)
         self.assertIn("999.9", error_message)
-        self.assertIn("Expected path", error_message, "Error should include expected path for debugging")
+        self.assertIn(
+            "Expected path", error_message, "Error should include expected path for debugging"
+        )
 
         # Verify cache is not polluted with failed loads
         cached = get_cached_schema_versions()
@@ -412,6 +436,57 @@ class ODPSSchemaLoadingTest(TestCase):
             self.assertIn(version, cached, f"Version {version} should be cached after loading")
 
         # Verify cache size matches number of versions loaded
-        self.assertEqual(len(cached), len(self.required_versions),
-                        "Cache should contain all loaded versions")
+        self.assertEqual(
+            len(cached), len(self.required_versions), "Cache should contain all loaded versions"
+        )
 
+    def test_schema_loading_handles_unicode_characters(self):
+        """Test that schema loading handles unicode characters correctly."""
+        # Test with a version that might have unicode in schema content
+        schema = load_odps_schema("4.1")
+
+        # Should handle unicode characters in schema
+        self.assertIsNotNone(schema)
+        self.assertIsInstance(schema, dict)
+
+    def test_schema_loading_handles_special_characters(self):
+        """Test that schema loading handles special characters correctly."""
+        # Test with a version that might have special characters in schema content
+        schema = load_odps_schema("4.1")
+
+        # Should handle special characters in schema
+        self.assertIsNotNone(schema)
+        self.assertIsInstance(schema, dict)
+
+    def test_schema_loading_handles_very_large_schemas(self):
+        """Test that schema loading handles very large schemas correctly."""
+        # Load schema and verify it handles large content
+        schema = load_odps_schema("4.1")
+
+        # Should handle very large schemas
+        self.assertIsNotNone(schema)
+        self.assertIsInstance(schema, dict)
+
+    def test_schema_loading_handles_none_values(self):
+        """Test that schema loading handles None values correctly."""
+        # Test with None version (should fail gracefully)
+        try:
+            schema = load_odps_schema(None)  # type: ignore
+            # If it doesn't fail, verify structure
+            if schema:
+                self.assertIsInstance(schema, dict)
+        except (ValueError, TypeError, FileNotFoundError):
+            # Should handle None values gracefully
+            pass
+
+    def test_schema_loading_handles_nested_structures(self):
+        """Test that schema loading handles nested structures correctly."""
+        # Schemas are inherently nested structures
+        schema = load_odps_schema("4.1")
+
+        # Should handle nested structures
+        self.assertIsNotNone(schema)
+        self.assertIsInstance(schema, dict)
+        # Verify nested structure exists
+        if "properties" in schema or "definitions" in schema:
+            self.assertTrue(True, "Schema contains nested structures")

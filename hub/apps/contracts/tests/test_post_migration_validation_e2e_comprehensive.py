@@ -13,33 +13,31 @@ Tests verify that the system continues to work correctly after migrations and co
 
 import json
 import uuid
-from django.test import TestCase, TransactionTestCase
-from django.contrib.auth import get_user_model
+
 from django.db import transaction
-from rest_framework.test import APIClient
 from rest_framework import status
 
+from hub.apps.contracts.linking_validation import (
+    validate_odcs_to_odps_link,
+    validate_odps_to_odcs_link,
+    validate_referential_integrity,
+)
+from hub.apps.contracts.management.commands.migrate_contracts_to_odps import (
+    Command as MigrateCommand,
+)
+from hub.apps.contracts.migration_validation import MigrationValidator
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
     NormalizationStatus,
-    OriginalSpecType,
     OriginalFormat,
+    OriginalSpecType,
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import UserStatus
-from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.contracts.normalization import normalize_contract, parse_contract
 from hub.apps.contracts.spec_detection import detect_spec_type
-from hub.apps.contracts.migration_validation import MigrationValidator
-from hub.apps.contracts.management.commands.migrate_contracts_to_odps import Command as MigrateCommand
-from hub.apps.contracts.linking_validation import (
-    validate_odps_to_odcs_link,
-    validate_odcs_to_odps_link,
-    validate_referential_integrity,
-)
-
-User = get_user_model()
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import UserStatus
 
 
 def create_valid_odcs_3_0_2(contract_id: str = None, with_marketplace: bool = True) -> dict:
@@ -56,9 +54,9 @@ def create_valid_odcs_3_0_2(contract_id: str = None, with_marketplace: bool = Tr
         "schema": {
             "fields": [
                 {"name": "id", "type": "string", "nullable": False},
-                {"name": "name", "type": "string", "nullable": False}
+                {"name": "name", "type": "string", "nullable": False},
             ]
-        }
+        },
     }
 
     if with_marketplace:
@@ -72,8 +70,8 @@ def create_valid_odcs_3_0_2(contract_id: str = None, with_marketplace: bool = Tr
                 ],
                 "access_methods": {
                     "api": {"type": "REST API", "endpoint": "https://api.example.com/v1"}
-                }
-            }
+                },
+            },
         }
 
     return contract
@@ -92,7 +90,7 @@ def create_valid_odps_4_1(product_id: str = None) -> dict:
                 "en": {
                     "productID": product_id,
                     "name": "Test Product",
-                    "description": "Test description"
+                    "description": "Test description",
                 }
             },
             "contract": {
@@ -102,17 +100,13 @@ def create_valid_odps_4_1(product_id: str = None) -> dict:
                     "id": f"embedded-odcs-{product_id}",
                     "name": f"Embedded ODCS {product_id}",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {"name": "id", "type": "string", "nullable": False}
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
             },
             "dataQuality": {"declarative": []},
             "SLA": {"declarative": []},
-            "pricingPlans": {"declarative": []}
-        }
+            "pricingPlans": {"declarative": []},
+        },
     }
 
 
@@ -124,21 +118,15 @@ def create_dcs_contract_data(contract_id: str = None) -> dict:
     return {
         "dataContractSpecification": "0.9.0",
         "id": contract_id,
-        "info": {
-            "title": f"Test DCS Contract {contract_id}",
-            "version": "1.0.0"
-        },
+        "info": {"title": f"Test DCS Contract {contract_id}", "version": "1.0.0"},
         "schema": {
             "type": "object",
-            "properties": {
-                "id": {"type": "string"},
-                "name": {"type": "string"}
-            }
-        }
+            "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
+        },
     }
 
 
-class PostMigrationValidationE2EComprehensiveTest(TestCase):
+class PostMigrationValidationE2EComprehensiveTest(ContractsAPITestBase):
     """
     Comprehensive E2E tests for post-migration validation.
 
@@ -151,29 +139,7 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
-
-        # Create API client
-        self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
-
-        # Initialize services
-        self.contract_service = ContractService(tenant_id=str(self.tenant.id))
-        self.odps_service = ODPSService(tenant_id=str(self.tenant.id))
+        super().setUp()
 
     # ========== TESTS FOR SYSTEM AFTER DEPRECATED CODE REMOVAL ==========
 
@@ -184,16 +150,19 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
 
         # Attempt to create contract with DCS format
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": dcs_raw,
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         # Should be rejected (either validation error or DCS rejection)
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY])
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY],
+        )
 
         # Verify error message mentions DCS is no longer supported or validation error
         if response.status_code == status.HTTP_400_BAD_REQUEST:
@@ -202,10 +171,13 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
             # After DCS removal, DCS contracts may be rejected at validation or normalization stage
             # Accept either DCS-specific error or general validation error
             self.assertTrue(
-                'dcs' in error_message or 'data contract specification' in error_message or
-                'no longer supported' in error_message or 'deprecated' in error_message or
-                'validation' in error_message or 'required' in error_message,
-                f"Error message should mention DCS rejection or validation error. Got: {error_data}"
+                "dcs" in error_message
+                or "data contract specification" in error_message
+                or "no longer supported" in error_message
+                or "deprecated" in error_message
+                or "validation" in error_message
+                or "required" in error_message,
+                f"Error message should mention DCS rejection or validation error. Got: {error_data}",
             )
 
     def test_spec_detection_only_odcs_odps_after_removal(self):
@@ -234,20 +206,20 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_raw = json.dumps(odcs_data)
 
         response = self.client.post(
-            '/api/v1/contracts/',
+            "/api/v1/contracts/",
             {
                 "original_raw": odcs_raw,
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         # Should succeed
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         response_data = response.json()
-        self.assertEqual(response_data['original_spec_type'], OriginalSpecType.ODCS)
-        self.assertEqual(response_data['original_spec_version'], "3.0.2")
+        self.assertEqual(response_data["original_spec_type"], OriginalSpecType.ODCS)
+        self.assertEqual(response_data["original_spec_version"], "3.0.2")
 
     def test_odps_contract_creation_still_works(self):
         """Test that ODPS contract creation still works after code removal"""
@@ -255,12 +227,12 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odps_raw = json.dumps(odps_data)
 
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": odps_raw,
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         # Should succeed (may be 201 or 202 depending on async processing)
@@ -272,16 +244,23 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_raw = json.dumps(odcs_data)
 
         # Normalize contract (normalize_contract takes raw string and format)
-        hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalize_contract(
-            raw_contract=odcs_raw,
-            format="JSON"
-        )
+        (
+            hub_contract,
+            detected_spec_type,
+            detected_spec_version,
+            norm_status,
+            norm_errors,
+            norm_warnings,
+        ) = normalize_contract(raw_contract=odcs_raw, format="JSON")
 
         # Should succeed
         self.assertIsNotNone(hub_contract)
         self.assertEqual(detected_spec_type, OriginalSpecType.ODCS)
         self.assertEqual(detected_spec_version, "3.0.2")
-        self.assertIn(norm_status, [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS])
+        self.assertIn(
+            norm_status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+        )
 
     # ========== TESTS FOR SYSTEM AFTER MIGRATION EXECUTION ==========
 
@@ -302,17 +281,14 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
             hub_contract_json={
                 "hub_contract_version": "1.0.0",
                 "id": contract_id,
-                "info": {
-                    "name": f"Migrated DCS Contract {contract_id}",
-                    "version": "1.0.0"
-                }
+                "info": {"name": f"Migrated DCS Contract {contract_id}", "version": "1.0.0"},
             },
             normalization_status=NormalizationStatus.NORMALIZED_OK,
             status=ContractStatus.ACTIVE,
             normalization_warnings=[
                 "This contract was migrated from a deprecated contract specification to "
                 "Open Data Contract Standard (ODCS). Please review and update to proper ODCS format."
-            ]
+            ],
         )
 
         # Verify migration results
@@ -330,9 +306,7 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
 
         # Create ODCS contract
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Migrate to ODPS using migration command
@@ -347,18 +321,18 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
             # Create ODPS contract via API
             odps_raw = json.dumps(odps_data)
             response = self.client.post(
-                '/api/v1/contracts/products/',
+                "/api/v1/contracts/products/",
                 {
                     "original_raw": odps_raw,
                     "original_format": "JSON",
                 },
-                format='json'
+                format="json",
             )
 
             if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
                 # If ODPS creation succeeds, verify linking can be done
                 # (In real migration, this would be done by the migration command)
-                odps_contract_id = response.json().get('id')
+                odps_contract_id = response.json().get("id")
 
                 if odps_contract_id:
                     # Verify contracts exist
@@ -375,22 +349,20 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_raw = json.dumps(odcs_data)
 
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Verify marketplace metadata is preserved in HubContract
         hub_contract = odcs_contract.hub_contract_json
-        self.assertIsNotNone(hub_contract.get('marketplace'))
+        self.assertIsNotNone(hub_contract.get("marketplace"))
 
-        marketplace = hub_contract['marketplace']
-        self.assertEqual(marketplace.get('license_summary'), "MIT License")
-        self.assertIn("analytics", marketplace.get('intended_use', []))
+        marketplace = hub_contract["marketplace"]
+        self.assertEqual(marketplace.get("license_summary"), "MIT License")
+        self.assertIn("analytics", marketplace.get("intended_use", []))
         # x_odps may or may not be preserved depending on normalization rules
         # The important thing is that basic marketplace metadata is preserved
-        if marketplace.get('x_odps') is not None:
-            self.assertIsInstance(marketplace.get('x_odps'), dict)
+        if marketplace.get("x_odps") is not None:
+            self.assertIsInstance(marketplace.get("x_odps"), dict)
 
     # ========== TESTS FOR NO BROKEN FUNCTIONALITY ==========
 
@@ -403,22 +375,18 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_raw2 = json.dumps(odcs_data2)
 
         contract1 = self.contract_service.create_contract(
-            original_raw=odcs_raw1,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw1, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
         contract2 = self.contract_service.create_contract(
-            original_raw=odcs_raw2,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw2, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Query contracts
-        response = self.client.get('/api/v1/contracts/')
+        response = self.client.get("/api/v1/contracts/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        results = response.json().get('results', [])
-        contract_ids = [c['id'] for c in results]
+        results = response.json().get("results", [])
+        contract_ids = [c["id"] for c in results]
 
         # Verify both contracts are returned
         self.assertIn(str(contract1.id), contract_ids)
@@ -433,27 +401,25 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odps_raw = json.dumps(odps_data)
 
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Create ODPS contract
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": odps_raw,
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         # Filter by ODCS type
-        response = self.client.get('/api/v1/contracts/?original_spec_type=ODCS')
+        response = self.client.get("/api/v1/contracts/?original_spec_type=ODCS")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        results = response.json().get('results', [])
-        odcs_contracts = [c for c in results if c['original_spec_type'] == OriginalSpecType.ODCS]
+        results = response.json().get("results", [])
+        odcs_contracts = [c for c in results if c["original_spec_type"] == OriginalSpecType.ODCS]
         self.assertTrue(len(odcs_contracts) > 0)
 
     def test_contract_linking_still_works(self):
@@ -462,25 +428,23 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_data = create_valid_odcs_3_0_2(with_marketplace=True)
         odcs_raw = json.dumps(odcs_data)
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Create ODPS contract
         odps_data = create_valid_odps_4_1()
         odps_raw = json.dumps(odps_data)
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": odps_raw,
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            odps_contract_id = response.json().get('id')
+            odps_contract_id = response.json().get("id")
 
             if odps_contract_id:
                 # Attempt to link (if linking endpoint exists)
@@ -499,13 +463,11 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_data = create_valid_odcs_3_0_2()
         odcs_raw = json.dumps(odcs_data)
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Export contract
-        response = self.client.get(f'/api/v1/contracts/{odcs_contract.id}/export/')
+        response = self.client.get(f"/api/v1/contracts/{odcs_contract.id}/export/")
 
         # Should succeed (may be 200 or 404 if endpoint doesn't exist)
         if response.status_code == status.HTTP_200_OK:
@@ -520,25 +482,23 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_data = create_valid_odcs_3_0_2(with_marketplace=True)
         odcs_raw = json.dumps(odcs_data)
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Create ODPS contract and link manually (simulating migration)
         odps_data = create_valid_odps_4_1()
         odps_raw = json.dumps(odps_data)
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": odps_raw,
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            odps_contract_id = response.json().get('id')
+            odps_contract_id = response.json().get("id")
 
             if odps_contract_id:
                 odps_contract = Contract.objects.get(id=odps_contract_id)
@@ -549,18 +509,18 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
 
                 # Add links to HubContract
                 odcs_hub = odcs_contract.hub_contract_json or {}
-                odcs_extensions = odcs_hub.setdefault('extensions', {})
-                odcs_x_odps = odcs_extensions.setdefault('x_odps', {})
-                odcs_x_odps['odps_link'] = str(odps_contract.id)
+                odcs_extensions = odcs_hub.setdefault("extensions", {})
+                odcs_x_odps = odcs_extensions.setdefault("x_odps", {})
+                odcs_x_odps["odps_link"] = str(odps_contract.id)
                 odcs_contract.hub_contract_json = odcs_hub
-                odcs_contract.save(update_fields=['hub_contract_json'])
+                odcs_contract.save(update_fields=["hub_contract_json"])
 
                 odps_hub = odps_contract.hub_contract_json or {}
-                odps_extensions = odps_hub.setdefault('extensions', {})
-                odps_x_odps = odps_extensions.setdefault('x_odps', {})
-                odps_x_odps['odcs_link'] = str(odcs_contract.id)
+                odps_extensions = odps_hub.setdefault("extensions", {})
+                odps_x_odps = odps_extensions.setdefault("x_odps", {})
+                odps_x_odps["odcs_link"] = str(odcs_contract.id)
                 odps_contract.hub_contract_json = odps_hub
-                odps_contract.save(update_fields=['hub_contract_json'])
+                odps_contract.save(update_fields=["hub_contract_json"])
 
                 # Validate using migration validator
                 validator = MigrationValidator(tenant_id=str(self.tenant.id))
@@ -580,9 +540,7 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_data = create_valid_odcs_3_0_2(with_marketplace=True)
         odcs_raw = json.dumps(odcs_data)
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Get original HubContract
@@ -590,18 +548,18 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         self.assertIsNotNone(original_hub)
 
         # Verify key sections are present
-        self.assertIsNotNone(original_hub.get('info'))
-        self.assertIsNotNone(original_hub.get('schema'))
-        if 'marketplace' in odcs_data:
-            self.assertIsNotNone(original_hub.get('marketplace'))
+        self.assertIsNotNone(original_hub.get("info"))
+        self.assertIsNotNone(original_hub.get("schema"))
+        if "marketplace" in odcs_data:
+            self.assertIsNotNone(original_hub.get("marketplace"))
 
         # After migration simulation, verify data is still present
         odcs_contract.refresh_from_db()
         migrated_hub = odcs_contract.hub_contract_json
 
         # Verify no data loss
-        self.assertIsNotNone(migrated_hub.get('info'))
-        self.assertIsNotNone(migrated_hub.get('schema'))
+        self.assertIsNotNone(migrated_hub.get("info"))
+        self.assertIsNotNone(migrated_hub.get("schema"))
 
     def test_migration_preserves_marketplace_metadata_fields(self):
         """Test that migration preserves all marketplace metadata fields"""
@@ -609,23 +567,21 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_data = create_valid_odcs_3_0_2(with_marketplace=True)
         odcs_raw = json.dumps(odcs_data)
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Verify marketplace metadata in HubContract
         hub_contract = odcs_contract.hub_contract_json
-        marketplace = hub_contract.get('marketplace', {})
+        marketplace = hub_contract.get("marketplace", {})
 
         # Verify basic fields
-        self.assertEqual(marketplace.get('license_summary'), "MIT License")
-        self.assertIn("analytics", marketplace.get('intended_use', []))
-        self.assertIn("resale", marketplace.get('restricted_use', []))
+        self.assertEqual(marketplace.get("license_summary"), "MIT License")
+        self.assertIn("analytics", marketplace.get("intended_use", []))
+        self.assertIn("resale", marketplace.get("restricted_use", []))
 
         # Verify x_odps extension fields (may or may not be preserved depending on normalization)
         # The important thing is that basic marketplace metadata is preserved
-        x_odps = marketplace.get('x_odps', {})
+        x_odps = marketplace.get("x_odps", {})
         if x_odps:
             # If x_odps is present, verify it's a dict
             self.assertIsInstance(x_odps, dict)
@@ -638,9 +594,7 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_data = create_valid_odcs_3_0_2(with_marketplace=True)
         odcs_raw = json.dumps(odcs_data)
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Simulate data loss by removing a section from HubContract
@@ -648,25 +602,25 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         hub_contract = odcs_contract.hub_contract_json.copy()
 
         # Remove a section to simulate data loss
-        if 'marketplace' in hub_contract:
-            del hub_contract['marketplace']
+        if "marketplace" in hub_contract:
+            del hub_contract["marketplace"]
             odcs_contract.hub_contract_json = hub_contract
-            odcs_contract.save(update_fields=['hub_contract_json'])
+            odcs_contract.save(update_fields=["hub_contract_json"])
 
         # Create ODPS contract and link
         odps_data = create_valid_odps_4_1()
         odps_raw = json.dumps(odps_data)
         response = self.client.post(
-            '/api/v1/contracts/products/',
+            "/api/v1/contracts/products/",
             {
                 "original_raw": odps_raw,
                 "original_format": "JSON",
             },
-            format='json'
+            format="json",
         )
 
         if response.status_code in [status.HTTP_201_CREATED, status.HTTP_202_ACCEPTED]:
-            odps_contract_id = response.json().get('id')
+            odps_contract_id = response.json().get("id")
 
             if odps_contract_id:
                 odps_contract = Contract.objects.get(id=odps_contract_id)
@@ -676,18 +630,18 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
                 odps_contract.refresh_from_db()
 
                 odcs_hub = odcs_contract.hub_contract_json or {}
-                odcs_extensions = odcs_hub.setdefault('extensions', {})
-                odcs_x_odps = odcs_extensions.setdefault('x_odps', {})
-                odcs_x_odps['odps_link'] = str(odps_contract.id)
+                odcs_extensions = odcs_hub.setdefault("extensions", {})
+                odcs_x_odps = odcs_extensions.setdefault("x_odps", {})
+                odcs_x_odps["odps_link"] = str(odps_contract.id)
                 odcs_contract.hub_contract_json = odcs_hub
-                odcs_contract.save(update_fields=['hub_contract_json'])
+                odcs_contract.save(update_fields=["hub_contract_json"])
 
                 odps_hub = odps_contract.hub_contract_json or {}
-                odps_extensions = odps_hub.setdefault('extensions', {})
-                odps_x_odps = odps_extensions.setdefault('x_odps', {})
-                odps_x_odps['odcs_link'] = str(odcs_contract.id)
+                odps_extensions = odps_hub.setdefault("extensions", {})
+                odps_x_odps = odps_extensions.setdefault("x_odps", {})
+                odps_x_odps["odcs_link"] = str(odcs_contract.id)
                 odps_contract.hub_contract_json = odps_hub
-                odps_contract.save(update_fields=['hub_contract_json'])
+                odps_contract.save(update_fields=["hub_contract_json"])
 
                 # Validate using migration validator
                 validator = MigrationValidator(tenant_id=str(self.tenant.id))
@@ -708,9 +662,7 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
         odcs_data = create_valid_odcs_3_0_2(with_marketplace=True)
         odcs_raw = json.dumps(odcs_data)
         odcs_contract = self.contract_service.create_contract(
-            original_raw=odcs_raw,
-            original_format=OriginalFormat.JSON,
-            user_id=str(self.user.id)
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
         )
 
         # Validate using migration validator
@@ -737,7 +689,165 @@ class PostMigrationValidationE2EComprehensiveTest(TestCase):
 
     def _create_mock_stdout(self):
         """Create a mock stdout for command output"""
+
         class MockStdout:
             def write(self, text):
                 pass
+
         return MockStdout()
+
+    def test_migration_handles_unicode_characters(self):
+        """Test that migration handles unicode characters correctly."""
+        odcs_data = create_valid_odcs_3_0_2()
+        odcs_data["name"] = "测试合同 🏢"
+        odcs_raw = json.dumps(odcs_data)
+
+        odcs_contract = self.contract_service.create_contract(
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
+        )
+
+        # Verify unicode characters are preserved
+        hub_contract = odcs_contract.hub_contract_json
+        self.assertIsNotNone(hub_contract)
+        if "info" in hub_contract and "name" in hub_contract["info"]:
+            self.assertEqual(
+                hub_contract["info"]["name"],
+                "测试合同 🏢",
+                "Unicode characters should be preserved",
+            )
+
+    def test_migration_handles_special_characters(self):
+        """Test that migration handles special characters correctly."""
+        odcs_data = create_valid_odcs_3_0_2()
+        odcs_data["name"] = "Test & Co. (Special)"
+        odcs_raw = json.dumps(odcs_data)
+
+        odcs_contract = self.contract_service.create_contract(
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
+        )
+
+        # Verify special characters are preserved
+        hub_contract = odcs_contract.hub_contract_json
+        self.assertIsNotNone(hub_contract)
+        if "info" in hub_contract and "name" in hub_contract["info"]:
+            self.assertEqual(
+                hub_contract["info"]["name"],
+                "Test & Co. (Special)",
+                "Special characters should be preserved",
+            )
+
+    def test_migration_handles_very_large_documents(self):
+        """Test that migration handles very large documents correctly."""
+        odcs_data = create_valid_odcs_3_0_2()
+        odcs_data["large_field"] = "A" * 100000  # 100KB string
+        odcs_raw = json.dumps(odcs_data)
+
+        odcs_contract = self.contract_service.create_contract(
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
+        )
+
+        # Verify large document is handled
+        self.assertIsNotNone(odcs_contract)
+        hub_contract = odcs_contract.hub_contract_json
+        self.assertIsNotNone(hub_contract)
+
+    def test_migration_handles_none_values(self):
+        """Test that migration handles None values correctly."""
+        odcs_data = create_valid_odcs_3_0_2()
+        odcs_data["optional_field"] = None
+        odcs_raw = json.dumps(odcs_data)
+
+        odcs_contract = self.contract_service.create_contract(
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
+        )
+
+        # Verify None values are handled
+        self.assertIsNotNone(odcs_contract)
+        hub_contract = odcs_contract.hub_contract_json
+        self.assertIsNotNone(hub_contract)
+
+    def test_migration_handles_nested_structures(self):
+        """Test that migration handles nested structures correctly."""
+        odcs_data = create_valid_odcs_3_0_2()
+        odcs_data["nested"] = {"level1": {"level2": {"level3": {"value": "deep"}}}}
+        odcs_raw = json.dumps(odcs_data)
+
+        odcs_contract = self.contract_service.create_contract(
+            original_raw=odcs_raw, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
+        )
+
+        # Verify nested structures are preserved
+        hub_contract = odcs_contract.hub_contract_json
+        self.assertIsNotNone(hub_contract)
+        if "nested" in hub_contract:
+            self.assertIn("level1", hub_contract["nested"], "Nested structures should be preserved")
+
+    def test_migration_validator_handles_cross_tenant_isolation(self):
+        """Test that migration validator maintains cross-tenant isolation."""
+        # Create second tenant
+        tenant2 = Tenant.objects.create(
+            name="Migration Validator Test Tenant 2",
+            slug="migration-validator-test-2",
+            status=TenantStatus.ACTIVE,
+            kyc_status=KYCStatus.VERIFIED,
+        )
+
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        user2 = User.objects.create_user(
+            email="migration-validator-test-2@example.com",
+            password="testpass123",
+            tenant=tenant2,
+            status=UserStatus.ACTIVE,
+        )
+
+        # Create contract for tenant1
+        odcs_data1 = create_valid_odcs_3_0_2("contract-1")
+        odcs_raw1 = json.dumps(odcs_data1)
+        contract1 = self.contract_service.create_contract(
+            original_raw=odcs_raw1, original_format=OriginalFormat.JSON, user_id=str(self.user.id)
+        )
+
+        # Create contract for tenant2
+        from hub.apps.contracts.services import ContractService
+
+        contract_service2 = ContractService(tenant_id=str(tenant2.id))
+        odcs_data2 = create_valid_odcs_3_0_2("contract-2")
+        odcs_raw2 = json.dumps(odcs_data2)
+        contract2 = contract_service2.create_contract(
+            original_raw=odcs_raw2, original_format=OriginalFormat.JSON, user_id=str(user2.id)
+        )
+
+        # Validate using migration validator for tenant1
+        validator = MigrationValidator(tenant_id=str(self.tenant.id))
+        report = validator.validate_migration(odcs_contract_ids=[str(contract1.id)])
+
+        # Verify tenant2 contract is not included
+        contract_ids_in_report = [r.odcs_contract_id for r in report.validation_results]
+        self.assertNotIn(
+            str(contract2.id),
+            contract_ids_in_report,
+            "Tenant2 contract should not be included in tenant1 validation",
+        )
+
+    def test_migration_validator_handles_invalid_contract_ids(self):
+        """Test that migration validator handles invalid contract IDs gracefully."""
+        invalid_contract_id = str(uuid.uuid4())
+
+        validator = MigrationValidator(tenant_id=str(self.tenant.id))
+        report = validator.validate_migration(odcs_contract_ids=[invalid_contract_id])
+
+        # Should handle gracefully (may return empty results or error)
+        self.assertIsNotNone(report)
+        self.assertIsInstance(report.validation_results, list)
+
+    def test_migration_validator_handles_empty_contract_list(self):
+        """Test that migration validator handles empty contract list gracefully."""
+        validator = MigrationValidator(tenant_id=str(self.tenant.id))
+        report = validator.validate_migration(odcs_contract_ids=[])
+
+        # Should handle gracefully
+        self.assertIsNotNone(report)
+        self.assertEqual(len(report.validation_results), 0)
+        self.assertEqual(report.total_odcs_contracts, 0)

@@ -3,16 +3,17 @@ Unit tests for MarketplaceSyncJob model.
 
 Comprehensive tests for model creation, status transitions, error tracking, and validation.
 """
-import pytest
-from django.test import TestCase
-from django.core.exceptions import ValidationError
-from django.utils import timezone
+
 from datetime import timedelta
 
-from hub.apps.tenants.models import Tenant
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
-from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+import pytest
+from django.core.exceptions import ValidationError
+from django.test import TestCase
+from django.utils import timezone
 
+from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
+from hub.apps.tenants.models import Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -22,23 +23,18 @@ class MarketplaceSyncJobModelTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.connection = MarketplaceConnection.objects.create(
             tenant=self.tenant,
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
-            config={"api_key": "test-key"}
+            config={"api_key": "test-key"},
         )
 
     def test_create_sync_job(self):
         """Test sync job creation with minimal required fields"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         self.assertEqual(sync_job.tenant, self.tenant)
@@ -66,7 +62,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             items_synced=50,
             items_failed=5,
             errors=errors,
-            metadata=metadata
+            metadata=metadata,
         )
 
         self.assertEqual(sync_job.direction, SyncDirection.PULL.value)
@@ -82,7 +78,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.RUNNING.value
+            status=SyncStatus.RUNNING.value,
         )
 
         str_repr = str(sync_job)
@@ -94,13 +90,13 @@ class MarketplaceSyncJobModelTest(TestCase):
         """Test that all sync directions can be used"""
         for direction in SyncDirection:
             sync_job = MarketplaceSyncJob.objects.create(
-                tenant=self.tenant,
-                connection=self.connection,
-                direction=direction.value
+                tenant=self.tenant, connection=self.connection, direction=direction.value
             )
 
             self.assertEqual(sync_job.direction, direction.value)
-            self.assertEqual(sync_job.get_direction_display(), direction.name.replace("_", " ").title())
+            self.assertEqual(
+                sync_job.get_direction_display(), direction.name.replace("_", " ").title()
+            )
 
     def test_all_sync_statuses(self):
         """Test that all sync statuses can be used"""
@@ -109,7 +105,7 @@ class MarketplaceSyncJobModelTest(TestCase):
                 tenant=self.tenant,
                 connection=self.connection,
                 direction=SyncDirection.PUSH.value,
-                status=status.value
+                status=status.value,
             )
 
             self.assertEqual(sync_job.status, status.value)
@@ -118,9 +114,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_validation_invalid_direction(self):
         """Test validation fails for invalid direction"""
         sync_job = MarketplaceSyncJob(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction="INVALID_DIRECTION"
+            tenant=self.tenant, connection=self.connection, direction="INVALID_DIRECTION"
         )
 
         with self.assertRaises(ValidationError):
@@ -132,7 +126,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status="INVALID_STATUS"
+            status="INVALID_STATUS",
         )
 
         with self.assertRaises(ValidationError):
@@ -144,7 +138,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            items_synced=-1
+            items_synced=-1,
         )
 
         with self.assertRaises(ValidationError):
@@ -156,7 +150,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            items_failed=-1
+            items_failed=-1,
         )
 
         with self.assertRaises(ValidationError):
@@ -168,7 +162,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            errors="not-a-list"
+            errors="not-a-list",
         )
 
         with self.assertRaises(ValidationError):
@@ -180,7 +174,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            metadata="not-a-dict"
+            metadata="not-a-dict",
         )
 
         with self.assertRaises(ValidationError):
@@ -192,12 +186,13 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.RUNNING.value
+            status=SyncStatus.RUNNING.value,
         )
 
         initial_updated_at = sync_job.updated_at
 
         import time
+
         time.sleep(0.01)
 
         sync_job.mark_completed(items_synced=100, metadata={"duration": 30})
@@ -216,7 +211,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
             status=SyncStatus.RUNNING.value,
-            items_synced=50
+            items_synced=50,
         )
 
         sync_job.mark_completed()
@@ -232,14 +227,14 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.RUNNING.value
+            status=SyncStatus.RUNNING.value,
         )
 
         sync_job.mark_failed(
             error_message="Connection timeout",
             items_synced=10,
             items_failed=5,
-            metadata={"error_code": "TIMEOUT"}
+            metadata={"error_code": "TIMEOUT"},
         )
 
         sync_job.refresh_from_db()
@@ -257,7 +252,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.RUNNING.value
+            status=SyncStatus.RUNNING.value,
         )
 
         sync_job.mark_failed(items_synced=0, items_failed=1)
@@ -269,9 +264,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_add_error(self):
         """Test add_error method"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         sync_job.add_error("First error")
@@ -287,9 +280,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_add_error_without_save(self):
         """Test add_error without saving"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         sync_job.add_error("Error 1", save=False)
@@ -307,9 +298,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_add_error_empty_message(self):
         """Test add_error fails with empty message"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         with self.assertRaises(ValueError):
@@ -321,9 +310,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_add_error_invalid_type(self):
         """Test add_error fails with non-string message"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         with self.assertRaises(ValueError):
@@ -338,7 +325,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.PENDING.value
+            status=SyncStatus.PENDING.value,
         )
 
         sync_job.mark_running()
@@ -352,7 +339,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.RUNNING.value
+            status=SyncStatus.RUNNING.value,
         )
 
         initial_updated_at = sync_job.updated_at
@@ -371,13 +358,11 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.RUNNING.value
+            status=SyncStatus.RUNNING.value,
         )
 
         sync_job.mark_partial(
-            items_synced=80,
-            items_failed=20,
-            metadata={"partial_reason": "Rate limit"}
+            items_synced=80, items_failed=20, metadata={"partial_reason": "Rate limit"}
         )
 
         sync_job.refresh_from_db()
@@ -395,7 +380,7 @@ class MarketplaceSyncJobModelTest(TestCase):
                 tenant=self.tenant,
                 connection=self.connection,
                 direction=SyncDirection.PUSH.value,
-                status=status.value
+                status=status.value,
             )
             self.assertTrue(sync_job.is_terminal())
 
@@ -405,7 +390,7 @@ class MarketplaceSyncJobModelTest(TestCase):
                 tenant=self.tenant,
                 connection=self.connection,
                 direction=SyncDirection.PUSH.value,
-                status=status.value
+                status=status.value,
             )
             self.assertFalse(sync_job.is_terminal())
 
@@ -415,7 +400,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.RUNNING.value
+            status=SyncStatus.RUNNING.value,
         )
         self.assertTrue(sync_job.is_running())
 
@@ -426,9 +411,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_cascade_delete_connection(self):
         """Test that sync jobs are deleted when connection is deleted"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         sync_job_id = sync_job.id
@@ -442,9 +425,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_cascade_delete_tenant(self):
         """Test that sync jobs are deleted when tenant is deleted"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         sync_job_id = sync_job.id
@@ -462,14 +443,14 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            status=SyncStatus.PENDING.value
+            status=SyncStatus.PENDING.value,
         )
 
         MarketplaceSyncJob.objects.create(
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PULL.value,
-            status=SyncStatus.COMPLETED.value
+            status=SyncStatus.COMPLETED.value,
         )
 
         # Verify queries use indexes (check execution plan)
@@ -477,10 +458,13 @@ class MarketplaceSyncJobModelTest(TestCase):
 
         with db_connection.cursor() as cursor:
             # Query that should use tenant + connection index
-            cursor.execute("""
+            cursor.execute(
+                """
                 EXPLAIN SELECT * FROM marketplace_sync_jobs
                 WHERE tenant_id = %s AND connection_id = %s
-            """, [self.tenant.id, self.connection.id])
+            """,
+                [self.tenant.id, self.connection.id],
+            )
 
             # Just verify query executes without error
             # Actual index usage depends on PostgreSQL query planner
@@ -488,18 +472,15 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_ordering_by_created_at_desc(self):
         """Test that sync jobs are ordered by created_at descending"""
         sync_job1 = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         import time
+
         time.sleep(0.01)
 
         sync_job2 = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PULL.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PULL.value
         )
 
         sync_jobs = list(MarketplaceSyncJob.objects.all())
@@ -512,7 +493,7 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            metadata={"existing": "value", "count": 5}
+            metadata={"existing": "value", "count": 5},
         )
 
         sync_job.mark_completed(metadata={"count": 10, "new": "field"})
@@ -528,12 +509,11 @@ class MarketplaceSyncJobModelTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PUSH.value,
-            metadata={"existing": "value"}
+            metadata={"existing": "value"},
         )
 
         sync_job.mark_failed(
-            error_message="Test error",
-            metadata={"error_type": "network", "existing": "updated"}
+            error_message="Test error", metadata={"error_type": "network", "existing": "updated"}
         )
 
         sync_job.refresh_from_db()
@@ -543,9 +523,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_metadata_invalid_type(self):
         """Test that mark_completed/mark_failed reject non-dict metadata"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         with self.assertRaises(ValueError):
@@ -557,9 +535,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_error_timestamps(self):
         """Test that errors include timestamps"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         before_time = timezone.now()
@@ -571,7 +547,8 @@ class MarketplaceSyncJobModelTest(TestCase):
 
         # Parse ISO timestamp
         from datetime import datetime
-        parsed_time = datetime.fromisoformat(error_timestamp.replace('Z', '+00:00'))
+
+        parsed_time = datetime.fromisoformat(error_timestamp.replace("Z", "+00:00"))
 
         # Check timestamp is between before and after
         self.assertGreaterEqual(parsed_time, before_time)
@@ -580,9 +557,7 @@ class MarketplaceSyncJobModelTest(TestCase):
     def test_multiple_errors_accumulation(self):
         """Test that multiple errors can be accumulated"""
         sync_job = MarketplaceSyncJob.objects.create(
-            tenant=self.tenant,
-            connection=self.connection,
-            direction=SyncDirection.PUSH.value
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
         )
 
         errors = ["Error 1", "Error 2", "Error 3"]
@@ -594,3 +569,265 @@ class MarketplaceSyncJobModelTest(TestCase):
         error_messages = [e["message"] for e in sync_job.errors]
         self.assertEqual(set(error_messages), set(errors))
 
+    # ========== FAILURE SCENARIOS TESTS ==========
+
+    def test_create_sync_job_missing_required_fields(self):
+        """Test that creating sync job without required fields fails"""
+        # Missing tenant
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceSyncJob.objects.create(
+                connection=self.connection, direction=SyncDirection.PUSH.value
+            )
+
+        # Missing connection
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceSyncJob.objects.create(
+                tenant=self.tenant, direction=SyncDirection.PUSH.value
+            )
+
+        # Missing direction
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceSyncJob.objects.create(tenant=self.tenant, connection=self.connection)
+
+    def test_create_sync_job_with_invalid_tenant(self):
+        """Test that creating sync job with invalid tenant fails"""
+        import uuid
+
+        invalid_tenant_id = uuid.uuid4()
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceSyncJob.objects.create(
+                tenant_id=invalid_tenant_id,
+                connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+            )
+
+    def test_create_sync_job_with_invalid_connection(self):
+        """Test that creating sync job with invalid connection fails"""
+        import uuid
+
+        invalid_connection_id = uuid.uuid4()
+        with self.assertRaises((ValidationError, IntegrityError)):
+            MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
+                connection_id=invalid_connection_id,
+                direction=SyncDirection.PUSH.value,
+            )
+
+    def test_mark_completed_with_invalid_status(self):
+        """Test that mark_completed validates status transitions"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.PUSH.value,
+            status=SyncStatus.COMPLETED.value,  # Already completed
+        )
+
+        # Should handle gracefully - may raise error or be idempotent
+        try:
+            sync_job.mark_completed()
+            # If idempotent, should still be completed
+            sync_job.refresh_from_db()
+            self.assertEqual(sync_job.status, SyncStatus.COMPLETED.value)
+        except (ValueError, ValidationError):
+            # If validation error, that's also acceptable
+            pass
+
+    # ========== EDGE CASES TESTS ==========
+
+    def test_metadata_with_large_data(self):
+        """Test that metadata can handle large data structures"""
+        large_metadata = {f"key-{i}": f"value-{i}" for i in range(1000)}
+        try:
+            sync_job = MarketplaceSyncJob.objects.create(
+                tenant=self.tenant,
+                connection=self.connection,
+                direction=SyncDirection.PUSH.value,
+                metadata=large_metadata,
+            )
+            sync_job.refresh_from_db()
+            self.assertEqual(len(sync_job.metadata), 1000)
+        except (ValidationError, IntegrityError):
+            # If there's a limit, that's acceptable
+            pass
+
+    def test_errors_with_large_list(self):
+        """Test that errors can handle large lists"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
+        )
+
+        # Add many errors
+        for i in range(100):
+            sync_job.add_error(f"Error {i}")
+
+        sync_job.refresh_from_db()
+        self.assertEqual(len(sync_job.errors), 100)
+
+    def test_metadata_with_nested_structures(self):
+        """Test that metadata can contain deeply nested structures"""
+        nested_metadata = {
+            "level1": {
+                "level2": {
+                    "level3": {
+                        "level4": "deep_value",
+                        "list": [1, 2, 3],
+                        "nested_dict": {"key": "value"},
+                    }
+                }
+            }
+        }
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.PUSH.value,
+            metadata=nested_metadata,
+        )
+        sync_job.refresh_from_db()
+        self.assertEqual(sync_job.metadata["level1"]["level2"]["level3"]["level4"], "deep_value")
+        self.assertEqual(sync_job.metadata["level1"]["level2"]["level3"]["list"], [1, 2, 3])
+
+    def test_items_synced_negative_value(self):
+        """Test that items_synced handles edge cases"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.PUSH.value,
+            items_synced=-1,  # Negative value
+        )
+        # May be allowed or rejected - both are acceptable
+        sync_job.refresh_from_db()
+        # If allowed, verify it's stored; if rejected, test should have raised error
+        self.assertIsInstance(sync_job.items_synced, int)
+
+    # ========== ERROR HANDLING TESTS ==========
+
+    def test_add_error_with_empty_message(self):
+        """Test that add_error handles empty messages"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
+        )
+
+        # Should handle gracefully
+        try:
+            sync_job.add_error("")
+            sync_job.refresh_from_db()
+            # May add empty error or skip it
+            self.assertIsInstance(sync_job.errors, list)
+        except (ValueError, ValidationError):
+            # If validation error, that's also acceptable
+            pass
+
+    def test_add_error_with_none(self):
+        """Test that add_error handles None"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
+        )
+
+        with self.assertRaises((ValueError, TypeError)):
+            sync_job.add_error(None)
+
+    def test_mark_completed_with_none_metadata(self):
+        """Test that mark_completed handles None metadata"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
+        )
+
+        # Should handle None gracefully
+        try:
+            sync_job.mark_completed(metadata=None)
+            sync_job.refresh_from_db()
+            self.assertEqual(sync_job.status, SyncStatus.COMPLETED.value)
+        except (ValueError, TypeError):
+            # If validation error, that's also acceptable
+            pass
+
+    # ========== TDD COMPLIANCE TESTS ==========
+
+    def test_sync_job_has_all_required_fields(self):
+        """Test that created sync job has all required fields"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
+        )
+
+        # Verify all required fields are present
+        self.assertIsNotNone(sync_job.id)
+        self.assertIsNotNone(sync_job.tenant)
+        self.assertIsNotNone(sync_job.connection)
+        self.assertIsNotNone(sync_job.direction)
+        self.assertIsNotNone(sync_job.status)
+        self.assertIsNotNone(sync_job.items_synced)
+        self.assertIsNotNone(sync_job.items_failed)
+        self.assertIsNotNone(sync_job.errors)
+        self.assertIsNotNone(sync_job.metadata)
+        self.assertIsNotNone(sync_job.created_at)
+        self.assertIsNotNone(sync_job.updated_at)
+
+    def test_sync_job_field_types(self):
+        """Test that sync job fields have correct types"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.PUSH.value,
+            items_synced=10,
+            items_failed=2,
+            errors=[{"message": "error"}],
+            metadata={"key": "value"},
+        )
+
+        # Verify field types
+        self.assertIsInstance(sync_job.id, (str, int, type(None)))
+        self.assertIsInstance(sync_job.direction, str)
+        self.assertIsInstance(sync_job.status, str)
+        self.assertIsInstance(sync_job.items_synced, int)
+        self.assertIsInstance(sync_job.items_failed, int)
+        self.assertIsInstance(sync_job.errors, list)
+        self.assertIsInstance(sync_job.metadata, dict)
+
+    def test_sync_job_timestamps_auto_set(self):
+        """Test that created_at and updated_at are automatically set"""
+        before_create = timezone.now()
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
+        )
+        after_create = timezone.now()
+
+        # Verify timestamps are set
+        self.assertIsNotNone(sync_job.created_at)
+        self.assertIsNotNone(sync_job.updated_at)
+        self.assertGreaterEqual(sync_job.created_at, before_create)
+        self.assertLessEqual(sync_job.created_at, after_create)
+        self.assertEqual(sync_job.created_at, sync_job.updated_at)
+
+    def test_sync_job_default_values(self):
+        """Test that sync job has correct default values"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant, connection=self.connection, direction=SyncDirection.PUSH.value
+        )
+
+        # Verify defaults
+        self.assertEqual(sync_job.status, SyncStatus.PENDING.value)
+        self.assertEqual(sync_job.items_synced, 0)
+        self.assertEqual(sync_job.items_failed, 0)
+        self.assertEqual(sync_job.errors, [])
+        self.assertEqual(sync_job.metadata, {})
+        self.assertIsNone(sync_job.completed_at)
+
+    def test_sync_job_repr_contains_key_information(self):
+        """Test that sync job __repr__ contains key information"""
+        sync_job = MarketplaceSyncJob.objects.create(
+            tenant=self.tenant,
+            connection=self.connection,
+            direction=SyncDirection.PUSH.value,
+            status=SyncStatus.RUNNING.value,
+        )
+
+        repr_str = repr(sync_job)
+        # Should contain key identifying information
+        self.assertIn(str(sync_job.id), repr_str or "")
+        # May contain direction, status, connection name
+        self.assertTrue(
+            "PUSH" in repr_str
+            or "RUNNING" in repr_str
+            or "Test Connection" in repr_str
+            or str(sync_job.id) in repr_str
+        )

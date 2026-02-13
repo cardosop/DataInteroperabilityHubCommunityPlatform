@@ -4,36 +4,60 @@ All tests have been rewritten to use **real services** - no mocks or stubs are u
 
 ## Test Structure
 
+- **test_routing.py**: Unit and integration tests for routing config (Phase 7: deployment-aligned routing; Phase 8: `TestHealthUrlContract` — health URL contract per backend)
 - **test_rate_limiter.py**: Unit tests for rate limiter using real Redis
 - **test_api_key_manager.py**: Unit tests for API key manager using real database
 - **test_middleware.py**: Unit tests for middleware using real services
-- **test_integration.py**: Integration tests with real Redis and database
+- **test_integration.py**: Integration tests with real Redis and database (Phase 7: `TestGatewayProxiesToApiService`; Phase 8: `TestAggregateHealthWithRealBackend` — gateway `GET /api/v1/health` with real api-service)
 - **test_e2e.py**: End-to-end tests for complete request flows
 - **test_performance.py**: Performance tests for rate limiting operations
 - **test_security.py**: Security tests for API Gateway
 
 ## Running Tests
 
-### Option 1: Run in Docker Container (Recommended)
+### Option 1: Run via run_tests.sh (Recommended)
 
-Since all services run in Docker Compose, run tests inside the API Gateway container:
+From project root; inherits DB/Redis env from compose (use same `.env` as the rest of the stack):
 
 ```bash
-# Ensure services are running
-docker compose up -d postgres redis-cache api-gateway
+# From project root: starts postgres, redis-cache, api-service, api-gateway if needed
+./services/api-gateway/run_tests.sh
 
-# Run all tests
-docker compose exec api-gateway python -m pytest tests/ -v --tb=short
+# Run only Phase 8 (health check standardization) tests
+./services/api-gateway/run_tests.sh phase8
 
-# Run specific test categories
-docker compose exec api-gateway python -m pytest tests/ -m unit -v
-docker compose exec api-gateway python -m pytest tests/ -m integration -v
-docker compose exec api-gateway python -m pytest tests/ -m e2e -v
-docker compose exec api-gateway python -m pytest tests/ -m performance -v
-docker compose exec api-gateway python -m pytest tests/ -m security -v
+# Run only Phase 7 (routing alignment) tests
+./services/api-gateway/run_tests.sh services/api-gateway/tests/test_routing.py services/api-gateway/tests/test_integration.py::TestGatewayProxiesToApiService -v --tb=short
+```
+
+If you see "password authentication failed", ensure `POSTGRES_PASSWORD` in `.env` matches the running postgres.
+
+### Option 2: Run in Docker Container
+
+Since all services run in Docker Compose, run tests inside the API Gateway container (paths from `/app`):
+
+```bash
+# Ensure services are running (api-service needed for Phase 7 gateway proxy test)
+docker compose up -d postgres redis-cache api-service api-gateway
+
+# Run all tests (inherits env from service; use USE_PRODUCTION_DB_FOR_SDK_TESTS=1 for hub DB)
+docker compose run --rm --no-deps -e USE_PRODUCTION_DB_FOR_SDK_TESTS=1 api-gateway python -m pytest services/api-gateway/tests/ -v --tb=short
+
+# Run Phase 8 tests only (health contract + aggregate health with real api-service)
+docker compose run --rm --no-deps -e USE_PRODUCTION_DB_FOR_SDK_TESTS=1 api-gateway python -m pytest services/api-gateway/tests/test_routing.py services/api-gateway/tests/test_integration.py::TestAggregateHealthWithRealBackend -v --tb=short
+
+# Run Phase 7 tests only (routing + gateway proxy to api-service)
+docker compose run --rm --no-deps -e USE_PRODUCTION_DB_FOR_SDK_TESTS=1 api-gateway python -m pytest services/api-gateway/tests/test_routing.py services/api-gateway/tests/test_integration.py::TestGatewayProxiesToApiService -v --tb=short
+
+# Run specific test categories (from inside running container)
+docker compose exec api-gateway python -m pytest services/api-gateway/tests/ -m unit -v
+docker compose exec api-gateway python -m pytest services/api-gateway/tests/ -m integration -v
+docker compose exec api-gateway python -m pytest services/api-gateway/tests/ -m e2e -v
+docker compose exec api-gateway python -m pytest services/api-gateway/tests/ -m performance -v
+docker compose exec api-gateway python -m pytest services/api-gateway/tests/ -m security -v
 
 # Run with coverage
-docker compose exec api-gateway python -m pytest tests/ --cov=. --cov-report=html
+docker compose run --rm --no-deps -e USE_PRODUCTION_DB_FOR_SDK_TESTS=1 api-gateway python -m pytest services/api-gateway/tests/ --cov=. --cov-report=html
 ```
 
 ### Option 2: Run Locally (Requires Services)
@@ -96,6 +120,13 @@ All tests use real services:
 - Ensure PostgreSQL is running: `docker compose ps postgres`
 - Check database connection
 - Verify migrations are applied: `docker compose exec api-service python manage.py migrate`
+
+### "password authentication failed for user hub"
+- Ensure `POSTGRES_PASSWORD` in `.env` (and in `.env.dev` for api-service) matches the running postgres.
+- `run_tests.sh` uses `--env-file .env` and unsets host `POSTGRES_*` so the test container gets credentials from `.env`.
+- If the stack was started with different credentials (e.g. `.env.dev` had `hub_secure`), either:
+  - Align `.env` and `.env.dev` with the same `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`, or
+  - Reset postgres: stop postgres, remove volume `datainteroperabilityhub_pgdata`, start postgres with `docker compose --env-file .env up -d postgres`, then run Django migrations (`docker compose exec api-service python hub/manage.py migrate --noinput`). All DB data will be lost.
 
 ### Import Errors
 - Ensure all dependencies are installed: `pip install -r requirements.txt`

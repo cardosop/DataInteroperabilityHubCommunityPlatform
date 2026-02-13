@@ -46,7 +46,8 @@ REDIS_KEY_PREFIX_GLOBAL = "odps_ref_rate_limit:global"
 def generate_rate_limit_key(
     tenant_id: Optional[str] = None,
     user_id: Optional[str] = None,
-    level: str = "tenant"
+    level: str = "tenant",
+    timestamp: Optional[int] = None,
 ) -> str:
     """
     Generate Redis key for ODPS $ref rate limiting.
@@ -63,6 +64,7 @@ def generate_rate_limit_key(
         tenant_id: Tenant UUID (required for tenant and user levels)
         user_id: User UUID (required for user level)
         level: Rate limit level - "tenant", "user", or "global"
+        timestamp: Optional Unix timestamp for key generation (for testing). If None, uses time.time().
 
     Returns:
         Redis key string
@@ -84,7 +86,7 @@ def generate_rate_limit_key(
         'odps_ref_rate_limit:global:1704067200'
     """
     # Get current hour as Unix timestamp (rounded down to hour)
-    current_time = int(time.time())
+    current_time = int(timestamp if timestamp is not None else time.time())
     current_hour = (current_time // RATE_LIMIT_WINDOW) * RATE_LIMIT_WINDOW
 
     if level == "global":
@@ -162,6 +164,10 @@ def check_rate_limit(
         logger.warning("Redis not available for rate limiting, allowing request")
         return True, None
 
+    # When tenant_id is missing or empty, only global rate limit is checked (e.g. ref resolution in CI/CLI).
+    # When tenant_id is present, global + tenant + user checks run.
+    has_tenant = tenant_id is not None and (not isinstance(tenant_id, str) or bool(tenant_id.strip()))
+
     # Get Redis client
     if redis_client is None:
         try:
@@ -208,8 +214,8 @@ def check_rate_limit(
         # Fail open on errors
         pass
 
-    # Check tenant limit
-    if tenant_id:
+    # Check tenant limit (skip when no tenant context, e.g. ref resolution in CI/CLI)
+    if has_tenant and tenant_id:
         try:
             tenant_key = generate_rate_limit_key(tenant_id=tenant_id, level="tenant")
             tenant_limit = get_rate_limit("tenant")
@@ -245,7 +251,7 @@ def check_rate_limit(
             pass
 
     # Check user limit
-    if tenant_id and user_id:
+    if has_tenant and tenant_id and user_id:
         try:
             user_key = generate_rate_limit_key(tenant_id=tenant_id, user_id=user_id, level="user")
             user_limit = get_rate_limit("user")

@@ -1,0 +1,17 @@
+# Coverage configuration for hub and tests
+# See https://coverage.readthedocs.io/
+
+[run]
+source = hub
+# Fragment files that are not valid standalone modules (class-body only); omit to avoid "couldn't parse"
+omit =
+    hub/apps/integrations/services_mapping_methods.py
+    hub/apps/integrations/services_sync_methods.py
+    hub/apps/notifications/business_rules_template_validation.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError

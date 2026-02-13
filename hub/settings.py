@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,14 +24,26 @@ env = environ.Env(
 # Read .env file
 environ.Env.read_env(os.path.join(BASE_DIR, ".env.dev"))
 
+# Environment: production, staging, development. Used for secrets and CORS enforcement.
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").strip().lower()
+
+# Dev-only default secrets; production MUST set SECRET_KEY and JWT_SECRET_KEY via env (see validation below).
+_DEV_SECRET_KEY = "dev-secret-key-not-for-production"
+_DEV_JWT_SECRET_KEY = "dev-jwt-secret-key-not-for-production"
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env("SECRET_KEY", default="dev-secret-key-not-for-production")
+SECRET_KEY = env("SECRET_KEY", default=_DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env("DEBUG", default=True)
 
 # Add testserver for Django test client (always in dev/test environments)
-default_hosts = ["localhost", "127.0.0.1", "api-service", "testserver"]  # testserver required for Django test client
+default_hosts = [
+    "localhost",
+    "127.0.0.1",
+    "api-service",
+    "testserver",
+]  # testserver required for Django test client
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=default_hosts)
 
 # Application definition
@@ -61,6 +74,9 @@ INSTALLED_APPS = [
     "hub.apps.users",
     "hub.apps.auth",
     "hub.apps.audit",
+    "hub.apps.billing",
+    "hub.apps.platform",
+    "hub.apps.gdpr",
     "hub.apps.files",
     "hub.apps.datasets",
     "hub.apps.assets",
@@ -82,6 +98,7 @@ INSTALLED_APPS = [
     "hub.apps.notifications",
     "hub.apps.rate_limiting",
     "hub.apps.scheduled_ingestion",
+    "hub.apps.scheduled_export",
     "hub.apps.search",
     "hub.apps.webhooks.apps.WebhooksConfig",
     "hub.apps.api.analytics",
@@ -94,6 +111,7 @@ INSTALLED_APPS = [
     "hub.apps.virtualization",  # Data virtualization and federated queries
     "hub.apps.integrations",  # Marketplace connectors and integrations
     "hub.apps.baas",  # BaaS Platform (API Gateway, usage tracking, developer portal)
+    "hub.apps.versioning",  # Versioning API (list/get/compare versions for contracts and datasets)
 ]
 
 # Conditionally add graphene_django and graphql_graphene app if available
@@ -210,7 +228,8 @@ def _detect_staging_for_tests():
         # Accept 200 (OK), 301/302 (redirects), 503 (unhealthy but service exists)
         if response.status_code in [200, 301, 302, 503]:
             return True
-    except Exception:
+    except (ConnectionError, TimeoutError, OSError, Exception) as e:
+        # Catch all exceptions including httpx.ConnectError to prevent import failures during tests
         # Also check if staging PostgreSQL port is accessible as fallback
         try:
             import psycopg2
@@ -225,8 +244,18 @@ def _detect_staging_for_tests():
             )
             test_conn.close()
             return True
-        except Exception:
+        except (psycopg2.OperationalError, psycopg2.Error, ConnectionError, TimeoutError):
+            # Staging database not available - expected in non-staging environments
             pass
+        except Exception as e:
+            # Log unexpected errors but don't fail startup
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.debug(
+                "Unexpected error checking staging database",
+                extra={"error_type": type(e).__name__},
+            )
 
     # Default to False (non-staging) if detection fails
     # This prevents production from accidentally using staging ports
@@ -458,7 +487,9 @@ if "test" in sys.argv or "pytest" in sys.modules:
     # CRITICAL: Ensure we use the detected password, not the env var
     # The password detection above tries actual passwords and uses the one that works
     # This handles cases where POSTGRES_PASSWORD env var doesn't match actual DB password
-    final_password = postgres_password if postgres_password else os.getenv("POSTGRES_PASSWORD", "hub")
+    final_password = (
+        postgres_password if postgres_password else os.getenv("POSTGRES_PASSWORD", "hub")
+    )
 
     DATABASES = {
         "default": {
@@ -479,7 +510,7 @@ if "test" in sys.argv or "pytest" in sys.modules:
             "OPTIONS": {
                 # Disable thread validation for tests (pytest-django uses multiple threads)
                 # This is safe in test environment where we control thread usage
-                "connect_timeout": 10,
+                "connect_timeout": 120,  # Allow time for postgres under Docker load during migrations
                 # CRITICAL: Set transaction isolation level to READ COMMITTED for LiveServerTestCase
                 # This ensures data committed in one thread is immediately visible to other threads
                 # Without this, the server thread might not see data created in the test thread
@@ -487,6 +518,10 @@ if "test" in sys.argv or "pytest" in sys.modules:
             },
         }
     }
+
+    # When SKIP_TEST_MIGRATIONS=1, use custom runner that does not run migrate (reuse existing DB as-is)
+    if os.getenv("SKIP_TEST_MIGRATIONS", "").strip().lower() in ("1", "true", "yes"):
+        TEST_RUNNER = "hub.test_runner.NoMigrateTestRunner"
 
     # Disable database connection thread validation for tests
     # pytest-django creates connections in one thread but TestCase uses them in another
@@ -560,6 +595,7 @@ if REDIS_CACHE_URL is None:
     # In Docker Compose, services are named redis-cache, redis-queue, etc.
     # Outside Docker, use localhost with appropriate ports
     import socket
+
     try:
         socket.gethostbyname("redis-cache")
         REDIS_CACHE_URL = "redis://redis-cache:6379/0"
@@ -570,33 +606,52 @@ if REDIS_CACHE_URL is None:
 REDIS_QUEUE_URL = env("REDIS_QUEUE_URL", default=None)
 if REDIS_QUEUE_URL is None:
     # Fallback: use service name redis-queue (Docker) or localhost (local)
-    import socket
-    try:
-        socket.gethostbyname("redis-queue")
-        REDIS_QUEUE_URL = "redis://redis-queue:6379/0"
-    except socket.gaierror:
+    # Better detection: check for Docker environment first
+    is_in_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
+    if is_in_docker:
+        # In Docker, try service name first, then localhost
+        import socket
+
+        try:
+            socket.gethostbyname("redis-queue")
+            REDIS_QUEUE_URL = "redis://redis-queue:6379/0"
+        except socket.gaierror:
+            # Service name not resolvable, use localhost with mapped port
+            REDIS_QUEUE_URL = "redis://localhost:6380/0"
+    else:
+        # Outside Docker, use localhost with mapped port
         REDIS_QUEUE_URL = "redis://localhost:6380/0"
 
 # Redis Events Instance - Event bus (Pub/Sub, Streams)
 REDIS_EVENTS_URL = env("REDIS_EVENTS_URL", default=None)
 if REDIS_EVENTS_URL is None:
     # Fallback: use service name redis-events (Docker) or localhost (local)
-    import socket
-    try:
-        socket.gethostbyname("redis-events")
-        REDIS_EVENTS_URL = "redis://redis-events:6379/0"
-    except socket.gaierror:
+    is_in_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
+    if is_in_docker:
+        import socket
+
+        try:
+            socket.gethostbyname("redis-events")
+            REDIS_EVENTS_URL = "redis://redis-events:6379/0"
+        except socket.gaierror:
+            REDIS_EVENTS_URL = "redis://localhost:6381/0"
+    else:
         REDIS_EVENTS_URL = "redis://localhost:6381/0"
 
 # Redis Channels Instance - WebSocket channels (Django Channels)
 REDIS_CHANNELS_URL = env("REDIS_CHANNELS_URL", default=None)
 if REDIS_CHANNELS_URL is None:
     # Fallback: use service name redis-channels (Docker) or localhost (local)
-    import socket
-    try:
-        socket.gethostbyname("redis-channels")
-        REDIS_CHANNELS_URL = "redis://redis-channels:6379/0"
-    except socket.gaierror:
+    is_in_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
+    if is_in_docker:
+        import socket
+
+        try:
+            socket.gethostbyname("redis-channels")
+            REDIS_CHANNELS_URL = "redis://redis-channels:6379/0"
+        except socket.gaierror:
+            REDIS_CHANNELS_URL = "redis://localhost:6382/0"
+    else:
         REDIS_CHANNELS_URL = "redis://localhost:6382/0"
 # RQ Queue Configuration
 # Priority queues: job_critical (HIGH), job_default (NORMAL), job_low (LOW)
@@ -638,9 +693,24 @@ if REDIS_CHANNELS_URL:
         _redis_channels_host = host_port[0]
         if len(host_port) > 1:
             _redis_channels_port = int(host_port[1])
-    except Exception:
-        # Fallback to defaults
-        pass
+    except (ValueError, AttributeError, IndexError) as e:
+        # Invalid URL format - fallback to defaults
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            "Invalid REDIS_CHANNELS_URL format, using defaults",
+            extra={"error_type": type(e).__name__},
+        )
+    except Exception as e:
+        # Unexpected error - log but use defaults
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Unexpected error parsing REDIS_CHANNELS_URL",
+            extra={"error_type": type(e).__name__},
+        )
 
 # Channel Layers Configuration
 # Use in-memory channel layer for tests, Redis for production
@@ -681,9 +751,24 @@ if REDIS_CACHE_URL:
             _redis_cache_port = int(host_port[1])
         if len(parts) > 1:
             _redis_cache_db = int(parts[1])
-    except Exception:
-        # Fallback to defaults
-        pass
+    except (ValueError, AttributeError, IndexError) as e:
+        # Invalid URL format - fallback to defaults
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            "Invalid REDIS_CHANNELS_URL format, using defaults",
+            extra={"error_type": type(e).__name__},
+        )
+    except Exception as e:
+        # Unexpected error - log but use defaults
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Unexpected error parsing REDIS_CHANNELS_URL",
+            extra={"error_type": type(e).__name__},
+        )
 
 # Cache configuration
 # Use Redis cache backend for production, LocMemCache for tests
@@ -699,6 +784,7 @@ else:
     # Use Redis cache backend for production (separate Redis instance for cache)
     try:
         import django_redis
+
         CACHES = {
             "default": {
                 "BACKEND": "django_redis.cache.RedisCache",
@@ -772,74 +858,88 @@ JOB_PRIORITY_RULES = {
 # Job Retry Configuration
 # Maximum retry attempts per job type
 JOB_RETRY_MAX_ATTEMPTS = {
-    'DQ_RUN': env.int("JOB_RETRY_MAX_ATTEMPTS_DQ_RUN", default=3),
-    'COMPLIANCE_RUN': env.int("JOB_RETRY_MAX_ATTEMPTS_COMPLIANCE_RUN", default=3),
-    'CONTRACT_VALIDATION': env.int("JOB_RETRY_MAX_ATTEMPTS_CONTRACT_VALIDATION", default=2),
-    'SEMANTIC_MAPPING': env.int("JOB_RETRY_MAX_ATTEMPTS_SEMANTIC_MAPPING", default=2),
-    'CONTRACT_MIGRATION': env.int("JOB_RETRY_MAX_ATTEMPTS_CONTRACT_MIGRATION", default=1),
-    'SCHEDULED_INGESTION': env.int("JOB_RETRY_MAX_ATTEMPTS_SCHEDULED_INGESTION", default=2),
-    'RETENTION_POLICY_ENFORCEMENT': env.int("JOB_RETRY_MAX_ATTEMPTS_RETENTION_POLICY_ENFORCEMENT", default=1),
-    'SEARCH_INDEX_UPDATE': env.int("JOB_RETRY_MAX_ATTEMPTS_SEARCH_INDEX_UPDATE", default=2),
-    'ODPS_NORMALIZATION': env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_NORMALIZATION", default=2),
-    'ODPS_REF_RESOLUTION': env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_REF_RESOLUTION", default=2),
-    'ODPS_EXPORT': env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_EXPORT", default=2),
-    'ODPS_SEMANTIC_MAPPING': env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_SEMANTIC_MAPPING", default=2),
-    'ODPS_LINKING': env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_LINKING", default=2),
-    'VIRTUAL_QUERY_EXECUTION': env.int("JOB_RETRY_MAX_ATTEMPTS_VIRTUAL_QUERY_EXECUTION", default=2),
+    "DQ_RUN": env.int("JOB_RETRY_MAX_ATTEMPTS_DQ_RUN", default=3),
+    "COMPLIANCE_RUN": env.int("JOB_RETRY_MAX_ATTEMPTS_COMPLIANCE_RUN", default=3),
+    "CONTRACT_VALIDATION": env.int("JOB_RETRY_MAX_ATTEMPTS_CONTRACT_VALIDATION", default=2),
+    "SEMANTIC_MAPPING": env.int("JOB_RETRY_MAX_ATTEMPTS_SEMANTIC_MAPPING", default=2),
+    "CONTRACT_MIGRATION": env.int("JOB_RETRY_MAX_ATTEMPTS_CONTRACT_MIGRATION", default=1),
+    "SCHEDULED_INGESTION": env.int("JOB_RETRY_MAX_ATTEMPTS_SCHEDULED_INGESTION", default=2),
+    "RETENTION_POLICY_ENFORCEMENT": env.int(
+        "JOB_RETRY_MAX_ATTEMPTS_RETENTION_POLICY_ENFORCEMENT", default=1
+    ),
+    "SEARCH_INDEX_UPDATE": env.int("JOB_RETRY_MAX_ATTEMPTS_SEARCH_INDEX_UPDATE", default=2),
+    "ODPS_NORMALIZATION": env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_NORMALIZATION", default=2),
+    "ODPS_REF_RESOLUTION": env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_REF_RESOLUTION", default=2),
+    "ODPS_EXPORT": env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_EXPORT", default=2),
+    "ODPS_SEMANTIC_MAPPING": env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_SEMANTIC_MAPPING", default=2),
+    "ODPS_LINKING": env.int("JOB_RETRY_MAX_ATTEMPTS_ODPS_LINKING", default=2),
+    "VIRTUAL_QUERY_EXECUTION": env.int("JOB_RETRY_MAX_ATTEMPTS_VIRTUAL_QUERY_EXECUTION", default=2),
 }
 
 # Initial delay before first retry per job type (in seconds)
 JOB_RETRY_INITIAL_DELAY = {
-    'DQ_RUN': env.int("JOB_RETRY_INITIAL_DELAY_DQ_RUN", default=60),
-    'COMPLIANCE_RUN': env.int("JOB_RETRY_INITIAL_DELAY_COMPLIANCE_RUN", default=60),
-    'CONTRACT_VALIDATION': env.int("JOB_RETRY_INITIAL_DELAY_CONTRACT_VALIDATION", default=30),
-    'SEMANTIC_MAPPING': env.int("JOB_RETRY_INITIAL_DELAY_SEMANTIC_MAPPING", default=30),
-    'CONTRACT_MIGRATION': env.int("JOB_RETRY_INITIAL_DELAY_CONTRACT_MIGRATION", default=60),
-    'SCHEDULED_INGESTION': env.int("JOB_RETRY_INITIAL_DELAY_SCHEDULED_INGESTION", default=120),
-    'RETENTION_POLICY_ENFORCEMENT': env.int("JOB_RETRY_INITIAL_DELAY_RETENTION_POLICY_ENFORCEMENT", default=60),
-    'SEARCH_INDEX_UPDATE': env.int("JOB_RETRY_INITIAL_DELAY_SEARCH_INDEX_UPDATE", default=30),
-    'ODPS_NORMALIZATION': env.int("JOB_RETRY_INITIAL_DELAY_ODPS_NORMALIZATION", default=60),
-    'ODPS_REF_RESOLUTION': env.int("JOB_RETRY_INITIAL_DELAY_ODPS_REF_RESOLUTION", default=60),
-    'ODPS_EXPORT': env.int("JOB_RETRY_INITIAL_DELAY_ODPS_EXPORT", default=30),
-    'ODPS_SEMANTIC_MAPPING': env.int("JOB_RETRY_INITIAL_DELAY_ODPS_SEMANTIC_MAPPING", default=60),
-    'ODPS_LINKING': env.int("JOB_RETRY_INITIAL_DELAY_ODPS_LINKING", default=30),
-    'VIRTUAL_QUERY_EXECUTION': env.int("JOB_RETRY_INITIAL_DELAY_VIRTUAL_QUERY_EXECUTION", default=60),
+    "DQ_RUN": env.int("JOB_RETRY_INITIAL_DELAY_DQ_RUN", default=60),
+    "COMPLIANCE_RUN": env.int("JOB_RETRY_INITIAL_DELAY_COMPLIANCE_RUN", default=60),
+    "CONTRACT_VALIDATION": env.int("JOB_RETRY_INITIAL_DELAY_CONTRACT_VALIDATION", default=30),
+    "SEMANTIC_MAPPING": env.int("JOB_RETRY_INITIAL_DELAY_SEMANTIC_MAPPING", default=30),
+    "CONTRACT_MIGRATION": env.int("JOB_RETRY_INITIAL_DELAY_CONTRACT_MIGRATION", default=60),
+    "SCHEDULED_INGESTION": env.int("JOB_RETRY_INITIAL_DELAY_SCHEDULED_INGESTION", default=120),
+    "RETENTION_POLICY_ENFORCEMENT": env.int(
+        "JOB_RETRY_INITIAL_DELAY_RETENTION_POLICY_ENFORCEMENT", default=60
+    ),
+    "SEARCH_INDEX_UPDATE": env.int("JOB_RETRY_INITIAL_DELAY_SEARCH_INDEX_UPDATE", default=30),
+    "ODPS_NORMALIZATION": env.int("JOB_RETRY_INITIAL_DELAY_ODPS_NORMALIZATION", default=60),
+    "ODPS_REF_RESOLUTION": env.int("JOB_RETRY_INITIAL_DELAY_ODPS_REF_RESOLUTION", default=60),
+    "ODPS_EXPORT": env.int("JOB_RETRY_INITIAL_DELAY_ODPS_EXPORT", default=30),
+    "ODPS_SEMANTIC_MAPPING": env.int("JOB_RETRY_INITIAL_DELAY_ODPS_SEMANTIC_MAPPING", default=60),
+    "ODPS_LINKING": env.int("JOB_RETRY_INITIAL_DELAY_ODPS_LINKING", default=30),
+    "VIRTUAL_QUERY_EXECUTION": env.int(
+        "JOB_RETRY_INITIAL_DELAY_VIRTUAL_QUERY_EXECUTION", default=60
+    ),
 }
 
 # Maximum delay cap per job type (in seconds)
 JOB_RETRY_MAX_DELAY = {
-    'DQ_RUN': env.int("JOB_RETRY_MAX_DELAY_DQ_RUN", default=3600),
-    'COMPLIANCE_RUN': env.int("JOB_RETRY_MAX_DELAY_COMPLIANCE_RUN", default=3600),
-    'CONTRACT_VALIDATION': env.int("JOB_RETRY_MAX_DELAY_CONTRACT_VALIDATION", default=600),
-    'SEMANTIC_MAPPING': env.int("JOB_RETRY_MAX_DELAY_SEMANTIC_MAPPING", default=600),
-    'CONTRACT_MIGRATION': env.int("JOB_RETRY_MAX_DELAY_CONTRACT_MIGRATION", default=1800),
-    'SCHEDULED_INGESTION': env.int("JOB_RETRY_MAX_DELAY_SCHEDULED_INGESTION", default=3600),
-    'RETENTION_POLICY_ENFORCEMENT': env.int("JOB_RETRY_MAX_DELAY_RETENTION_POLICY_ENFORCEMENT", default=1800),
-    'SEARCH_INDEX_UPDATE': env.int("JOB_RETRY_MAX_DELAY_SEARCH_INDEX_UPDATE", default=600),
-    'ODPS_NORMALIZATION': env.int("JOB_RETRY_MAX_DELAY_ODPS_NORMALIZATION", default=1800),
-    'ODPS_REF_RESOLUTION': env.int("JOB_RETRY_MAX_DELAY_ODPS_REF_RESOLUTION", default=1800),
-    'ODPS_EXPORT': env.int("JOB_RETRY_MAX_DELAY_ODPS_EXPORT", default=600),
-    'ODPS_SEMANTIC_MAPPING': env.int("JOB_RETRY_MAX_DELAY_ODPS_SEMANTIC_MAPPING", default=1800),
-    'ODPS_LINKING': env.int("JOB_RETRY_MAX_DELAY_ODPS_LINKING", default=600),
-    'VIRTUAL_QUERY_EXECUTION': env.int("JOB_RETRY_MAX_DELAY_VIRTUAL_QUERY_EXECUTION", default=1800),
+    "DQ_RUN": env.int("JOB_RETRY_MAX_DELAY_DQ_RUN", default=3600),
+    "COMPLIANCE_RUN": env.int("JOB_RETRY_MAX_DELAY_COMPLIANCE_RUN", default=3600),
+    "CONTRACT_VALIDATION": env.int("JOB_RETRY_MAX_DELAY_CONTRACT_VALIDATION", default=600),
+    "SEMANTIC_MAPPING": env.int("JOB_RETRY_MAX_DELAY_SEMANTIC_MAPPING", default=600),
+    "CONTRACT_MIGRATION": env.int("JOB_RETRY_MAX_DELAY_CONTRACT_MIGRATION", default=1800),
+    "SCHEDULED_INGESTION": env.int("JOB_RETRY_MAX_DELAY_SCHEDULED_INGESTION", default=3600),
+    "RETENTION_POLICY_ENFORCEMENT": env.int(
+        "JOB_RETRY_MAX_DELAY_RETENTION_POLICY_ENFORCEMENT", default=1800
+    ),
+    "SEARCH_INDEX_UPDATE": env.int("JOB_RETRY_MAX_DELAY_SEARCH_INDEX_UPDATE", default=600),
+    "ODPS_NORMALIZATION": env.int("JOB_RETRY_MAX_DELAY_ODPS_NORMALIZATION", default=1800),
+    "ODPS_REF_RESOLUTION": env.int("JOB_RETRY_MAX_DELAY_ODPS_REF_RESOLUTION", default=1800),
+    "ODPS_EXPORT": env.int("JOB_RETRY_MAX_DELAY_ODPS_EXPORT", default=600),
+    "ODPS_SEMANTIC_MAPPING": env.int("JOB_RETRY_MAX_DELAY_ODPS_SEMANTIC_MAPPING", default=1800),
+    "ODPS_LINKING": env.int("JOB_RETRY_MAX_DELAY_ODPS_LINKING", default=600),
+    "VIRTUAL_QUERY_EXECUTION": env.int("JOB_RETRY_MAX_DELAY_VIRTUAL_QUERY_EXECUTION", default=1800),
 }
 
 # Exponential backoff factor per job type
 JOB_RETRY_BACKOFF_FACTOR = {
-    'DQ_RUN': env.float("JOB_RETRY_BACKOFF_FACTOR_DQ_RUN", default=2.0),
-    'COMPLIANCE_RUN': env.float("JOB_RETRY_BACKOFF_FACTOR_COMPLIANCE_RUN", default=2.0),
-    'CONTRACT_VALIDATION': env.float("JOB_RETRY_BACKOFF_FACTOR_CONTRACT_VALIDATION", default=2.0),
-    'SEMANTIC_MAPPING': env.float("JOB_RETRY_BACKOFF_FACTOR_SEMANTIC_MAPPING", default=2.0),
-    'CONTRACT_MIGRATION': env.float("JOB_RETRY_BACKOFF_FACTOR_CONTRACT_MIGRATION", default=2.0),
-    'SCHEDULED_INGESTION': env.float("JOB_RETRY_BACKOFF_FACTOR_SCHEDULED_INGESTION", default=2.0),
-    'RETENTION_POLICY_ENFORCEMENT': env.float("JOB_RETRY_BACKOFF_FACTOR_RETENTION_POLICY_ENFORCEMENT", default=2.0),
-    'SEARCH_INDEX_UPDATE': env.float("JOB_RETRY_BACKOFF_FACTOR_SEARCH_INDEX_UPDATE", default=2.0),
-    'ODPS_NORMALIZATION': env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_NORMALIZATION", default=2.0),
-    'ODPS_REF_RESOLUTION': env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_REF_RESOLUTION", default=2.0),
-    'ODPS_EXPORT': env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_EXPORT", default=2.0),
-    'ODPS_SEMANTIC_MAPPING': env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_SEMANTIC_MAPPING", default=2.0),
-    'ODPS_LINKING': env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_LINKING", default=2.0),
-    'VIRTUAL_QUERY_EXECUTION': env.float("JOB_RETRY_BACKOFF_FACTOR_VIRTUAL_QUERY_EXECUTION", default=2.0),
+    "DQ_RUN": env.float("JOB_RETRY_BACKOFF_FACTOR_DQ_RUN", default=2.0),
+    "COMPLIANCE_RUN": env.float("JOB_RETRY_BACKOFF_FACTOR_COMPLIANCE_RUN", default=2.0),
+    "CONTRACT_VALIDATION": env.float("JOB_RETRY_BACKOFF_FACTOR_CONTRACT_VALIDATION", default=2.0),
+    "SEMANTIC_MAPPING": env.float("JOB_RETRY_BACKOFF_FACTOR_SEMANTIC_MAPPING", default=2.0),
+    "CONTRACT_MIGRATION": env.float("JOB_RETRY_BACKOFF_FACTOR_CONTRACT_MIGRATION", default=2.0),
+    "SCHEDULED_INGESTION": env.float("JOB_RETRY_BACKOFF_FACTOR_SCHEDULED_INGESTION", default=2.0),
+    "RETENTION_POLICY_ENFORCEMENT": env.float(
+        "JOB_RETRY_BACKOFF_FACTOR_RETENTION_POLICY_ENFORCEMENT", default=2.0
+    ),
+    "SEARCH_INDEX_UPDATE": env.float("JOB_RETRY_BACKOFF_FACTOR_SEARCH_INDEX_UPDATE", default=2.0),
+    "ODPS_NORMALIZATION": env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_NORMALIZATION", default=2.0),
+    "ODPS_REF_RESOLUTION": env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_REF_RESOLUTION", default=2.0),
+    "ODPS_EXPORT": env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_EXPORT", default=2.0),
+    "ODPS_SEMANTIC_MAPPING": env.float(
+        "JOB_RETRY_BACKOFF_FACTOR_ODPS_SEMANTIC_MAPPING", default=2.0
+    ),
+    "ODPS_LINKING": env.float("JOB_RETRY_BACKOFF_FACTOR_ODPS_LINKING", default=2.0),
+    "VIRTUAL_QUERY_EXECUTION": env.float(
+        "JOB_RETRY_BACKOFF_FACTOR_VIRTUAL_QUERY_EXECUTION", default=2.0
+    ),
 }
 
 # S3/MinIO Configuration
@@ -853,11 +953,11 @@ if USE_S3:
         staging_detected = False  # Production defaults to non-staging
 
     # Environment variables always take precedence
-    env_access_key = os.getenv('AWS_ACCESS_KEY_ID')
-    env_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+    env_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+    env_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 
     # Determine default S3 endpoint first
-    is_in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
+    is_in_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") == "true"
     is_test_env = "test" in sys.argv or "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST")
 
     if staging_detected:
@@ -865,6 +965,7 @@ if USE_S3:
     elif is_in_docker and is_test_env:
         # In Docker test environment, try test service names, then localhost with test port
         import socket
+
         try:
             socket.gethostbyname("minio-test")
             default_s3_endpoint = "http://minio-test:9000"
@@ -875,6 +976,7 @@ if USE_S3:
         # Check if we're in Docker (can resolve 'minio' hostname)
         try:
             import socket
+
             socket.gethostbyname("minio")
             default_s3_endpoint = "http://minio:9000"  # In Docker, use service name
         except socket.gaierror:
@@ -1059,6 +1161,10 @@ SPECTACULAR_SETTINGS = {
         {"name": "Semantic", "description": "Semantic mapping and SPARQL"},
         {"name": "Marketplace", "description": "Marketplace listings, orders, and entitlements"},
         {"name": "Audit", "description": "Audit logging"},
+        {
+            "name": "Internal (Worker)",
+            "description": "Internal scheduled-ingestion worker API (worker-only auth)",
+        },
     ],
     # Note: Custom Error schema removed - using inline serializers in views instead
     # APPEND_COMPONENTS with dict-based schemas causes 'dict' object has no attribute 'request_only' error
@@ -1070,17 +1176,56 @@ CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=[
         "http://localhost:3000",
+        "http://localhost:5173",  # Vite dev server
         "http://localhost:8000",
     ],
 )
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "cache-control",  # E2E and clients may send cache-busting (no-cache, no-store)
+    "content-type",
+    "dnt",
+    "expires",
+    "origin",
+    "pragma",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "x-correlation-id",  # For frontend request tracing
+    "x-request-id",  # Alternative correlation ID header
+    "x-tenant-id",  # Tenant scoping header for multi-tenant requests
+]
 
 # JWT Configuration
-JWT_SECRET_KEY = env("JWT_SECRET_KEY", default="dev-jwt-secret-key-not-for-production")
+JWT_SECRET_KEY = env("JWT_SECRET_KEY", default=_DEV_JWT_SECRET_KEY)
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="HS256")
+
+# Production: SECRET_KEY and JWT_SECRET_KEY MUST be set via env and must not be dev defaults.
+if ENVIRONMENT == "production":
+    if not SECRET_KEY or SECRET_KEY == _DEV_SECRET_KEY:
+        raise ImproperlyConfigured(
+            "In production, SECRET_KEY must be set via environment and must not be the dev default. "
+            "Set SECRET_KEY in env or use a secret manager. See docs/SECURITY.md."
+        )
+    if not JWT_SECRET_KEY or JWT_SECRET_KEY == _DEV_JWT_SECRET_KEY:
+        raise ImproperlyConfigured(
+            "In production, JWT_SECRET_KEY must be set via environment and must not be the dev default. "
+            "Set JWT_SECRET_KEY in env or use a secret manager. See docs/SECURITY.md."
+        )
 JWT_ACCESS_TOKEN_EXPIRY = env.int("JWT_ACCESS_TOKEN_EXPIRY", default=3600)  # 1 hour
 JWT_REFRESH_TOKEN_EXPIRY = env.int("JWT_REFRESH_TOKEN_EXPIRY", default=86400)  # 24 hours
 JWT_ISSUER = env("JWT_ISSUER", default="hub")
+
+# Worker API (scheduled ingestion internal): optional env key for Prefect worker
+# When set, worker authenticates with Authorization: ApiKey <HUB_WORKER_API_KEY> and X-Tenant-ID header
+HUB_WORKER_API_KEY = env("HUB_WORKER_API_KEY", default=None)
+
+# Billing (Stripe): optional; when set, subscription/customer creation uses Stripe (test key sk_test_... for tests)
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default=None)
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default=None)
 
 # Structured Logging (structlog)
 LOGGING = {
@@ -1136,8 +1281,12 @@ OPENTELEMETRY_METRICS_EXPORT_INTERVAL_MS = env.int(
 OPENTELEMETRY_ENABLED = env.bool("OPENTELEMETRY_ENABLED", default=False)
 OPENTELEMETRY_EXPORTER = env.str("OPENTELEMETRY_EXPORTER", default="otlp")  # 'otlp' or 'jaeger'
 OTEL_SERVICE_NAME = env.str("OTEL_SERVICE_NAME", default="data-interoperability-hub-api")
-OTEL_EXPORTER_OTLP_ENDPOINT = env.str("OTEL_EXPORTER_OTLP_ENDPOINT", default="http://localhost:4317")
-OTEL_EXPORTER_OTLP_PROTOCOL = env.str("OTEL_EXPORTER_OTLP_PROTOCOL", default="grpc")  # 'grpc' or 'http/protobuf'
+OTEL_EXPORTER_OTLP_ENDPOINT = env.str(
+    "OTEL_EXPORTER_OTLP_ENDPOINT", default="http://localhost:4317"
+)
+OTEL_EXPORTER_OTLP_PROTOCOL = env.str(
+    "OTEL_EXPORTER_OTLP_PROTOCOL", default="grpc"
+)  # 'grpc' or 'http/protobuf'
 
 # Database query instrumentation threshold (milliseconds)
 OTEL_DB_SLOW_QUERY_THRESHOLD_MS = env.float("OTEL_DB_SLOW_QUERY_THRESHOLD_MS", default=100.0)
@@ -1146,10 +1295,13 @@ OTEL_DB_SLOW_QUERY_THRESHOLD_MS = env.float("OTEL_DB_SLOW_QUERY_THRESHOLD_MS", d
 # Base sampling rate for successful requests (default: 10% = 0.1)
 # Errors are always sampled (100%) via middleware
 # Critical endpoints are always sampled (100%) via adaptive sampler
-OTEL_TRACES_SAMPLER_ARG = env.float("OTEL_TRACES_SAMPLER_ARG", default=0.1)  # 10% for successful requests
+OTEL_TRACES_SAMPLER_ARG = env.float(
+    "OTEL_TRACES_SAMPLER_ARG", default=0.1
+)  # 10% for successful requests
 
 if OPENTELEMETRY_ENABLED:
     from hub.apps.observability.otel_config import setup_opentelemetry_tracing
+
     setup_opentelemetry_tracing()
 
 # OpenTelemetry Metrics Setup (will be initialized in hub/apps/observability/otel_metrics.py)
@@ -1194,6 +1346,11 @@ DATACONTRACT_CLI_TIMEOUT = env.int("DATACONTRACT_CLI_TIMEOUT", default=60)
 DQ_SERVICE_URL = env("DQ_SERVICE_URL", default="http://dq-service:8083")
 DQ_SERVICE_TIMEOUT = env.int("DQ_SERVICE_TIMEOUT", default=1800)  # 30 minutes
 DQ_RESULT_CACHE_TTL = env.int("DQ_RESULT_CACHE_TTL", default=3600)  # 1 hour
+# Per-request timeout for DQ /run (avoids indefinite hang; tests use shorter value)
+if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
+    DQ_RUN_TIMEOUT = env.int("DQ_RUN_TIMEOUT", default=60)  # 60s in tests
+else:
+    DQ_RUN_TIMEOUT = env.int("DQ_RUN_TIMEOUT", default=120)  # 2 min in prod
 
 # ODH (Open Data Hub) Service URLs
 # ODH Training Operator URL - defaults to odh-training-operator service
@@ -1228,9 +1385,13 @@ COMPLIANCE_SERVICE_TIMEOUT = env.int("COMPLIANCE_SERVICE_TIMEOUT", default=1800)
 SEMANTIC_SERVICE_URL = env("SEMANTIC_SERVICE_URL", default="http://semantic-service:8081")
 # Reduce timeout in test environment for faster failure detection
 if "pytest" in sys.modules or "unittest" in sys.modules or os.getenv("TESTING"):
-    SEMANTIC_SERVICE_TIMEOUT = env.int("SEMANTIC_SERVICE_TIMEOUT", default=15)  # 15 seconds (optimized for faster failure detection)
+    SEMANTIC_SERVICE_TIMEOUT = env.int(
+        "SEMANTIC_SERVICE_TIMEOUT", default=15
+    )  # 15 seconds (optimized for faster failure detection)
 else:
-    SEMANTIC_SERVICE_TIMEOUT = env.int("SEMANTIC_SERVICE_TIMEOUT", default=15)  # 15 seconds (optimized for faster failure detection)
+    SEMANTIC_SERVICE_TIMEOUT = env.int(
+        "SEMANTIC_SERVICE_TIMEOUT", default=15
+    )  # 15 seconds (optimized for faster failure detection)
 HUB_DOMAIN = env("HUB_DOMAIN", default="hub.example.com")
 
 # SPARQL Endpoint Configuration
@@ -1271,11 +1432,17 @@ COMPLIANCE_PII_THRESHOLD = env.float("COMPLIANCE_PII_THRESHOLD", default=0.01)  
 # SPARQL Configuration
 SPARQL_QUERY_TIMEOUT = env.int("SPARQL_QUERY_TIMEOUT", default=30)  # 30 seconds
 SPARQL_RESULT_LIMIT = env.int("SPARQL_RESULT_LIMIT", default=10000)
-SPARQL_QUERY_COMPLEXITY_LIMIT = env.int("SPARQL_QUERY_COMPLEXITY_LIMIT", default=20)  # Complexity score limit
+SPARQL_QUERY_COMPLEXITY_LIMIT = env.int(
+    "SPARQL_QUERY_COMPLEXITY_LIMIT", default=20
+)  # Complexity score limit
 
 # Search Query Configuration
-SEARCH_QUERY_MAX_LENGTH = env.int("SEARCH_QUERY_MAX_LENGTH", default=1000)  # Maximum query length in characters
-SEARCH_QUERY_COMPLEXITY_LIMIT = env.int("SEARCH_QUERY_COMPLEXITY_LIMIT", default=50)  # Complexity score limit
+SEARCH_QUERY_MAX_LENGTH = env.int(
+    "SEARCH_QUERY_MAX_LENGTH", default=1000
+)  # Maximum query length in characters
+SEARCH_QUERY_COMPLEXITY_LIMIT = env.int(
+    "SEARCH_QUERY_COMPLEXITY_LIMIT", default=50
+)  # Complexity score limit
 SEARCH_QUERY_MIN_LENGTH = env.int("SEARCH_QUERY_MIN_LENGTH", default=1)  # Minimum query length
 
 # GraphQL Configuration
@@ -1339,6 +1506,11 @@ if is_test_env:
 else:
     RATE_LIMIT_ENABLED = env.bool("RATE_LIMIT_ENABLED", default=True)
 
+# When running E2E against this API (Playwright, real backend), relax auth rate limit
+# so many login attempts in sequence do not hit 429. Uses platform max for AUTH (20/min).
+# Set RATE_LIMIT_E2E_RELAX=true for api-service when running E2E (e.g. in .env.dev or docker-compose).
+RATE_LIMIT_E2E_RELAX = env.bool("RATE_LIMIT_E2E_RELAX", default=False)
+
 # Legacy settings (kept for backward compatibility, but not used by new middleware)
 RATE_LIMIT_PER_TENANT = env.int("RATE_LIMIT_PER_TENANT", default=200)
 RATE_LIMIT_PER_USER = env.int("RATE_LIMIT_PER_USER", default=100)
@@ -1347,10 +1519,81 @@ RATE_LIMIT_PER_USER = env.int("RATE_LIMIT_PER_USER", default=100)
 # Transformation feature flag (disabled by default - feature being removed)
 ENABLE_TRANSFORMATION_FEATURE = env.bool("ENABLE_TRANSFORMATION_FEATURE", default=False)
 
+# Workflow Business Rules Validation Feature Flags (Task 5.1.1)
+# Global enable/disable for business rules validation in workflows
+ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION = env.bool(
+    "ENABLE_WORKFLOW_BUSINESS_RULES_VALIDATION", default=True
+)
+
+# Gradual rollout percentage (0-100)
+# Controls percentage of workflows that have validation enabled
+# 0 = disabled, 100 = fully enabled
+WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE = env.int(
+    "WORKFLOW_BUSINESS_RULES_VALIDATION_ROLLOUT_PERCENTAGE", default=100
+)
+
+# Per-workflow enable/disable configuration
+# Format: JSON object with workflow names as keys and boolean values
+# Example: {"product_creation": true, "contract_creation": false}
+WORKFLOW_BUSINESS_RULES_VALIDATION_WORKFLOWS = env.dict(
+    "WORKFLOW_BUSINESS_RULES_VALIDATION_WORKFLOWS", default={}
+)
+
+# Explicitly disabled workflows (list of workflow names)
+# These workflows will have validation disabled regardless of other settings
+WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS = env.list(
+    "WORKFLOW_BUSINESS_RULES_VALIDATION_DISABLED_WORKFLOWS", default=[]
+)
+
+# Explicitly enabled workflows (list of workflow names)
+# These workflows will have validation enabled regardless of rollout percentage
+WORKFLOW_BUSINESS_RULES_VALIDATION_ENABLED_WORKFLOWS = env.list(
+    "WORKFLOW_BUSINESS_RULES_VALIDATION_ENABLED_WORKFLOWS", default=[]
+)
+
+# Per-tenant enable/disable configuration (optional)
+# Format: JSON object with tenant IDs as keys and boolean values
+# Example: {"tenant-123": true, "tenant-456": false}
+WORKFLOW_BUSINESS_RULES_VALIDATION_TENANTS = env.dict(
+    "WORKFLOW_BUSINESS_RULES_VALIDATION_TENANTS", default={}
+)
+
+# Gradual Rollout (Task 5.2): workflow tier definitions for phased enablement
+# Test/non-critical workflows: enable validation here first (5.2.1)
+WORKFLOW_BUSINESS_RULES_VALIDATION_TEST_WORKFLOWS = env.list(
+    "WORKFLOW_BUSINESS_RULES_VALIDATION_TEST_WORKFLOWS",
+    default=[
+        "model_training",
+        "model_inference",
+        "api_key_management",
+        "data_quality_check",
+        "virtualization_query_execution",
+    ],
+)
+# Critical/production workflows: enable incrementally after test phase (5.2.2)
+WORKFLOW_BUSINESS_RULES_VALIDATION_CRITICAL_WORKFLOWS = env.list(
+    "WORKFLOW_BUSINESS_RULES_VALIDATION_CRITICAL_WORKFLOWS",
+    default=[
+        "product_creation",
+        "contract_creation",
+        "asset_creation",
+        "dataset_creation",
+        "marketplace_publication",
+        "scheduled_ingestion",
+        "access_request",
+        "compliance_reporting",
+        "data_mesh",
+        "version_creation",
+        "marketplace_sync",
+    ],
+)
+
 # ODPS $ref Cache Warming Configuration (Task 9.8.4.3)
 ODPS_CACHE_WARMING_ENABLED = env.bool("ODPS_CACHE_WARMING_ENABLED", default=True)
 ODPS_CACHE_WARMING_STARTUP_ENABLED = env.bool("ODPS_CACHE_WARMING_STARTUP_ENABLED", default=True)
-ODPS_CACHE_WARMING_SCHEDULED_ENABLED = env.bool("ODPS_CACHE_WARMING_SCHEDULED_ENABLED", default=True)
+ODPS_CACHE_WARMING_SCHEDULED_ENABLED = env.bool(
+    "ODPS_CACHE_WARMING_SCHEDULED_ENABLED", default=True
+)
 ODPS_CACHE_WARMING_STARTUP_LIMIT = env.int("ODPS_CACHE_WARMING_STARTUP_LIMIT", default=100)
 ODPS_CACHE_WARMING_SCHEDULED_LIMIT = env.int("ODPS_CACHE_WARMING_SCHEDULED_LIMIT", default=1000)
 ODPS_CACHE_WARMING_BATCH_SIZE = env.int("ODPS_CACHE_WARMING_BATCH_SIZE", default=10)

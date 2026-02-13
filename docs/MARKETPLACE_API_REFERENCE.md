@@ -1023,6 +1023,8 @@ print(response.json())
 - **Connector Development Guide**: `docs/MARKETPLACE_CONNECTOR_DEVELOPMENT_GUIDE.md` - Connector implementation guide
 - **API Standards**: `docs/API_STANDARDS.md` - API standards and conventions
 - **API Error Codes**: `docs/API_ERROR_CODES.md` - Complete error code reference
+- **CLI Usage**: `cli/docs/MARKETPLACE_USAGE.md` - Complete CLI commands for marketplace integration
+- **SDK Usage**: `sdk/python/docs/MARKETPLACE_USAGE.md` - Complete SDK APIs for marketplace integration
 
 ---
 

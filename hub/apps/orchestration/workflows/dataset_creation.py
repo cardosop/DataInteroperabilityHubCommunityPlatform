@@ -20,6 +20,7 @@ import structlog
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.datasets.business_rules import DatasetsBusinessRules
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.schema_inference import (
     infer_schema_from_csv,
@@ -602,6 +603,12 @@ class DatasetCreationWorkflow:
             if latest_dataset:
                 version = latest_dataset.version + 1
         
+        # Validate dataset before creation using DatasetsBusinessRules
+        datasets_rules = DatasetsBusinessRules(
+            tenant_id=str(tenant_id) if tenant_id else None,
+            user_id=str(triggered_by_id) if triggered_by_id else None
+        )
+
         # Create dataset directly with provided schema data
         dataset = Dataset.objects.create(
             tenant=tenant,
@@ -614,6 +621,33 @@ class DatasetCreationWorkflow:
             version=version,
             created_by=user
         )
+
+        # Validate created dataset using DatasetsBusinessRules
+        dataset_validation_result = datasets_rules.validate(
+            dataset=dataset,
+            tenant=tenant,
+            user=user,
+            file=file_obj,
+            asset=asset,
+            validation_type="all"
+        )
+
+        if not dataset_validation_result.is_valid:
+            error_messages = dataset_validation_result.errors
+            # Log errors but don't fail - dataset is already created
+            logger.warning(
+                "Dataset validation errors after creation",
+                workflow_instance_id=str(instance.id),
+                dataset_id=str(dataset.id),
+                errors=error_messages,
+            )
+        elif dataset_validation_result.warnings:
+            logger.warning(
+                "Dataset validation warnings",
+                workflow_instance_id=str(instance.id),
+                dataset_id=str(dataset.id),
+                warnings=dataset_validation_result.warnings,
+            )
         
         # Initialize version history
         from hub.apps.datasets.versioning import VersionHistoryManager

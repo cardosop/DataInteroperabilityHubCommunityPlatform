@@ -636,19 +636,17 @@ class MonitoringEdgeCasesE2ETest(TestCase):
     def test_metrics_middleware_handles_missing_start_time(self):
         """Test that metrics middleware handles missing start time"""
         from django.http import HttpResponse
-        from unittest.mock import Mock
-        
+        from django.test import RequestFactory
+
         # Django 6 middleware pattern: pass get_response callable
         def get_response(request):
             return HttpResponse()
-        
+
         middleware = MetricsMiddleware(get_response)
-        request = Mock()
-        request.path = '/test/'
-        request.method = 'GET'
-        # Ensure _metrics_start_time is not set (not even as a Mock attribute)
-        if hasattr(request, '_metrics_start_time'):
-            delattr(request, '_metrics_start_time')
+        request = RequestFactory().get("/test/")
+        # Ensure _metrics_start_time is not set (test missing start_time path)
+        if hasattr(request, "_metrics_start_time"):
+            delattr(request, "_metrics_start_time")
         response = HttpResponse()
         response.status_code = 200
         

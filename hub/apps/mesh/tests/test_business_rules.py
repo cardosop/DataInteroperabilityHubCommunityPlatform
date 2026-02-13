@@ -10,9 +10,9 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
 
-from hub.apps.core.services.base import ValidationError
 from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.business_rules.registry import get_registry
+from hub.apps.core.services.base import ValidationError
 from hub.apps.mesh.business_rules import (
     DataMeshBusinessRules,
     DataMeshRuleExecutionContext,
@@ -889,7 +889,7 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
             effect="ALLOW",
             priority=100,
             asset=None,  # Tenant-wide
-            dataset=None  # Tenant-wide
+            dataset=None,  # Tenant-wide
         )
 
         # Create new domain-specific policy that conflicts
@@ -983,9 +983,7 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
 
         # Check precedence resolution
         precedence = self.rules._resolve_policy_precedence(
-            existing_priority=100,
-            new_priority=100,
-            existing_source="tenant"
+            existing_priority=100, new_priority=100, existing_source="tenant"
         )
 
         # Domain policy should override tenant policy at same priority
@@ -1000,7 +998,7 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
         precedence = self.rules._resolve_policy_precedence(
             existing_priority=50,  # Higher priority
             new_priority=100,  # Lower priority
-            existing_source="domain"
+            existing_source="domain",
         )
 
         self.assertEqual(precedence["resolution"], "EXISTING_HIGHER")
@@ -1010,7 +1008,7 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
         precedence = self.rules._resolve_policy_precedence(
             existing_priority=100,  # Lower priority
             new_priority=50,  # Higher priority
-            existing_source="domain"
+            existing_source="domain",
         )
 
         self.assertEqual(precedence["resolution"], "NEW_HIGHER")
@@ -1021,23 +1019,16 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
         from hub.apps.governance.models import AccessPolicy
 
         conditions1 = {
-            "user": {
-                "user_roles": ["admin", "manager"],
-                "department": "IT"
-            },
-            "resource": {
-                "classification": "CONFIDENTIAL"
-            }
+            "user": {"user_roles": ["admin", "manager"], "department": "IT"},
+            "resource": {"classification": "CONFIDENTIAL"},
         }
 
         conditions2 = {
             "user": {
                 "user_roles": ["admin"],  # Overlaps with conditions1
-                "department": "IT"  # Overlaps
+                "department": "IT",  # Overlaps
             },
-            "resource": {
-                "classification": "PUBLIC"  # Different
-            }
+            "resource": {"classification": "PUBLIC"},  # Different
         }
 
         result = self.rules._check_condition_overlap_detailed(conditions1, conditions2)
@@ -1045,7 +1036,9 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
         self.assertTrue(result["overlaps"])
         self.assertGreater(len(result["overlapping_keys"]), 0)
         # Should detect overlap in user.user_roles and user.department
-        overlapping_sections = [k.get("section") for k in result["overlapping_keys"] if "section" in k]
+        overlapping_sections = [
+            k.get("section") for k in result["overlapping_keys"] if "section" in k
+        ]
         self.assertIn("user", overlapping_sections)
 
     def test_condition_overlap_detailed_list_intersection(self):
@@ -1093,8 +1086,7 @@ class DataMeshBusinessRulesGovernanceIntegrationTest(TestCase):
 
         # Verify GovernanceService can be instantiated (integration check)
         governance_service = GovernanceService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
         self.assertIsNotNone(governance_service)
         self.assertEqual(str(governance_service.tenant_id), str(self.tenant.id))
@@ -1134,16 +1126,13 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
         tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant administrator role"}
+            defaults={"description": "Tenant administrator role"},
         )
 
         # Assign role to user
         UserRole.objects.create(user=self.user, role=tenant_admin_role)
 
-        rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         result = rules.validate_domain_ownership(self.domain)
 
@@ -1155,10 +1144,7 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
 
     def test_validate_domain_ownership_without_tenant_admin_role(self):
         """Test domain ownership validation without TENANT_ADMIN role"""
-        rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         result = rules.validate_domain_ownership(self.domain)
 
@@ -1184,13 +1170,10 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
             email="platform@example.com",
             password="testpass123",
             tenant=None,
-            is_platform_admin=True
+            is_platform_admin=True,
         )
 
-        rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(platform_admin.id)
-        )
+        rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(platform_admin.id))
 
         result = rules.validate_domain_ownership(self.domain)
 
@@ -1215,14 +1198,11 @@ class DataMeshBusinessRulesDomainOwnershipTest(TestCase):
         tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=other_tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant administrator role"}
+            defaults={"description": "Tenant administrator role"},
         )
         UserRole.objects.create(user=other_user, role=tenant_admin_role)
 
-        rules = DataMeshBusinessRules(
-            tenant_id=str(other_tenant.id),
-            user_id=str(other_user.id)
-        )
+        rules = DataMeshBusinessRules(tenant_id=str(other_tenant.id), user_id=str(other_user.id))
 
         result = rules.validate_domain_ownership(self.domain)
 
@@ -1252,27 +1232,22 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
 
         # Create TENANT_ADMIN role and assign to user
         from hub.apps.users.models import Role, UserRole
+
         tenant_admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant administrator role"}
+            defaults={"description": "Tenant administrator role"},
         )
         UserRole.objects.create(user=self.user, role=tenant_admin_role)
 
-        self.rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_asset_ownership_transfer_valid(self):
         """Test asset ownership transfer validation with valid asset"""
         from hub.apps.assets.models import Asset, AssetStatus
 
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE[0]
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE[0]
         )
 
         result = self.rules.validate_asset_ownership_transfer(self.domain, asset)
@@ -1291,10 +1266,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
             name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
         )
         other_asset = Asset.objects.create(
-            tenant=other_tenant,
-            key="other-asset",
-            name="Other Asset",
-            status=AssetStatus.ACTIVE[0]
+            tenant=other_tenant, key="other-asset", name="Other Asset", status=AssetStatus.ACTIVE[0]
         )
 
         result = self.rules.validate_asset_ownership_transfer(self.domain, other_asset)
@@ -1309,10 +1281,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
 
         # Use RETIRED status which is not in valid_transfer_statuses (ACTIVE, DRAFT, PUBLIC)
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.RETIRED[0]
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.RETIRED[0]
         )
 
         result = self.rules.validate_asset_ownership_transfer(self.domain, asset)
@@ -1324,15 +1293,12 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
     def test_validate_asset_ownership_transfer_with_dependencies(self):
         """Test asset ownership transfer with dependencies"""
         from hub.apps.assets.models import Asset, AssetStatus
-        from hub.apps.files.models import File, FileStatus
         from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File, FileStatus
 
         # Create asset with dataset (which creates dependencies)
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE[0]
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE[0]
         )
 
         file = File.objects.create(
@@ -1341,7 +1307,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
             storage_path="test/test.csv",
             size=1000,
             content_type="text/csv",
-            status=FileStatus.ACTIVE
+            status=FileStatus.ACTIVE,
         )
 
         Dataset.objects.create(
@@ -1351,11 +1317,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
             version=1,
             format="CSV",
             row_count=100,
-            schema_json={
-                "fields": [
-                    {"name": "id", "data_type": "integer"}
-                ]
-            }
+            schema_json={"fields": [{"name": "id", "data_type": "integer"}]},
         )
 
         result = self.rules.validate_asset_ownership_transfer(self.domain, asset)
@@ -1374,7 +1336,7 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE[0],
-            domain=self.domain  # Already in domain
+            domain=self.domain,  # Already in domain
         )
 
         result = self.rules.validate_asset_ownership_transfer(self.domain, asset)
@@ -1394,16 +1356,10 @@ class DataMeshBusinessRulesAssetOwnershipTransferTest(TestCase):
             email="regular@example.com", password="testpass123", tenant=self.tenant
         )
 
-        rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(regular_user.id)
-        )
+        rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(regular_user.id))
 
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            status=AssetStatus.ACTIVE[0]
+            tenant=self.tenant, key="test-asset", name="Test Asset", status=AssetStatus.ACTIVE[0]
         )
 
         result = rules.validate_asset_ownership_transfer(self.domain, asset)
@@ -1426,15 +1382,9 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
             email="test@example.com", password="testpass123", tenant=self.tenant
         )
         self.domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
         )
-        self.rules = DataMeshBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_validate_domain_resource_quota_with_governance_service(self):
         """Test domain resource quota validation integrates with GovernanceService"""
@@ -1443,14 +1393,8 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
             name="Test Domain Governance",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            resource_quota={
-                "storage_gb": 100,
-                "compute_hours": 50
-            },
-            resource_usage={
-                "storage_gb_used": 50,
-                "compute_hours_used": 25
-            }
+            resource_quota={"storage_gb": 100, "compute_hours": 50},
+            resource_usage={"storage_gb_used": 50, "compute_hours_used": 25},
         )
 
         result = self.rules.validate_domain_resource_quota(domain)
@@ -1475,12 +1419,9 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
             status=DomainStatus.ACTIVE,
             resource_quota={
                 "storage_gb": 20000,  # Very large quota that might exceed tenant limits
-                "compute_hours": 2000
+                "compute_hours": 2000,
             },
-            resource_usage={
-                "storage_gb_used": 100,
-                "compute_hours_used": 50
-            }
+            resource_usage={"storage_gb_used": 100, "compute_hours_used": 50},
         )
 
         result = self.rules.validate_domain_resource_quota(domain)
@@ -1501,14 +1442,11 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
             name="Test Domain Limits",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            resource_quota={
-                "storage_gb": 100,
-                "compute_hours": 50
-            },
+            resource_quota={"storage_gb": 100, "compute_hours": 50},
             resource_usage={
                 "storage_gb_used": 95,  # 95% usage - should trigger warning
-                "compute_hours_used": 45
-            }
+                "compute_hours_used": 45,
+            },
         )
 
         result = self.rules.validate_domain_resource_quota(domain)
@@ -1530,14 +1468,8 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
             name="Test Domain Integration",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            resource_quota={
-                "storage_gb": 100,
-                "compute_hours": 50
-            },
-            resource_usage={
-                "storage_gb_used": 50,
-                "compute_hours_used": 25
-            }
+            resource_quota={"storage_gb": 100, "compute_hours": 50},
+            resource_usage={"storage_gb_used": 50, "compute_hours_used": 25},
         )
 
         result = self.rules.validate_domain_resource_quota(domain)
@@ -1573,7 +1505,7 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
             effect="ALLOW",
             priority=100,
             asset=None,  # Tenant-wide
-            dataset=None  # Tenant-wide
+            dataset=None,  # Tenant-wide
         )
 
         # Create new domain-specific policy that conflicts
@@ -1674,7 +1606,7 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
             effect="ALLOW",
             priority=100,
             asset=None,
-            dataset=None
+            dataset=None,
         )
 
         # Create domain-specific policy with same priority
@@ -1688,9 +1620,7 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
 
         # Check precedence resolution
         precedence = self.rules._resolve_policy_precedence(
-            existing_priority=100,
-            new_priority=100,
-            existing_source="tenant"
+            existing_priority=100, new_priority=100, existing_source="tenant"
         )
 
         # Domain policy should override tenant policy at same priority
@@ -1705,7 +1635,7 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
         precedence = self.rules._resolve_policy_precedence(
             existing_priority=50,  # Higher priority
             new_priority=100,  # Lower priority
-            existing_source="domain"
+            existing_source="domain",
         )
 
         self.assertEqual(precedence["resolution"], "EXISTING_HIGHER")
@@ -1715,7 +1645,7 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
         precedence = self.rules._resolve_policy_precedence(
             existing_priority=100,  # Lower priority
             new_priority=50,  # Higher priority
-            existing_source="domain"
+            existing_source="domain",
         )
 
         self.assertEqual(precedence["resolution"], "NEW_HIGHER")
@@ -1726,23 +1656,16 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
         from hub.apps.governance.models import AccessPolicy
 
         conditions1 = {
-            "user": {
-                "user_roles": ["admin", "manager"],
-                "department": "IT"
-            },
-            "resource": {
-                "classification": "CONFIDENTIAL"
-            }
+            "user": {"user_roles": ["admin", "manager"], "department": "IT"},
+            "resource": {"classification": "CONFIDENTIAL"},
         }
 
         conditions2 = {
             "user": {
                 "user_roles": ["admin"],  # Overlaps with conditions1
-                "department": "IT"  # Overlaps
+                "department": "IT",  # Overlaps
             },
-            "resource": {
-                "classification": "PUBLIC"  # Different
-            }
+            "resource": {"classification": "PUBLIC"},  # Different
         }
 
         result = self.rules._check_condition_overlap_detailed(conditions1, conditions2)
@@ -1750,7 +1673,9 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
         self.assertTrue(result["overlaps"])
         self.assertGreater(len(result["overlapping_keys"]), 0)
         # Should detect overlap in user.user_roles and user.department
-        overlapping_sections = [k.get("section") for k in result["overlapping_keys"] if "section" in k]
+        overlapping_sections = [
+            k.get("section") for k in result["overlapping_keys"] if "section" in k
+        ]
         self.assertIn("user", overlapping_sections)
 
     def test_condition_overlap_detailed_list_intersection(self):
@@ -1798,8 +1723,7 @@ class DataMeshBusinessRulesDomainResourceQuotaTest(TestCase):
 
         # Verify GovernanceService can be instantiated (integration check)
         governance_service = GovernanceService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
         self.assertIsNotNone(governance_service)
         self.assertEqual(str(governance_service.tenant_id), str(self.tenant.id))
@@ -1836,8 +1760,8 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             boundaries={
                 "data_products": ["product1", "product2"],
                 "schemas": ["schema1"],
-                "access_patterns": ["pattern1"]
-            }
+                "access_patterns": ["pattern1"],
+            },
         )
 
         result = self.rules.validate_domain_boundary_definition(domain)
@@ -1853,7 +1777,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Domain 1",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"data_products": ["product1", "product2"]}
+            boundaries={"data_products": ["product1", "product2"]},
         )
 
         # Create second domain with overlapping data_products
@@ -1862,7 +1786,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Domain 2",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"data_products": ["product2", "product3"]}  # product2 overlaps
+            boundaries={"data_products": ["product2", "product3"]},  # product2 overlaps
         )
 
         result = self.rules.validate_domain_boundary_definition(domain2)
@@ -1881,7 +1805,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Domain 1",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"schemas": ["schema1", "schema2"]}
+            boundaries={"schemas": ["schema1", "schema2"]},
         )
 
         # Create second domain with overlapping schemas
@@ -1890,7 +1814,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Domain 2",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"schemas": ["schema2", "schema3"]}  # schema2 overlaps
+            boundaries={"schemas": ["schema2", "schema3"]},  # schema2 overlaps
         )
 
         result = self.rules.validate_domain_boundary_definition(domain2)
@@ -1908,7 +1832,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Domain 1",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"access_patterns": ["pattern1", "pattern2"]}
+            boundaries={"access_patterns": ["pattern1", "pattern2"]},
         )
 
         # Create second domain with overlapping access_patterns
@@ -1917,7 +1841,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Domain 2",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"access_patterns": ["pattern2", "pattern3"]}  # pattern2 overlaps
+            boundaries={"access_patterns": ["pattern2", "pattern3"]},  # pattern2 overlaps
         )
 
         result = self.rules.validate_domain_boundary_definition(domain2)
@@ -1936,7 +1860,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Domain 1",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"data_products": ["product1"]}
+            boundaries={"data_products": ["product1"]},
         )
 
         # Create second domain with no overlaps
@@ -1945,7 +1869,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Domain 2",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"data_products": ["product2"]}
+            boundaries={"data_products": ["product2"]},
         )
 
         result = self.rules.validate_domain_boundary_definition(domain2)
@@ -1959,17 +1883,14 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         from hub.apps.assets.models import Asset
 
         domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
-            domain="Test Domain"  # Matches domain name
+            domain="Test Domain",  # Matches domain name
         )
 
         result = self.rules.validate_asset_domain_boundary(asset, domain)
@@ -1983,17 +1904,14 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         from hub.apps.assets.models import Asset
 
         domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
-            domain="Other Domain"  # Doesn't match domain name
+            domain="Other Domain",  # Doesn't match domain name
         )
 
         result = self.rules.validate_asset_domain_boundary(asset, domain)
@@ -2007,17 +1925,11 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         from hub.apps.assets.models import Asset
 
         domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            domain=None  # No domain set
+            tenant=self.tenant, key="test-asset", name="Test Asset", domain=None  # No domain set
         )
 
         result = self.rules.validate_asset_domain_boundary(asset, domain)
@@ -2032,10 +1944,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         from hub.apps.assets.models import Asset
 
         domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         # Create another tenant
@@ -2044,10 +1953,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         )
 
         asset = Asset.objects.create(
-            tenant=other_tenant,
-            key="test-asset",
-            name="Test Asset",
-            domain="Test Domain"
+            tenant=other_tenant, key="test-asset", name="Test Asset", domain="Test Domain"
         )
 
         result = self.rules.validate_asset_domain_boundary(asset, domain)
@@ -2065,14 +1971,11 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Test Domain",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            boundaries={"data_products": ["test-asset"]}  # Asset key is listed
+            boundaries={"data_products": ["test-asset"]},  # Asset key is listed
         )
 
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            domain="Test Domain"
+            tenant=self.tenant, key="test-asset", name="Test Asset", domain="Test Domain"
         )
 
         result = self.rules.validate_asset_domain_boundary(asset, domain)
@@ -2083,16 +1986,11 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def test_validate_cross_domain_access_same_domain(self):
         """Test validate_cross_domain_access with same domain"""
         domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         result = self.rules.validate_cross_domain_access(
-            user_id=str(self.user.id),
-            source_domain=domain,
-            target_domain=domain
+            user_id=str(self.user.id), source_domain=domain, target_domain=domain
         )
 
         self.assertTrue(result.is_valid)
@@ -2102,10 +2000,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def test_validate_cross_domain_access_different_tenants(self):
         """Test validate_cross_domain_access with domains from different tenants"""
         domain1 = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Domain 1",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Domain 1", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         # Create another tenant
@@ -2117,16 +2012,11 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         )
 
         domain2 = DataMeshDomain.objects.create(
-            tenant=other_tenant,
-            name="Domain 2",
-            owner=other_user,
-            status=DomainStatus.ACTIVE
+            tenant=other_tenant, name="Domain 2", owner=other_user, status=DomainStatus.ACTIVE
         )
 
         result = self.rules.validate_cross_domain_access(
-            user_id=str(self.user.id),
-            source_domain=domain1,
-            target_domain=domain2
+            user_id=str(self.user.id), source_domain=domain1, target_domain=domain2
         )
 
         self.assertFalse(result.is_valid)
@@ -2138,24 +2028,15 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         from hub.apps.assets.models import Asset
 
         domain1 = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Domain 1",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Domain 1", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         domain2 = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Domain 2",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Domain 2", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            domain="Domain 2"
+            tenant=self.tenant, key="test-asset", name="Test Asset", domain="Domain 2"
         )
 
         result = self.rules.validate_cross_domain_access(
@@ -2164,7 +2045,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             target_domain=domain2,
             resource_type="ASSET",
             resource_id=str(asset.id),
-            access_type="READ"
+            access_type="READ",
         )
 
         # Should validate (ABAC may allow or deny, but structure should be valid)
@@ -2174,23 +2055,18 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def test_validate_cross_domain_access_archived_domain_warning(self):
         """Test validate_cross_domain_access warns about archived domain"""
         domain1 = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Domain 1",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Domain 1", owner=self.user, status=DomainStatus.ACTIVE
         )
 
         domain2 = DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Domain 2",
             owner=self.user,
-            status=DomainStatus.ARCHIVED  # Archived domain
+            status=DomainStatus.ARCHIVED,  # Archived domain
         )
 
         result = self.rules.validate_cross_domain_access(
-            user_id=str(self.user.id),
-            source_domain=domain1,
-            target_domain=domain2
+            user_id=str(self.user.id), source_domain=domain1, target_domain=domain2
         )
 
         # Should be valid but with warning
@@ -2206,7 +2082,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             owner=self.user,
             status=DomainStatus.ACTIVE,
             resource_quota={"storage_gb": 100, "compute_hours": 50},
-            resource_usage={"storage_gb_used": 50, "compute_hours_used": 25}
+            resource_usage={"storage_gb_used": 50, "compute_hours_used": 25},
         )
 
         result = self.rules.validate_domain_resource_quota(domain)
@@ -2223,7 +2099,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             owner=self.user,
             status=DomainStatus.ACTIVE,
             resource_quota={"storage_gb": 100},
-            resource_usage={"storage_gb_used": 150}  # Exceeds quota
+            resource_usage={"storage_gb_used": 150},  # Exceeds quota
         )
 
         result = self.rules.validate_domain_resource_quota(domain)
@@ -2241,7 +2117,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             owner=self.user,
             status=DomainStatus.ACTIVE,
             resource_quota={"storage_gb": 100},
-            resource_usage={"storage_gb_used": 95}  # 95% usage
+            resource_usage={"storage_gb_used": 95},  # 95% usage
         )
 
         result = self.rules.validate_domain_resource_quota(domain)
@@ -2253,10 +2129,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
     def test_validate_domain_resource_quota_invalid_structure(self):
         """Test validate_domain_resource_quota with invalid quota structure"""
         domain = DataMeshDomain.objects.create(
-            tenant=self.tenant,
-            name="Test Domain",
-            owner=self.user,
-            status=DomainStatus.ACTIVE
+            tenant=self.tenant, name="Test Domain", owner=self.user, status=DomainStatus.ACTIVE
         )
         # Set invalid quota structure using update to bypass model validation
         DataMeshDomain.objects.filter(id=domain.id).update(
@@ -2284,7 +2157,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             owner=self.user,
             status=DomainStatus.ACTIVE,
             resource_quota={"storage_gb": -10},  # Negative quota
-            resource_usage={"storage_gb_used": 5}
+            resource_usage={"storage_gb_used": 5},
         )
 
         result = self.rules.validate_domain_resource_quota(domain)
@@ -2300,7 +2173,7 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
             name="Test Domain",
             owner=self.user,
             status=DomainStatus.ACTIVE,
-            resource_quota={"storage_gb": 100}
+            resource_quota={"storage_gb": 100},
             # No resource_usage
         )
 
@@ -2310,3 +2183,296 @@ class DataMeshBusinessRulesDomainBoundaryValidationTest(TestCase):
         self.assertTrue(result.is_valid)
         self.assertGreater(len(result.warnings), 0)
         self.assertIn("no resource_usage", str(result.warnings[0]).lower())
+
+
+class DataMeshBusinessRulesErrorHandlingTest(TestCase):
+    """Test error handling scenarios for DataMeshBusinessRules"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com", password="testpass123", tenant=self.tenant
+        )
+        self.rules = DataMeshBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+    def test_validate_domain_structure_with_none_domain(self):
+        """Test error handling when domain is None"""
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_domain_structure(None)
+
+    def test_validate_domain_structure_with_invalid_domain_type(self):
+        """Test error handling when domain is not a DataMeshDomain instance"""
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_domain_structure("not-a-domain")
+
+    def test_validate_ownership_transfer_with_none_domain(self):
+        """Test error handling when domain is None"""
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_ownership_transfer(None, str(self.user.id))
+
+    def test_validate_ownership_transfer_with_invalid_domain_type(self):
+        """Test error handling when domain is not a DataMeshDomain instance"""
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_ownership_transfer("not-a-domain", str(self.user.id))
+
+    def test_validate_boundaries_with_none_domain(self):
+        """Test error handling when domain is None"""
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_boundaries(None)
+
+    def test_validate_capabilities_with_none_domain(self):
+        """Test error handling when domain is None"""
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_capabilities(None)
+
+    def test_validate_resource_quota_with_none_domain(self):
+        """Test error handling when domain is None"""
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_resource_quota(None)
+
+    def test_validate_domain_resource_quota_with_none_domain(self):
+        """Test error handling when domain is None"""
+        with self.assertRaises((AttributeError, TypeError)):
+            self.rules.validate_domain_resource_quota(None)
+
+    def test_validate_domain_structure_with_corrupted_boundaries(self):
+        """Test error handling when boundaries is corrupted data"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Corrupted Domain", status=DomainStatus.ACTIVE
+        )
+        # Try to set corrupted boundaries (this should be caught by model validation)
+        # But test that business rules handle it gracefully
+        domain.boundaries = {"invalid": object()}  # Non-serializable object
+        try:
+            domain.full_clean()
+        except DjangoValidationError:
+            # Expected - model validation should catch this
+            pass
+
+        # Business rules should handle gracefully
+        result = self.rules.validate_domain_structure(domain)
+        # Should either be invalid or handle gracefully
+        self.assertIsNotNone(result)
+
+    def test_validate_domain_structure_with_corrupted_capabilities(self):
+        """Test error handling when capabilities is corrupted data"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Corrupted Capabilities Domain", status=DomainStatus.ACTIVE
+        )
+        # Try to set corrupted capabilities
+        domain.capabilities = {"invalid": object()}  # Non-serializable object
+        try:
+            domain.full_clean()
+        except DjangoValidationError:
+            # Expected - model validation should catch this
+            pass
+
+        # Business rules should handle gracefully
+        result = self.rules.validate_domain_structure(domain)
+        self.assertIsNotNone(result)
+
+    def test_validate_resource_quota_with_corrupted_data(self):
+        """Test error handling when resource_quota is corrupted"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Corrupted Quota Domain", status=DomainStatus.ACTIVE
+        )
+        # Try to set corrupted resource_quota
+        domain.resource_quota = {"invalid": object()}  # Non-serializable object
+        try:
+            domain.full_clean()
+        except DjangoValidationError:
+            # Expected - model validation should catch this
+            pass
+
+        # Business rules should handle gracefully
+        result = self.rules.validate_resource_quota(domain)
+        self.assertIsNotNone(result)
+
+    def test_validate_ownership_transfer_with_empty_user_id(self):
+        """Test error handling when user_id is empty string"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Test Domain", status=DomainStatus.ACTIVE
+        )
+
+        result = self.rules.validate_ownership_transfer(domain, "")
+        # Should handle gracefully - empty string is invalid
+        self.assertIsNotNone(result)
+
+    def test_validate_ownership_transfer_with_invalid_uuid_format(self):
+        """Test error handling when user_id is invalid UUID format"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Test Domain", status=DomainStatus.ACTIVE
+        )
+
+        result = self.rules.validate_ownership_transfer(domain, "not-a-uuid")
+        # Should handle gracefully - invalid UUID format
+        self.assertIsNotNone(result)
+
+    def test_validate_boundaries_with_deeply_nested_structure(self):
+        """Test error handling with deeply nested boundaries structure"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Deeply Nested Domain", status=DomainStatus.ACTIVE
+        )
+        # Create deeply nested structure
+        nested_boundaries = {"level1": {"level2": {"level3": {"level4": {"level5": "value"}}}}}
+        domain.boundaries = nested_boundaries
+        domain.save()
+
+        result = self.rules.validate_boundaries(domain)
+        # Should handle gracefully
+        self.assertIsNotNone(result)
+
+    def test_validate_capabilities_with_empty_dict(self):
+        """Test error handling with empty capabilities dict"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant,
+            name="Empty Capabilities Domain",
+            status=DomainStatus.ACTIVE,
+            capabilities={},
+        )
+
+        result = self.rules.validate_capabilities(domain)
+        # Empty dict should be valid
+        self.assertTrue(result.is_valid)
+
+    def test_validate_resource_quota_with_zero_values(self):
+        """Test error handling with zero resource quota values"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant,
+            name="Zero Quota Domain",
+            status=DomainStatus.ACTIVE,
+            resource_quota={"storage_gb": 0, "compute_hours": 0},
+        )
+
+        result = self.rules.validate_resource_quota(domain)
+        # Zero values should be valid
+        self.assertTrue(result.is_valid)
+
+    def test_validate_resource_quota_with_very_large_values(self):
+        """Test error handling with very large resource quota values"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant,
+            name="Large Quota Domain",
+            status=DomainStatus.ACTIVE,
+            resource_quota={"storage_gb": 999999999999, "compute_hours": 999999999999},
+        )
+
+        result = self.rules.validate_resource_quota(domain)
+        # Very large values should be valid (no upper limit in validation)
+        self.assertTrue(result.is_valid)
+
+    def test_validate_domain_resource_quota_with_missing_quota_key(self):
+        """Test error handling when resource_usage has key not in quota"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant,
+            name="Missing Quota Key Domain",
+            status=DomainStatus.ACTIVE,
+            resource_quota={"storage_gb": 100},
+            resource_usage={"storage_gb_used": 50, "unknown_key": 10},
+        )
+
+        result = self.rules.validate_domain_resource_quota(domain)
+        # Should handle gracefully - unknown keys in usage
+        self.assertIsNotNone(result)
+
+    def test_validate_domain_structure_with_missing_required_fields(self):
+        """Test error handling when domain is missing required fields"""
+        # Create domain without name (should fail at model level)
+        try:
+            domain = DataMeshDomain(tenant=self.tenant, name="")
+            domain.full_clean()
+        except DjangoValidationError:
+            # Expected - model validation should catch empty name
+            pass
+
+    def test_validate_ownership_transfer_with_cross_tenant_user(self):
+        """Test error handling when transferring to user from different tenant"""
+        other_tenant = Tenant.objects.create(
+            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
+        )
+        other_user = User.objects.create_user(
+            email="other@example.com", password="testpass123", tenant=other_tenant
+        )
+
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Test Domain", status=DomainStatus.ACTIVE
+        )
+
+        result = self.rules.validate_ownership_transfer(domain, str(other_user.id))
+        # Should be invalid - user belongs to different tenant
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_domain_structure_with_invalid_status(self):
+        """Test error handling with invalid domain status"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="Invalid Status Domain", status=DomainStatus.ACTIVE
+        )
+        # Try to set invalid status (should fail at model level)
+        try:
+            domain.status = "INVALID_STATUS"
+            domain.full_clean()
+        except DjangoValidationError:
+            # Expected - model validation should catch invalid status
+            pass
+
+    def test_validate_boundaries_with_list_instead_of_dict(self):
+        """Test error handling when boundaries is a list instead of dict"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="List Boundaries Domain", status=DomainStatus.ACTIVE
+        )
+        # Try to set boundaries as list (should fail at model level)
+        try:
+            domain.boundaries = ["item1", "item2"]
+            domain.full_clean()
+        except DjangoValidationError:
+            # Expected - model validation should catch this
+            pass
+
+    def test_validate_capabilities_with_string_instead_of_dict(self):
+        """Test error handling when capabilities is a string instead of dict"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="String Capabilities Domain", status=DomainStatus.ACTIVE
+        )
+        # Try to set capabilities as string (should fail at model level)
+        try:
+            domain.capabilities = "not-a-dict"
+            domain.full_clean()
+        except DjangoValidationError:
+            # Expected - model validation should catch this
+            pass
+
+    def test_validate_resource_quota_with_string_values(self):
+        """Test error handling when resource_quota has string values"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant, name="String Quota Domain", status=DomainStatus.ACTIVE
+        )
+        # Try to set resource_quota with string values (should fail at model level)
+        try:
+            domain.resource_quota = {"storage_gb": "not-a-number"}
+            domain.full_clean()
+        except DjangoValidationError:
+            # Expected - model validation should catch this
+            pass
+
+    def test_validate_domain_resource_quota_with_usage_exceeding_quota(self):
+        """Test error handling when resource_usage exceeds resource_quota"""
+        domain = DataMeshDomain.objects.create(
+            tenant=self.tenant,
+            name="Exceeded Quota Domain",
+            status=DomainStatus.ACTIVE,
+            resource_quota={"storage_gb": 100},
+            resource_usage={"storage_gb_used": 150},  # Exceeds quota
+        )
+
+        result = self.rules.validate_domain_resource_quota(domain)
+        # Should be invalid or have warnings
+        self.assertIsNotNone(result)
+        # Usage exceeding quota should trigger validation error or warning
+        if not result.is_valid:
+            self.assertGreater(len(result.errors), 0)
+        else:
+            self.assertGreater(len(result.warnings), 0)

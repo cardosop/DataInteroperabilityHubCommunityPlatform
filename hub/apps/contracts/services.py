@@ -3,24 +3,34 @@ Contract Service
 
 Business logic for contract operations.
 """
-from typing import Dict, Any, Optional, List, Tuple
-from django.db import models, transaction
+
+import json
+from typing import Any, Dict, List, Optional, Tuple
+
+import structlog
 from django.core.paginator import Paginator
+from django.db import models, transaction
 from django.utils import timezone
 
-from hub.apps.core.services.base import BaseService, ValidationError, NotFoundError
-from hub.apps.core.events.service_publishers import ContractEventPublisher, ODPSEventPublisher
-from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalSpecType, OriginalFormat
+from hub.apps.assets.models import Asset
+from hub.apps.contracts.business_rules import ContractsBusinessRules, ODPSBusinessRules
+from hub.apps.contracts.cli_client import DataContractCLIClient
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
+    ValidationStatus,
+)
 from hub.apps.contracts.normalization import normalize_contract, validate_hubcontract_schema
 from hub.apps.contracts.normalization_service import NormalizationService
-from hub.apps.contracts.ref_resolver import resolve_odps_refs
 from hub.apps.contracts.odps_parser import ODPSParser
-import json
-from hub.apps.contracts.cli_client import DataContractCLIClient
-from hub.apps.assets.models import Asset
-from hub.apps.jobs.utils import create_job
+from hub.apps.contracts.ref_resolver import resolve_odps_refs
+from hub.apps.core.events.service_publishers import ContractEventPublisher, ODPSEventPublisher
+from hub.apps.core.services.base import BaseService, NotFoundError, PermissionError, ValidationError
 from hub.apps.jobs.models import JobType
-import structlog
+from hub.apps.jobs.utils import create_job
 
 
 class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
@@ -29,9 +39,15 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
     Provides business logic for retrieving and validating contracts.
     """
+
     service_name = "contract_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None, request_id: Optional[str] = None):
+    def __init__(
+        self,
+        tenant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ):
         """
         Initialize ContractService.
 
@@ -48,11 +64,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         ContractEventPublisher.__init__(self)
         ODPSEventPublisher.__init__(self)
 
-    def get_contract(
-        self,
-        contract_id: str,
-        tenant_id: Optional[str] = None
-    ) -> Contract:
+    def get_contract(self, contract_id: str, tenant_id: Optional[str] = None) -> Contract:
         """
         Get contract by ID.
 
@@ -74,16 +86,12 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             operation="get_contract",
             tenant_id=effective_tenant_id,
             func=lambda: self.get_resource_or_raise(
-                Contract,
-                contract_id,
-                tenant_id=effective_tenant_id
-            )
+                Contract, contract_id, tenant_id=effective_tenant_id
+            ),
         )
 
     def get_active_contract_for_asset(
-        self,
-        asset_id: str,
-        tenant_id: Optional[str] = None
+        self, asset_id: str, tenant_id: Optional[str] = None
     ) -> Optional[Contract]:
         """
         Get active contract for an asset.
@@ -107,9 +115,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Get all active contracts for the asset
             contracts = Contract.objects.filter(
-                asset_id=asset_id,
-                tenant_id=effective_tenant_id,
-                status=ContractStatus.ACTIVE
+                asset_id=asset_id, tenant_id=effective_tenant_id, status=ContractStatus.ACTIVE
             )
 
             # If no contracts, return None
@@ -122,26 +128,26 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Multiple contracts: prefer ODCS over ODPS for backward compatibility
             # This handles the case where both ODCS and ODPS contracts are attached
-            odcs_contract = contracts.filter(
-                original_spec_type=OriginalSpecType.ODCS
-            ).order_by('-version').first()
+            odcs_contract = (
+                contracts.filter(original_spec_type=OriginalSpecType.ODCS)
+                .order_by("-version")
+                .first()
+            )
 
             if odcs_contract:
                 return odcs_contract
 
             # If no ODCS, return the first ODPS contract (or any other type)
-            return contracts.order_by('-version').first()
+            return contracts.order_by("-version").first()
 
         return self.execute_with_metrics(
             operation="get_active_contract_for_asset",
             tenant_id=effective_tenant_id,
-            func=_get_contract
+            func=_get_contract,
         )
 
     def validate_contract_active(
-        self,
-        contract_id: str,
-        tenant_id: Optional[str] = None
+        self, contract_id: str, tenant_id: Optional[str] = None
     ) -> Contract:
         """
         Validate that contract exists and is active.
@@ -163,23 +169,19 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
         def _validate():
             contract = self.get_resource_or_raise(
-                Contract,
-                contract_id,
-                tenant_id=effective_tenant_id
+                Contract, contract_id, tenant_id=effective_tenant_id
             )
 
             if contract.status != ContractStatus.ACTIVE:
                 raise ValidationError(
                     f"Contract is not active (status: {contract.status})",
-                    details={"contract_id": contract_id, "status": contract.status}
+                    details={"contract_id": contract_id, "status": contract.status},
                 )
 
             return contract
 
         return self.execute_with_metrics(
-            operation="validate_contract_active",
-            tenant_id=effective_tenant_id,
-            func=_validate
+            operation="validate_contract_active", tenant_id=effective_tenant_id, func=_validate
         )
 
     @transaction.atomic
@@ -192,7 +194,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         asset_id: Optional[str] = None,
         original_spec_type: Optional[str] = None,
         disable_external_refs: bool = False,
-        remove_external_refs: bool = False
+        remove_external_refs: bool = False,
     ) -> Contract:
         """
         Create a new contract.
@@ -220,8 +222,44 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         if not effective_tenant_id:
             raise ValidationError("tenant_id is required")
 
+        # Normalize original_format to canonical uppercase (JSON, YAML) so "json"/"yaml" are accepted
+        if original_format and isinstance(original_format, str):
+            original_format = original_format.strip().upper()
+
+        # Validate asset exists when provided (raise NotFoundError for missing asset)
+        if asset_id:
+            try:
+                Asset.objects.get(id=asset_id, tenant_id=effective_tenant_id)
+            except Asset.DoesNotExist:
+                raise NotFoundError(
+                    f"Asset with ID '{asset_id}' not found for tenant",
+                    code="NOT_FOUND",
+                )
+
         # Detect spec type if not provided (capture before nested function)
         effective_spec_type = original_spec_type or OriginalSpecType.ODCS
+        spec_type_str = getattr(effective_spec_type, "value", None) or str(effective_spec_type)
+
+        # Phase 18.2.1: validate contract creation via business rules before mutating
+        contract_data = {
+            "tenant_id": effective_tenant_id,
+            "original_raw": original_raw,
+            "original_format": original_format,
+            "original_spec_type": spec_type_str,
+            "asset_id": asset_id,
+        }
+        rules = ContractsBusinessRules(tenant_id=effective_tenant_id, user_id=effective_user_id)
+        creation_result = rules.validate_contract_creation(contract_data)
+        if not creation_result.is_valid:
+            raise ValidationError(
+                message="; ".join(creation_result.errors),
+                code="BUSINESS_RULES_VALIDATION",
+                details={
+                    "errors": creation_result.errors,
+                    "validation_details": creation_result.details,
+                },
+                http_status=400,
+            )
 
         def _create():
             # Validate asset exists if provided
@@ -230,7 +268,10 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 try:
                     asset = Asset.objects.get(id=asset_id, tenant_id=effective_tenant_id)
                 except Asset.DoesNotExist:
-                    raise NotFoundError("Asset", asset_id)
+                    raise NotFoundError(
+                        f"Asset with ID '{asset_id}' not found for tenant",
+                        code="NOT_FOUND",
+                    )
 
             # Handle $ref resolution for ODPS contracts
             original_raw_resolved = None
@@ -238,8 +279,10 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Check if this is an ODPS contract and resolve $refs if needed
             if effective_spec_type == OriginalSpecType.ODPS or (
-                not original_spec_type and
-                (OriginalSpecType.ODPS in original_raw or 'opendataproducts.org' in original_raw)
+                not original_spec_type
+                and (
+                    OriginalSpecType.ODPS in original_raw or "opendataproducts.org" in original_raw
+                )
             ):
                 try:
                     # Parse the document
@@ -252,15 +295,20 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         disable_external_refs=disable_external_refs,
                         remove_external_refs=remove_external_refs,
                         tenant_id=effective_tenant_id,
-                        user_id=effective_user_id
+                        user_id=effective_user_id,
                     )
 
                     # Serialize resolved document back to string
                     if original_format == "JSON":
-                        original_raw_resolved = json.dumps(resolved_document, indent=2, ensure_ascii=False)
+                        original_raw_resolved = json.dumps(
+                            resolved_document, indent=2, ensure_ascii=False
+                        )
                     else:  # YAML
                         import yaml
-                        original_raw_resolved = yaml.dump(resolved_document, default_flow_style=False, allow_unicode=True)
+
+                        original_raw_resolved = yaml.dump(
+                            resolved_document, default_flow_style=False, allow_unicode=True
+                        )
 
                     # Use resolved document for normalization
                     contract_content_for_normalization = original_raw_resolved
@@ -269,6 +317,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     # If ref resolution fails, log but continue with original
                     # This allows contracts with invalid refs to still be created (they'll fail validation)
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.warning(f"Failed to resolve $refs for ODPS contract: {e}")
                     # Continue with original_raw for normalization
@@ -276,23 +325,29 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             # Normalize contract using NormalizationService (event publishing integrated)
             # Note: contract_id is not available yet, so events won't be published during creation
             normalization_service = NormalizationService(
-                tenant_id=effective_tenant_id,
-                user_id=effective_user_id
+                tenant_id=effective_tenant_id, user_id=effective_user_id
             )
-            hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalization_service.normalize_contract(
+            (
+                hub_contract,
+                detected_spec_type,
+                detected_spec_version,
+                norm_status,
+                norm_errors,
+                norm_warnings,
+            ) = normalization_service.normalize_contract(
                 raw_contract=contract_content_for_normalization,
                 format=original_format,
                 spec_type=effective_spec_type,
                 tenant_id=effective_tenant_id,
-                user_id=effective_user_id
+                user_id=effective_user_id,
                 # contract_id not available yet - events will be published after contract creation if needed
             )
 
             # Check for normalization failures
             if norm_status == NormalizationStatus.NORMALIZATION_FAILED and norm_errors:
                 raise ValidationError(
-                    message='Contract normalization failed',
-                    details={'code': 'NORMALIZATION_FAILED', 'errors': norm_errors}
+                    message="Contract normalization failed",
+                    details={"code": "NORMALIZATION_FAILED", "errors": norm_errors},
                 )
 
             # Validate HubContract schema if normalization succeeded
@@ -307,6 +362,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             user = None
             if effective_user_id:
                 from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 try:
                     user = User.objects.get(id=effective_user_id)
@@ -318,10 +374,12 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             version = 1
             if asset:
                 # Find the maximum version for this asset
-                max_version = Contract.objects.filter(
-                    tenant_id=effective_tenant_id,
-                    asset=asset
-                ).aggregate(max_version=models.Max('version'))['max_version'] or 0
+                max_version = (
+                    Contract.objects.filter(tenant_id=effective_tenant_id, asset=asset).aggregate(
+                        max_version=models.Max("version")
+                    )["max_version"]
+                    or 0
+                )
                 version = max_version + 1
 
             # Create contract
@@ -340,17 +398,19 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 normalization_errors=norm_errors,
                 normalization_warnings=norm_warnings,
                 status=ContractStatus.DRAFT,
-                created_by=user
+                created_by=user,
             )
 
             # Index for search
             try:
                 from hub.apps.search.indexing import SearchIndexer
+
                 indexer = SearchIndexer()
                 indexer.index_contract(contract)
             except Exception as e:
                 # Log but don't fail contract creation if indexing fails
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to index contract {contract.id} for search: {e}")
 
@@ -358,6 +418,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             try:
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
+
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 create_audit_event(
                     resource_type="CONTRACT",
@@ -368,12 +429,13 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     details={
                         "contract_id": str(contract.id),
                         "original_spec_type": contract.original_spec_type,
-                        "normalization_status": contract.normalization_status
-                    }
+                        "normalization_status": contract.normalization_status,
+                    },
                 )
             except Exception as e:
                 # Log but don't fail contract creation if audit logging fails
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to create audit log for contract {contract.id}: {e}")
 
@@ -382,17 +444,22 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 try:
                     from hub.apps.notifications.tasks import (
                         send_odps_creation_completion_email,
-                        send_odps_normalization_failure_email
+                        send_odps_normalization_failure_email,
                     )
+
                     if contract.normalization_status == NormalizationStatus.NORMALIZATION_FAILED:
                         # Send normalization failure notification
-                        error_message = '; '.join(contract.normalization_errors) if contract.normalization_errors else "ODPS normalization failed"
+                        error_message = (
+                            "; ".join(contract.normalization_errors)
+                            if contract.normalization_errors
+                            else "ODPS normalization failed"
+                        )
                         send_odps_normalization_failure_email.delay(
                             contract_id=str(contract.id),
                             error_message=error_message,
                             error_code="ODPS_NORMALIZATION_ERROR",
                             errors=contract.normalization_errors,
-                            field_path=None
+                            field_path=None,
                         )
                     else:
                         # Send creation completion notification
@@ -400,15 +467,16 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 except Exception as e:
                     # Log but don't fail contract creation if notification fails
                     import logging
+
                     logger = logging.getLogger(__name__)
-                    logger.warning(f"Failed to send ODPS notification for contract {contract.id}: {e}")
+                    logger.warning(
+                        f"Failed to send ODPS notification for contract {contract.id}: {e}"
+                    )
 
             return contract
 
         return self.execute_with_metrics(
-            operation="create_contract",
-            tenant_id=effective_tenant_id,
-            func=_create
+            operation="create_contract", tenant_id=effective_tenant_id, func=_create
         )
 
     @transaction.atomic
@@ -419,8 +487,10 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         user_id: Optional[str] = None,
         original_raw: Optional[str] = None,
         original_format: Optional[str] = None,
+        original_spec_type: Optional[str] = None,
+        original_spec_version: Optional[str] = None,
         status: Optional[str] = None,
-        remove_external_refs: bool = False
+        remove_external_refs: bool = False,
     ) -> Contract:
         """
         Update a contract.
@@ -431,6 +501,8 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             user_id: User ID
             original_raw: Updated contract content (optional)
             original_format: Updated format (optional)
+            original_spec_type: Spec type of the new content, e.g. ODCS or ODPS (optional; used when updating original_raw so normalization uses the correct normalizer)
+            original_spec_version: Spec version, e.g. 3.0.2 or 4.1 (optional; used with original_spec_type)
             status: Updated status (optional)
             remove_external_refs: If True, external $ref references will be removed from the document
 
@@ -448,16 +520,42 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
         def _update():
             contract = self.get_resource_or_raise(
-                Contract,
-                contract_id,
-                tenant_id=effective_tenant_id
+                Contract, contract_id, tenant_id=effective_tenant_id
             )
+
+            # Phase 18.2.2: validate contract update via business rules before mutating
+            update_data = {}
+            if original_raw is not None:
+                update_data["original_raw"] = original_raw
+                update_data["original_format"] = original_format or contract.original_format
+            if status is not None:
+                update_data["status"] = status
+            if update_data:
+                rules = ContractsBusinessRules(
+                    tenant_id=effective_tenant_id, user_id=user_id or self.user_id
+                )
+                update_result = rules.validate_contract_update(contract, contract_data=update_data)
+                if not update_result.is_valid:
+                    raise ValidationError(
+                        message="; ".join(update_result.errors),
+                        code="BUSINESS_RULES_VALIDATION",
+                        details={
+                            "errors": update_result.errors,
+                            "validation_details": update_result.details,
+                        },
+                        http_status=400,
+                    )
 
             # Update original_raw if provided
             if original_raw is not None:
                 contract.original_raw = original_raw
                 if original_format:
                     contract.original_format = original_format
+                # When client sends spec type/version with the new content, use them for normalization
+                if original_spec_type is not None:
+                    contract.original_spec_type = original_spec_type
+                if original_spec_version is not None:
+                    contract.original_spec_version = original_spec_version
 
                 # Handle $ref resolution for ODPS contracts
                 original_raw_resolved = None
@@ -476,15 +574,20 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                             disable_external_refs=False,  # Updates don't disable, only remove
                             remove_external_refs=remove_external_refs,
                             tenant_id=effective_tenant_id,
-                            user_id=user_id or self.user_id
+                            user_id=user_id or self.user_id,
                         )
 
                         # Serialize resolved document back to string
                         if contract.original_format == "JSON":
-                            original_raw_resolved = json.dumps(resolved_document, indent=2, ensure_ascii=False)
+                            original_raw_resolved = json.dumps(
+                                resolved_document, indent=2, ensure_ascii=False
+                            )
                         else:  # YAML
                             import yaml
-                            original_raw_resolved = yaml.dump(resolved_document, default_flow_style=False, allow_unicode=True)
+
+                            original_raw_resolved = yaml.dump(
+                                resolved_document, default_flow_style=False, allow_unicode=True
+                            )
 
                         # Use resolved document for normalization
                         contract_content_for_normalization = original_raw_resolved
@@ -493,6 +596,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     except Exception as e:
                         # If ref resolution fails, log but continue with original
                         import logging
+
                         logger = logging.getLogger(__name__)
                         logger.warning(f"Failed to resolve $refs for ODPS contract update: {e}")
                         # Continue with original_raw for normalization
@@ -500,25 +604,26 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
                 # Re-normalize contract using NormalizationService (event publishing integrated)
                 normalization_service = NormalizationService(
-                    tenant_id=effective_tenant_id,
-                    user_id=user_id or self.user_id
+                    tenant_id=effective_tenant_id, user_id=user_id or self.user_id
                 )
-                hub_contract, detected_spec_type, detected_spec_version, norm_status, norm_errors, norm_warnings = normalization_service.normalize_contract(
+                (
+                    hub_contract,
+                    detected_spec_type,
+                    detected_spec_version,
+                    norm_status,
+                    norm_errors,
+                    norm_warnings,
+                ) = normalization_service.normalize_contract(
                     raw_contract=contract_content_for_normalization,
                     format=contract.original_format,
                     spec_type=contract.original_spec_type,
                     tenant_id=effective_tenant_id,
                     user_id=user_id or self.user_id,
-                    contract_id=str(contract.id)  # Contract exists, so events will be published
+                    contract_id=str(contract.id),  # Contract exists, so events will be published
                 )
 
-                # Check for normalization failures
-                if norm_status == NormalizationStatus.NORMALIZATION_FAILED and norm_errors:
-                    raise ValidationError(
-                        message='Contract normalization failed',
-                        details={'code': 'NORMALIZATION_FAILED', 'errors': norm_errors}
-                    )
-
+                # On normalization failure: persist the update and set normalization state
+                # (do not raise so clients can save raw content and fix later)
                 # Validate HubContract schema if normalization succeeded
                 if hub_contract:
                     is_valid, validation_errors = validate_hubcontract_schema(hub_contract)
@@ -536,11 +641,12 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         existing_x_odps = existing_extensions.get("x_odps", {})
                         if existing_x_odps:
                             import structlog
+
                             logger = structlog.get_logger(__name__)
                             logger.debug(
                                 "Preserving x_odps links during normalization",
                                 contract_id=str(contract.id),
-                                existing_x_odps=existing_x_odps
+                                existing_x_odps=existing_x_odps,
                             )
                             if "extensions" not in hub_contract:
                                 hub_contract["extensions"] = {}
@@ -555,7 +661,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                             logger.debug(
                                 "Preserved x_odps links in normalized hub_contract",
                                 contract_id=str(contract.id),
-                                preserved_x_odps=hub_contract["extensions"]["x_odps"]
+                                preserved_x_odps=hub_contract["extensions"]["x_odps"],
                             )
 
                 # Update normalization fields
@@ -581,8 +687,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 valid_statuses = [s[0] for s in ContractStatus.choices]
                 if status not in valid_statuses:
                     raise ValidationError(
-                        f"Invalid status: {status}",
-                        details={"valid_statuses": valid_statuses}
+                        f"Invalid status: {status}", details={"valid_statuses": valid_statuses}
                     )
                 contract.status = status
 
@@ -590,11 +695,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Log audit event for contract update
             from hub.apps.audit.utils import create_audit_event
-            from hub.apps.users.models import User
             from hub.apps.tenants.models import Tenant
+            from hub.apps.users.models import User
+
             try:
                 actor_user = User.objects.get(id=user_id) if user_id else None
-                tenant_obj = Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
+                tenant_obj = (
+                    Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
+                )
                 create_audit_event(
                     resource_type="CONTRACT",
                     action="CONTRACT_UPDATED",
@@ -602,27 +710,22 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     tenant=tenant_obj,
                     resource_id=str(contract.id),
                     details={
-                        'status': contract.status,
-                        'normalization_status': contract.normalization_status,
-                        'updated_fields': ['original_raw'] if original_raw else []
-                    }
+                        "status": contract.status,
+                        "normalization_status": contract.normalization_status,
+                        "updated_fields": ["original_raw"] if original_raw else [],
+                    },
                 )
             except Exception:
                 pass  # Don't fail update if audit logging fails
             return contract
 
         return self.execute_with_metrics(
-            operation="update_contract",
-            tenant_id=effective_tenant_id,
-            func=_update
+            operation="update_contract", tenant_id=effective_tenant_id, func=_update
         )
 
     @transaction.atomic
     def delete_contract(
-        self,
-        contract_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        self, contract_id: str, tenant_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> None:
         """
         Delete a contract (soft delete: set status to RETIRED).
@@ -645,6 +748,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         # Check deletion permission if user_id is provided
         if effective_user_id:
             from hub.apps.users.models import User
+
             try:
                 user = User.objects.get(id=effective_user_id)
                 # Platform admins have all permissions
@@ -660,18 +764,28 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
         def _delete():
             contract = self.get_resource_or_raise(
-                Contract,
-                contract_id,
-                tenant_id=effective_tenant_id
+                Contract, contract_id, tenant_id=effective_tenant_id
             )
+
+            # Phase 18.2.3: validate contract deletion via business rules before mutating
+            rules = ContractsBusinessRules(tenant_id=effective_tenant_id, user_id=effective_user_id)
+            deletion_result = rules.validate_contract_deletion(contract)
+            if not deletion_result.is_valid:
+                raise ValidationError(
+                    message="; ".join(deletion_result.errors),
+                    code="BUSINESS_RULES_VALIDATION",
+                    details={
+                        "errors": deletion_result.errors,
+                        "validation_details": deletion_result.details,
+                    },
+                    http_status=400,
+                )
 
             contract.status = ContractStatus.RETIRED
             contract.save()
 
         return self.execute_with_metrics(
-            operation="delete_contract",
-            tenant_id=effective_tenant_id,
-            func=_delete
+            operation="delete_contract", tenant_id=effective_tenant_id, func=_delete
         )
 
     def list_contracts(
@@ -679,7 +793,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         tenant_id: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None,
         page: int = 1,
-        page_size: int = 20
+        page_size: int = 20,
     ) -> Tuple[List[Contract], Dict[str, Any]]:
         """
         List contracts with filtering and pagination.
@@ -703,33 +817,39 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Apply filters
             if filters:
-                if 'status' in filters:
-                    queryset = queryset.filter(status=filters['status'])
-                if 'asset_id' in filters:
-                    queryset = queryset.filter(asset_id=filters['asset_id'])
+                if "status" in filters:
+                    queryset = queryset.filter(status=filters["status"])
+                if "asset_id" in filters:
+                    queryset = queryset.filter(asset_id=filters["asset_id"])
 
             # Order by created_at descending
-            queryset = queryset.order_by('-created_at')
+            queryset = queryset.order_by("-created_at")
 
             # Paginate
             paginator = Paginator(queryset, page_size)
+            if page > paginator.num_pages and paginator.num_pages > 0:
+                pagination_meta = {
+                    "count": paginator.count,
+                    "page": page,
+                    "page_size": page_size,
+                    "num_pages": paginator.num_pages,
+                    "has_next": False,
+                    "has_previous": True,
+                }
+                return [], pagination_meta
             page_obj = paginator.get_page(page)
-
             pagination_meta = {
-                'count': paginator.count,
-                'page': page,
-                'page_size': page_size,
-                'num_pages': paginator.num_pages,
-                'has_next': page_obj.has_next(),
-                'has_previous': page_obj.has_previous()
+                "count": paginator.count,
+                "page": page_obj.number,
+                "page_size": page_size,
+                "num_pages": paginator.num_pages,
+                "has_next": page_obj.has_next(),
+                "has_previous": page_obj.has_previous(),
             }
-
             return list(page_obj), pagination_meta
 
         return self.execute_with_metrics(
-            operation="list_contracts",
-            tenant_id=effective_tenant_id,
-            func=_list
+            operation="list_contracts", tenant_id=effective_tenant_id, func=_list
         )
 
     def validate_contract(
@@ -737,7 +857,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         contract_id: str,
         tenant_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        use_async: bool = False
+        use_async: bool = False,
     ) -> Dict[str, Any]:
         """
         Validate contract using DataContract CLI.
@@ -762,9 +882,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
         def _validate():
             contract = self.get_resource_or_raise(
-                Contract,
-                contract_id,
-                tenant_id=effective_tenant_id
+                Contract, contract_id, tenant_id=effective_tenant_id
             )
 
             # Determine if async validation is needed
@@ -775,6 +893,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 # Create async validation job
                 from hub.apps.tenants.models import Tenant
                 from hub.apps.users.models import User
+
                 tenant = Tenant.objects.get(id=effective_tenant_id)
                 user = User.objects.get(id=effective_user_id) if effective_user_id else None
                 job = create_job(
@@ -783,47 +902,82 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     job_type=JobType.CONTRACT_VALIDATION,
                     resource_type="CONTRACT",
                     resource_id=str(contract.id),
-                    details_json={
-                        'contract_id': str(contract.id)
-                    }
+                    details_json={"contract_id": str(contract.id)},
                 )
 
-                return {
-                    'async': True,
-                    'job_id': str(job.id)
-                }
+                return {"async": True, "job_id": str(job.id)}
             else:
                 # Synchronous validation
                 cli_client = DataContractCLIClient()
                 # Get raw contract and format
                 raw_contract = contract.original_raw or ""
-                format_str = contract.original_format.lower() if contract.original_format else "json"
+                format_str = (
+                    contract.original_format.lower() if contract.original_format else "json"
+                )
                 result = cli_client.validate(
-                    raw_contract=raw_contract,
-                    format=format_str,
-                    tenant_id=effective_tenant_id
+                    raw_contract=raw_contract, format=format_str, tenant_id=effective_tenant_id
+                )
+
+                # Log the raw result for debugging
+                logger_instance = structlog.get_logger(__name__)
+                logger_instance.debug(
+                    "contract_validation_result",
+                    contract_id=str(contract.id),
+                    result_keys=list(result.keys()) if isinstance(result, dict) else "not_a_dict",
+                    validation_status=(
+                        result.get("validation_status") if isinstance(result, dict) else None
+                    ),
+                    valid=result.get("valid") if isinstance(result, dict) else None,
                 )
 
                 # Update contract validation status
-                contract.validation_status = result.get('validation_status')
-                contract.validation_errors = result.get('errors', [])
-                contract.validation_warnings = result.get('warnings', [])
+                # Handle both 'validation_status' and 'valid' fields for compatibility
+                validation_status = (
+                    result.get("validation_status") if isinstance(result, dict) else None
+                )
+                if validation_status is None:
+                    # Fallback: derive from 'valid' field if validation_status is missing
+                    if isinstance(result, dict) and result.get("valid", False):
+                        validation_status = ValidationStatus.VALID
+                    else:
+                        validation_status = ValidationStatus.ERROR
+
+                # Ensure validation_status is a string (handle enum values)
+                if hasattr(validation_status, "value"):
+                    validation_status = validation_status.value
+                elif not isinstance(validation_status, str):
+                    validation_status = str(validation_status)
+
+                # Log if validation_status is still None (shouldn't happen with fallback)
+                if validation_status is None:
+                    logger_instance.warning(
+                        "contract_validation_status_missing",
+                        contract_id=str(contract.id),
+                        result_keys=(
+                            list(result.keys()) if isinstance(result, dict) else "not_a_dict"
+                        ),
+                        result_type=type(result).__name__,
+                        message="validation_status is None after processing result",
+                    )
+                    validation_status = ValidationStatus.ERROR
+
+                contract.validation_status = validation_status
+                contract.validation_errors = result.get("errors", [])
+                contract.validation_warnings = result.get("warnings", [])
                 contract.last_validated_at = timezone.now()
                 contract.save()
 
                 return {
-                    'async': False,
-                    'validation_status': result.get('validation_status'),
-                    'valid': result.get('valid', False),
-                    'errors': result.get('errors', []),
-                    'warnings': result.get('warnings', []),
-                    'cli_version': result.get('cli_version')
+                    "async": False,
+                    "validation_status": result.get("validation_status"),
+                    "valid": result.get("valid", False),
+                    "errors": result.get("errors", []),
+                    "warnings": result.get("warnings", []),
+                    "cli_version": result.get("cli_version"),
                 }
 
         return self.execute_with_metrics(
-            operation="validate_contract",
-            tenant_id=effective_tenant_id,
-            func=_validate
+            operation="validate_contract", tenant_id=effective_tenant_id, func=_validate
         )
 
     @transaction.atomic
@@ -832,7 +986,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         odcs_contract_id: str,
         tenant_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        target_odps_version: str = "4.1"
+        target_odps_version: str = "4.1",
     ) -> Contract:
         """
         Auto-generate ODPS contract from ODCS contract when link is missing (marketplace focus).
@@ -868,9 +1022,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         def _auto_generate():
             # Get ODCS contract
             odcs_contract = self.get_resource_or_raise(
-                Contract,
-                odcs_contract_id,
-                tenant_id=effective_tenant_id
+                Contract, odcs_contract_id, tenant_id=effective_tenant_id
             )
 
             # Validate it's an ODCS contract
@@ -889,25 +1041,26 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     # ODPS contract already linked, return it
                     try:
                         odps_contract = Contract.objects.get(
-                            id=odps_link,
-                            tenant_id=effective_tenant_id
+                            id=odps_link, tenant_id=effective_tenant_id
                         )
                         import structlog
+
                         logger = structlog.get_logger(__name__)
                         logger.info(
                             "ODPS contract already linked to ODCS contract",
                             odcs_contract_id=str(odcs_contract.id),
-                            odps_contract_id=str(odps_contract.id)
+                            odps_contract_id=str(odps_contract.id),
                         )
                         return odps_contract
                     except Contract.DoesNotExist:
                         # Link exists but contract not found, remove invalid link
                         import structlog
+
                         logger = structlog.get_logger(__name__)
                         logger.warning(
                             "Invalid ODPS link found, removing and regenerating",
                             odcs_contract_id=str(odcs_contract.id),
-                            odps_link=odps_link
+                            odps_link=odps_link,
                         )
                         # Remove invalid link
                         del x_odps["odps_link"]
@@ -924,12 +1077,15 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 )
 
             # Generate ODPS from HubContract (marketplace focus)
-            from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
             from hub.apps.contracts.normalization import parse_contract
+            from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
 
             # Get original ODCS contract if available (for embedding in ODPS)
             original_odcs_contract = None
-            if odcs_contract.original_raw and odcs_contract.original_spec_type == OriginalSpecType.ODCS:
+            if (
+                odcs_contract.original_raw
+                and odcs_contract.original_spec_type == OriginalSpecType.ODCS
+            ):
                 try:
                     original_odcs_contract = parse_contract(
                         odcs_contract.original_raw, odcs_contract.original_format
@@ -948,12 +1104,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Format as JSON for storage
             import json
+
             odps_raw = json.dumps(odps_doc, indent=2)
 
             # Get user if user_id provided
             user = None
             if effective_user_id:
                 from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 try:
                     user = User.objects.get(id=effective_user_id)
@@ -962,21 +1120,23 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
             # Detect ODPS version from generated document
             from hub.apps.contracts.odps_version_detection import detect_odps_version
+
             detected_version = detect_odps_version(odps_doc)
 
             # Normalize ODPS to HubContract using NormalizationService (for consistency)
             # Note: contract_id not available yet (contract will be created below), so events won't be published
             normalization_service = NormalizationService(
-                tenant_id=effective_tenant_id,
-                user_id=effective_user_id
+                tenant_id=effective_tenant_id, user_id=effective_user_id
             )
-            hub_contract_odps, _, _, norm_status, norm_errors, norm_warnings = normalization_service.normalize_contract(
-                raw_contract=odps_raw,
-                format=OriginalFormat.JSON,
-                spec_type=OriginalSpecType.ODPS,
-                tenant_id=effective_tenant_id,
-                user_id=effective_user_id
-                # contract_id not available yet - events won't be published
+            hub_contract_odps, _, _, norm_status, norm_errors, norm_warnings = (
+                normalization_service.normalize_contract(
+                    raw_contract=odps_raw,
+                    format=OriginalFormat.JSON,
+                    spec_type=OriginalSpecType.ODPS,
+                    tenant_id=effective_tenant_id,
+                    user_id=effective_user_id,
+                    # contract_id not available yet - events won't be published
+                )
             )
 
             # Find next available version for this asset to avoid unique constraint violation
@@ -984,10 +1144,12 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             # Since ODPS and ODCS contracts can be linked to the same asset, we need different versions
             if odcs_contract.asset:
                 # Find the maximum version for this asset
-                max_version = Contract.objects.filter(
-                    tenant_id=effective_tenant_id,
-                    asset=odcs_contract.asset
-                ).aggregate(max_version=models.Max('version'))['max_version'] or 0
+                max_version = (
+                    Contract.objects.filter(
+                        tenant_id=effective_tenant_id, asset=odcs_contract.asset
+                    ).aggregate(max_version=models.Max("version"))["max_version"]
+                    or 0
+                )
                 next_version = max_version + 1
             else:
                 # No asset, use version 1
@@ -1018,7 +1180,9 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     odps_contract.hub_contract_json["extensions"] = {}
                 if "x_odps" not in odps_contract.hub_contract_json["extensions"]:
                     odps_contract.hub_contract_json["extensions"]["x_odps"] = {}
-                odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = str(odcs_contract.id)
+                odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = str(
+                    odcs_contract.id
+                )
                 odps_contract.save(update_fields=["hub_contract_json"])
 
             # ODCS → ODPS: Store in ODCS contract's hub_contract_json.extensions.x_odps.odps_link
@@ -1027,16 +1191,19 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     odcs_contract.hub_contract_json["extensions"] = {}
                 if "x_odps" not in odcs_contract.hub_contract_json["extensions"]:
                     odcs_contract.hub_contract_json["extensions"]["x_odps"] = {}
-                odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = str(odps_contract.id)
+                odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = str(
+                    odps_contract.id
+                )
                 odcs_contract.save(update_fields=["hub_contract_json"])
 
             import structlog
+
             logger = structlog.get_logger(__name__)
             logger.info(
                 "ODPS contract auto-generated from ODCS contract",
                 odcs_contract_id=str(odcs_contract.id),
                 odps_contract_id=str(odps_contract.id),
-                target_version=target_odps_version
+                target_version=target_odps_version,
             )
 
             # Publish contract event
@@ -1045,7 +1212,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 asset_id=str(odps_contract.asset.id) if odps_contract.asset else None,
                 status=odps_contract.status,
                 original_format=odps_contract.original_format,
-                original_spec_version=odps_contract.original_spec_version
+                original_spec_version=odps_contract.original_spec_version,
             )
 
             # Publish ODPS-specific event
@@ -1054,7 +1221,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 asset_id=str(odps_contract.asset.id) if odps_contract.asset else None,
                 status=odps_contract.status,
                 odps_version=target_odps_version,
-                original_format=odps_contract.original_format
+                original_format=odps_contract.original_format,
             )
 
             return odps_contract
@@ -1062,7 +1229,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         return self.execute_with_metrics(
             operation="auto_generate_odps_for_odcs",
             tenant_id=effective_tenant_id,
-            func=_auto_generate
+            func=_auto_generate,
         )
 
     @transaction.atomic
@@ -1074,7 +1241,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         odps_format: Optional[str] = None,
         resolve_external_refs: bool = True,
         tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> Contract:
         """
         Link ODPS contract to ODCS contract (bidirectional).
@@ -1104,44 +1271,41 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             ValidationError: If validation fails
             NotFoundError: If contract not found
         """
+        import structlog
+
         from hub.apps.contracts.odps_linking_compensation import (
             ODPSLinkingCompensation,
-            ODPSLinkingState
+            ODPSLinkingState,
         )
-        import structlog
 
         effective_tenant_id = tenant_id or self.tenant_id
         effective_user_id = user_id or self.user_id
 
         if not effective_tenant_id:
-            raise ValidationError(
-                message="tenant_id is required",
-                code="TENANT_ID_REQUIRED"
-            )
+            raise ValidationError(message="tenant_id is required", code="TENANT_ID_REQUIRED")
 
         # Initialize compensation handler
         compensation = ODPSLinkingCompensation(
-            tenant_id=effective_tenant_id,
-            user_id=effective_user_id
+            tenant_id=effective_tenant_id, user_id=effective_user_id
         )
 
         # Initialize state tracking
         state = ODPSLinkingState(
-            odcs_contract_id=odcs_contract_id,
-            odps_contract_id=odps_contract_id
+            odcs_contract_id=odcs_contract_id, odps_contract_id=odps_contract_id
         )
 
         # Initialize logger for outer scope
         logger = structlog.get_logger(__name__)
 
         # Import metrics at function level
-        from hub.apps.observability.otel_metrics import (
-            odps_linking_total,
-            odps_linking_success_total,
-            odps_linking_failures_total,
-            odps_linking_duration_seconds,
-        )
         import time
+
+        from hub.apps.observability.otel_metrics import (
+            odps_linking_duration_seconds,
+            odps_linking_failures_total,
+            odps_linking_success_total,
+            odps_linking_total,
+        )
 
         # Track linking direction: ODCS → ODPS (linking ODPS to ODCS)
         linking_direction = "odcs_to_odps"
@@ -1149,21 +1313,29 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
 
         # Increment total linking attempts
         odps_linking_total.labels(
-            direction=linking_direction,
-            tenant_id=effective_tenant_id or "unknown"
+            direction=linking_direction, tenant_id=effective_tenant_id or "unknown"
         ).inc()
 
         def _link_odps():
-            from hub.apps.contracts.models import Contract, OriginalSpecType, OriginalFormat, NormalizationStatus
-            from hub.apps.contracts.linking_validation import validate_linking, LinkingValidationError
-            from hub.apps.contracts.odps_parser import ODPSParser
-            from hub.apps.contracts.odps_version_detection import detect_odps_version
-            from hub.apps.contracts.ref_resolver import RefResolver, ExternalRefHandling
+            import structlog
+            from django.contrib.auth import get_user_model
+
+            from hub.apps.contracts.linking_validation import (
+                LinkingValidationError,
+                validate_linking,
+            )
+            from hub.apps.contracts.models import (
+                Contract,
+                NormalizationStatus,
+                OriginalFormat,
+                OriginalSpecType,
+            )
             from hub.apps.contracts.normalization import normalize_contract
             from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
-            from hub.apps.contracts.odps_errors import ODPSValidationError, ODPSRefResolutionError
-            from django.contrib.auth import get_user_model
-            import structlog
+            from hub.apps.contracts.odps_errors import ODPSRefResolutionError, ODPSValidationError
+            from hub.apps.contracts.odps_parser import ODPSParser
+            from hub.apps.contracts.odps_version_detection import detect_odps_version
+            from hub.apps.contracts.ref_resolver import ExternalRefHandling, RefResolver
 
             User = get_user_model()
             logger = structlog.get_logger(__name__)
@@ -1182,20 +1354,20 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             except Contract.DoesNotExist:
                 raise NotFoundError(
                     message=f"ODCS contract not found: {odcs_contract_id}",
-                    code="ODCS_CONTRACT_NOT_FOUND"
+                    code="ODCS_CONTRACT_NOT_FOUND",
                 )
 
             # Validate ODCS contract
             if odcs_contract.original_spec_type != OriginalSpecType.ODCS:
                 raise ValidationError(
                     message=f"Contract {odcs_contract_id} is not an ODCS contract (type: {odcs_contract.original_spec_type})",
-                    code="INVALID_CONTRACT_TYPE"
+                    code="INVALID_CONTRACT_TYPE",
                 )
 
             if str(odcs_contract.tenant_id) != str(effective_tenant_id):
                 raise ValidationError(
                     message=f"ODCS contract {odcs_contract_id} does not belong to tenant {effective_tenant_id}",
-                    code="TENANT_MISMATCH"
+                    code="TENANT_MISMATCH",
                 )
 
             # Get user for audit logging (needed in all code paths)
@@ -1224,85 +1396,87 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 except Contract.DoesNotExist:
                     raise NotFoundError(
                         message=f"ODPS contract not found: {odps_contract_id}",
-                        code="ODPS_CONTRACT_NOT_FOUND"
+                        code="ODPS_CONTRACT_NOT_FOUND",
                     )
 
                 # Validate existing ODPS contract
                 if odps_contract.original_spec_type != OriginalSpecType.ODPS:
                     raise ValidationError(
                         message=f"Contract {odps_contract_id} is not an ODPS contract (type: {odps_contract.original_spec_type})",
-                        code="INVALID_CONTRACT_TYPE"
+                        code="INVALID_CONTRACT_TYPE",
                     )
 
                 if str(odps_contract.tenant_id) != str(effective_tenant_id):
                     raise ValidationError(
                         message=f"ODPS contract {odps_contract_id} does not belong to tenant {effective_tenant_id}",
-                        code="TENANT_MISMATCH"
+                        code="TENANT_MISMATCH",
                     )
 
                 # Extract ODCS contract from ODPS product.contract and validate compatibility
                 if not odps_contract.hub_contract_json:
                     raise ValidationError(
                         message=f"ODPS contract {odps_contract_id} must be normalized (missing hub_contract_json)",
-                        code="ODPS_NOT_NORMALIZED"
+                        code="ODPS_NOT_NORMALIZED",
                     )
 
                 # Extract ODCS contract from ODPS original_raw
                 if not odps_contract.original_raw:
                     raise ValidationError(
                         message=f"ODPS contract {odps_contract_id} missing original_raw",
-                        code="ODPS_MISSING_ORIGINAL_RAW"
+                        code="ODPS_MISSING_ORIGINAL_RAW",
                     )
 
                 # Parse ODPS document
                 # Handle both enum and string formats
                 format_str = odps_contract.original_format
-                if hasattr(format_str, 'value'):
+                if hasattr(format_str, "value"):
                     format_str = format_str.value
-                if hasattr(format_str, 'lower'):
+                if hasattr(format_str, "lower"):
                     format_str = format_str.lower()
                 else:
                     format_str = str(format_str).lower()
 
-                odps_doc = ODPSParser.parse(
-                    content=odps_contract.original_raw,
-                    format=format_str
-                )
+                odps_doc = ODPSParser.parse(content=odps_contract.original_raw, format=format_str)
 
                 # Debug: log the parsed document structure
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.debug(f"Parsed ODPS doc keys: {list(odps_doc.keys())}")
                 logger.debug(f"Parsed ODPS doc has product: {'product' in odps_doc}")
-                if 'product' in odps_doc:
+                if "product" in odps_doc:
                     logger.debug(f"Parsed ODPS product type: {type(odps_doc['product'])}")
                     logger.debug(f"Parsed ODPS product value: {odps_doc['product']}")
-                logger.debug(f"Original raw (first 500 chars): {odps_contract.original_raw[:500] if odps_contract.original_raw else 'None'}")
+                logger.debug(
+                    f"Original raw (first 500 chars): {odps_contract.original_raw[:500] if odps_contract.original_raw else 'None'}"
+                )
 
                 # Extract ODCS contract from product.contract
                 product = odps_doc.get("product", {})
                 if not isinstance(product, dict):
                     # Debug: log what we actually got
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.debug(f"ODPS document structure: {list(odps_doc.keys())}")
                     logger.debug(f"ODPS document has product: {'product' in odps_doc}")
                     raise ValidationError(
                         message="ODPS document must have a 'product' field",
-                        code="ODPS_MISSING_PRODUCT"
+                        code="ODPS_MISSING_PRODUCT",
                     )
 
                 contract_section = product.get("contract")
                 if not isinstance(contract_section, dict):
                     # Debug: log what we actually got
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.debug(f"ODPS product structure: {list(product.keys())}")
                     logger.debug(f"ODPS product has contract: {'contract' in product}")
                     logger.debug(f"ODPS product.contract value: {product.get('contract')}")
                     raise ValidationError(
                         message="ODPS product.contract is required for linking",
-                        code="ODPS_MISSING_CONTRACT"
+                        code="ODPS_MISSING_CONTRACT",
                     )
 
                 # Extract ODCS contract from spec
@@ -1310,26 +1484,29 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 if not isinstance(odcs_from_odps, dict):
                     raise ValidationError(
                         message="ODPS product.contract.spec must be a dictionary",
-                        code="ODPS_INVALID_CONTRACT_SPEC"
+                        code="ODPS_INVALID_CONTRACT_SPEC",
                     )
 
                 # Validate that extracted ODCS matches the existing ODCS contract
                 # Compare key fields: id, name
                 import json
+
                 try:
-                    odcs_original = json.loads(odcs_contract.original_raw) if odcs_contract.original_raw else {}
+                    odcs_original = (
+                        json.loads(odcs_contract.original_raw) if odcs_contract.original_raw else {}
+                    )
                     odcs_id = odcs_from_odps.get("id")
                     odcs_name = odcs_from_odps.get("name")
 
                     if odcs_id and odcs_original.get("id") != odcs_id:
                         raise ValidationError(
                             message=f"ODPS product.contract.id ({odcs_id}) does not match ODCS contract.id ({odcs_original.get('id')})",
-                            code="CONTRACT_ID_MISMATCH"
+                            code="CONTRACT_ID_MISMATCH",
                         )
                     if odcs_name and odcs_original.get("name") != odcs_name:
                         raise ValidationError(
                             message=f"ODPS product.contract.name ({odcs_name}) does not match ODCS contract.name ({odcs_original.get('name')})",
-                            code="CONTRACT_NAME_MISMATCH"
+                            code="CONTRACT_NAME_MISMATCH",
                         )
                 except (json.JSONDecodeError, AttributeError) as e:
                     # If we can't parse, log warning but continue with linking validation
@@ -1341,23 +1518,20 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 if not odps_format:
                     raise ValidationError(
                         message="odps_format is required when odps_raw is provided",
-                        code="ODPS_FORMAT_REQUIRED"
+                        code="ODPS_FORMAT_REQUIRED",
                     )
 
                 # Parse ODPS document
                 # Handle both enum and string formats
                 format_str = odps_format
-                if hasattr(format_str, 'value'):
+                if hasattr(format_str, "value"):
                     format_str = format_str.value
-                if hasattr(format_str, 'lower'):
+                if hasattr(format_str, "lower"):
                     format_str = format_str.lower()
                 else:
                     format_str = str(format_str).lower()
 
-                odps_doc = ODPSParser.parse(
-                    content=odps_raw,
-                    format=format_str
-                )
+                odps_doc = ODPSParser.parse(content=odps_raw, format=format_str)
 
                 # Detect version
                 odps_version = detect_odps_version(odps_doc) or "4.1"
@@ -1367,7 +1541,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 if not is_valid:
                     raise ValidationError(
                         message=f"ODPS validation failed: {validation_errors}",
-                        code="ODPS_VALIDATION_FAILED"
+                        code="ODPS_VALIDATION_FAILED",
                     )
 
                 # Resolve $ref references if needed
@@ -1380,7 +1554,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 _, resolved_doc = resolver.resolve_all_refs(
                     document=odps_doc,
                     preserve_original=True,
-                    external_ref_handling=ExternalRefHandling(external_ref_handling)
+                    external_ref_handling=ExternalRefHandling(external_ref_handling),
                 )
                 odps_doc = resolved_doc
 
@@ -1389,14 +1563,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 if not isinstance(product, dict):
                     raise ValidationError(
                         message="ODPS document must have a 'product' field",
-                        code="ODPS_MISSING_PRODUCT"
+                        code="ODPS_MISSING_PRODUCT",
                     )
 
                 contract_section = product.get("contract")
                 if not isinstance(contract_section, dict):
                     raise ValidationError(
                         message="ODPS product.contract is required for linking",
-                        code="ODPS_MISSING_CONTRACT"
+                        code="ODPS_MISSING_CONTRACT",
                     )
 
                 # Extract ODCS contract from spec
@@ -1404,24 +1578,27 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 if not isinstance(odcs_from_odps, dict):
                     raise ValidationError(
                         message="ODPS product.contract.spec must be a dictionary",
-                        code="ODPS_INVALID_CONTRACT_SPEC"
+                        code="ODPS_INVALID_CONTRACT_SPEC",
                     )
 
                 # Validate that extracted ODCS matches the existing ODCS contract
                 import json
+
                 try:
-                    odcs_original = json.loads(odcs_contract.original_raw) if odcs_contract.original_raw else {}
+                    odcs_original = (
+                        json.loads(odcs_contract.original_raw) if odcs_contract.original_raw else {}
+                    )
                     odcs_id = odcs_from_odps.get("id")
                     odcs_name = odcs_from_odps.get("name")
                     if odcs_id and odcs_original.get("id") != odcs_id:
                         raise ValidationError(
                             message=f"ODPS product.contract.id ({odcs_id}) does not match ODCS contract.id ({odcs_original.get('id')})",
-                            code="CONTRACT_ID_MISMATCH"
+                            code="CONTRACT_ID_MISMATCH",
                         )
                     if odcs_name and odcs_original.get("name") != odcs_name:
                         raise ValidationError(
                             message=f"ODPS product.contract.name ({odcs_name}) does not match ODCS contract.name ({odcs_original.get('name')})",
-                            code="CONTRACT_NAME_MISMATCH"
+                            code="CONTRACT_NAME_MISMATCH",
                         )
                 except (json.JSONDecodeError, AttributeError):
                     # If we can't parse, just continue with normalization
@@ -1437,10 +1614,12 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 # Since ODPS and ODCS contracts can be linked to the same asset, we need different versions
                 if odcs_contract.asset:
                     # Find the maximum version for this asset
-                    max_version = Contract.objects.filter(
-                        tenant_id=effective_tenant_id,
-                        asset=odcs_contract.asset
-                    ).aggregate(max_version=models.Max('version'))['max_version'] or 0
+                    max_version = (
+                        Contract.objects.filter(
+                            tenant_id=effective_tenant_id, asset=odcs_contract.asset
+                        ).aggregate(max_version=models.Max("version"))["max_version"]
+                        or 0
+                    )
                     next_version = max_version + 1
                 else:
                     # No asset, use version 1
@@ -1474,12 +1653,12 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 logger.info(
                     "ODPS contract created for linking",
                     odcs_contract_id=str(odcs_contract.id),
-                    odps_contract_id=str(odps_contract.id)
+                    odps_contract_id=str(odps_contract.id),
                 )
             else:
                 raise ValidationError(
                     message="Either odps_contract_id or odps_raw must be provided",
-                    code="ODPS_SOURCE_REQUIRED"
+                    code="ODPS_SOURCE_REQUIRED",
                 )
 
             # Check if already linked
@@ -1493,7 +1672,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     logger.info(
                         "ODPS contract already linked to ODCS contract",
                         odps_contract_id=str(odps_contract.id),
-                        odcs_contract_id=str(odcs_contract.id)
+                        odcs_contract_id=str(odcs_contract.id),
                     )
                     return odps_contract
 
@@ -1502,13 +1681,13 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 validate_linking(
                     odps_contract_id=str(odps_contract.id),
                     odcs_contract_id=str(odcs_contract.id),
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
             except LinkingValidationError as e:
                 raise ValidationError(
                     message=f"Linking validation failed: {e.message}",
                     code=e.error_code,
-                    details=e.context
+                    details=e.context,
                 )
 
             # Track ODPS contract ID if not already set
@@ -1522,13 +1701,15 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 odps_contract.hub_contract_json = {
                     "id": str(odps_contract.id),
                     "hub_contract_version": odps_contract.hub_contract_version or "1.0.0",
-                    "schema": {}
+                    "schema": {},
                 }
             if "extensions" not in odps_contract.hub_contract_json:
                 odps_contract.hub_contract_json["extensions"] = {}
             if "x_odps" not in odps_contract.hub_contract_json["extensions"]:
                 odps_contract.hub_contract_json["extensions"]["x_odps"] = {}
-            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = str(odcs_contract.id)
+            odps_contract.hub_contract_json["extensions"]["x_odps"]["odcs_link"] = str(
+                odcs_contract.id
+            )
             odps_contract.save(update_fields=["hub_contract_json"])
 
             # ODCS → ODPS: Store in ODCS contract's hub_contract_json.extensions.x_odps.odps_link
@@ -1537,25 +1718,28 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 odcs_contract.hub_contract_json = {
                     "id": str(odcs_contract.id),
                     "hub_contract_version": odcs_contract.hub_contract_version or "1.0.0",
-                    "schema": {}
+                    "schema": {},
                 }
             if "extensions" not in odcs_contract.hub_contract_json:
                 odcs_contract.hub_contract_json["extensions"] = {}
             if "x_odps" not in odcs_contract.hub_contract_json["extensions"]:
                 odcs_contract.hub_contract_json["extensions"]["x_odps"] = {}
-            odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = str(odps_contract.id)
+            odcs_contract.hub_contract_json["extensions"]["x_odps"]["odps_link"] = str(
+                odps_contract.id
+            )
             odcs_contract.save(update_fields=["hub_contract_json"])
 
             logger.info(
                 "ODPS-ODCS contracts linked bidirectionally",
                 odcs_contract_id=str(odcs_contract.id),
-                odps_contract_id=str(odps_contract.id)
+                odps_contract_id=str(odps_contract.id),
             )
 
             # Create audit log for ODPS linking
             try:
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
+
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 create_audit_event(
                     resource_type="ODPS",
@@ -1568,9 +1752,13 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         "odps_contract_id": str(odps_contract.id),
                         "odcs_contract_id": str(odcs_contract.id),
                         "link_type": "bidirectional",
-                        "odps_contract_created": state.odps_contract_created if hasattr(state, 'odps_contract_created') else False,
-                        "request_id": self.request_id
-                    }
+                        "odps_contract_created": (
+                            state.odps_contract_created
+                            if hasattr(state, "odps_contract_created")
+                            else False
+                        ),
+                        "request_id": self.request_id,
+                    },
                 )
             except Exception as e:
                 # Log but don't fail linking if audit logging fails
@@ -1579,7 +1767,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     odps_contract_id=str(odps_contract.id),
                     odcs_contract_id=str(odcs_contract.id),
                     error=str(e),
-                    message="Failed to create audit log for ODPS linking (non-critical)"
+                    message="Failed to create audit log for ODPS linking (non-critical)",
                 )
 
             # Publish contract event
@@ -1589,7 +1777,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     asset_id=str(odps_contract.asset.id) if odps_contract.asset else None,
                     status=odps_contract.status,
                     original_format=odps_contract.original_format,
-                    original_spec_version=odps_contract.original_spec_version
+                    original_spec_version=odps_contract.original_spec_version,
                 )
                 if event_id and state.events_published is not None:
                     state.events_published.append(str(event_id))
@@ -1598,7 +1786,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     "contract_created_event_publish_failed",
                     contract_id=str(odps_contract.id),
                     error=str(e),
-                    message="Failed to publish contract created event, triggering compensation"
+                    message="Failed to publish contract created event, triggering compensation",
                 )
                 # Compensate for the failure
                 try:
@@ -1607,19 +1795,19 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         remove_links=True,
                         restore_state=True,
                         cleanup_resources=True,
-                        publish_compensation_events=True
+                        publish_compensation_events=True,
                     )
                 except Exception as comp_error:
                     logger.exception(
                         "compensation_failed_after_event_publish_failure",
                         contract_id=str(odps_contract.id),
                         error=str(comp_error),
-                        message="Compensation failed after event publish failure"
+                        message="Compensation failed after event publish failure",
                     )
                 raise ValidationError(
                     message=f"Failed to publish contract created event: {str(e)}",
                     code="CONTRACT_EVENT_PUBLISH_FAILED",
-                    details={"contract_id": str(odps_contract.id), "error": str(e)}
+                    details={"contract_id": str(odps_contract.id), "error": str(e)},
                 ) from e
 
             # Publish ODPS-specific events
@@ -1631,7 +1819,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         asset_id=str(odps_contract.asset.id) if odps_contract.asset else None,
                         status=odps_contract.status,
                         odps_version=odps_contract.original_spec_version,
-                        original_format=odps_contract.original_format
+                        original_format=odps_contract.original_format,
                     )
                     if event_id and state.events_published is not None:
                         state.events_published.append(str(event_id))
@@ -1640,7 +1828,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         "odps_created_event_publish_failed",
                         contract_id=str(odps_contract.id),
                         error=str(e),
-                        message="Failed to publish ODPS created event (non-critical)"
+                        message="Failed to publish ODPS created event (non-critical)",
                     )
 
             # Publish ODPS linked event
@@ -1648,7 +1836,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 event_id = self.publish_odps_linked(
                     odps_contract_id=str(odps_contract.id),
                     odcs_contract_id=str(odcs_contract.id),
-                    link_type="bidirectional"
+                    link_type="bidirectional",
                 )
                 if event_id and state.events_published is not None:
                     state.events_published.append(str(event_id))
@@ -1658,7 +1846,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     odps_contract_id=str(odps_contract.id),
                     odcs_contract_id=str(odcs_contract.id),
                     error=str(e),
-                    message="Failed to publish ODPS linked event, triggering compensation"
+                    message="Failed to publish ODPS linked event, triggering compensation",
                 )
                 # Compensate for the failure
                 try:
@@ -1667,14 +1855,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         remove_links=True,
                         restore_state=True,
                         cleanup_resources=True,
-                        publish_compensation_events=True
+                        publish_compensation_events=True,
                     )
                 except Exception as comp_error:
                     logger.exception(
                         "compensation_failed_after_linked_event_publish_failure",
                         odps_contract_id=str(odps_contract.id),
                         error=str(comp_error),
-                        message="Compensation failed after linked event publish failure"
+                        message="Compensation failed after linked event publish failure",
                     )
                 raise ValidationError(
                     message=f"Failed to publish ODPS linked event: {str(e)}",
@@ -1682,13 +1870,14 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     details={
                         "odps_contract_id": str(odps_contract.id),
                         "odcs_contract_id": str(odcs_contract.id),
-                        "error": str(e)
-                    }
+                        "error": str(e),
+                    },
                 ) from e
 
             # Send notification email for ODPS linking status
             try:
                 from hub.apps.notifications.tasks import send_odps_linking_status_email
+
                 send_odps_linking_status_email.delay(
                     odps_contract_id=str(odps_contract.id),
                     status="completed",
@@ -1698,7 +1887,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     current_phase="completed",
                     validation_passed=True,
                     user_id=effective_user_id,
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
             except Exception as notify_error:
                 # Log but don't fail linking if notification fails
@@ -1707,7 +1896,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     odps_contract_id=str(odps_contract.id),
                     odcs_contract_id=str(odcs_contract.id),
                     error=str(notify_error),
-                    message="Failed to send ODPS linking status notification (non-critical)"
+                    message="Failed to send ODPS linking status notification (non-critical)",
                 )
 
             return odps_contract
@@ -1718,33 +1907,32 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             # Record success metrics
             duration = time.time() - start_time
             odps_linking_success_total.labels(
-                direction=linking_direction,
-                tenant_id=effective_tenant_id or "unknown"
+                direction=linking_direction, tenant_id=effective_tenant_id or "unknown"
             ).inc()
             odps_linking_duration_seconds.labels(
-                direction=linking_direction,
-                tenant_id=effective_tenant_id or "unknown"
+                direction=linking_direction, tenant_id=effective_tenant_id or "unknown"
             ).observe(duration)
             return result
         except Exception as e:
             # Record failure metrics
             duration = time.time() - start_time
-            error_code = getattr(e, 'code', type(e).__name__)
+            error_code = getattr(e, "code", type(e).__name__)
             odps_linking_failures_total.labels(
                 direction=linking_direction,
                 error_code=str(error_code),
-                tenant_id=effective_tenant_id or "unknown"
+                tenant_id=effective_tenant_id or "unknown",
             ).inc()
             odps_linking_duration_seconds.labels(
-                direction=linking_direction,
-                tenant_id=effective_tenant_id or "unknown"
+                direction=linking_direction, tenant_id=effective_tenant_id or "unknown"
             ).observe(duration)
 
             # Create audit log for ODPS linking failure
             try:
+                from django.contrib.auth import get_user_model
+
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
-                from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 user_obj = User.objects.get(id=effective_user_id) if effective_user_id else None
@@ -1753,22 +1941,28 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     action="ODPS_LINKED",
                     actor_user=user_obj,
                     tenant=tenant_obj,
-                    resource_id=state.odps_contract_id if hasattr(state, 'odps_contract_id') and state.odps_contract_id else None,
+                    resource_id=(
+                        state.odps_contract_id
+                        if hasattr(state, "odps_contract_id") and state.odps_contract_id
+                        else None
+                    ),
                     result="FAILURE",
                     details={
                         "odcs_contract_id": odcs_contract_id,
-                        "odps_contract_id": state.odps_contract_id if hasattr(state, 'odps_contract_id') else None,
+                        "odps_contract_id": (
+                            state.odps_contract_id if hasattr(state, "odps_contract_id") else None
+                        ),
                         "error": str(e),
                         "error_code": str(error_code),
-                        "request_id": self.request_id
-                    }
+                        "request_id": self.request_id,
+                    },
                 )
             except Exception as audit_error:
                 # Don't fail on audit logging failure
                 logger.warning(
                     "odps_linking_audit_logging_failed_on_error",
                     error=str(audit_error),
-                    message="Failed to create audit log for ODPS linking failure (non-critical)"
+                    message="Failed to create audit log for ODPS linking failure (non-critical)",
                 )
 
             # If linking fails after links were established, compensate
@@ -1781,7 +1975,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     odps_contract_id=state.odps_contract_id,
                     odcs_contract_id=state.odcs_contract_id,
                     error=str(e),
-                    message="ODPS linking failed after links established, triggering compensation"
+                    message="ODPS linking failed after links established, triggering compensation",
                 )
                 try:
                     # Compensate outside the transaction to ensure it happens
@@ -1791,23 +1985,20 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         remove_links=True,
                         restore_state=True,
                         cleanup_resources=True,
-                        publish_compensation_events=True
+                        publish_compensation_events=True,
                     )
                 except Exception as comp_error:
                     logger.exception(
                         "compensation_failed_after_odps_linking_failure",
                         odps_contract_id=state.odps_contract_id,
                         error=str(comp_error),
-                        message="Compensation failed after ODPS linking failure"
+                        message="Compensation failed after ODPS linking failure",
                     )
             raise
 
     @transaction.atomic
     def unlink_odps_from_odcs(
-        self,
-        odcs_contract_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        self, odcs_contract_id: str, tenant_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> None:
         """
         Unlink ODPS contract from ODCS contract (removes bidirectional links).
@@ -1828,14 +2019,12 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         effective_user_id = user_id or self.user_id
 
         if not effective_tenant_id:
-            raise ValidationError(
-                message="tenant_id is required",
-                code="TENANT_ID_REQUIRED"
-            )
+            raise ValidationError(message="tenant_id is required", code="TENANT_ID_REQUIRED")
 
         def _unlink_odps():
-            from hub.apps.contracts.models import Contract, OriginalSpecType
             import structlog
+
+            from hub.apps.contracts.models import Contract, OriginalSpecType
 
             logger = structlog.get_logger(__name__)
 
@@ -1845,20 +2034,20 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             except Contract.DoesNotExist:
                 raise NotFoundError(
                     message=f"ODCS contract not found: {odcs_contract_id}",
-                    code="ODCS_CONTRACT_NOT_FOUND"
+                    code="ODCS_CONTRACT_NOT_FOUND",
                 )
 
             # Validate ODCS contract
             if odcs_contract.original_spec_type != OriginalSpecType.ODCS:
                 raise ValidationError(
                     message=f"Contract {odcs_contract_id} is not an ODCS contract (type: {odcs_contract.original_spec_type})",
-                    code="INVALID_CONTRACT_TYPE"
+                    code="INVALID_CONTRACT_TYPE",
                 )
 
             if str(odcs_contract.tenant_id) != str(effective_tenant_id):
                 raise ValidationError(
                     message=f"ODCS contract {odcs_contract_id} does not belong to tenant {effective_tenant_id}",
-                    code="TENANT_MISMATCH"
+                    code="TENANT_MISMATCH",
                 )
 
             # Get linked ODPS contract ID from ODCS contract
@@ -1871,8 +2060,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             if not odps_contract_id:
                 # No link exists, nothing to unlink
                 logger.info(
-                    "No ODPS link found on ODCS contract",
-                    odcs_contract_id=str(odcs_contract.id)
+                    "No ODPS link found on ODCS contract", odcs_contract_id=str(odcs_contract.id)
                 )
                 return
 
@@ -1884,7 +2072,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                 logger.warning(
                     "ODPS contract not found but link exists, cleaning up link",
                     odcs_contract_id=str(odcs_contract.id),
-                    odps_contract_id=str(odps_contract_id)
+                    odps_contract_id=str(odps_contract_id),
                 )
                 # Remove link from ODCS contract
                 if odcs_contract.hub_contract_json:
@@ -1899,7 +2087,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             if str(odps_contract.tenant_id) != str(effective_tenant_id):
                 raise ValidationError(
                     message=f"ODPS contract {odps_contract_id} does not belong to tenant {effective_tenant_id}",
-                    code="TENANT_MISMATCH"
+                    code="TENANT_MISMATCH",
                 )
 
             # Remove bidirectional links
@@ -1922,20 +2110,15 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             logger.info(
                 "ODPS-ODCS contracts unlinked successfully",
                 odcs_contract_id=str(odcs_contract.id),
-                odps_contract_id=str(odps_contract.id)
+                odps_contract_id=str(odps_contract.id),
             )
 
         return self.execute_with_metrics(
-            operation="unlink_odps_from_odcs",
-            tenant_id=effective_tenant_id,
-            func=_unlink_odps
+            operation="unlink_odps_from_odcs", tenant_id=effective_tenant_id, func=_unlink_odps
         )
 
     def get_contract_links(
-        self,
-        contract_id: str,
-        tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        self, contract_id: str, tenant_id: Optional[str] = None, user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get all links for a contract (ODPS and ODCS links).
@@ -1958,10 +2141,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         effective_tenant_id = tenant_id or self.tenant_id
 
         if not effective_tenant_id:
-            raise ValidationError(
-                message="tenant_id is required",
-                code="TENANT_ID_REQUIRED"
-            )
+            raise ValidationError(message="tenant_id is required", code="TENANT_ID_REQUIRED")
 
         from hub.apps.contracts.models import Contract
         from hub.apps.contracts.serializers import ContractSerializer
@@ -1971,21 +2151,17 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
             contract = Contract.objects.get(id=contract_id)
         except Contract.DoesNotExist:
             raise NotFoundError(
-                message=f"Contract not found: {contract_id}",
-                code="CONTRACT_NOT_FOUND"
+                message=f"Contract not found: {contract_id}", code="CONTRACT_NOT_FOUND"
             )
 
         # Validate tenant
         if str(contract.tenant_id) != str(effective_tenant_id):
             raise ValidationError(
                 message=f"Contract {contract_id} does not belong to tenant {effective_tenant_id}",
-                code="TENANT_MISMATCH"
+                code="TENANT_MISMATCH",
             )
 
-        result = {
-            "odps_link": None,
-            "odcs_link": None
-        }
+        result = {"odps_link": None, "odcs_link": None}
 
         if not contract.hub_contract_json:
             return result
@@ -2005,8 +2181,16 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         "original_spec_type": odps_contract.original_spec_type,
                         "original_spec_version": odps_contract.original_spec_version,
                         "status": odps_contract.status,
-                        "created_at": odps_contract.created_at.isoformat() if odps_contract.created_at else None,
-                        "updated_at": odps_contract.updated_at.isoformat() if odps_contract.updated_at else None,
+                        "created_at": (
+                            odps_contract.created_at.isoformat()
+                            if odps_contract.created_at
+                            else None
+                        ),
+                        "updated_at": (
+                            odps_contract.updated_at.isoformat()
+                            if odps_contract.updated_at
+                            else None
+                        ),
                     }
             except Contract.DoesNotExist:
                 pass
@@ -2023,8 +2207,16 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                         "original_spec_type": odcs_contract.original_spec_type,
                         "original_spec_version": odcs_contract.original_spec_version,
                         "status": odcs_contract.status,
-                        "created_at": odcs_contract.created_at.isoformat() if odcs_contract.created_at else None,
-                        "updated_at": odcs_contract.updated_at.isoformat() if odcs_contract.updated_at else None,
+                        "created_at": (
+                            odcs_contract.created_at.isoformat()
+                            if odcs_contract.created_at
+                            else None
+                        ),
+                        "updated_at": (
+                            odcs_contract.updated_at.isoformat()
+                            if odcs_contract.updated_at
+                            else None
+                        ),
                     }
             except Contract.DoesNotExist:
                 pass
@@ -2039,7 +2231,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         odps_raw: Optional[str] = None,
         odps_format: Optional[str] = None,
         tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Coordinate ODCS and ODPS operations for unified contract management.
@@ -2071,33 +2263,28 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         effective_user_id = user_id or self.user_id
 
         if not effective_tenant_id:
-            raise ValidationError(
-                message="tenant_id is required",
-                code="TENANT_ID_REQUIRED"
-            )
+            raise ValidationError(message="tenant_id is required", code="TENANT_ID_REQUIRED")
 
         def _coordinate():
             from hub.apps.contracts.services import ODPSService
 
             # Initialize ODPSService
             odps_service = ODPSService(
-                tenant_id=effective_tenant_id,
-                user_id=effective_user_id,
-                request_id=self.request_id
+                tenant_id=effective_tenant_id, user_id=effective_user_id, request_id=self.request_id
             )
 
             result = {
-                'operation': odps_operation,
-                'odcs_contract_id': odcs_contract_id,
-                'success': False
+                "operation": odps_operation,
+                "odcs_contract_id": odcs_contract_id,
+                "success": False,
             }
 
-            if odps_operation == 'link':
+            if odps_operation == "link":
                 # Link ODPS to ODCS
                 if not odps_contract_id and not odps_raw:
                     raise ValidationError(
                         message="Either odps_contract_id or odps_raw must be provided for 'link' operation",
-                        code="ODPS_SOURCE_REQUIRED"
+                        code="ODPS_SOURCE_REQUIRED",
                     )
 
                 linked_contract = odps_service.link_odps_to_odcs(
@@ -2106,82 +2293,72 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
                     odps_raw=odps_raw,
                     odps_format=odps_format,
                     tenant_id=effective_tenant_id,
-                    user_id=effective_user_id
+                    user_id=effective_user_id,
                 )
 
-                result.update({
-                    'success': True,
-                    'odps_contract_id': str(linked_contract.id),
-                    'linked': True
-                })
+                result.update(
+                    {"success": True, "odps_contract_id": str(linked_contract.id), "linked": True}
+                )
 
-            elif odps_operation == 'create':
+            elif odps_operation == "create":
                 # Create ODPS from ODCS
                 if not odps_raw:
                     raise ValidationError(
                         message="odps_raw is required for 'create' operation",
-                        code="ODPS_RAW_REQUIRED"
+                        code="ODPS_RAW_REQUIRED",
                     )
 
                 created_contract = odps_service.create_odps(
                     odps_raw=odps_raw,
                     odps_format=odps_format or "json",
                     tenant_id=effective_tenant_id,
-                    user_id=effective_user_id
+                    user_id=effective_user_id,
                 )
 
-                result.update({
-                    'success': True,
-                    'odps_contract_id': str(created_contract.id),
-                    'created': True
-                })
+                result.update(
+                    {"success": True, "odps_contract_id": str(created_contract.id), "created": True}
+                )
 
-            elif odps_operation == 'export':
+            elif odps_operation == "export":
                 # Export ODPS contract
                 if not odps_contract_id:
                     raise ValidationError(
                         message="odps_contract_id is required for 'export' operation",
-                        code="ODPS_CONTRACT_ID_REQUIRED"
+                        code="ODPS_CONTRACT_ID_REQUIRED",
                     )
 
                 exported = odps_service.export_odps(
                     contract_id=odps_contract_id,
                     output_format=odps_format or "json",
-                    tenant_id=effective_tenant_id
+                    tenant_id=effective_tenant_id,
                 )
 
-                result.update({
-                    'success': True,
-                    'exported_content': exported,
-                    'format': odps_format or "json"
-                })
+                result.update(
+                    {"success": True, "exported_content": exported, "format": odps_format or "json"}
+                )
 
-            elif odps_operation == 'normalize':
+            elif odps_operation == "normalize":
                 # Normalize ODPS document
                 if not odps_raw:
                     raise ValidationError(
                         message="odps_raw is required for 'normalize' operation",
-                        code="ODPS_RAW_REQUIRED"
+                        code="ODPS_RAW_REQUIRED",
                     )
 
                 import json
+
                 odps_doc = json.loads(odps_raw) if isinstance(odps_raw, str) else odps_raw
 
                 hub_contract = odps_service.normalize_odps(
-                    odps_doc=odps_doc,
-                    tenant_id=effective_tenant_id
+                    odps_doc=odps_doc, tenant_id=effective_tenant_id
                 )
 
-                result.update({
-                    'success': True,
-                    'hub_contract': hub_contract,
-                    'normalized': True
-                })
+                result.update({"success": True, "hub_contract": hub_contract, "normalized": True})
 
             else:
                 raise ValidationError(
                     message=f"Invalid odps_operation: {odps_operation}. Must be 'link', 'create', 'export', or 'normalize'",
-                    code="INVALID_OPERATION"
+                    code="INVALID_OPERATION",
                 )
 
             return result
@@ -2189,7 +2366,7 @@ class ContractService(BaseService, ContractEventPublisher, ODPSEventPublisher):
         return self.execute_with_metrics(
             operation="coordinate_odcs_odps_operations",
             tenant_id=effective_tenant_id,
-            func=_coordinate
+            func=_coordinate,
         )
 
 
@@ -2210,7 +2387,12 @@ class ODPSService(BaseService, ODPSEventPublisher):
 
     service_name = "odps_service"
 
-    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None, request_id: Optional[str] = None):
+    def __init__(
+        self,
+        tenant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ):
         """
         Initialize ODPSService.
 
@@ -2235,7 +2417,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
         user_id: Optional[str] = None,
         asset_id: Optional[str] = None,
         resolve_external_refs: bool = True,
-        target_version: Optional[str] = None
+        target_version: Optional[str] = None,
     ) -> Contract:
         """
         Create ODPS contract from raw ODPS document.
@@ -2268,47 +2450,87 @@ class ODPSService(BaseService, ODPSEventPublisher):
             ValidationError: If validation fails
             NotFoundError: If asset not found
         """
-        from hub.apps.contracts.odps_compensation import (
-            ODPSCreationCompensation,
-            ODPSCreationState
-        )
         import structlog
+
+        from hub.apps.contracts.odps_compensation import ODPSCreationCompensation, ODPSCreationState
 
         effective_tenant_id = tenant_id or self.tenant_id
         effective_user_id = user_id or self.user_id
 
         if not effective_tenant_id:
+            raise ValidationError(message="tenant_id is required", code="TENANT_ID_REQUIRED")
+
+        # Validate tenant_id format and existence before any DB write
+        import uuid as uuid_module
+
+        try:
+            uuid_module.UUID(effective_tenant_id)
+        except (ValueError, TypeError, AttributeError):
             raise ValidationError(
-                message="tenant_id is required",
-                code="TENANT_ID_REQUIRED"
+                message="tenant_id must be a valid UUID",
+                code="INVALID_TENANT_ID",
+                details={"tenant_id": effective_tenant_id},
             )
+        from hub.apps.tenants.models import Tenant
+
+        if not Tenant.objects.filter(id=effective_tenant_id).exists():
+            raise NotFoundError(
+                message=f"Tenant not found: {effective_tenant_id}", code="TENANT_NOT_FOUND"
+            )
+
+        # Validate user_id format and existence when provided
+        if effective_user_id:
+            try:
+                uuid_module.UUID(effective_user_id)
+            except (ValueError, TypeError, AttributeError):
+                raise ValidationError(
+                    message="user_id must be a valid UUID",
+                    code="INVALID_USER_ID",
+                    details={"user_id": effective_user_id},
+                )
+            from django.contrib.auth import get_user_model
+
+            UserModel = get_user_model()
+            if not UserModel.objects.filter(id=effective_user_id).exists():
+                raise NotFoundError(
+                    message=f"User not found: {effective_user_id}", code="USER_NOT_FOUND"
+                )
 
         # Initialize compensation handler
         compensation = ODPSCreationCompensation(
-            tenant_id=effective_tenant_id,
-            user_id=effective_user_id
+            tenant_id=effective_tenant_id, user_id=effective_user_id
         )
 
         # Initialize state tracking
-        state = ODPSCreationState(
-            asset_id=asset_id
-        )
+        state = ODPSCreationState(asset_id=asset_id)
 
         # Initialize logger for outer scope
         logger = structlog.get_logger(__name__)
 
         def _create():
-            from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat, NormalizationStatus
+            import json as json_module
+
+            import structlog
+            import yaml
+            from django.contrib.auth import get_user_model
+
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import (
+                Contract,
+                ContractStatus,
+                NormalizationStatus,
+                OriginalFormat,
+                OriginalSpecType,
+            )
+            from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+            from hub.apps.contracts.odps_errors import (
+                ODPSNormalizationError,
+                ODPSRefResolutionError,
+                ODPSValidationError,
+            )
             from hub.apps.contracts.odps_parser import ODPSParser
             from hub.apps.contracts.odps_version_detection import detect_odps_version
-            from hub.apps.contracts.ref_resolver import RefResolver, ExternalRefHandling
-            from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
-            from hub.apps.contracts.odps_errors import ODPSValidationError, ODPSRefResolutionError, ODPSNormalizationError
-            from hub.apps.assets.models import Asset
-            from django.contrib.auth import get_user_model
-            import structlog
-            import json as json_module
-            import yaml
+            from hub.apps.contracts.ref_resolver import ExternalRefHandling, RefResolver
 
             User = get_user_model()
             logger = structlog.get_logger(__name__)
@@ -2319,44 +2541,38 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 try:
                     asset = Asset.objects.get(id=asset_id, tenant_id=effective_tenant_id)
                     # Store previous asset version for state restoration
-                    if hasattr(asset, 'version'):
+                    if hasattr(asset, "version"):
                         state.asset_previous_version = asset.version
                 except Asset.DoesNotExist:
                     raise NotFoundError(
-                        message=f"Asset not found: {asset_id}",
-                        code="ASSET_NOT_FOUND"
+                        message=f"Asset not found: {asset_id}", code="ASSET_NOT_FOUND"
                     )
 
-            # Get user
+            # Get user (existence already validated above)
             user = None
             if effective_user_id:
                 try:
                     user = User.objects.get(id=effective_user_id)
                 except User.DoesNotExist:
-                    logger.warning(
-                        "user_not_found_for_odps_creation",
-                        user_id=effective_user_id,
-                        message="User not found, creating contract without user"
+                    raise NotFoundError(
+                        message=f"User not found: {effective_user_id}", code="USER_NOT_FOUND"
                     )
 
             # Parse ODPS document
             format_str = odps_format.lower()
-            if format_str not in ['json', 'yaml']:
+            if format_str not in ["json", "yaml"]:
                 raise ValidationError(
                     message=f"Invalid format: {odps_format}. Must be 'json' or 'yaml'",
-                    code="INVALID_FORMAT"
+                    code="INVALID_FORMAT",
                 )
 
             try:
-                odps_doc = ODPSParser.parse(
-                    content=odps_raw,
-                    format=format_str
-                )
+                odps_doc = ODPSParser.parse(content=odps_raw, format=format_str)
             except Exception as e:
                 raise ValidationError(
                     message=f"Failed to parse ODPS document: {str(e)}",
                     code="ODPS_PARSE_FAILED",
-                    details={"error": str(e), "format": format_str}
+                    details={"error": str(e), "format": format_str},
                 ) from e
 
             # Detect version
@@ -2369,17 +2585,46 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     logger.warning(
                         "odps_version_detection_failed",
                         error=str(e),
-                        message="Failed to detect ODPS version, using default 4.1"
+                        message="Failed to detect ODPS version, using default 4.1",
                     )
                     odps_version = "4.1"
 
-            # Validate ODPS
+            # Phase 18.2.4: Validate ODPS via business rules before create (run first so
+            # structure/version failures return BUSINESS_RULES_VALIDATION)
+            odps_rules = ODPSBusinessRules()
+            structure_result = odps_rules.validate_odps_structure(odps_doc, strict=False)
+            if not structure_result.is_valid:
+                raise ValidationError(
+                    message="; ".join(structure_result.errors)
+                    or "ODPS structure validation failed",
+                    code="BUSINESS_RULES_VALIDATION",
+                    details={
+                        "validation_errors": structure_result.errors,
+                        "warnings": structure_result.warnings,
+                        "version": odps_version,
+                    },
+                )
+            version_result = odps_rules.validate_odps_version(
+                odps_doc, required_version=odps_version
+            )
+            if not version_result.is_valid:
+                raise ValidationError(
+                    message="; ".join(version_result.errors) or "ODPS version validation failed",
+                    code="BUSINESS_RULES_VALIDATION",
+                    details={
+                        "validation_errors": version_result.errors,
+                        "warnings": version_result.warnings,
+                        "version": odps_version,
+                    },
+                )
+
+            # Schema validation (ODPSParser)
             is_valid, validation_errors = ODPSParser.validate(odps_doc, version=odps_version)
             if not is_valid:
                 raise ValidationError(
                     message=f"ODPS validation failed: {validation_errors}",
                     code="ODPS_VALIDATION_FAILED",
-                    details={"validation_errors": validation_errors, "version": odps_version}
+                    details={"validation_errors": validation_errors, "version": odps_version},
                 )
 
             # Resolve $ref references if needed
@@ -2391,20 +2636,24 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     _, resolved_doc = resolver.resolve_all_refs(
                         document=odps_doc,
                         preserve_original=True,
-                        external_ref_handling=ExternalRefHandling.RESOLVE
+                        external_ref_handling=ExternalRefHandling.RESOLVE,
                     )
                     odps_doc = resolved_doc
 
                     # Serialize resolved document back to string
-                    if format_str == 'json':
-                        odps_raw_resolved = json_module.dumps(odps_doc, indent=2, ensure_ascii=False)
+                    if format_str == "json":
+                        odps_raw_resolved = json_module.dumps(
+                            odps_doc, indent=2, ensure_ascii=False
+                        )
                     else:
-                        odps_raw_resolved = yaml.dump(odps_doc, default_flow_style=False, allow_unicode=True)
+                        odps_raw_resolved = yaml.dump(
+                            odps_doc, default_flow_style=False, allow_unicode=True
+                        )
                 except Exception as e:
                     logger.warning(
                         "odps_ref_resolution_failed",
                         error=str(e),
-                        message="Failed to resolve $ref references, continuing with original document"
+                        message="Failed to resolve $ref references, continuing with original document",
                     )
                     # If resolution fails, odps_raw_resolved remains None, we'll use original odps_raw
                     odps_raw_resolved = None
@@ -2427,17 +2676,18 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 logger.warning(
                     "odps_normalization_failed",
                     error=str(e),
-                    error_code=getattr(e, 'error_code', 'NORMALIZATION_FAILED'),
-                    message="ODPS normalization failed, creating contract with failed status"
+                    error_code=getattr(e, "error_code", "NORMALIZATION_FAILED"),
+                    message="ODPS normalization failed, creating contract with failed status",
                 )
 
             # Calculate version
             version = 1
             if asset:
-                latest_contract = Contract.objects.filter(
-                    tenant_id=effective_tenant_id,
-                    asset=asset
-                ).order_by('-version').first()
+                latest_contract = (
+                    Contract.objects.filter(tenant_id=effective_tenant_id, asset=asset)
+                    .order_by("-version")
+                    .first()
+                )
                 if latest_contract:
                     version = latest_contract.version + 1
 
@@ -2449,8 +2699,12 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 asset=asset,
                 version=version,
                 original_raw=odps_raw,  # Always preserve original input
-                original_raw_resolved=odps_raw_resolved if odps_raw_resolved else None,  # Resolved version if available
-                original_format=OriginalFormat.JSON if format_str == 'json' else OriginalFormat.YAML,
+                original_raw_resolved=(
+                    odps_raw_resolved if odps_raw_resolved else None
+                ),  # Resolved version if available
+                original_format=(
+                    OriginalFormat.JSON if format_str == "json" else OriginalFormat.YAML
+                ),
                 original_spec_type=OriginalSpecType.ODPS,
                 original_spec_version=odps_version,
                 hub_contract_json=hub_contract,
@@ -2459,7 +2713,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 normalization_errors=normalization_errors,
                 normalization_warnings=normalization_warnings,
                 status=ContractStatus.DRAFT,
-                created_by=user
+                created_by=user,
             )
 
             # Track contract in state for compensation
@@ -2471,13 +2725,14 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 tenant_id=effective_tenant_id,
                 odps_version=odps_version,
                 normalization_status=normalization_status,
-                message="ODPS contract created successfully"
+                message="ODPS contract created successfully",
             )
 
             # Create audit log for ODPS creation
             try:
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
+
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 create_audit_event(
                     resource_type="ODPS",
@@ -2489,12 +2744,20 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     details={
                         "contract_id": str(contract.id),
                         "odps_version": odps_version,
-                        "original_format": contract.original_format.value if hasattr(contract.original_format, 'value') else str(contract.original_format),
-                        "normalization_status": normalization_status.value if hasattr(normalization_status, 'value') else str(normalization_status),
+                        "original_format": (
+                            contract.original_format.value
+                            if hasattr(contract.original_format, "value")
+                            else str(contract.original_format)
+                        ),
+                        "normalization_status": (
+                            normalization_status.value
+                            if hasattr(normalization_status, "value")
+                            else str(normalization_status)
+                        ),
                         "asset_id": str(asset.id) if asset else None,
                         "resolve_external_refs": resolve_external_refs,
-                        "request_id": self.request_id
-                    }
+                        "request_id": self.request_id,
+                    },
                 )
             except Exception as e:
                 # Log but don't fail ODPS creation if audit logging fails
@@ -2502,7 +2765,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     "odps_audit_logging_failed",
                     contract_id=str(contract.id),
                     error=str(e),
-                    message="Failed to create audit log for ODPS creation (non-critical)"
+                    message="Failed to create audit log for ODPS creation (non-critical)",
                 )
 
             # Send notification email for ODPS creation completion or normalization failure
@@ -2510,17 +2773,22 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 try:
                     from hub.apps.notifications.tasks import (
                         send_odps_creation_completion_email,
-                        send_odps_normalization_failure_email
+                        send_odps_normalization_failure_email,
                     )
+
                     if normalization_status == NormalizationStatus.NORMALIZATION_FAILED:
                         # Send normalization failure notification
-                        error_message = '; '.join(normalization_errors) if normalization_errors else "ODPS normalization failed"
+                        error_message = (
+                            "; ".join(normalization_errors)
+                            if normalization_errors
+                            else "ODPS normalization failed"
+                        )
                         send_odps_normalization_failure_email.delay(
                             contract_id=str(contract.id),
                             error_message=error_message,
                             error_code="ODPS_NORMALIZATION_ERROR",
                             errors=normalization_errors,
-                            field_path=None
+                            field_path=None,
                         )
                     else:
                         # Send creation completion notification
@@ -2531,7 +2799,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                         "odps_creation_notification_failed",
                         contract_id=str(contract.id),
                         error=str(e),
-                        message="Failed to send ODPS notification (non-critical)"
+                        message="Failed to send ODPS notification (non-critical)",
                     )
 
             # Publish events (track event IDs for compensation if needed)
@@ -2541,7 +2809,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     asset_id=str(asset.id) if asset else None,
                     status=contract.status,
                     odps_version=odps_version,
-                    original_format=contract.original_format
+                    original_format=contract.original_format,
                 )
                 if event_id and state.events_published is not None:
                     state.events_published.append(str(event_id))
@@ -2551,7 +2819,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     "odps_created_event_publish_failed",
                     contract_id=str(contract.id),
                     error=str(e),
-                    message="Failed to publish ODPS created event, triggering compensation"
+                    message="Failed to publish ODPS created event, triggering compensation",
                 )
                 # Compensate for the failure
                 try:
@@ -2560,19 +2828,19 @@ class ODPSService(BaseService, ODPSEventPublisher):
                         rollback_contract=True,
                         cleanup_resources=True,
                         restore_state=True,
-                        publish_compensation_events=True
+                        publish_compensation_events=True,
                     )
                 except Exception as comp_error:
                     logger.exception(
                         "compensation_failed_after_event_publish_failure",
                         contract_id=str(contract.id),
                         error=str(comp_error),
-                        message="Compensation failed after event publish failure"
+                        message="Compensation failed after event publish failure",
                     )
                 raise ValidationError(
                     message=f"Failed to publish ODPS created event: {str(e)}",
                     code="ODPS_EVENT_PUBLISH_FAILED",
-                    details={"contract_id": str(contract.id), "error": str(e)}
+                    details={"contract_id": str(contract.id), "error": str(e)},
                 ) from e
 
             if hub_contract:
@@ -2580,7 +2848,11 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     event_id = self.publish_odps_normalized(
                         contract_id=str(contract.id),
                         odps_version=odps_version,
-                        normalization_status=normalization_status.value if hasattr(normalization_status, 'value') else str(normalization_status)
+                        normalization_status=(
+                            normalization_status.value
+                            if hasattr(normalization_status, "value")
+                            else str(normalization_status)
+                        ),
                     )
                     if event_id and state.events_published is not None:
                         state.events_published.append(str(event_id))
@@ -2591,23 +2863,23 @@ class ODPSService(BaseService, ODPSEventPublisher):
                         "odps_normalized_event_publish_failed",
                         contract_id=str(contract.id),
                         error=str(e),
-                        message="Failed to publish ODPS normalized event (non-critical)"
+                        message="Failed to publish ODPS normalized event (non-critical)",
                     )
 
             return contract
 
         try:
             return self.execute_with_metrics(
-                operation="create_odps",
-                tenant_id=effective_tenant_id,
-                func=_create
+                operation="create_odps", tenant_id=effective_tenant_id, func=_create
             )
         except Exception as e:
             # Create audit log for ODPS creation failure
             try:
+                from django.contrib.auth import get_user_model
+
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
-                from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 user_obj = User.objects.get(id=effective_user_id) if effective_user_id else None
@@ -2616,22 +2888,26 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     action="ODPS_CREATED",
                     actor_user=user_obj,
                     tenant=tenant_obj,
-                    resource_id=state.contract_id if hasattr(state, 'contract_id') and state.contract_id else None,
+                    resource_id=(
+                        state.contract_id
+                        if hasattr(state, "contract_id") and state.contract_id
+                        else None
+                    ),
                     result="FAILURE",
                     details={
                         "error": str(e),
-                        "error_code": getattr(e, 'code', 'UNKNOWN_ERROR'),
+                        "error_code": getattr(e, "code", "UNKNOWN_ERROR"),
                         "asset_id": asset_id,
                         "resolve_external_refs": resolve_external_refs,
-                        "request_id": self.request_id
-                    }
+                        "request_id": self.request_id,
+                    },
                 )
             except Exception as audit_error:
                 # Don't fail on audit logging failure
                 logger.warning(
                     "odps_audit_logging_failed_on_error",
                     error=str(audit_error),
-                    message="Failed to create audit log for ODPS creation failure (non-critical)"
+                    message="Failed to create audit log for ODPS creation failure (non-critical)",
                 )
 
             # If creation fails after contract was created, compensate
@@ -2643,7 +2919,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     "odps_creation_failed_after_contract_creation",
                     contract_id=state.contract_id,
                     error=str(e),
-                    message="ODPS creation failed after contract creation, triggering compensation"
+                    message="ODPS creation failed after contract creation, triggering compensation",
                 )
                 try:
                     # Compensate outside the transaction to ensure it happens
@@ -2653,14 +2929,14 @@ class ODPSService(BaseService, ODPSEventPublisher):
                         rollback_contract=True,
                         cleanup_resources=True,
                         restore_state=True,
-                        publish_compensation_events=True
+                        publish_compensation_events=True,
                     )
                 except Exception as comp_error:
                     logger.exception(
                         "compensation_failed_after_odps_creation_failure",
                         contract_id=state.contract_id,
                         error=str(comp_error),
-                        message="Compensation failed after ODPS creation failure"
+                        message="Compensation failed after ODPS creation failure",
                     )
             raise
 
@@ -2668,7 +2944,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
         self,
         odps_doc: Dict[str, Any],
         odps_version: Optional[str] = None,
-        tenant_id: Optional[str] = None
+        tenant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Normalize ODPS document to HubContract format.
@@ -2690,10 +2966,11 @@ class ODPSService(BaseService, ODPSEventPublisher):
         effective_tenant_id = tenant_id or self.tenant_id
 
         def _normalize():
-            from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
-            from hub.apps.contracts.odps_version_detection import detect_odps_version
-            from hub.apps.contracts.odps_errors import ODPSNormalizationError
             import structlog
+
+            from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+            from hub.apps.contracts.odps_errors import ODPSNormalizationError
+            from hub.apps.contracts.odps_version_detection import detect_odps_version
 
             logger = structlog.get_logger(__name__)
 
@@ -2705,7 +2982,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     logger.warning(
                         "odps_version_detection_failed",
                         error=str(e),
-                        message="Failed to detect ODPS version, using default 4.1"
+                        message="Failed to detect ODPS version, using default 4.1",
                     )
                     detected_version = "4.1"
             else:
@@ -2720,11 +2997,17 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 if not hub_contract:
                     # Create audit log for normalization failure
                     try:
+                        from django.contrib.auth import get_user_model
+
                         from hub.apps.audit.utils import create_audit_event
                         from hub.apps.tenants.models import Tenant
-                        from django.contrib.auth import get_user_model
+
                         User = get_user_model()
-                        tenant_obj = Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
+                        tenant_obj = (
+                            Tenant.objects.get(id=effective_tenant_id)
+                            if effective_tenant_id
+                            else None
+                        )
                         user_obj = User.objects.get(id=self.user_id) if self.user_id else None
                         if tenant_obj:
                             create_audit_event(
@@ -2739,14 +3022,14 @@ class ODPSService(BaseService, ODPSEventPublisher):
                                     "odps_version": detected_version,
                                     "errors": normalization_result.errors or [],
                                     "warnings": normalization_result.warnings or [],
-                                    "request_id": self.request_id
-                                }
+                                    "request_id": self.request_id,
+                                },
                             )
                     except Exception as audit_error:
                         logger.warning(
                             "odps_normalize_audit_logging_failed",
                             error=str(audit_error),
-                            message="Failed to create audit log for ODPS normalization failure (non-critical)"
+                            message="Failed to create audit log for ODPS normalization failure (non-critical)",
                         )
 
                     raise ValidationError(
@@ -2754,17 +3037,21 @@ class ODPSService(BaseService, ODPSEventPublisher):
                         code="NORMALIZATION_FAILED",
                         details={
                             "errors": normalization_result.errors or [],
-                            "warnings": normalization_result.warnings or []
-                        }
+                            "warnings": normalization_result.warnings or [],
+                        },
                     )
 
                 # Create audit log for successful normalization
                 try:
+                    from django.contrib.auth import get_user_model
+
                     from hub.apps.audit.utils import create_audit_event
                     from hub.apps.tenants.models import Tenant
-                    from django.contrib.auth import get_user_model
+
                     User = get_user_model()
-                    tenant_obj = Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
+                    tenant_obj = (
+                        Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
+                    )
                     user_obj = User.objects.get(id=self.user_id) if self.user_id else None
                     if tenant_obj:
                         create_audit_event(
@@ -2777,14 +3064,14 @@ class ODPSService(BaseService, ODPSEventPublisher):
                             details={
                                 "odps_version": detected_version,
                                 "warnings": normalization_result.warnings or [],
-                                "request_id": self.request_id
-                            }
+                                "request_id": self.request_id,
+                            },
                         )
                 except Exception as audit_error:
                     logger.warning(
                         "odps_normalize_audit_logging_failed",
                         error=str(audit_error),
-                        message="Failed to create audit log for ODPS normalization (non-critical)"
+                        message="Failed to create audit log for ODPS normalization (non-critical)",
                     )
 
                 return hub_contract
@@ -2792,11 +3079,15 @@ class ODPSService(BaseService, ODPSEventPublisher):
             except ODPSNormalizationError as e:
                 # Create audit log for normalization error
                 try:
+                    from django.contrib.auth import get_user_model
+
                     from hub.apps.audit.utils import create_audit_event
                     from hub.apps.tenants.models import Tenant
-                    from django.contrib.auth import get_user_model
+
                     User = get_user_model()
-                    tenant_obj = Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
+                    tenant_obj = (
+                        Tenant.objects.get(id=effective_tenant_id) if effective_tenant_id else None
+                    )
                     user_obj = User.objects.get(id=self.user_id) if self.user_id else None
                     if tenant_obj:
                         create_audit_event(
@@ -2808,32 +3099,30 @@ class ODPSService(BaseService, ODPSEventPublisher):
                             result="FAILURE",
                             details={
                                 "error": str(e),
-                                "error_code": getattr(e, 'error_code', 'NORMALIZATION_FAILED'),
-                                "field_path": getattr(e, 'field_path', None),
+                                "error_code": getattr(e, "error_code", "NORMALIZATION_FAILED"),
+                                "field_path": getattr(e, "field_path", None),
                                 "odps_version": detected_version,
-                                "request_id": self.request_id
-                            }
+                                "request_id": self.request_id,
+                            },
                         )
                 except Exception as audit_error:
                     logger.warning(
                         "odps_normalize_audit_logging_failed",
                         error=str(audit_error),
-                        message="Failed to create audit log for ODPS normalization error (non-critical)"
+                        message="Failed to create audit log for ODPS normalization error (non-critical)",
                     )
 
                 raise ValidationError(
                     message=f"ODPS normalization failed: {str(e)}",
-                    code=getattr(e, 'error_code', 'NORMALIZATION_FAILED'),
+                    code=getattr(e, "error_code", "NORMALIZATION_FAILED"),
                     details={
-                        "field_path": getattr(e, 'field_path', None),
-                        "context": getattr(e, 'context', {})
-                    }
+                        "field_path": getattr(e, "field_path", None),
+                        "context": getattr(e, "context", {}),
+                    },
                 ) from e
 
         return self.execute_with_metrics(
-            operation="normalize_odps",
-            tenant_id=effective_tenant_id,
-            func=_normalize
+            operation="normalize_odps", tenant_id=effective_tenant_id, func=_normalize
         )
 
     @transaction.atomic
@@ -2845,7 +3134,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
         odps_format: Optional[str] = None,
         resolve_external_refs: bool = True,
         tenant_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
     ) -> Contract:
         """
         Link ODPS contract to ODCS contract (bidirectional).
@@ -2873,7 +3162,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
         contract_service = ContractService(
             tenant_id=tenant_id or self.tenant_id,
             user_id=user_id or self.user_id,
-            request_id=self.request_id
+            request_id=self.request_id,
         )
         return contract_service.link_odps_to_odcs(
             odcs_contract_id=odcs_contract_id,
@@ -2882,7 +3171,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
             odps_format=odps_format,
             resolve_external_refs=resolve_external_refs,
             tenant_id=tenant_id or self.tenant_id,
-            user_id=user_id or self.user_id
+            user_id=user_id or self.user_id,
         )
 
     def export_odps(
@@ -2890,7 +3179,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
         contract_id: str,
         output_format: str = "json",
         odps_version: Optional[str] = None,
-        tenant_id: Optional[str] = None
+        tenant_id: Optional[str] = None,
     ) -> str:
         """
         Export ODPS contract to JSON or YAML format.
@@ -2914,65 +3203,89 @@ class ODPSService(BaseService, ODPSEventPublisher):
         effective_tenant_id = tenant_id or self.tenant_id
 
         if not effective_tenant_id:
-            raise ValidationError(
-                message="tenant_id is required",
-                code="TENANT_ID_REQUIRED"
-            )
+            raise ValidationError(message="tenant_id is required", code="TENANT_ID_REQUIRED")
 
         # Record export metrics
-        from hub.apps.observability.otel_metrics import odps_export_total, odps_export_duration_seconds, odps_export_size_bytes
         import time
+
+        from hub.apps.observability.otel_metrics import (
+            odps_export_duration_seconds,
+            odps_export_size_bytes,
+            odps_export_total,
+        )
 
         export_start_time = time.time()
         output_format_lower = output_format.lower()
 
-        if output_format_lower not in ['json', 'yaml']:
+        if output_format_lower not in ["json", "yaml"]:
             # Record failure metric
             odps_export_total.labels(
-                status="failure",
-                format=output_format_lower,
-                tenant_id=effective_tenant_id
+                status="failure", format=output_format_lower, tenant_id=effective_tenant_id
             ).inc()
             raise ValidationError(
                 message=f"Invalid output format: {output_format}. Must be 'json' or 'yaml'",
-                code="INVALID_FORMAT"
+                code="INVALID_FORMAT",
             )
 
         def _export():
-            from hub.apps.contracts.models import Contract, OriginalSpecType
-            from hub.apps.contracts.odps_generator import (
-                generate_odps_from_hubcontract,
-                format_odps_as_json,
-                format_odps_as_yaml
-            )
-            from hub.apps.contracts.odps_errors import ODPSExportError
-            from hub.apps.contracts.normalization import parse_contract
             import structlog
+
+            from hub.apps.contracts.models import Contract, OriginalSpecType
+            from hub.apps.contracts.normalization import parse_contract
+            from hub.apps.contracts.odps_errors import ODPSExportError
+            from hub.apps.contracts.odps_generator import (
+                format_odps_as_json,
+                format_odps_as_yaml,
+                generate_odps_from_hubcontract,
+            )
 
             logger = structlog.get_logger(__name__)
 
             # Get contract
             contract = self.get_resource_or_raise(
-                Contract,
-                contract_id,
-                tenant_id=effective_tenant_id
+                Contract, contract_id, tenant_id=effective_tenant_id
             )
 
             # Check if contract has hub_contract_json (required for export)
             if not contract.hub_contract_json:
                 # Record failure metric
                 odps_export_total.labels(
-                    status="failure",
-                    format=output_format_lower,
-                    tenant_id=effective_tenant_id
+                    status="failure", format=output_format_lower, tenant_id=effective_tenant_id
                 ).inc()
                 raise ValidationError(
                     message="Contract has no hub_contract_json. Cannot export as ODPS format.",
-                    code="MISSING_HUB_CONTRACT"
+                    code="MISSING_HUB_CONTRACT",
                 )
 
             # Determine ODPS version
             target_odps_version = odps_version or contract.original_spec_version or "4.1"
+
+            # Validate requested ODPS version is supported (reject e.g. "99.99")
+            from hub.apps.contracts.business_rules import SUPPORTED_ODPS_VERSIONS
+
+            if target_odps_version not in SUPPORTED_ODPS_VERSIONS:
+                major = target_odps_version.split(".")[0] if "." in target_odps_version else None
+                is_supported = bool(
+                    major
+                    and any(
+                        s == f"{major}.x" or s.startswith(f"{major}.")
+                        for s in SUPPORTED_ODPS_VERSIONS
+                    )
+                )
+                if not is_supported:
+                    odps_export_total.labels(
+                        status="failure",
+                        format=output_format_lower,
+                        tenant_id=effective_tenant_id,
+                    ).inc()
+                    raise ValidationError(
+                        message=(
+                            f"Unsupported ODPS version '{target_odps_version}'. "
+                            f"Supported: {', '.join(SUPPORTED_ODPS_VERSIONS)}"
+                        ),
+                        code="UNSUPPORTED_ODPS_VERSION",
+                        details={"supported_versions": list(SUPPORTED_ODPS_VERSIONS)},
+                    )
 
             # Get original ODCS contract if available (for embedding in ODPS)
             original_odcs_contract = None
@@ -2991,19 +3304,17 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     hub_contract=contract.hub_contract_json,
                     target_version=target_odps_version,
                     original_odcs_contract=original_odcs_contract,
-                    original_odcs_url=None
+                    original_odcs_url=None,
                 )
             except ODPSExportError as e:
                 # Record failure metric
                 odps_export_total.labels(
-                    status="failure",
-                    format=output_format_lower,
-                    tenant_id=effective_tenant_id
+                    status="failure", format=output_format_lower, tenant_id=effective_tenant_id
                 ).inc()
                 raise ValidationError(
                     message=f"Failed to generate ODPS document: {str(e)}",
-                    code=getattr(e, 'error_code', 'EXPORT_FAILED'),
-                    details=getattr(e, 'context', {})
+                    code=getattr(e, "error_code", "EXPORT_FAILED"),
+                    details=getattr(e, "context", {}),
                 ) from e
 
             # Format output
@@ -3015,19 +3326,17 @@ class ODPSService(BaseService, ODPSEventPublisher):
             except ODPSExportError as e:
                 # Record failure metric
                 odps_export_total.labels(
-                    status="failure",
-                    format=output_format_lower,
-                    tenant_id=effective_tenant_id
+                    status="failure", format=output_format_lower, tenant_id=effective_tenant_id
                 ).inc()
                 raise ValidationError(
                     message=f"Failed to format ODPS document: {str(e)}",
-                    code=getattr(e, 'error_code', 'EXPORT_FAILED'),
-                    details=getattr(e, 'context', {})
+                    code=getattr(e, "error_code", "EXPORT_FAILED"),
+                    details=getattr(e, "context", {}),
                 ) from e
 
             # Calculate metrics
             export_duration = time.time() - export_start_time
-            export_size_bytes = len(output.encode('utf-8'))
+            export_size_bytes = len(output.encode("utf-8"))
 
             # Categorize size
             if export_size_bytes < 10240:
@@ -3041,20 +3350,17 @@ class ODPSService(BaseService, ODPSEventPublisher):
 
             # Record success metrics
             odps_export_total.labels(
-                status="success",
-                format=output_format_lower,
-                tenant_id=effective_tenant_id
+                status="success", format=output_format_lower, tenant_id=effective_tenant_id
             ).inc()
 
             odps_export_duration_seconds.labels(
                 format=output_format_lower,
                 size_category=size_category,
-                tenant_id=effective_tenant_id
+                tenant_id=effective_tenant_id,
             ).observe(export_duration)
 
             odps_export_size_bytes.labels(
-                format=output_format_lower,
-                tenant_id=effective_tenant_id
+                format=output_format_lower, tenant_id=effective_tenant_id
             ).observe(export_size_bytes)
 
             logger.info(
@@ -3065,14 +3371,16 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 odps_version=target_odps_version,
                 size_bytes=export_size_bytes,
                 duration_seconds=export_duration,
-                message="ODPS export completed successfully"
+                message="ODPS export completed successfully",
             )
 
             # Create audit log for ODPS export
             try:
+                from django.contrib.auth import get_user_model
+
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
-                from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 user_obj = User.objects.get(id=self.user_id) if self.user_id else None
@@ -3089,8 +3397,8 @@ class ODPSService(BaseService, ODPSEventPublisher):
                         "odps_version": target_odps_version,
                         "size_bytes": export_size_bytes,
                         "duration_seconds": export_duration,
-                        "request_id": self.request_id
-                    }
+                        "request_id": self.request_id,
+                    },
                 )
             except Exception as e:
                 # Log but don't fail export if audit logging fails
@@ -3098,7 +3406,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                     "odps_export_audit_logging_failed",
                     contract_id=str(contract_id),
                     error=str(e),
-                    message="Failed to create audit log for ODPS export (non-critical)"
+                    message="Failed to create audit log for ODPS export (non-critical)",
                 )
 
             # Publish export event
@@ -3107,33 +3415,31 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 export_format=output_format_lower,
                 output_format=output_format_lower,
                 file_size=export_size_bytes,
-                duration_ms=int(export_duration * 1000)
+                duration_ms=int(export_duration * 1000),
             )
 
             return output
 
         try:
             return self.execute_with_metrics(
-                operation="export_odps",
-                tenant_id=effective_tenant_id,
-                func=_export
+                operation="export_odps", tenant_id=effective_tenant_id, func=_export
             )
         except Exception as e:
             # Record failure metric if not already recorded
             try:
                 odps_export_total.labels(
-                    status="failure",
-                    format=output_format_lower,
-                    tenant_id=effective_tenant_id
+                    status="failure", format=output_format_lower, tenant_id=effective_tenant_id
                 ).inc()
             except Exception:
                 pass  # Don't fail on metrics recording
 
             # Create audit log for ODPS export failure
             try:
+                from django.contrib.auth import get_user_model
+
                 from hub.apps.audit.utils import create_audit_event
                 from hub.apps.tenants.models import Tenant
-                from django.contrib.auth import get_user_model
+
                 User = get_user_model()
                 tenant_obj = Tenant.objects.get(id=effective_tenant_id)
                 user_obj = User.objects.get(id=self.user_id) if self.user_id else None
@@ -3148,19 +3454,20 @@ class ODPSService(BaseService, ODPSEventPublisher):
                         "contract_id": str(contract_id),
                         "output_format": output_format_lower,
                         "error": str(e),
-                        "error_code": getattr(e, 'code', type(e).__name__),
-                        "request_id": self.request_id
-                    }
+                        "error_code": getattr(e, "code", type(e).__name__),
+                        "request_id": self.request_id,
+                    },
                 )
             except Exception as audit_error:
                 # Don't fail on audit logging failure
                 import structlog
+
                 logger = structlog.get_logger(__name__)
                 logger.warning(
                     "odps_export_audit_logging_failed_on_error",
                     contract_id=str(contract_id),
                     error=str(audit_error),
-                    message="Failed to create audit log for ODPS export failure (non-critical)"
+                    message="Failed to create audit log for ODPS export failure (non-critical)",
                 )
 
             # Publish export failed event
@@ -3168,7 +3475,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
                 self.publish_odps_export_failed(
                     contract_id=str(contract_id),
                     export_format=output_format_lower,
-                    error_message=str(e)
+                    error_message=str(e),
                 )
             except Exception:
                 pass  # Don't fail on event publishing
@@ -3180,7 +3487,7 @@ class ODPSService(BaseService, ODPSEventPublisher):
         hub_contract: Dict[str, Any],
         target_version: str = "4.1",
         original_odcs_contract: Optional[Dict[str, Any]] = None,
-        original_odcs_url: Optional[str] = None
+        original_odcs_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate ODPS document from HubContract format.
@@ -3200,26 +3507,25 @@ class ODPSService(BaseService, ODPSEventPublisher):
         Raises:
             ValidationError: If generation fails
         """
+
         def _generate():
-            from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
             from hub.apps.contracts.odps_errors import ODPSExportError
+            from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
 
             try:
                 return generate_odps_from_hubcontract(
                     hub_contract=hub_contract,
                     target_version=target_version,
                     original_odcs_contract=original_odcs_contract,
-                    original_odcs_url=original_odcs_url
+                    original_odcs_url=original_odcs_url,
                 )
             except ODPSExportError as e:
                 raise ValidationError(
                     message=f"Failed to generate ODPS document: {str(e)}",
-                    code=getattr(e, 'error_code', 'EXPORT_FAILED'),
-                    details=getattr(e, 'context', {})
+                    code=getattr(e, "error_code", "EXPORT_FAILED"),
+                    details=getattr(e, "context", {}),
                 ) from e
 
         return self.execute_with_metrics(
-            operation="generate_odps_from_hubcontract",
-            tenant_id=self.tenant_id,
-            func=_generate
+            operation="generate_odps_from_hubcontract", tenant_id=self.tenant_id, func=_generate
         )

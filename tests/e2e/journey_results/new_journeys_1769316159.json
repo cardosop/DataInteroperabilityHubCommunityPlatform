@@ -1,0 +1,108 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.015935420989990234
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-007-03e1fc3e",
+      "journey_name": "Monitor Cost Tracking",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1769316159.8911588,
+      "end_time": 1769316159.9070942,
+      "duration": 0.015935420989990234,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Cost Dashboard Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316159.8950891,
+          "end_time": 1769316159.8950927,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Cost Breakdown Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316159.8982,
+          "end_time": 1769316159.8982031,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Cost Analysis by Asset Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316159.9012353,
+          "end_time": 1769316159.9012382,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Cost Recommendations Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316159.9041772,
+          "end_time": 1769316159.9041803,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Implement Optimizations",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316159.9041822,
+          "end_time": 1769316159.9041839,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Note: Cost Trends Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316159.9070897,
+          "end_time": 1769316159.9070928,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-25T04:42:39.907160"
+}

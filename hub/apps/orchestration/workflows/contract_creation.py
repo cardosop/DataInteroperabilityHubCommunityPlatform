@@ -12,7 +12,8 @@ from django.utils import timezone
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
-from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus
+from hub.apps.contracts.business_rules import ContractsBusinessRules
+from hub.apps.contracts.models import Contract, ContractStatus, NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import normalize_contract, validate_hubcontract_schema
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.semantic.utils import map_contract_to_semantic
@@ -196,6 +197,37 @@ class ContractCreationWorkflow:
             raise ValueError("tenant_id is required")
         if not user_id:
             raise ValueError("user_id is required")
+
+        # Validate contract creation using ContractsBusinessRules
+        contracts_rules = ContractsBusinessRules(
+            tenant_id=str(tenant_id) if tenant_id else None,
+            user_id=str(user_id) if user_id else None
+        )
+
+        # Prepare contract data for validation
+        contract_data = {
+            "tenant_id": str(tenant_id),
+            "original_raw": original_raw,
+            "original_format": original_format,
+            "original_spec_type": input_data.get("original_spec_type", "ODCS"),
+        }
+
+        # Validate contract creation
+        contract_validation_result = contracts_rules.validate_contract_creation(contract_data)
+        if not contract_validation_result.is_valid:
+            error_messages = contract_validation_result.errors
+            raise ValueError(
+                f"Contract input validation failed: {'; '.join(error_messages)}"
+            )
+
+        # Log validation warnings if any
+        if contract_validation_result.warnings:
+            logger.warning(
+                "Contract input validation warnings",
+                workflow_instance_id=str(instance.id),
+                tenant_id=tenant_id,
+                warnings=contract_validation_result.warnings,
+            )
 
         logger.info(
             "Contract input validated",
@@ -399,6 +431,64 @@ class ContractCreationWorkflow:
             final_norm_status = NormalizationStatus.NORMALIZATION_FAILED
             normalization_errors.extend(validation_errors)
             hub_contract = None
+
+        # Validate contract before creation using ContractsBusinessRules
+        contracts_rules = ContractsBusinessRules(
+            tenant_id=str(tenant_id) if tenant_id else None,
+            user_id=str(user_id) if user_id else None
+        )
+
+        # Prepare contract data for validation
+        contract_data = {
+            "tenant_id": str(tenant_id),
+            "original_raw": original_raw,
+            "original_format": original_format,
+            "original_spec_type": final_spec_type,
+            "original_spec_version": final_spec_version,
+            "asset_id": str(asset_id) if asset_id else None,
+        }
+
+        # Validate contract creation
+        contract_creation_result = contracts_rules.validate_contract_creation(contract_data)
+        if not contract_creation_result.is_valid:
+            error_messages = contract_creation_result.errors
+            raise ValueError(
+                f"Contract creation validation failed: {'; '.join(error_messages)}"
+            )
+
+        # Log validation warnings if any
+        if contract_creation_result.warnings:
+            logger.warning(
+                "Contract creation validation warnings",
+                workflow_instance_id=str(instance.id),
+                tenant_id=tenant_id,
+                warnings=contract_creation_result.warnings,
+            )
+
+        # Validate contract lifecycle (if contract already exists for this asset)
+        if asset:
+            existing_contracts = Contract.objects.filter(tenant=tenant, asset=asset)
+            if existing_contracts.exists():
+                # Validate contract update
+                latest_contract = existing_contracts.order_by('-version').first()
+                contract_update_result = contracts_rules.validate_contract_update(
+                    contract=latest_contract,
+                    contract_data=contract_data
+                )
+                if not contract_update_result.is_valid:
+                    error_messages = contract_update_result.errors
+                    raise ValueError(
+                        f"Contract update validation failed: {'; '.join(error_messages)}"
+                    )
+
+                # Log validation warnings if any
+                if contract_update_result.warnings:
+                    logger.warning(
+                        "Contract update validation warnings",
+                        workflow_instance_id=str(instance.id),
+                        tenant_id=tenant_id,
+                        warnings=contract_update_result.warnings,
+                    )
 
         # Create contract
         contract = Contract.objects.create(

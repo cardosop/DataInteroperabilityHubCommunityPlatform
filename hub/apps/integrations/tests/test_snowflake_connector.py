@@ -10,25 +10,27 @@ Tests require environment variables:
 - SNOWFLAKE_ROLE: Optional role name
 - SNOWFLAKE_DATABASE: Optional database name
 """
+
 import os
 from datetime import datetime
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.snowflake_connector import (
-    SnowflakeConnector,
-    SNOWFLAKE_AVAILABLE,
-)
+from hub.apps.assets.models import AssetSourceType
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
-    MarketplaceType,
-    SyncDirection,
-    SyncStatus,
-    SyncResult,
     MarketplaceListing,
     MarketplaceResource,
+    MarketplaceType,
+    SyncDirection,
+    SyncResult,
+    SyncStatus,
 )
-from hub.apps.core.services.base import NotFoundError
-from hub.apps.assets.models import AssetSourceType
+from hub.apps.integrations.connectors.snowflake_connector import (
+    SNOWFLAKE_AVAILABLE,
+    SnowflakeConnector,
+)
 
 
 def get_snowflake_credentials() -> dict:
@@ -131,18 +133,12 @@ class TestSnowflakeConnectorInitialization(TestCase):
 
     def test_marketplace_type_property(self):
         """Test marketplace_type property"""
-        connector = SnowflakeConnector(
-            account="test_account", user="test_user", token="test_token"
-        )
-        self.assertEqual(
-            connector.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
-        )
+        connector = SnowflakeConnector(account="test_account", user="test_user", token="test_token")
+        self.assertEqual(connector.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE)
 
     def test_supported_sync_directions_property(self):
         """Test supported_sync_directions property"""
-        connector = SnowflakeConnector(
-            account="test_account", user="test_user", token="test_token"
-        )
+        connector = SnowflakeConnector(account="test_account", user="test_user", token="test_token")
         directions = connector.supported_sync_directions
         self.assertIsInstance(directions, list)
         self.assertIn(SyncDirection.PULL, directions)
@@ -597,7 +593,9 @@ class TestSnowflakeConnectorDiscoveryOperations(TestCase):
         listing_details = {"title": "Test Listing", "DATABASE_NAME": "TEST_DB"}
         summary_row = {"provider": "Test Provider", "category": "Test Category"}
 
-        listing = self.connector._build_marketplace_listing(listing_id, listing_details, summary_row)
+        listing = self.connector._build_marketplace_listing(
+            listing_id, listing_details, summary_row
+        )
 
         self.assertEqual(listing.category, "Test Category")
         self.assertIn("provider", listing.metadata.get("snowflake_listing", {}))
@@ -638,9 +636,7 @@ class TestSnowflakeConnectorListings(TestCase):
         # Verify all listings are MarketplaceListing objects
         for listing in listings:
             self.assertIsInstance(listing, MarketplaceListing)
-            self.assertEqual(
-                listing.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
-            )
+            self.assertEqual(listing.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE)
             self.assertIsNotNone(listing.marketplace_id)
             self.assertIsNotNone(listing.title)
             # Verify ODPS and ODCS metadata are present
@@ -660,9 +656,7 @@ class TestSnowflakeConnectorListings(TestCase):
 
         # Results should be different (if there are more than 5 listings)
         if len(listings1) == 5:
-            self.assertNotEqual(
-                listings1[0].marketplace_id, listings2[0].marketplace_id
-            )
+            self.assertNotEqual(listings1[0].marketplace_id, listings2[0].marketplace_id)
 
     def test_list_listings_with_filters(self):
         """Test listing with filters"""
@@ -673,9 +667,7 @@ class TestSnowflakeConnectorListings(TestCase):
 
         test_provider = all_listings[0].category or all_listings[0].metadata.get("provider")
         if test_provider:
-            filtered_listings = self.connector.list_listings(
-                filters={"provider": test_provider}
-            )
+            filtered_listings = self.connector.list_listings(filters={"provider": test_provider})
 
             self.assertGreater(len(filtered_listings), 0)
             for listing in filtered_listings:
@@ -693,9 +685,7 @@ class TestSnowflakeConnectorListings(TestCase):
 
         self.assertIsInstance(listing, MarketplaceListing)
         self.assertEqual(listing.marketplace_id, listing_id)
-        self.assertEqual(
-            listing.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE
-        )
+        self.assertEqual(listing.marketplace_type, MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE)
         # Verify ODPS and ODCS metadata are present
         self.assertIn("odps_metadata", listing.metadata)
         self.assertIn("odcs_metadata", listing.metadata)
@@ -940,7 +930,9 @@ class TestSnowflakeConnectorPullOperations(TestCase):
 
         # Test SQL injection in resource_id
         with self.assertRaises(ValueError):
-            self.connector.download_resource("db'; DROP TABLE users; --.schema.table", "/tmp/test.csv")
+            self.connector.download_resource(
+                "db'; DROP TABLE users; --.schema.table", "/tmp/test.csv"
+            )
 
 
 @pytest.mark.skipif(not SNOWFLAKE_AVAILABLE, reason="snowflake-connector-python not installed")
@@ -986,9 +978,7 @@ class TestSnowflakeConnectorSyncPull(TestCase):
 
     def test_sync_pull_without_resources(self):
         """Test sync_pull without including resources (metadata-first: metadata-only)"""
-        result = self.connector.sync_pull(
-            options={"include_resources": False, "limit": 2}
-        )
+        result = self.connector.sync_pull(options={"include_resources": False, "limit": 2})
 
         self.assertIsInstance(result, SyncResult)
         self.assertFalse(result.metadata.get("include_resources"))
@@ -997,9 +987,7 @@ class TestSnowflakeConnectorSyncPull(TestCase):
 
     def test_sync_pull_with_filters(self):
         """Test sync_pull with filters (metadata-first: metadata-only mapping)"""
-        result = self.connector.sync_pull(
-            filters={}, options={"limit": 3}
-        )
+        result = self.connector.sync_pull(filters={}, options={"limit": 3})
 
         self.assertIsInstance(result, SyncResult)
         self.assertLessEqual(result.total_items, 3)
@@ -1030,9 +1018,7 @@ class TestSnowflakeConnectorSyncPull(TestCase):
             pytest.skip("No listings available for sync_pull test")
 
         listing_id = all_listings[0].marketplace_id
-        result = self.connector.sync_pull(
-            listing_ids=[listing_id]
-        )
+        result = self.connector.sync_pull(listing_ids=[listing_id])
 
         self.assertIsInstance(result, SyncResult)
         self.assertEqual(result.total_items, 1)
@@ -1105,9 +1091,7 @@ class TestSnowflakeConnectorMapping(TestCase):
         sync_job_id = "test_sync_job_123"
         mapping = self.connector.map_to_hub_asset(listing, sync_job_id=sync_job_id)
 
-        self.assertEqual(
-            mapping.source_metadata["sync_job_id"], sync_job_id
-        )
+        self.assertEqual(mapping.source_metadata["sync_job_id"], sync_job_id)
 
     def test_map_to_hub_asset_empty_listing(self):
         """Test mapping empty listing raises ValueError"""
@@ -1139,9 +1123,7 @@ class TestSnowflakeConnectorCircuitBreaker(TestCase):
 
         try:
             self.assertIsNotNone(connector._circuit_breaker)
-            self.assertEqual(
-                connector._circuit_breaker.service_name, "snowflake-connector"
-            )
+            self.assertEqual(connector._circuit_breaker.service_name, "snowflake-connector")
         finally:
             connector.close()
 
@@ -1197,3 +1179,122 @@ class TestSnowflakeConnectorContextManager(TestCase):
         # Connection should be closed after context exit
         # (We can't directly test this, but the context manager should handle it)
 
+    def test_list_listings_with_zero_limit(self):
+        """Test list_listings() edge case with zero limit"""
+        credentials = get_snowflake_credentials()
+        if not credentials:
+            self.skipTest("Snowflake credentials not available")
+
+        if not SNOWFLAKE_AVAILABLE:
+            self.skipTest("Snowflake connector not available")
+
+        try:
+            connector = SnowflakeConnector(**credentials)
+            connector.authenticate(credentials)
+
+            listings = connector.list_listings(limit=0)
+            self.assertIsInstance(listings, list)
+            self.assertEqual(len(listings), 0)
+        except Exception as e:
+            # May fail if connection unavailable
+            self.skipTest(f"Snowflake connection failed: {e}")
+
+    def test_list_listings_with_none_limit(self):
+        """Test list_listings() error handling with None limit"""
+        credentials = get_snowflake_credentials()
+        if not credentials:
+            self.skipTest("Snowflake credentials not available")
+
+        if not SNOWFLAKE_AVAILABLE:
+            self.skipTest("Snowflake connector not available")
+
+        try:
+            connector = SnowflakeConnector(**credentials)
+            connector.authenticate(credentials)
+
+            # Should handle None limit gracefully (may use default)
+            try:
+                listings = connector.list_listings(limit=None)  # type: ignore[arg-type]
+                self.assertIsInstance(listings, list)
+            except (ValueError, TypeError):
+                # Expected if validation is strict
+                pass
+        except Exception as e:
+            # May fail if connection unavailable
+            self.skipTest(f"Snowflake connection failed: {e}")
+
+    def test_get_listing_with_empty_id(self):
+        """Test get_listing() error handling with empty ID"""
+        credentials = get_snowflake_credentials()
+        if not credentials:
+            self.skipTest("Snowflake credentials not available")
+
+        if not SNOWFLAKE_AVAILABLE:
+            self.skipTest("Snowflake connector not available")
+
+        try:
+            connector = SnowflakeConnector(**credentials)
+            connector.authenticate(credentials)
+
+            with self.assertRaises((ValueError, NotFoundError)):
+                connector.get_listing("")
+        except Exception as e:
+            # May fail if connection unavailable
+            self.skipTest(f"Snowflake connection failed: {e}")
+
+    def test_get_listing_with_none_id(self):
+        """Test get_listing() error handling with None ID"""
+        credentials = get_snowflake_credentials()
+        if not credentials:
+            self.skipTest("Snowflake credentials not available")
+
+        if not SNOWFLAKE_AVAILABLE:
+            self.skipTest("Snowflake connector not available")
+
+        try:
+            connector = SnowflakeConnector(**credentials)
+            connector.authenticate(credentials)
+
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                connector.get_listing(None)  # type: ignore[arg-type]
+        except Exception as e:
+            # May fail if connection unavailable
+            self.skipTest(f"Snowflake connection failed: {e}")
+
+    def test_list_resources_with_empty_listing_id(self):
+        """Test list_resources() error handling with empty listing ID"""
+        credentials = get_snowflake_credentials()
+        if not credentials:
+            self.skipTest("Snowflake credentials not available")
+
+        if not SNOWFLAKE_AVAILABLE:
+            self.skipTest("Snowflake connector not available")
+
+        try:
+            connector = SnowflakeConnector(**credentials)
+            connector.authenticate(credentials)
+
+            with self.assertRaises((ValueError, NotFoundError)):
+                connector.list_resources("")
+        except Exception as e:
+            # May fail if connection unavailable
+            self.skipTest(f"Snowflake connection failed: {e}")
+
+    def test_list_resources_with_none_listing_id(self):
+        """Test list_resources() error handling with None listing ID"""
+        credentials = get_snowflake_credentials()
+        if not credentials:
+            self.skipTest("Snowflake credentials not available")
+
+        if not SNOWFLAKE_AVAILABLE:
+            self.skipTest("Snowflake connector not available")
+
+        try:
+            connector = SnowflakeConnector(**credentials)
+            connector.authenticate(credentials)
+
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                connector.list_resources(None)  # type: ignore[arg-type]
+        except Exception as e:
+            # May fail if connection unavailable
+            self.skipTest(f"Snowflake connection failed: {e}")

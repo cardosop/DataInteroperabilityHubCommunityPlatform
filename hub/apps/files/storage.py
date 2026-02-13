@@ -104,10 +104,23 @@ class S3StorageClient:
 
         self.use_ssl = getattr(settings, 'AWS_S3_USE_SSL', True)
 
-        # Create S3 client
+        # Create S3 client. In test, use timeouts that allow slow MinIO (e.g. Docker/CI)
+        # without hanging indefinitely; in prod use standard values.
+        import os as _os
+        _is_test = (
+            'pytest' in sys.modules or
+            'unittest' in sys.modules or
+            _os.getenv('PYTEST_CURRENT_TEST') or
+            'test' in sys.argv or
+            getattr(settings, 'TESTING', False)
+        )
+        _connect_timeout = 10 if _is_test else 60
+        _read_timeout = 30 if _is_test else 60
         s3_config = Config(
             signature_version='s3v4',
-            retries={'max_attempts': 3, 'mode': 'standard'}
+            retries={'max_attempts': 2 if _is_test else 3, 'mode': 'standard'},
+            connect_timeout=_connect_timeout,
+            read_timeout=_read_timeout,
         )
 
         self.client = boto3.client(
@@ -152,11 +165,16 @@ class S3StorageClient:
                 )
 
                 if is_in_docker:
-                    # Try alternative endpoints in order: service name first, then localhost
+                    # Try alternative endpoints in order: test service name, then dev, then localhost
                     alternative_endpoints = []
                     if is_test_env:
-                        # In test environment, try service name, then test port, then dev port
-                        alternative_endpoints = ['http://minio:9000', 'http://localhost:9010', 'http://localhost:9000']
+                        # In test environment (docker-compose.test: minio-test), try both names and ports
+                        alternative_endpoints = [
+                            'http://minio-test:9000',
+                            'http://minio:9000',
+                            'http://localhost:9010',
+                            'http://localhost:9000',
+                        ]
                     else:
                         # In dev environment, try service name first, then localhost
                         alternative_endpoints = ['http://minio:9000', 'http://localhost:9000']
@@ -234,7 +252,9 @@ class S3StorageClient:
         key: str,
         content_type: str,
         expires_in: int = 3600,
-        max_size: Optional[int] = None
+        max_size: Optional[int] = None,
+        use_put: bool = True,
+        for_browser: bool = False
     ) -> Dict[str, Any]:
         """
         Generate pre-signed URL for file upload.
@@ -244,30 +264,74 @@ class S3StorageClient:
             content_type: MIME type of the file
             expires_in: URL expiration time in seconds (default: 1 hour)
             max_size: Maximum file size in bytes (optional, for validation)
+            use_put: If True, generate PUT URL (simpler, for direct uploads). If False, generate POST URL with fields.
+            for_browser: If True, use localhost endpoint (browser can't resolve Docker service names)
 
         Returns:
-            Dictionary with upload_url and fields for POST request
+            Dictionary with upload_url and fields (empty dict for PUT, populated for POST)
         """
         try:
-            conditions = [
-                {'Content-Type': content_type}
-            ]
-            if max_size:
-                conditions.append(['content-length-range', 1, max_size])
+            # For browser uploads, create a temporary client with localhost endpoint
+            # This ensures the presigned URL is signed with the correct host
+            client_to_use = self.client
+            if for_browser and self.endpoint_url and 'minio:9000' in self.endpoint_url:
+                # Create a temporary client with localhost endpoint for signing
+                import boto3
+                from botocore.config import Config
+                browser_endpoint = self.endpoint_url.replace('minio:9000', 'localhost:9000')
+                s3_config = Config(
+                    signature_version='s3v4',
+                    s3={'addressing_style': 'path'},
+                    retries={'max_attempts': 3, 'mode': 'standard'}
+                )
+                browser_client = boto3.client(
+                    's3',
+                    endpoint_url=browser_endpoint,
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                    use_ssl=self.use_ssl,
+                    verify=getattr(settings, 'AWS_S3_VERIFY', True),
+                    config=s3_config
+                )
+                client_to_use = browser_client
+            
+            if use_put:
+                # Generate presigned PUT URL (simpler, for direct browser uploads)
+                upload_url = client_to_use.generate_presigned_url(
+                    'put_object',
+                    Params={
+                        'Bucket': self.bucket_name,
+                        'Key': key,
+                        'ContentType': content_type,
+                    },
+                    ExpiresIn=expires_in
+                )
+                return {
+                    'upload_url': upload_url,
+                    'fields': {},  # Not used for PUT
+                    'key': key
+                }
+            else:
+                # Generate presigned POST URL (with fields, for form-based uploads)
+                conditions = [
+                    {'Content-Type': content_type}
+                ]
+                if max_size:
+                    conditions.append(['content-length-range', 1, max_size])
 
-            presigned_post = self.client.generate_presigned_post(
-                Bucket=self.bucket_name,
-                Key=key,
-                Fields={'Content-Type': content_type},
-                Conditions=conditions,
-                ExpiresIn=expires_in
-            )
+                presigned_post = client_to_use.generate_presigned_post(
+                    Bucket=self.bucket_name,
+                    Key=key,
+                    Fields={'Content-Type': content_type},
+                    Conditions=conditions,
+                    ExpiresIn=expires_in
+                )
 
-            return {
-                'upload_url': presigned_post['url'],
-                'fields': presigned_post['fields'],
-                'key': key
-            }
+                return {
+                    'upload_url': presigned_post['url'],
+                    'fields': presigned_post['fields'],
+                    'key': key
+                }
         except ClientError as e:
             raise Exception(f"Failed to generate presigned upload URL: {str(e)}")
 
@@ -492,6 +556,42 @@ class S3StorageClient:
             return response['Body'].read()
         except ClientError as e:
             raise Exception(f"Failed to download file: {str(e)}")
+
+    def download_file(self, key: str) -> bytes:
+        """
+        Download file content from S3 (alias for get_file_content for API consistency).
+
+        Args:
+            key: S3 object key (storage path)
+
+        Returns:
+            File content as bytes
+        """
+        return self.get_file_content(key)
+
+    def upload_file(
+        self,
+        file_path: str,
+        file_content: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> None:
+        """
+        Upload file content to S3 at the given key (storage path).
+
+        Args:
+            file_path: S3 object key (storage path)
+            file_content: Raw bytes to upload
+            content_type: MIME type for the object
+        """
+        if not self._bucket_checked:
+            self._ensure_bucket_exists()
+            self._bucket_checked = True
+        self.client.put_object(
+            Bucket=self.bucket_name,
+            Key=file_path,
+            Body=file_content,
+            ContentType=content_type,
+        )
 
     def save_file(
         self,

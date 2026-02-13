@@ -6,8 +6,16 @@ from .models import Dataset, SchemaVersion
 
 
 class DatasetSerializer(serializers.ModelSerializer):
-    """Serializer for Dataset model"""
-    
+    """Serializer for Dataset model. UUID FKs are serialized as strings for JSON consistency."""
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Ensure UUID FKs are strings in API response (JSON has no native UUID type)
+        for key in ("id", "tenant", "asset", "file", "parent_version", "created_by"):
+            if key in data and data[key] is not None:
+                data[key] = str(data[key])
+        return data
+
     class Meta:
         model = Dataset
         fields = [

@@ -1096,10 +1096,387 @@ curl "https://api.example.com/api/v1/contracts/{id}/" | jq '.hub_contract_json'
    curl "https://api.example.com/api/v1/contracts/{id}/export/?format=odps"
    ```
 
+## ODPS $ref Resolution Guide
+
+ODPS documents support JSON Schema `$ref` references for reusable components, external schemas, and modular contract definitions. The Data Interoperability Hub provides comprehensive support for resolving these references.
+
+### Reference Types
+
+The Hub supports three types of `$ref` references:
+
+#### 1. Internal References (`#/...`)
+
+Internal references point to definitions within the same ODPS document.
+
+**Example:**
+```json
+{
+  "definitions": {
+    "schema": {
+      "fields": [
+        {"name": "id", "type": "string"},
+        {"name": "name", "type": "string"}
+      ]
+    }
+  },
+  "product": {
+    "contract": {
+      "$ref": "#/definitions/schema"
+    }
+  }
+}
+```
+
+**Use Cases:**
+- Reusing schema definitions
+- Sharing common structures
+- Modular document organization
+
+**Resolution:**
+- Resolved immediately during parsing
+- No network access required
+- No retry logic needed
+
+#### 2. Local References (`./...` or `../...`)
+
+Local references point to files in the local filesystem or allowed directories.
+
+**Example:**
+```json
+{
+  "product": {
+    "contract": {
+      "$ref": "./contracts/schema.json"
+    }
+  }
+}
+```
+
+**Configuration:**
+Local references are restricted to allowed directories defined in `hub/apps/contracts/config/odps_refs.yaml`:
+
+```yaml
+allowed_base_dirs:
+  - "./contracts/refs"
+  - "./odps-refs"
+```
+
+**Security Features:**
+- Path traversal prevention
+- Directory allowlist enforcement
+- File size limits
+
+**Use Cases:**
+- Sharing schemas across multiple ODPS documents
+- Organizing contracts in a repository
+- Versioning contract components
+
+#### 3. External References (`https://...`)
+
+External references point to URLs accessible over HTTP/HTTPS.
+
+**Example:**
+```json
+{
+  "product": {
+    "contract": {
+      "$ref": "https://example.com/schemas/data-contract.json"
+    }
+  }
+}
+```
+
+**Security Configuration:**
+External references are controlled by URL allowlist/denylist in `odps_refs.yaml`:
+
+```yaml
+url_allowlist: []  # Empty = allow all (unless in denylist)
+url_denylist: []   # Denied URL patterns
+```
+
+**Retry Logic:**
+- 3 retries with exponential backoff (1s, 2s, 4s)
+- Timeout per reference: 5 seconds (configurable)
+- Total timeout: 30 seconds (configurable)
+
+**Caching:**
+- External references cached in Redis (TTL: 1 hour)
+- Reduces redundant network requests
+- Improves performance for frequently referenced schemas
+
+**Use Cases:**
+- Referencing public schemas
+- Sharing contracts across organizations
+- Centralized schema management
+
+### Reference Resolution Configuration
+
+Reference resolution can be controlled via:
+
+**REST API:**
+```json
+{
+  "original_raw": "...",
+  "original_format": "JSON",
+  "resolve_external_refs": true  // Enable/disable external ref resolution
+}
+```
+
+**CLI:**
+```bash
+datahub contracts create-odps \
+  --file product.odps.json \
+  --resolve-external-refs  # Enable external ref resolution
+```
+
+**Python SDK:**
+```python
+result = await client.contracts.create_odps(
+    original_raw=odps_content,
+    resolve_external_refs=True  # Enable external ref resolution
+)
+```
+
+### Reference Resolution Errors
+
+**Common Errors:**
+
+1. **Internal Reference Not Found**
+   - Error: `REF_RESOLUTION_FAILED`
+   - Cause: `$ref` path doesn't exist in document
+   - Solution: Verify reference path matches definitions structure
+
+2. **Local Reference Outside Allowed Directory**
+   - Error: `REF_RESOLUTION_FAILED`
+   - Cause: File path outside allowed directories
+   - Solution: Move file to allowed directory or update configuration
+
+3. **External Reference Timeout**
+   - Error: `REF_RESOLUTION_FAILED`
+   - Cause: Network timeout after retries
+   - Solution: Check URL accessibility, network connectivity, or use inline spec
+
+4. **External Reference Denied**
+   - Error: `REF_RESOLUTION_FAILED`
+   - Cause: URL matches denylist pattern
+   - Solution: Update `odps_refs.yaml` configuration or use allowed URL
+
+### Best Practices for $ref Usage
+
+1. **Prefer Internal References** for reusable components within a document
+2. **Use Local References** for shared schemas within a repository
+3. **Limit External References** to trusted, stable URLs
+4. **Test Reference Resolution** before production deployment
+5. **Monitor Reference Resolution** performance and failures
+
+## ODPS Semantic Layer Integration
+
+ODPS contracts are automatically mapped to RDF (Resource Description Framework) for semantic interoperability, enabling integration with knowledge graphs, SPARQL queries, and semantic search.
+
+### Semantic Mapping Overview
+
+When an ODPS contract is created or updated, it is automatically mapped to RDF triples and stored in the semantic triple store (Apache Jena Fuseki).
+
+**Mapping Process:**
+1. **ODPS Contract Created**: Product creation workflow triggers semantic mapping
+2. **RDF Mapping**: ODPS product structure mapped to RDF triples
+3. **Triple Store**: RDF triples stored in Fuseki
+4. **Semantic Resource**: SemanticResource record created/updated
+
+### RDF Mapping Details
+
+#### Product URI Generation
+
+Each ODPS product receives a unique URI:
+```
+https://datahub.example.com/product/{product-uuid}
+```
+
+#### Multilingual Support
+
+ODPS `product.details` with multiple languages are mapped to RDF literals with language tags:
+
+```turtle
+<https://datahub.example.com/product/{uuid}>
+    dct:title "Customer Analytics Dataset"@en ;
+    dct:title "Dataset d'Analyse Client"@fr ;
+    dct:description "Comprehensive customer analytics"@en .
+```
+
+#### Marketplace Components
+
+Pricing plans, access methods, and payment gateways are mapped to RDF:
+
+```turtle
+<https://datahub.example.com/product/{uuid}>
+    hub:hasPricingPlan <https://datahub.example.com/pricing-plan/{plan-id}> ;
+    hub:hasAccessMethod <https://datahub.example.com/access-method/{method-id}> .
+```
+
+#### Product Strategy (ODPS 4.1+)
+
+Product strategy components (objectives, strategic alignment, KPIs) are mapped:
+
+```turtle
+<https://datahub.example.com/product/{uuid}>
+    hub:hasProductObjective <https://datahub.example.com/objective/{obj-id}> ;
+    hub:strategicAlignment "Revenue Growth" ;
+    hub:hasKPI <https://datahub.example.com/kpi/{kpi-id}> .
+```
+
+#### ODCS Contract Linking
+
+Linked ODCS contracts are connected via RDF:
+
+```turtle
+<https://datahub.example.com/product/{uuid}>
+    hub:hasContract <https://datahub.example.com/contract/{odcs-uuid}> .
+```
+
+### Semantic Mapping API
+
+#### REST API
+
+**Map ODPS Contract:**
+```bash
+POST /api/v1/semantic/map/odps
+{
+  "product": {...},
+  "product_uuid": "odps-contract-uuid",
+  "odcs_contract_uuid": "odcs-contract-uuid"  // Optional
+}
+```
+
+**Query Semantic Resources:**
+```bash
+GET /api/v1/semantic/resources/?contract_id={odps-contract-uuid}
+```
+
+#### Python SDK
+
+```python
+# Semantic mapping happens automatically during ODPS creation
+result = await client.contracts.create_odps(...)
+
+# Query semantic resource
+semantic_resource = await client.semantic.get_resource(
+    contract_id=result["odps_contract"]["id"]
+)
+```
+
+### SPARQL Queries
+
+Once mapped to RDF, ODPS products can be queried using SPARQL:
+
+**Example: Find all products with pricing plans:**
+```sparql
+PREFIX hub: <https://datahub.example.com/ontology#>
+PREFIX dct: <http://purl.org/dc/terms/>
+
+SELECT ?product ?title ?price
+WHERE {
+    ?product a hub:DataProduct .
+    ?product dct:title ?title .
+    ?product hub:hasPricingPlan ?plan .
+    ?plan hub:price ?price .
+}
+```
+
+**Example: Find products by language:**
+```sparql
+PREFIX dct: <http://purl.org/dc/terms/>
+
+SELECT ?product ?title
+WHERE {
+    ?product dct:title ?title .
+    FILTER (LANG(?title) = "en")
+}
+```
+
+### Semantic Mapping Configuration
+
+Semantic mapping can be controlled via workflow parameters:
+
+**Disable Semantic Mapping:**
+```python
+result = ProductCreationWorkflow.execute(
+    original_raw=odps_content,
+    skip_semantic_mapping=True  # Skip semantic mapping step
+)
+```
+
+**Manual Semantic Mapping:**
+```python
+from hub.apps.semantic.utils import map_odps_to_semantic
+
+semantic_resource = map_odps_to_semantic(
+    contract=odps_contract,
+    tenant=tenant,
+    use_cache=True
+)
+```
+
+### Semantic Mapping Metrics
+
+The Hub tracks semantic mapping metrics:
+
+- `odps_semantic_mapping_total`: Total mapping operations
+- `odps_semantic_mapping_duration_seconds`: Mapping duration
+- `odps_semantic_mapping_success_rate`: Success rate
+
+**Access Metrics:**
+```bash
+# Prometheus metrics endpoint
+curl http://localhost:8000/metrics | grep odps_semantic
+```
+
+### Troubleshooting Semantic Mapping
+
+**Issue: Semantic mapping not triggered**
+
+**Diagnosis:**
+```bash
+# Check workflow instance
+curl "https://api.example.com/api/v1/workflows/{workflow-instance-id}/"
+```
+
+**Solutions:**
+1. Verify workflow completed successfully
+2. Check semantic service is running
+3. Review workflow logs for errors
+
+**Issue: RDF mapping incomplete**
+
+**Diagnosis:**
+```bash
+# Check semantic resource
+curl "https://api.example.com/api/v1/semantic/resources/?contract_id={uuid}"
+```
+
+**Solutions:**
+1. Verify ODPS contract structure is valid
+2. Check semantic service logs
+3. Retry semantic mapping manually
+
+**Issue: SPARQL queries return no results**
+
+**Solutions:**
+1. Verify semantic mapping completed
+2. Check Fuseki triple store is accessible
+3. Verify SPARQL query syntax
+4. Check product URI format matches mapping
+
 ## Additional Resources
 
 - [ODPS CLI Usage Guide](../cli/docs/ODPS_USAGE.md) - Complete CLI documentation
 - [ODPS Python SDK Usage Guide](../sdk/python/docs/ODPS_USAGE.md) - Complete SDK documentation
+- [ODPS Creation Flows Guide](ODPS_CREATION_FLOWS.md) - Detailed creation flow documentation
+- [ODPS Migration Guide](ODPS_MIGRATION_GUIDE.md) - Comprehensive migration guide
+- [ODPS Examples](ODPS_EXAMPLES.md) - Complete examples for all scenarios
+- [Marketplace Integration Framework](MARKETPLACE_INTEGRATION_FRAMEWORK.md) - Marketplace integration architecture and framework
+- [Marketplace Integration User Guide](MARKETPLACE_INTEGRATION_USER_GUIDE.md) - User guide for marketplace integrations
+- [Marketplace Use Cases](MARKETPLACE_USE_CASES.md) - Marketplace use cases and scenarios
+- [Marketplace User Journeys](MARKETPLACE_USER_JOURNEYS.md) - Marketplace user journey documentation
 - [API Reference](API_REFERENCE.md) - Complete API documentation
 - [GraphQL API](GRAPHQL_API.md) - GraphQL API documentation
 - [Webhook API](WEBHOOK_API.md) - Webhook subscriptions and ODPS event delivery

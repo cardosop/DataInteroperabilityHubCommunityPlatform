@@ -12,22 +12,24 @@ All tests follow engineering best practices:
 - Test root causes, not symptoms
 - Comprehensive test coverage
 """
+
+import uuid
+from datetime import timedelta
+
 from django.test import TestCase
 from django.utils import timezone
-from datetime import timedelta
-import uuid
 
-from hub.apps.webhooks.models import (
-    Webhook,
-    WebhookDelivery,
-    WebhookStatus,
-    DeliveryStatus,
-    WebhookEventType,
-)
-from hub.apps.webhooks.delivery_validators import WebhookDeliveryValidator
-from hub.apps.webhooks.service import WebhookDeliveryService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
+from hub.apps.webhooks.delivery_validators import WebhookDeliveryValidator
+from hub.apps.webhooks.models import (
+    DeliveryStatus,
+    Webhook,
+    WebhookDelivery,
+    WebhookEventType,
+    WebhookStatus,
+)
+from hub.apps.webhooks.service import WebhookDeliveryService
 
 
 class WebhookDeliveryRetryValidationTest(TestCase):
@@ -35,14 +37,8 @@ class WebhookDeliveryRetryValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -56,7 +52,9 @@ class WebhookDeliveryRetryValidationTest(TestCase):
         )
 
     def test_validate_retry_valid_delivery(self):
-        """Test retry validation for valid delivery"""
+        """TDD: Given a failed delivery with attempt_number < max_retries and next_retry_at set,
+        When validate_delivery_retry is called, Then result is valid and details confirm retry is allowed.
+        """
         delivery = WebhookDelivery.objects.create(
             webhook=self.webhook,
             event_type=WebhookEventType.ODPS_CREATED,
@@ -71,16 +69,18 @@ class WebhookDeliveryRetryValidationTest(TestCase):
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
         self.assertEqual(len(result.errors), 0)
-        self.assertEqual(result.details['attempt_number'], 2)
-        self.assertEqual(result.details['webhook_max_retries'], 5)
-        self.assertTrue(result.details['max_retries_valid'])
-        self.assertTrue(result.details['attempt_number_valid'])
-        self.assertTrue(result.details['retry_intervals_valid'])
-        self.assertTrue(result.details['attempt_within_limits'])
-        self.assertTrue(result.details['retry_scheduled'])
+        self.assertEqual(result.details["attempt_number"], 2)
+        self.assertEqual(result.details["webhook_max_retries"], 5)
+        self.assertTrue(result.details["max_retries_valid"])
+        self.assertTrue(result.details["attempt_number_valid"])
+        self.assertTrue(result.details["retry_intervals_valid"])
+        self.assertTrue(result.details["attempt_within_limits"])
+        self.assertTrue(result.details["retry_scheduled"])
 
     def test_validate_retry_max_retries_exceeded(self):
-        """Test retry validation when max retries exceeded"""
+        """TDD: Given a delivery in DEAD_LETTER with attempt_number equal to max_retries,
+        When validate_delivery_retry is called, Then result is valid and details indicate should_be_dead_letter.
+        """
         delivery = WebhookDelivery.objects.create(
             webhook=self.webhook,
             event_type=WebhookEventType.ODPS_CREATED,
@@ -94,14 +94,15 @@ class WebhookDeliveryRetryValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_delivery_retry(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['attempt_number'], 5)
-        self.assertEqual(result.details['webhook_max_retries'], 5)
-        self.assertTrue(result.details['attempt_within_limits'])
-        self.assertTrue(result.details['should_be_dead_letter'])
-        self.assertTrue(result.details['next_retry_should_be_none'])
+        self.assertEqual(result.details["attempt_number"], 5)
+        self.assertEqual(result.details["webhook_max_retries"], 5)
+        self.assertTrue(result.details["attempt_within_limits"])
+        self.assertTrue(result.details["should_be_dead_letter"])
+        self.assertTrue(result.details["next_retry_should_be_none"])
 
     def test_validate_retry_negative_attempt_number(self):
-        """Test retry validation with negative attempt_number"""
+        """TDD: Given a delivery with negative attempt_number, When validate_delivery_retry is called,
+        Then result is invalid and errors mention non-negative."""
         delivery = WebhookDelivery.objects.create(
             webhook=self.webhook,
             event_type=WebhookEventType.ODPS_CREATED,
@@ -198,7 +199,7 @@ class WebhookDeliveryRetryValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_delivery_retry(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertTrue(result.details.get('retry_interval_matches', True))
+        self.assertTrue(result.details.get("retry_interval_matches", True))
 
 
 class WebhookDeliveryTimeoutValidationTest(TestCase):
@@ -206,14 +207,8 @@ class WebhookDeliveryTimeoutValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -242,8 +237,10 @@ class WebhookDeliveryTimeoutValidationTest(TestCase):
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
         self.assertEqual(len(result.errors), 0)
         # timeout_seconds is stored as string in details, compare as string
-        self.assertEqual(result.details['timeout_seconds'], str(WebhookDeliveryService.REQUEST_TIMEOUT))
-        self.assertEqual(result.details['timeout_valid'], 'true')
+        self.assertEqual(
+            result.details["timeout_seconds"], str(WebhookDeliveryService.REQUEST_TIMEOUT)
+        )
+        self.assertEqual(result.details["timeout_valid"], "true")
 
     def test_validate_timeout_with_timeout_error(self):
         """Test timeout validation with timeout error message"""
@@ -261,9 +258,9 @@ class WebhookDeliveryTimeoutValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_delivery_timeout(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertTrue(result.details['has_timeout_error'])
-        self.assertIn("timeout", result.details['timeout_error_message'].lower())
-        self.assertTrue(result.details['timeout_retry_scheduled'])
+        self.assertTrue(result.details["has_timeout_error"])
+        self.assertIn("timeout", result.details["timeout_error_message"].lower())
+        self.assertTrue(result.details["timeout_retry_scheduled"])
 
     def test_validate_timeout_delivery_duration_exceeds_timeout(self):
         """Test timeout validation when delivery duration exceeds timeout"""
@@ -285,7 +282,7 @@ class WebhookDeliveryTimeoutValidationTest(TestCase):
         # Should have warnings about duration exceeding timeout
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
         self.assertGreaterEqual(len(result.warnings), 0)
-        if result.details.get('duration_within_timeout') is False:
+        if result.details.get("duration_within_timeout") is False:
             self.assertIn("duration", result.warnings[0].lower())
 
     def test_validate_timeout_timeout_error_without_retry(self):
@@ -305,7 +302,7 @@ class WebhookDeliveryTimeoutValidationTest(TestCase):
 
         # Should have warning about missing retry
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        if result.details.get('timeout_retry_scheduled') is False:
+        if result.details.get("timeout_retry_scheduled") is False:
             self.assertGreaterEqual(len(result.warnings), 0)
 
 
@@ -314,14 +311,8 @@ class WebhookDeliveryStatusValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -348,8 +339,8 @@ class WebhookDeliveryStatusValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_delivery_status(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['current_status'], DeliveryStatus.PENDING)
-        self.assertTrue(result.details['status_valid'])
+        self.assertEqual(result.details["current_status"], DeliveryStatus.PENDING)
+        self.assertTrue(result.details["status_valid"])
 
     def test_validate_status_pending_with_delivered_at(self):
         """Test status validation for PENDING delivery with delivered_at set"""
@@ -386,9 +377,9 @@ class WebhookDeliveryStatusValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_delivery_status(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['current_status'], DeliveryStatus.SUCCESS)
-        self.assertTrue(result.details['status_valid'])
-        self.assertTrue(result.details['success_constraints_valid'])
+        self.assertEqual(result.details["current_status"], DeliveryStatus.SUCCESS)
+        self.assertTrue(result.details["status_valid"])
+        self.assertTrue(result.details["success_constraints_valid"])
 
     def test_validate_status_success_without_delivered_at(self):
         """Test status validation for SUCCESS delivery without delivered_at"""
@@ -443,9 +434,9 @@ class WebhookDeliveryStatusValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_delivery_status(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['current_status'], DeliveryStatus.FAILED)
-        self.assertTrue(result.details['status_valid'])
-        self.assertTrue(result.details['failed_constraints_valid'])
+        self.assertEqual(result.details["current_status"], DeliveryStatus.FAILED)
+        self.assertTrue(result.details["status_valid"])
+        self.assertTrue(result.details["failed_constraints_valid"])
 
     def test_validate_status_failed_with_delivered_at(self):
         """Test status validation for FAILED delivery with delivered_at set"""
@@ -480,9 +471,9 @@ class WebhookDeliveryStatusValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_delivery_status(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['current_status'], DeliveryStatus.DEAD_LETTER)
-        self.assertTrue(result.details['status_valid'])
-        self.assertTrue(result.details['dead_letter_constraints_valid'])
+        self.assertEqual(result.details["current_status"], DeliveryStatus.DEAD_LETTER)
+        self.assertTrue(result.details["status_valid"])
+        self.assertTrue(result.details["dead_letter_constraints_valid"])
 
     def test_validate_status_dead_letter_with_next_retry(self):
         """Test status validation for DEAD_LETTER delivery with next_retry_at set"""
@@ -526,14 +517,8 @@ class WebhookDeliveryDLQValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -562,11 +547,11 @@ class WebhookDeliveryDLQValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_dead_letter_queue(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertTrue(result.details['is_dead_letter'])
-        self.assertTrue(result.details['max_retries_exceeded'])
-        self.assertTrue(result.details['no_retry_scheduled'])
-        self.assertTrue(result.details['has_error_message'])
-        self.assertTrue(result.details['no_delivered_at'])
+        self.assertTrue(result.details["is_dead_letter"])
+        self.assertTrue(result.details["max_retries_exceeded"])
+        self.assertTrue(result.details["no_retry_scheduled"])
+        self.assertTrue(result.details["has_error_message"])
+        self.assertTrue(result.details["no_delivered_at"])
 
     def test_validate_dlq_dead_letter_with_next_retry(self):
         """Test DLQ validation for DEAD_LETTER delivery with next_retry_at set"""
@@ -619,8 +604,8 @@ class WebhookDeliveryDLQValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_dead_letter_queue(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertFalse(result.details['is_dead_letter'])
-        self.assertTrue(result.details['should_be_in_dlq'])
+        self.assertFalse(result.details["is_dead_letter"])
+        self.assertTrue(result.details["should_be_in_dlq"])
         self.assertGreaterEqual(len(result.warnings), 0)
 
     def test_validate_dlq_premature_dead_letter(self):
@@ -638,7 +623,7 @@ class WebhookDeliveryDLQValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_dead_letter_queue(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertFalse(result.details['max_retries_exceeded'])
+        self.assertFalse(result.details["max_retries_exceeded"])
         self.assertGreaterEqual(len(result.warnings), 0)
         self.assertIn("premature", result.warnings[0].lower())
 
@@ -648,14 +633,8 @@ class WebhookDeliveryComprehensiveValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
+        self.user = User.objects.create_user(email="test@example.com", tenant=self.tenant)
         self.webhook = Webhook.objects.create(
             tenant=self.tenant,
             name="Test Webhook",
@@ -686,7 +665,7 @@ class WebhookDeliveryComprehensiveValidationTest(TestCase):
         result = WebhookDeliveryValidator.validate_all(delivery)
 
         self.assertTrue(result.is_valid, f"Validation failed: {result.errors}")
-        self.assertEqual(result.details['validation_type'], 'comprehensive_delivery_validation')
+        self.assertEqual(result.details["validation_type"], "comprehensive_delivery_validation")
 
     def test_validate_all_invalid_delivery(self):
         """Test comprehensive validation for invalid delivery"""
@@ -727,4 +706,28 @@ class WebhookDeliveryComprehensiveValidationTest(TestCase):
         self.assertGreater(len(result.errors), 0)
         self.assertIn("webhook", result.errors[0].lower())
 
-
+    def test_validate_delivery_retry_tdd_result_structure(self):
+        """TDD: validate_delivery_retry result has is_valid, errors, details with expected keys."""
+        delivery = WebhookDelivery.objects.create(
+            webhook=self.webhook,
+            event_type=WebhookEventType.ODPS_CREATED,
+            payload={"test": "data"},
+            signature="test-signature",
+            status=DeliveryStatus.FAILED,
+            attempt_number=2,
+            next_retry_at=timezone.now() + timedelta(seconds=30),
+        )
+        result = WebhookDeliveryValidator.validate_delivery_retry(delivery)
+        self.assertTrue(hasattr(result, "is_valid"))
+        self.assertTrue(hasattr(result, "errors"))
+        self.assertTrue(hasattr(result, "details"))
+        self.assertIsInstance(result.errors, list)
+        self.assertIsInstance(result.details, dict)
+        self.assertTrue(result.is_valid)
+        for key in (
+            "attempt_number",
+            "webhook_max_retries",
+            "max_retries_valid",
+            "retry_scheduled",
+        ):
+            self.assertIn(key, result.details, f"Missing details key: {key}")

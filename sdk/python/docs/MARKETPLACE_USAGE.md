@@ -1009,7 +1009,11 @@ async def robust_connection_creation(client, marketplace_type, name, config):
 
 ## Additional Resources
 
-- [SDK API Reference](../README.md)
-- [Marketplace Integration API Reference](../../../docs/MARKETPLACE_API_REFERENCE.md)
-- [Error Handling Guide](../README.md#error-handling)
-- [Examples](../examples/)
+- **[SDK README](../README.md)** - Complete SDK documentation
+- **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management APIs
+- **[BaaS Usage Guide](BAAS_USAGE.md)** - BaaS platform APIs
+- **[ODH Usage Guide](ODH_USAGE.md)** - ML/ODH APIs
+- **[Model Serving Usage Guide](MODEL_SERVING_USAGE.md)** - Model serving and A/B testing APIs
+- **[Marketplace Integration API Reference](../../../docs/MARKETPLACE_API_REFERENCE.md)** - Complete marketplace API documentation
+- **[API Reference](../../../docs/API_REFERENCE.md)** - Complete API documentation
+- [Examples](../examples/) - SDK code examples

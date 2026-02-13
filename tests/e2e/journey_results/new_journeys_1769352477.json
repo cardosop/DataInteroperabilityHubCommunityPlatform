@@ -1,0 +1,121 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.017462730407714844
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-010-11484378",
+      "journey_name": "Configure Connector for Data Source",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1769352477.7637708,
+      "end_time": 1769352477.7812335,
+      "duration": 0.017462730407714844,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Connector Marketplace Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352477.7677288,
+          "end_time": 1769352477.7677345,
+          "duration": 5.7220458984375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Install Connector",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352477.7677426,
+          "end_time": 1769352477.7706256,
+          "duration": 0.0028829574584960938,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Note: Connector API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352477.7706554,
+          "end_time": 1769352477.7706585,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Connector Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352477.7733243,
+          "end_time": 1769352477.7733276,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Connection Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352477.7759995,
+          "end_time": 1769352477.7760031,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Connector Deployment Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352477.7786171,
+          "end_time": 1769352477.7786202,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Health Monitoring Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352477.781229,
+          "end_time": 1769352477.7812326,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-25T14:47:57.781310"
+}

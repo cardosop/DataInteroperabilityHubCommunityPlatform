@@ -81,6 +81,17 @@ except ImportError:
     StressTestUser = None
     StressTestOverloadUser = None
 
+# Import ODPS-specific test user classes
+try:
+    from tests.performance.locust_odps_ingestion import ODPSIngestionLoadUser
+except ImportError:
+    ODPSIngestionLoadUser = None
+
+try:
+    from tests.performance.locust_odps_ref_resolution import ODPSRefResolutionStressUser
+except ImportError:
+    ODPSRefResolutionStressUser = None
+
 # Export all users for Locust
 __all__ = [
     # Load testing
@@ -97,6 +108,9 @@ __all__ = [
     # Spike testing
     "SpikeTestUser",
     "SpikeTestRapidUser",
+    # ODPS-specific testing
+    "ODPSIngestionLoadUser",
+    "ODPSRefResolutionStressUser",
 ]
 
 # Filter out None values (for missing imports)

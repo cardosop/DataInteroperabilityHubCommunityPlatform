@@ -6,20 +6,28 @@ These tests verify:
 - Webhook delivery for virtualization.query.execution.* events
 - Webhook payload validation for virtualization events
 - Webhook retry logic for virtualization events
+
+No mocks: delivery status may be PENDING or FAILED when target URL is unreachable.
 """
+
 import uuid
+
+import pytest
 from django.test import TestCase
 from django.utils import timezone
-from unittest.mock import patch, MagicMock
-import pytest
 
-from hub.apps.webhooks.models import Webhook, WebhookDelivery, WebhookStatus, DeliveryStatus, WebhookEventType
-from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.core.events.models import Event
+from hub.apps.core.events.publisher import EventPublisher
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User
+from hub.apps.webhooks.models import (
+    DeliveryStatus,
+    Webhook,
+    WebhookDelivery,
+    WebhookEventType,
+    WebhookStatus,
+)
 from hub.apps.webhooks.virtualization_event_subscriber import get_virtualization_event_subscriber
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -29,14 +37,9 @@ class VirtualizationWebhookE2ETest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        self.tenant = Tenant.objects.create(name="Test Tenant", slug="test-tenant")
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="test@example.com", password="testpass123", tenant=self.tenant
         )
 
     def _trigger_webhook_for_event(self, event):
@@ -52,7 +55,7 @@ class VirtualizationWebhookE2ETest(TestCase):
                 "tenant_id": str(event.tenant_id) if event.tenant_id else None,
             },
             "data": event.data,
-            "metadata": event.metadata or {}
+            "metadata": event.metadata or {},
         }
         if event.user_id:
             event_dict["source"]["user_id"] = str(event.user_id)
@@ -75,7 +78,7 @@ class VirtualizationWebhookE2ETest(TestCase):
         publisher = EventPublisher(
             service_name="virtualization_service",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         virtual_dataset_id = str(uuid.uuid4())
@@ -88,8 +91,8 @@ class VirtualizationWebhookE2ETest(TestCase):
                 "name": "Test Virtual Dataset",
                 "query_type": "SQL",
                 "status": "ACTIVE",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
 
         # Verify event was created
@@ -109,7 +112,7 @@ class VirtualizationWebhookE2ETest(TestCase):
                 "tenant_id": str(event.tenant_id) if event.tenant_id else None,
             },
             "data": event.data,
-            "metadata": event.metadata or {}
+            "metadata": event.metadata or {},
         }
         if event.user_id:
             event_dict["source"]["user_id"] = str(event.user_id)
@@ -142,7 +145,7 @@ class VirtualizationWebhookE2ETest(TestCase):
         publisher = EventPublisher(
             service_name="virtualization_service",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         query_execution_id = str(uuid.uuid4())
@@ -155,8 +158,8 @@ class VirtualizationWebhookE2ETest(TestCase):
                 "query_execution_id": query_execution_id,
                 "virtual_dataset_id": virtual_dataset_id,
                 "execution_mode": "ASYNC",
-                "started_at": timezone.now().isoformat()
-            }
+                "started_at": timezone.now().isoformat(),
+            },
         )
 
         # Verify event was created
@@ -191,7 +194,7 @@ class VirtualizationWebhookE2ETest(TestCase):
         publisher = EventPublisher(
             service_name="virtualization_service",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         query_execution_id = str(uuid.uuid4())
@@ -208,8 +211,8 @@ class VirtualizationWebhookE2ETest(TestCase):
                 "elapsed_time_ms": 5000,
                 "completed_steps": 2,
                 "total_steps": 4,
-                "timestamp": timezone.now().isoformat()
-            }
+                "timestamp": timezone.now().isoformat(),
+            },
         )
 
         # Verify event was created
@@ -245,7 +248,7 @@ class VirtualizationWebhookE2ETest(TestCase):
         publisher = EventPublisher(
             service_name="virtualization_service",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         query_execution_id = str(uuid.uuid4())
@@ -260,8 +263,8 @@ class VirtualizationWebhookE2ETest(TestCase):
                 "status": "COMPLETED",
                 "completed_at": timezone.now().isoformat(),
                 "duration_ms": 1500,
-                "rows_processed": 1000
-            }
+                "rows_processed": 1000,
+            },
         )
 
         # Verify event was created
@@ -297,7 +300,7 @@ class VirtualizationWebhookE2ETest(TestCase):
         publisher = EventPublisher(
             service_name="virtualization_service",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         query_execution_id = str(uuid.uuid4())
@@ -311,8 +314,8 @@ class VirtualizationWebhookE2ETest(TestCase):
                 "virtual_dataset_id": virtual_dataset_id,
                 "error_message": "Query execution timeout",
                 "failed_at": timezone.now().isoformat(),
-                "duration_ms": 5000
-            }
+                "duration_ms": 5000,
+            },
         )
 
         # Verify event was created
@@ -333,15 +336,29 @@ class VirtualizationWebhookE2ETest(TestCase):
     def test_virtualization_webhook_event_type_validation(self):
         """Test that virtualization event types are correctly identified."""
         # Test is_virtualization_event_type method
-        self.assertTrue(WebhookEventType.is_virtualization_event_type("virtualization.dataset.created"))
-        self.assertTrue(WebhookEventType.is_virtualization_event_type("virtualization.query.execution.started"))
-        self.assertTrue(WebhookEventType.is_virtualization_event_type("virtualization.query.execution.progress"))
-        self.assertTrue(WebhookEventType.is_virtualization_event_type("virtualization.query.execution.completed"))
-        self.assertTrue(WebhookEventType.is_virtualization_event_type("virtualization.query.execution.failed"))
+        self.assertTrue(
+            WebhookEventType.is_virtualization_event_type("virtualization.dataset.created")
+        )
+        self.assertTrue(
+            WebhookEventType.is_virtualization_event_type("virtualization.query.execution.started")
+        )
+        self.assertTrue(
+            WebhookEventType.is_virtualization_event_type("virtualization.query.execution.progress")
+        )
+        self.assertTrue(
+            WebhookEventType.is_virtualization_event_type(
+                "virtualization.query.execution.completed"
+            )
+        )
+        self.assertTrue(
+            WebhookEventType.is_virtualization_event_type("virtualization.query.execution.failed")
+        )
 
         # Test that non-virtualization events are not identified
         self.assertFalse(WebhookEventType.is_virtualization_event_type("odps.created"))
-        self.assertFalse(WebhookEventType.is_virtualization_event_type("transformation.pipeline.created"))
+        self.assertFalse(
+            WebhookEventType.is_virtualization_event_type("transformation.pipeline.created")
+        )
 
     def test_virtualization_webhook_get_event_types(self):
         """Test that get_virtualization_event_types returns all virtualization event types."""
@@ -351,4 +368,3 @@ class VirtualizationWebhookE2ETest(TestCase):
         self.assertIn("virtualization.query.execution.progress", event_types)
         self.assertIn("virtualization.query.execution.completed", event_types)
         self.assertIn("virtualization.query.execution.failed", event_types)
-

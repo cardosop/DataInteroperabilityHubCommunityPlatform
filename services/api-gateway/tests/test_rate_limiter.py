@@ -144,7 +144,7 @@ class TestRateLimiter:
         assert count == 1  # Only the new request
 
     def test_check_tenant_limit(self, rate_limiter):
-        """Test tenant limit check"""
+        """Test tenant limit check within limit"""
         tenant_id = f"test-tenant-{int(time.time() * 1000000)}"
         limit = 10
 
@@ -153,14 +153,56 @@ class TestRateLimiter:
         assert count == 1
         assert reset > 0
 
+    def test_check_tenant_limit_none_skips(self, rate_limiter):
+        """When tenant limit is None, no custom limit at this level (tier only)."""
+        tenant_id = f"test-tenant-none-{int(time.time() * 1000000)}"
+        allowed, count, reset = rate_limiter.check_tenant_limit(tenant_id, limit=None)
+        assert allowed is True
+        assert count == 0
+        assert reset > 0
+
+    def test_check_tenant_limit_enforced_exceeded(self, rate_limiter):
+        """When tenant has custom limit, that limit is enforced (sliding window, Redis)."""
+        tenant_id = f"test-tenant-exceed-{int(time.time() * 1000000)}"
+        limit = 2
+        for i in range(limit):
+            allowed, count, reset = rate_limiter.check_tenant_limit(tenant_id, limit=limit)
+            assert allowed is True, f"Request {i + 1} should be allowed"
+            assert count == i + 1
+        allowed, count, reset = rate_limiter.check_tenant_limit(tenant_id, limit=limit)
+        assert allowed is False
+        assert count == limit
+        assert reset > 0
+
     def test_check_api_key_limit(self, rate_limiter):
-        """Test API key limit check"""
+        """Test API key limit check within limit"""
         api_key_id = f"test-api-key-{int(time.time() * 1000000)}"
         limit = 10
 
         allowed, count, reset = rate_limiter.check_api_key_limit(api_key_id, limit=limit)
         assert allowed is True
         assert count == 1
+        assert reset > 0
+
+    def test_check_api_key_limit_none_skips(self, rate_limiter):
+        """When API key limit is None, no custom limit at this level (tier only)."""
+        api_key_id = f"test-apikey-none-{int(time.time() * 1000000)}"
+        allowed, count, reset = rate_limiter.check_api_key_limit(api_key_id, limit=None)
+        assert allowed is True
+        assert count == 0
+        assert reset > 0
+
+    def test_check_api_key_limit_enforced_exceeded(self, rate_limiter):
+        """When API key has custom limit, that limit is enforced (sliding window, Redis)."""
+        api_key_id = f"test-apikey-exceed-{int(time.time() * 1000000)}"
+        limit = 2
+        for i in range(limit):
+            allowed, count, reset = rate_limiter.check_api_key_limit(api_key_id, limit=limit)
+            assert allowed is True, f"Request {i + 1} should be allowed"
+            assert count == i + 1
+        allowed, count, reset = rate_limiter.check_api_key_limit(api_key_id, limit=limit)
+        assert allowed is False
+        assert count == limit
         assert reset > 0
 
     def test_get_rate_limit_info(self, rate_limiter):

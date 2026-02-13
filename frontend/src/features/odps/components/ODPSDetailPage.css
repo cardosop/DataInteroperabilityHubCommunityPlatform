@@ -1,0 +1,234 @@
+.odps-detail-page {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.odps-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.odps-detail-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.odps-detail-content {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.odps-detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.odps-detail-main h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.odps-description {
+  color: #666;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.odps-detail-metadata {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.metadata-item label {
+  font-weight: 600;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.metadata-item span,
+.metadata-item code {
+  color: #333;
+  font-size: 1rem;
+}
+
+.metadata-item code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background: #f0f0f0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-normalized-ok {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-normalized-with-warnings {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.status-normalization-failed {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.status-not-normalized {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+.validation-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.validation-valid {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.validation-invalid,
+.validation-error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.validation-warning-only {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.odps-links-section {
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.odps-links-section h2 {
+  margin-top: 0;
+  font-size: 1.5rem;
+}
+
+.linked-contract {
+  background: white;
+  padding: 1rem;
+  border-radius: 4px;
+  margin: 1rem 0;
+  border: 1px solid #ddd;
+}
+
+.linked-contract h3 {
+  margin-top: 0;
+  font-size: 1.2rem;
+}
+
+.linked-contract p {
+  margin: 0.5rem 0;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #0066cc;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+}
+
+.btn-link:hover {
+  color: #0052a3;
+}
+
+.odps-export-section {
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.odps-export-section h2 {
+  margin-top: 0;
+  font-size: 1.5rem;
+}
+
+.export-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.export-format-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.export-format-selector label {
+  font-weight: 600;
+}
+
+.export-format-selector select {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.export-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.odps-raw {
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.odps-raw h2 {
+  margin-top: 0;
+  font-size: 1.5rem;
+}
+
+.odps-content {
+  background: white;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 600px;
+  overflow-y: auto;
+}

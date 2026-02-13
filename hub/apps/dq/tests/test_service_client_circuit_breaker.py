@@ -9,8 +9,8 @@ Tests verify:
 """
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
-from django.test import TestCase, override_settings
 from django.conf import settings
+from django.test import TestCase
 
 import httpx
 import redis
@@ -24,14 +24,16 @@ from hub.apps.core.resilience.circuit_breaker import (
 
 
 def get_real_redis_client_or_none():
-    """Get real Redis client or return None if unavailable."""
+    """Get real Redis client or return None if unavailable.
+    Uses settings.REDIS_URL so Docker (e.g. redis-cache-test) and local (localhost) work.
+    """
     try:
-        redis_url = getattr(settings, 'REDIS_URL', 'redis://redis:6379/0')
+        redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
         client = redis.from_url(
             redis_url,
             decode_responses=True,
             socket_connect_timeout=2,
-            socket_timeout=2
+            socket_timeout=2,
         )
         client.ping()
         return client
@@ -42,7 +44,6 @@ def get_real_redis_client_or_none():
 class TestDQServiceClientCircuitBreaker(TestCase):
     """Test circuit breaker integration with DQ Service Client."""
 
-    @override_settings(REDIS_URL='redis://redis:6379/0')
     def setUp(self):
         """Set up test fixtures."""
         self.redis_client = get_real_redis_client_or_none()
@@ -64,12 +65,13 @@ class TestDQServiceClientCircuitBreaker(TestCase):
             pass
 
     def tearDown(self):
-        """Clean up test fixtures."""
-        # Clean up circuit breaker state and reset
+        """Clean up test fixtures (no-op if setUp skipped due to missing Redis)."""
+        if getattr(self, "redis_client", None) is None or getattr(
+            self, "service_client", None
+        ) is None:
+            return
         try:
-            # Explicitly reset circuit breaker first
             self.service_client._circuit_breaker.reset()
-            # Then clean up Redis keys
             pattern = f"circuit_breaker:{self.service_name}:*"
             keys = self.redis_client.keys(pattern)
             if keys:

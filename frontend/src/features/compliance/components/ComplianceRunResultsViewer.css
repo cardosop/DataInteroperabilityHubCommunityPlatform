@@ -1,0 +1,459 @@
+.compliance-results-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.compliance-results-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.summary-card {
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.summary-label {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.summary-value.overall-status-pass {
+  color: #0f5132;
+}
+
+.summary-value.overall-status-fail {
+  color: #842029;
+}
+
+.summary-value.overall-status-warn {
+  color: #856404;
+}
+
+.summary-value.risk-level-critical {
+  color: #842029;
+}
+
+.summary-value.risk-level-high {
+  color: #dc3545;
+}
+
+.summary-value.risk-level-medium {
+  color: #856404;
+}
+
+.summary-value.risk-level-low {
+  color: #0f5132;
+}
+
+.summary-value.allowed {
+  color: #0f5132;
+}
+
+.summary-value.blocked {
+  color: #842029;
+}
+
+.summary-value.compliance-score {
+  color: #0f5132;
+}
+
+.summary-value.high-severity {
+  color: #842029;
+}
+
+.fail-closed-warning {
+  padding: 1.5rem;
+  background: #fff3cd;
+  border-left: 4px solid #856404;
+  border-radius: 8px;
+}
+
+.fail-closed-warning h3 {
+  margin: 0 0 1rem 0;
+  color: #856404;
+  font-size: 1.1rem;
+}
+
+.fail-closed-warning p {
+  margin: 0 0 1rem 0;
+  color: #856404;
+}
+
+.fail-closed-actions {
+  margin-top: 1rem;
+}
+
+.fail-closed-actions strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #856404;
+}
+
+.fail-closed-actions ul {
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.5rem;
+  color: #856404;
+}
+
+.compliance-results-filters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filter-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #666;
+}
+
+.filter-group select {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background: white;
+}
+
+.compliance-results-score-breakdown {
+  margin-top: 1rem;
+  padding: 1.5rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+.compliance-results-score-breakdown h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.score-breakdown-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 6px;
+}
+
+.breakdown-label {
+  font-weight: 500;
+  color: #666;
+}
+
+.breakdown-value {
+  font-weight: 600;
+  color: #333;
+}
+
+.breakdown-value.passed {
+  color: #0f5132;
+}
+
+.breakdown-value.failed {
+  color: #842029;
+}
+
+.breakdown-value.warning {
+  color: #856404;
+}
+
+.breakdown-value.final-score {
+  font-size: 1.1rem;
+  color: #0f5132;
+}
+
+.compliance-results-risk-assessment {
+  margin-top: 1rem;
+  padding: 1.5rem;
+  background: #f0f9ff;
+  border-radius: 8px;
+  border-left: 4px solid #0ea5e9;
+}
+
+.compliance-results-risk-assessment h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.risk-assessment-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.risk-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 6px;
+}
+
+.risk-label {
+  font-weight: 500;
+  color: #666;
+}
+
+.risk-value {
+  font-weight: 600;
+  color: #333;
+}
+
+.risk-value.risk-level-critical {
+  color: #842029;
+}
+
+.risk-value.risk-level-high {
+  color: #dc3545;
+}
+
+.risk-value.risk-level-medium {
+  color: #856404;
+}
+
+.risk-value.risk-level-low {
+  color: #0f5132;
+}
+
+.risk-recommendations {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 6px;
+}
+
+.risk-recommendations strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.risk-recommendations ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: #666;
+}
+
+.compliance-results-violations {
+  margin-top: 1rem;
+}
+
+.compliance-results-violations h3 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.severity-group {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border-left: 4px solid #ddd;
+}
+
+.severity-group.severity-high {
+  border-left-color: #842029;
+  background: #fff5f5;
+}
+
+.severity-group.severity-medium {
+  border-left-color: #856404;
+  background: #fffbf0;
+}
+
+.severity-group.severity-low {
+  border-left-color: #0f5132;
+  background: #f0f9f4;
+}
+
+.severity-group h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.violations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.violation-item {
+  padding: 1rem;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+.violation-item.violation-high {
+  border-color: #842029;
+}
+
+.violation-item.violation-medium {
+  border-color: #856404;
+}
+
+.violation-item.violation-low {
+  border-color: #0f5132;
+}
+
+.violation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.violation-column {
+  font-weight: 600;
+  color: #333;
+}
+
+.violation-pii-type {
+  padding: 0.25rem 0.75rem;
+  background: #e2e3e5;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #41464b;
+}
+
+.violation-risk-score {
+  font-weight: 600;
+  color: #666;
+}
+
+.violation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #666;
+  margin-top: 0.5rem;
+}
+
+.violation-regulations,
+.violation-confidence,
+.violation-samples {
+  padding: 0.5rem;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.violation-samples code {
+  background: #f5f5f5;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.no-violations-message {
+  padding: 2rem;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.compliance-results-remediation {
+  margin-top: 1rem;
+  padding: 1.5rem;
+  background: #f0f9ff;
+  border-radius: 8px;
+  border-left: 4px solid #0ea5e9;
+}
+
+.compliance-results-remediation h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.compliance-results-remediation ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.remediation-item {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 6px;
+}
+
+.remediation-priority {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.remediation-priority.priority-high {
+  background: #f8d7da;
+  color: #842029;
+}
+
+.remediation-priority.priority-medium {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.remediation-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.remediation-column,
+.remediation-pii-type {
+  color: #666;
+}
+
+.remediation-suggestion {
+  color: #0ea5e9;
+  font-weight: 500;
+}

@@ -4,23 +4,24 @@ Unit tests for ODCS Generator Registry & Factory.
 Tests the generator registry system and factory function following TDD approach
 and engineering best practices without mocks/stubs.
 """
+
 import pytest
 from django.test import TestCase
 
+from hub.apps.contracts.odcs_errors import ODCSGenerationError
 from hub.apps.contracts.odcs_generator import (
-    get_odcs_generator,
-    register_odcs_generator,
-    get_supported_odcs_versions,
-    _detect_version_from_hubcontract,
-    _normalize_version_string,
     ODCSGeneratorBase,
-    ODCSGeneratorV3_0_2,
-    ODCSGeneratorV3_0_1,
+    ODCSGeneratorV2_2_2,
     ODCSGeneratorV3_0_0,
     ODCSGeneratorV3_0_0_Preview,
-    ODCSGeneratorV2_2_2,
+    ODCSGeneratorV3_0_1,
+    ODCSGeneratorV3_0_2,
+    _detect_version_from_hubcontract,
+    _normalize_version_string,
+    get_odcs_generator,
+    get_supported_odcs_versions,
+    register_odcs_generator,
 )
-from hub.apps.contracts.odcs_errors import ODCSGenerationError
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -109,10 +110,7 @@ class ODCSGeneratorVersionDetectionTest(TestCase):
         hub_contract = {
             "id": "test-1",
             "info": {"name": "Test"},
-            "original_spec": {
-                "type": "ODCS",
-                "version": "3.0.1"
-            }
+            "original_spec": {"type": "ODCS", "version": "3.0.1"},
         }
 
         version = _detect_version_from_hubcontract(hub_contract)
@@ -123,10 +121,7 @@ class ODCSGeneratorVersionDetectionTest(TestCase):
         hub_contract = {
             "id": "test-1",
             "info": {"name": "Test"},
-            "normalization": {
-                "original_spec_type": "ODCS",
-                "original_spec_version": "3.0.0"
-            }
+            "normalization": {"original_spec_type": "ODCS", "original_spec_version": "3.0.0"},
         }
 
         version = _detect_version_from_hubcontract(hub_contract)
@@ -137,14 +132,8 @@ class ODCSGeneratorVersionDetectionTest(TestCase):
         hub_contract = {
             "id": "test-1",
             "info": {"name": "Test"},
-            "original_spec": {
-                "type": "ODCS",
-                "version": "3.0.2"
-            },
-            "normalization": {
-                "original_spec_type": "ODCS",
-                "original_spec_version": "3.0.1"
-            }
+            "original_spec": {"type": "ODCS", "version": "3.0.2"},
+            "normalization": {"original_spec_type": "ODCS", "original_spec_version": "3.0.1"},
         }
 
         version = _detect_version_from_hubcontract(hub_contract)
@@ -155,10 +144,7 @@ class ODCSGeneratorVersionDetectionTest(TestCase):
         hub_contract = {
             "id": "test-1",
             "info": {"name": "Test"},
-            "original_spec": {
-                "type": "ODPS",
-                "version": "4.1"
-            }
+            "original_spec": {"type": "ODPS", "version": "4.1"},
         }
 
         version = _detect_version_from_hubcontract(hub_contract)
@@ -166,10 +152,7 @@ class ODCSGeneratorVersionDetectionTest(TestCase):
 
     def test_detect_version_returns_none_when_no_metadata(self):
         """Test that version detection returns None when no metadata present"""
-        hub_contract = {
-            "id": "test-1",
-            "info": {"name": "Test"}
-        }
+        hub_contract = {"id": "test-1", "info": {"name": "Test"}}
 
         version = _detect_version_from_hubcontract(hub_contract)
         self.assertIsNone(version)
@@ -179,10 +162,7 @@ class ODCSGeneratorVersionDetectionTest(TestCase):
         hub_contract = {
             "id": "test-1",
             "info": {"name": "Test"},
-            "original_spec": {
-                "type": "ODCS",
-                "version": "3.0.1"
-            }
+            "original_spec": {"type": "ODCS", "version": "3.0.1"},
         }
 
         generator = get_odcs_generator(hub_contract=hub_contract)
@@ -244,10 +224,7 @@ class ODCSGeneratorFallbackTest(TestCase):
 
     def test_fallback_when_hubcontract_has_no_version(self):
         """Test that HubContract without version falls back to latest"""
-        hub_contract = {
-            "id": "test-1",
-            "info": {"name": "Test"}
-        }
+        hub_contract = {"id": "test-1", "info": {"name": "Test"}}
 
         generator = get_odcs_generator(hub_contract=hub_contract)
 
@@ -273,3 +250,96 @@ class ODCSGeneratorErrorHandlingTest(TestCase):
             # If error occurs, check it has proper context
             self.assertIn("available_versions", e.context)
 
+    def test_get_generator_handles_unicode_characters(self):
+        """Test that generator retrieval handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-unicode",
+            "info": {"name": "测试合同"},
+            "schema": {"fields": []},
+        }
+
+        generator = get_odcs_generator(hub_contract=hub_contract)
+
+        # Should handle unicode characters
+        self.assertIsNotNone(generator)
+        result = generator.generate_odcs_from_hubcontract(hub_contract)
+        self.assertIn("name", result)
+
+    def test_get_generator_handles_special_characters(self):
+        """Test that generator retrieval handles special characters correctly."""
+        hub_contract = {
+            "id": "test-special",
+            "info": {"name": "Test & Co. (Special)"},
+            "schema": {"fields": []},
+        }
+
+        generator = get_odcs_generator(hub_contract=hub_contract)
+
+        # Should handle special characters
+        self.assertIsNotNone(generator)
+        result = generator.generate_odcs_from_hubcontract(hub_contract)
+        self.assertIn("name", result)
+
+    def test_get_generator_handles_very_large_documents(self):
+        """Test that generator retrieval handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-large",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": []},
+        }
+
+        generator = get_odcs_generator(hub_contract=hub_contract)
+
+        # Should handle large documents gracefully
+        self.assertIsNotNone(generator)
+        try:
+            result = generator.generate_odcs_from_hubcontract(hub_contract)
+            # If generation succeeds, verify structure
+            self.assertIn("name", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSGenerationError, "Should raise ODCSGenerationError for very large documents"
+            )
+
+    def test_get_generator_handles_none_values(self):
+        """Test that generator retrieval handles None values correctly."""
+        hub_contract = {
+            "id": "test-none",
+            "info": {"name": "Test Product", "description": None},  # None value
+            "schema": {"fields": []},
+        }
+
+        generator = get_odcs_generator(hub_contract=hub_contract)
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(generator)
+        try:
+            result = generator.generate_odcs_from_hubcontract(hub_contract)
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSGenerationError, "Should raise ODCSGenerationError for None values"
+            )
+
+    def test_get_generator_handles_nested_structures(self):
+        """Test that generator retrieval handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-nested",
+            "info": {
+                "name": "Test Product",
+                "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+            },
+            "schema": {"fields": []},
+        }
+
+        generator = get_odcs_generator(hub_contract=hub_contract)
+
+        # Should handle nested structures
+        self.assertIsNotNone(generator)
+        result = generator.generate_odcs_from_hubcontract(hub_contract)
+        self.assertIn("name", result)
+        self.assertIsNotNone(result)

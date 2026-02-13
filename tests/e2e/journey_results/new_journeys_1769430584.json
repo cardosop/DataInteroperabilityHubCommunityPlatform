@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.1611220836639404
+  },
+  "journeys": [
+    {
+      "journey_id": "DA-001-4a67d7eb",
+      "journey_name": "Create Transformation Pipeline",
+      "persona": "Data Analyst",
+      "status": "completed",
+      "start_time": 1769430583.786649,
+      "end_time": 1769430584.947771,
+      "duration": 1.1611220836639404,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769430583.786657,
+          "end_time": 1769430584.9425685,
+          "duration": 1.1559114456176758,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Creation Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769430584.9477618,
+          "end_time": 1769430584.9477692,
+          "duration": 7.3909759521484375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "c4c14a38-9d97-4aa3-82d5-54726f1e68f4"
+      }
+    }
+  ],
+  "exported_at": "2026-01-26T12:29:44.947847"
+}

@@ -71,7 +71,7 @@ class RequestIDMiddlewareTest(TestCase):
         """Test that middleware binds request ID to structlog context"""
         request = self.factory.get("/api/v1/assets/")
         
-        with patch('hub.apps.api.middleware.structlog.contextvars.bind_contextvars') as mock_bind:
+        with patch('structlog.contextvars.bind_contextvars') as mock_bind:
             self.middleware.process_request(request)
             
             # Should bind request_id, route, and method
@@ -94,7 +94,7 @@ class RequestIDMiddlewareTest(TestCase):
         
         response = HttpResponse()
         
-        with patch('hub.apps.api.middleware.structlog.contextvars.bind_contextvars') as mock_bind:
+        with patch('structlog.contextvars.bind_contextvars') as mock_bind:
             self.middleware.process_response(request, response)
             
             # Should bind tenant_id
@@ -121,7 +121,7 @@ class RequestIDMiddlewareTest(TestCase):
         
         response = HttpResponse()
         
-        with patch('hub.apps.api.middleware.structlog.contextvars.bind_contextvars') as mock_bind:
+        with patch('structlog.contextvars.bind_contextvars') as mock_bind:
             self.middleware.process_response(request, response)
             
             # Should bind user_id

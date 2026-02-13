@@ -14,47 +14,36 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Linking rules
 - Error handling
 """
+
 import json
-from django.test import TestCase
 
 from hub.apps.contracts.business_rules import (
+    SUPPORTED_ODPS_VERSIONS,
     ODPSBusinessRules,
     ODPSRuleExecutionContext,
-    SUPPORTED_ODPS_VERSIONS
 )
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
     OriginalFormat,
+    OriginalSpecType,
 )
+from hub.apps.contracts.tests.test_base import ContractsTestBase
+from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.core.services.base import ValidationError
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 
 
-class ODPSBusinessRulesTestBase(TestCase):
+class ODPSBusinessRulesTestBase(ContractsTestBase):
     """Base test class for ODPSBusinessRules tests."""
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
+        super().setUp()
 
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
+        # Update user display_name
+        self.user.display_name = "Test User"
+        self.user.save()
 
         # Sample valid ODPS document
         self.valid_odps_doc = {
@@ -66,31 +55,20 @@ class ODPSBusinessRulesTestBase(TestCase):
                         "productID": "test-product",
                         "name": "Test Product",
                         "description": "Test product description",
-                        "version": "1.0.0"
+                        "version": "1.0.0",
                     }
                 },
                 "dataSchema": {
                     "fields": [
-                        {
-                            "name": "id",
-                            "type": "string",
-                            "description": "Unique identifier"
-                        },
-                        {
-                            "name": "name",
-                            "type": "string",
-                            "description": "Name field"
-                        }
+                        {"name": "id", "type": "string", "description": "Unique identifier"},
+                        {"name": "name", "type": "string", "description": "Name field"},
                     ]
-                }
-            }
+                },
+            },
         }
 
         # Create business rules instance
-        self.rules = ODPSBusinessRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.rules = ODPSBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
 
 class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
@@ -105,10 +83,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_structure_missing_product(self):
         """Test validation fails when product is missing."""
-        odps_doc = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1"
-        }
+        odps_doc = {"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1"}
 
         result = self.rules.validate_odps_structure(odps_doc)
 
@@ -120,11 +95,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         """Test validation fails when product.details is missing."""
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
-            }
+            "product": {"dataSchema": {"fields": [{"name": "id", "type": "string"}]}},
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -139,32 +110,26 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
                 "details": {},
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
-            }
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(any("details" in err.lower() and "language" in err.lower() for err in result.errors))
+        self.assertTrue(
+            any("details" in err.lower() and "language" in err.lower() for err in result.errors)
+        )
 
     def test_validate_odps_structure_missing_product_id(self):
         """Test validation fails when productID is missing in details."""
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
-            }
+                "details": {"en": {"name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -177,14 +142,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         """Test validation fails when dataSchema is missing."""
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -198,14 +156,9 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {}
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {},
+            },
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -219,16 +172,9 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": []
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": []},
+            },
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -243,18 +189,9 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        "invalid_field"  # Should be an object, not a string
-                    ]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": ["invalid_field"]},  # Should be an object, not a string
+            },
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -268,20 +205,9 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "type": "string"  # Missing name
-                        }
-                    ]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"type": "string"}]},  # Missing name
+            },
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -295,20 +221,9 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "id"  # Missing type
-                        }
-                    ]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "id"}]},  # Missing type
+            },
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -321,11 +236,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
         """Test validation passes when product.contract is present."""
         odps_doc = self.valid_odps_doc.copy()
         odps_doc["product"]["contract"] = {
-            "spec": {
-                "apiVersion": "odcs.io/v3.0.2",
-                "kind": "DataContract",
-                "id": "test-contract"
-            }
+            "spec": {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract", "id": "test-contract"}
         }
 
         result = self.rules.validate_odps_structure(odps_doc)
@@ -346,27 +257,23 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
     def test_validate_odps_structure_contract_missing_spec_ref_url(self):
         """Test validation fails when contract has no spec, $ref, or contractURL."""
         odps_doc = self.valid_odps_doc.copy()
-        odps_doc["product"]["contract"] = {
-            "invalid": "field"
-        }
+        odps_doc["product"]["contract"] = {"invalid": "field"}
 
         result = self.rules.validate_odps_structure(odps_doc)
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(any("spec" in err.lower() or "ref" in err.lower() or "contracturl" in err.lower() for err in result.errors))
+        self.assertTrue(
+            any(
+                "spec" in err.lower() or "ref" in err.lower() or "contracturl" in err.lower()
+                for err in result.errors
+            )
+        )
 
     def test_validate_odps_structure_with_marketplace(self):
         """Test validation passes when product.marketplace is present."""
         odps_doc = self.valid_odps_doc.copy()
-        odps_doc["product"]["marketplace"] = {
-            "pricingPlans": [
-                {
-                    "name": "Free",
-                    "price": 0.0
-                }
-            ]
-        }
+        odps_doc["product"]["marketplace"] = {"pricingPlans": [{"name": "Free", "price": 0.0}]}
 
         result = self.rules.validate_odps_structure(odps_doc)
 
@@ -386,9 +293,7 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
     def test_validate_odps_structure_strict_mode(self):
         """Test strict mode validation."""
         odps_doc = self.valid_odps_doc.copy()
-        odps_doc["product"]["marketplace"] = {
-            "pricingPlans": "invalid"  # Should be an array
-        }
+        odps_doc["product"]["marketplace"] = {"pricingPlans": "invalid"}  # Should be an array
 
         result = self.rules.validate_odps_structure(odps_doc, strict=True)
 
@@ -401,21 +306,16 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(any("dictionary" in err.lower() or "object" in err.lower() for err in result.errors))
+        self.assertTrue(
+            any("dictionary" in err.lower() or "object" in err.lower() for err in result.errors)
+        )
 
     def test_validate_odps_structure_missing_schema_and_version(self):
         """Test validation fails when both schema and version are missing."""
         odps_doc = {
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             }
         }
 
@@ -423,7 +323,9 @@ class ODPSBusinessRulesStructureTest(ODPSBusinessRulesTestBase):
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(any("schema" in err.lower() or "version" in err.lower() for err in result.errors))
+        self.assertTrue(
+            any("schema" in err.lower() or "version" in err.lower() for err in result.errors)
+        )
 
 
 class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
@@ -442,8 +344,8 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
                 "details": {"en": {"productID": "test", "name": "Test"}},
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}]}
-            }
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         result = self.rules.validate_odps_version(odps_doc)
@@ -456,8 +358,8 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             "version": "4.1",
             "product": {
                 "details": {"en": {"productID": "test", "name": "Test"}},
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}]}
-            }
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         result = self.rules.validate_odps_version(odps_doc)
@@ -469,7 +371,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
         odps_doc = {
             "product": {
                 "details": {"en": {"productID": "test", "name": "Test"}},
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}]}
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
             }
         }
 
@@ -477,7 +379,9 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
-        self.assertTrue(any("version" in err.lower() or "detect" in err.lower() for err in result.errors))
+        self.assertTrue(
+            any("version" in err.lower() or "detect" in err.lower() for err in result.errors)
+        )
 
     def test_validate_odps_version_unsupported(self):
         """Test validation fails for unsupported version."""
@@ -487,8 +391,8 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             "version": "5.0",  # Unsupported major version
             "product": {
                 "details": {"en": {"productID": "test", "name": "Test"}},
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}]}
-            }
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         result = self.rules.validate_odps_version(odps_doc)
@@ -505,19 +409,13 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_version_required_version_match(self):
         """Test validation passes when required version matches."""
-        result = self.rules.validate_odps_version(
-            self.valid_odps_doc,
-            required_version="4.1"
-        )
+        result = self.rules.validate_odps_version(self.valid_odps_doc, required_version="4.1")
 
         self.assertTrue(result.is_valid)
 
     def test_validate_odps_version_required_version_mismatch(self):
         """Test validation fails when required version doesn't match."""
-        result = self.rules.validate_odps_version(
-            self.valid_odps_doc,
-            required_version="4.0"
-        )
+        result = self.rules.validate_odps_version(self.valid_odps_doc, required_version="4.0")
 
         self.assertFalse(result.is_valid)
         self.assertGreater(len(result.errors), 0)
@@ -529,8 +427,8 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
             "schema": "https://opendataproducts.org/schema/v3.9",
             "product": {
                 "details": {"en": {"productID": "test", "name": "Test"}},
-                "dataSchema": {"fields": [{"name": "id", "type": "string"}]}
-            }
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
         }
 
         result = self.rules.validate_odps_version(odps_doc)
@@ -544,7 +442,7 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
         """Test validation passes for all supported versions."""
         for version in SUPPORTED_ODPS_VERSIONS:
             # Skip .x versions as they need specific minor versions to be detected correctly
-            if version.endswith('.x'):
+            if version.endswith(".x"):
                 # For .x versions, use a specific minor version that will normalize to .x
                 if version == "3.x":
                     test_version = "3.9"
@@ -561,13 +459,15 @@ class ODPSBusinessRulesVersionTest(ODPSBusinessRulesTestBase):
                 "schema": f"https://opendataproducts.org/schema/v{test_version}",
                 "product": {
                     "details": {"en": {"productID": "test", "name": "Test"}},
-                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]}
-                }
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
             }
 
             result = self.rules.validate_odps_version(odps_doc)
 
-            self.assertTrue(result.is_valid, f"Version {test_version} (normalized to {version}) should be valid")
+            self.assertTrue(
+                result.is_valid, f"Version {test_version} (normalized to {version}) should be valid"
+            )
 
 
 class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
@@ -579,60 +479,51 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
 
         # Create ODCS contract
         from hub.apps.contracts.services import ContractService
-        contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
 
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-odcs-linking",
-            "name": "Test ODCS for Linking",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
+        contract_service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-odcs-linking",
+                "name": "Test ODCS for Linking",
+                "version": "3.0.2",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
         self.odcs_contract = contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS.value
+            original_spec_type=OriginalSpecType.ODCS.value,
         )
 
         # Create ODPS contract
         from hub.apps.contracts.services import ODPSService
-        odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
 
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-linking",
-                        "name": "Test ODPS for Linking"
-                    }
+        odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {"productID": "test-odps-linking", "name": "Test ODPS for Linking"}
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                    "contract": {"spec": json.loads(odcs_raw)},
                 },
-                "dataSchema": {
-                    "fields": [{"name": "id", "type": "string"}]
-                },
-                "contract": {
-                    "spec": json.loads(odcs_raw)
-                }
             }
-        })
+        )
 
         self.odps_contract = odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
     def test_validate_odps_linking_valid(self):
@@ -640,7 +531,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
         result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertTrue(result.is_valid)
@@ -651,7 +542,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
         result = self.rules.validate_odps_linking(
             odps_contract_id="",
             odcs_contract_id=str(self.odcs_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertFalse(result.is_valid)
@@ -663,7 +554,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
         result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id="",
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertFalse(result.is_valid)
@@ -673,12 +564,13 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
     def test_validate_odps_linking_nonexistent_odps(self):
         """Test validation fails when ODPS contract doesn't exist."""
         from uuid import uuid4
+
         fake_id = str(uuid4())
 
         result = self.rules.validate_odps_linking(
             odps_contract_id=fake_id,
             odcs_contract_id=str(self.odcs_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertFalse(result.is_valid)
@@ -687,12 +579,13 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
     def test_validate_odps_linking_nonexistent_odcs(self):
         """Test validation fails when ODCS contract doesn't exist."""
         from uuid import uuid4
+
         fake_id = str(uuid4())
 
         result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=fake_id,
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         self.assertFalse(result.is_valid)
@@ -711,7 +604,7 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
         result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            tenant_id=str(other_tenant.id)
+            tenant_id=str(other_tenant.id),
         )
 
         self.assertFalse(result.is_valid)
@@ -722,29 +615,29 @@ class ODPSBusinessRulesLinkingTest(ODPSBusinessRulesTestBase):
         """Test validation warns when contracts are already linked."""
         # Link the contracts first
         from hub.apps.contracts.services import ContractService
-        contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+
+        contract_service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         contract_service.link_odps_to_odcs(
             odcs_contract_id=str(self.odcs_contract.id),
             odps_contract_id=str(self.odps_contract.id),
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Validate again (should warn about already being linked)
         result = self.rules.validate_odps_linking(
             odps_contract_id=str(self.odps_contract.id),
             odcs_contract_id=str(self.odcs_contract.id),
-            tenant_id=str(self.tenant.id)
+            tenant_id=str(self.tenant.id),
         )
 
         # Should still be valid, but with warning
         self.assertTrue(result.is_valid)
         self.assertGreater(len(result.warnings), 0)
-        self.assertTrue(any("already" in warn.lower() or "linked" in warn.lower() for warn in result.warnings))
+        self.assertTrue(
+            any("already" in warn.lower() or "linked" in warn.lower() for warn in result.warnings)
+        )
 
 
 class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
@@ -756,10 +649,8 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
         # Create ODPS contract
         from hub.apps.contracts.services import ODPSService
-        odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+
+        odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         odps_raw = json.dumps(self.valid_odps_doc)
 
@@ -767,7 +658,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
     def test_validate_odps_contract_valid(self):
@@ -780,28 +671,26 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
         """Test validation fails for non-ODPS contract."""
         # Create ODCS contract
         from hub.apps.contracts.services import ContractService
-        contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
 
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs.io/v3.0.2",
-            "kind": "DataContract",
-            "id": "test-odcs",
-            "name": "Test ODCS",
-            "version": "3.0.2",
-            "schema": {
-                "fields": [{"name": "id", "type": "string"}]
+        contract_service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs.io/v3.0.2",
+                "kind": "DataContract",
+                "id": "test-odcs",
+                "name": "Test ODCS",
+                "version": "3.0.2",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
         odcs_contract = contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="json",
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            original_spec_type=OriginalSpecType.ODCS.value
+            original_spec_type=OriginalSpecType.ODCS.value,
         )
 
         result = self.rules.validate_odps_contract(odcs_contract)
@@ -820,7 +709,7 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
             original_format=OriginalFormat.JSON,
             original_raw=json.dumps(self.valid_odps_doc),
             status=ContractStatus.DRAFT,
-            hub_contract_json=None  # Missing
+            hub_contract_json=None,  # Missing
         )
 
         result = self.rules.validate_odps_contract(odps_contract)
@@ -831,11 +720,259 @@ class ODPSBusinessRulesContractTest(ODPSBusinessRulesTestBase):
 
     def test_validate_odps_contract_strict_mode(self):
         """Test strict mode validation."""
-        result = self.rules.validate_odps_contract(
-            self.odps_contract,
-            strict=True
-        )
+        result = self.rules.validate_odps_contract(self.odps_contract, strict=True)
 
         # Should still be valid for a properly created contract
         self.assertTrue(result.is_valid)
 
+    # Edge cases and error handling tests
+    def test_validate_odps_structure_with_none_input(self):
+        """Test structure validation with None input."""
+        result = self.rules.validate_odps_structure(None)  # type: ignore
+        # Should handle None gracefully
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_structure_with_empty_dict(self):
+        """Test structure validation with empty dictionary."""
+        result = self.rules.validate_odps_structure({})
+        # Should fail validation
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_structure_with_invalid_type(self):
+        """Test structure validation with invalid input type."""
+        result = self.rules.validate_odps_structure("not a dict")  # type: ignore
+        # Should handle invalid type gracefully
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_structure_with_special_characters(self):
+        """Test structure validation with special characters."""
+        odps_with_special = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {"details": {"en": {"productID": "test-<>&\"'", "name": "Product <>&\"'"}}},
+        }
+        result = self.rules.validate_odps_structure(odps_with_special)
+        # Should handle special characters
+        self.assertIsNotNone(result)
+
+    def test_validate_odps_structure_with_unicode(self):
+        """Test structure validation with unicode characters."""
+        odps_with_unicode = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {"details": {"en": {"productID": "产品", "name": "产品名称"}}},
+        }
+        result = self.rules.validate_odps_structure(odps_with_unicode)
+        # Should handle unicode
+        self.assertIsNotNone(result)
+
+    def test_validate_odps_structure_with_very_large_document(self):
+        """Test structure validation with very large document."""
+        large_odps = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-product",
+                        "name": "Test Product",
+                        "description": "A" * 100000,
+                    }
+                }
+            },
+        }
+        result = self.rules.validate_odps_structure(large_odps)
+        # Should handle very large documents
+        self.assertIsNotNone(result)
+
+    def test_validate_odps_version_with_none_input(self):
+        """Test version validation with None input."""
+        result = self.rules.validate_odps_version(None)  # type: ignore
+        # Should handle None gracefully
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_version_with_empty_string(self):
+        """Test version validation with empty string."""
+        result = self.rules.validate_odps_version("")  # type: ignore
+        # Should fail validation
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_version_with_invalid_version(self):
+        """Test version validation with invalid version."""
+        result = self.rules.validate_odps_version("invalid-version")  # type: ignore
+        # Should fail validation
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_version_with_unsupported_version(self):
+        """Test version validation with unsupported version."""
+        result = self.rules.validate_odps_version("5.0")  # type: ignore
+        # Should fail validation
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_linking_with_none_ids(self):
+        """Test linking validation with None IDs."""
+        result = self.rules.validate_odps_linking(
+            odps_contract_id=None,  # type: ignore
+            odcs_contract_id=None,  # type: ignore
+            tenant_id=str(self.tenant.id),
+        )
+        # Should handle None IDs gracefully
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_linking_with_empty_ids(self):
+        """Test linking validation with empty IDs."""
+        result = self.rules.validate_odps_linking(
+            odps_contract_id="", odcs_contract_id="", tenant_id=str(self.tenant.id)
+        )
+        # Should handle empty IDs gracefully
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_linking_with_invalid_uuid_format(self):
+        """Test linking validation with invalid UUID format."""
+        result = self.rules.validate_odps_linking(
+            odps_contract_id="not-a-uuid",
+            odcs_contract_id="also-not-a-uuid",
+            tenant_id=str(self.tenant.id),
+        )
+        # Should handle invalid UUID format gracefully
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_contract_with_none_contract(self):
+        """Test contract validation with None contract."""
+        result = self.rules.validate_odps_contract(None)  # type: ignore
+        # Should handle None gracefully
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_contract_with_empty_hub_contract_json(self):
+        """Test contract validation with empty hub_contract_json."""
+        self.odps_contract.hub_contract_json = {}
+        self.odps_contract.save()
+
+        result = self.rules.validate_odps_contract(self.odps_contract)
+        # Should handle empty hub_contract_json gracefully
+        self.assertIsNotNone(result)
+
+    def test_validate_odps_structure_with_missing_schema(self):
+        """Test structure validation with missing schema field."""
+        odps_no_schema = {
+            "version": "4.1",
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
+        }
+        result = self.rules.validate_odps_structure(odps_no_schema)
+        # May or may not be valid depending on schema requirements
+        self.assertIsNotNone(result)
+
+    def test_validate_odps_structure_with_missing_version(self):
+        """Test structure validation with missing version field."""
+        odps_no_version = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
+        }
+        result = self.rules.validate_odps_structure(odps_no_version)
+        # May or may not be valid depending on schema requirements
+        self.assertIsNotNone(result)
+
+    def test_validate_odps_structure_with_missing_product(self):
+        """Test structure validation with missing product field."""
+        odps_no_product = {"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1"}
+        result = self.rules.validate_odps_structure(odps_no_product)
+        # Should fail validation (product is required)
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_validate_odps_version_with_numeric_version(self):
+        """Test version validation with numeric version."""
+        result = self.rules.validate_odps_version(4.1)  # type: ignore
+        # May handle numeric version or require string
+        self.assertIsNotNone(result)
+
+    def test_validate_odps_version_with_whitespace(self):
+        """Test version validation with whitespace."""
+        result = self.rules.validate_odps_version("  4.1  ")  # type: ignore
+        # Should handle whitespace (may trim or reject)
+        self.assertIsNotNone(result)
+
+    def test_validate_odps_linking_with_same_contract_ids(self):
+        """Test linking validation with same contract IDs."""
+        result = self.rules.validate_odps_linking(
+            odps_contract_id=str(self.odps_contract.id),
+            odcs_contract_id=str(self.odps_contract.id),  # Same as ODPS
+            tenant_id=str(self.tenant.id),
+        )
+        # Should detect self-reference
+        self.assertFalse(result.is_valid)
+        self.assertGreater(len(result.errors), 0)
+
+    def test_business_rules_handle_unicode_characters(self):
+        """Test that business rules handle unicode characters correctly."""
+        odps_unicode = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {"details": {"en": {"productID": "测试产品", "name": "测试名称"}}},
+        }
+        result = self.rules.validate_odps_structure(odps_unicode)
+        # Should handle unicode characters
+        self.assertIsNotNone(result)
+
+    def test_business_rules_handle_special_characters(self):
+        """Test that business rules handle special characters correctly."""
+        odps_special = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {"en": {"productID": "test-<>&\"'", "name": "Test & Co. (Special)"}}
+            },
+        }
+        result = self.rules.validate_odps_structure(odps_special)
+        # Should handle special characters
+        self.assertIsNotNone(result)
+
+    def test_business_rules_handle_very_large_documents(self):
+        """Test that business rules handle very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        odps_large = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {"en": {"productID": "test-large", "description": large_description}}
+            },
+        }
+        result = self.rules.validate_odps_structure(odps_large)
+        # Should handle very large documents
+        self.assertIsNotNone(result)
+
+    def test_business_rules_handle_none_values(self):
+        """Test that business rules handle None values correctly."""
+        result = self.rules.validate_odps_structure(None)  # type: ignore
+        # Should handle None values gracefully
+        self.assertIsNotNone(result)
+        self.assertFalse(result.is_valid)
+
+    def test_business_rules_handle_nested_structures(self):
+        """Test that business rules handle nested structures correctly."""
+        odps_nested = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-nested",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                }
+            },
+        }
+        result = self.rules.validate_odps_structure(odps_nested)
+        # Should handle nested structures
+        self.assertIsNotNone(result)

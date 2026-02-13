@@ -4,13 +4,13 @@ End-to-end tests for normalization event publishing through API operations.
 Tests that normalization events are published when contracts are created/updated via API.
 All tests use real services and models (no mocks/stubs).
 """
-from django.test import TestCase, override_settings
+
+from django.test import override_settings
 from django.urls import reverse
-from rest_framework.test import APIClient
 from rest_framework import status
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus, Role, UserRole
+
 from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalSpecType
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 from hub.apps.core.events.models import Event
 
 
@@ -18,24 +18,12 @@ from hub.apps.core.events.models import Event
     EVENT_BUS_ASYNC_PERSISTENCE=False,  # Disable async persistence for tests
     EVENT_BUS_WRITE_BEHIND_ENABLED=False,  # Disable write-behind for tests
 )
-class NormalizationOperationsEventPublishingE2ETest(TestCase):
+class NormalizationOperationsEventPublishingE2ETest(ContractsAPITestBase):
     """E2E tests for normalization event publishing through API operations."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.client = APIClient()
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
-        )
-        self.client.force_authenticate(user=self.user)
+        super().setUp()
 
     def test_update_contract_publishes_normalization_events(self):
         """Test that updating a contract via API publishes normalization events."""
@@ -45,7 +33,7 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
             original_raw='{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract", "id": "test-contract", "name": "Test Contract", "version": "1.0.0", "schema": {"fields": [{"name": "test_field", "type": "string", "nullable": false}]}}',
             original_format="json",
             original_spec_type=OriginalSpecType.ODCS,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Count events before update
@@ -55,9 +43,7 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
         # Update contract via API
         url = reverse("contract-detail", kwargs={"id": str(contract.id)})
         updated_raw = '{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract", "id": "test-contract-updated", "name": "Test Contract Updated", "version": "1.0.0", "schema": {"fields": [{"name": "test_field", "type": "string", "nullable": false}]}}'
-        data = {
-            "original_raw": updated_raw
-        }
+        data = {"original_raw": updated_raw}
 
         response = self.client.patch(url, data, format="json")
 
@@ -71,10 +57,13 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
         self.assertEqual(completed_count_after, completed_count_before + 1)
 
         # Verify started event
-        started_event = Event.objects.filter(
-            event_type="normalization.started",
-            data__contract_id=str(contract.id)
-        ).order_by('-timestamp').first()
+        started_event = (
+            Event.objects.filter(
+                event_type="normalization.started", data__contract_id=str(contract.id)
+            )
+            .order_by("-timestamp")
+            .first()
+        )
 
         self.assertIsNotNone(started_event)
         self.assertEqual(started_event.data["contract_id"], str(contract.id))
@@ -82,14 +71,20 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
         self.assertEqual(str(started_event.user_id), str(self.user.id))
 
         # Verify completed event
-        completed_event = Event.objects.filter(
-            event_type="normalization.completed",
-            data__contract_id=str(contract.id)
-        ).order_by('-timestamp').first()
+        completed_event = (
+            Event.objects.filter(
+                event_type="normalization.completed", data__contract_id=str(contract.id)
+            )
+            .order_by("-timestamp")
+            .first()
+        )
 
         self.assertIsNotNone(completed_event)
         self.assertEqual(completed_event.data["contract_id"], str(contract.id))
-        self.assertIn(completed_event.data["normalization_status"], ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"])
+        self.assertIn(
+            completed_event.data["normalization_status"],
+            ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"],
+        )
         self.assertEqual(str(completed_event.tenant_id), str(self.tenant.id))
         self.assertEqual(str(completed_event.user_id), str(self.user.id))
 
@@ -101,7 +96,7 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
             original_raw='{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract", "id": "test-contract", "name": "Test Contract", "version": "1.0.0", "schema": {"fields": [{"name": "test_field", "type": "string", "nullable": false}]}}',
             original_format="json",
             original_spec_type=OriginalSpecType.ODCS,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Count events before update
@@ -111,9 +106,7 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
         # Update contract with invalid data
         url = reverse("contract-detail", kwargs={"id": str(contract.id)})
         invalid_raw = '{"invalid": "contract"}'
-        data = {
-            "original_raw": invalid_raw
-        }
+        data = {"original_raw": invalid_raw}
 
         # Update should fail, but normalization events should still be published
         try:
@@ -123,13 +116,18 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
                 # Check if normalization failed
                 contract.refresh_from_db()
                 if contract.normalization_status == NormalizationStatus.NORMALIZATION_FAILED:
-                    failed_count_after = Event.objects.filter(event_type="normalization.failed").count()
+                    failed_count_after = Event.objects.filter(
+                        event_type="normalization.failed"
+                    ).count()
                     self.assertEqual(failed_count_after, failed_count_before + 1)
 
-                    failed_event = Event.objects.filter(
-                        event_type="normalization.failed",
-                        data__contract_id=str(contract.id)
-                    ).order_by('-timestamp').first()
+                    failed_event = (
+                        Event.objects.filter(
+                            event_type="normalization.failed", data__contract_id=str(contract.id)
+                        )
+                        .order_by("-timestamp")
+                        .first()
+                    )
 
                     self.assertIsNotNone(failed_event)
                     self.assertEqual(failed_event.data["contract_id"], str(contract.id))
@@ -142,11 +140,11 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
 
     def test_odps_normalization_job_publishes_normalization_events(self):
         """Test that ODPS normalization job publishes normalization events."""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
         from hub.apps.jobs.tasks import _execute_odps_normalization_job
 
         # Create an ODPS contract
-        odps_raw = '''{
+        odps_raw = """{
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
                 "details": {
@@ -164,14 +162,14 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
                     ]
                 }
             }
-        }'''
+        }"""
 
         contract = Contract.objects.create(
             tenant=self.tenant,
             original_raw=odps_raw,
             original_format="JSON",
             original_spec_type=OriginalSpecType.ODPS,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Create a job for normalization
@@ -182,7 +180,7 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
             resource_type="CONTRACT",
             resource_id=contract.id,
             details_json={"contract_id": str(contract.id)},
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Count events before job execution
@@ -204,10 +202,13 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
         self.assertGreaterEqual(started_count_after, started_count_before + 1)
 
         # Verify started event
-        started_event = Event.objects.filter(
-            event_type="normalization.started",
-            data__contract_id=str(contract.id)
-        ).order_by('-timestamp').first()
+        started_event = (
+            Event.objects.filter(
+                event_type="normalization.started", data__contract_id=str(contract.id)
+            )
+            .order_by("-timestamp")
+            .first()
+        )
 
         self.assertIsNotNone(started_event)
         self.assertEqual(started_event.data["contract_id"], str(contract.id))
@@ -216,10 +217,13 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
 
         # If normalization succeeded, verify completed event
         if completed_count_after > completed_count_before:
-            completed_event = Event.objects.filter(
-                event_type="normalization.completed",
-                data__contract_id=str(contract.id)
-            ).order_by('-timestamp').first()
+            completed_event = (
+                Event.objects.filter(
+                    event_type="normalization.completed", data__contract_id=str(contract.id)
+                )
+                .order_by("-timestamp")
+                .first()
+            )
 
             self.assertIsNotNone(completed_event)
             self.assertEqual(completed_event.data["contract_id"], str(contract.id))
@@ -234,7 +238,7 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
         url = reverse("contract-list")
         data = {
             "original_raw": '{"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract", "id": "test-contract-new", "name": "Test Contract New", "version": "1.0.0", "schema": {"fields": [{"name": "test_field", "type": "string", "nullable": false}]}}',
-            "original_format": "JSON"
+            "original_format": "JSON",
         }
 
         response = self.client.post(url, data, format="json")
@@ -247,4 +251,3 @@ class NormalizationOperationsEventPublishingE2ETest(TestCase):
         # Events should not be published during creation (contract_id not available)
         self.assertEqual(started_count_after, started_count_before)
         self.assertEqual(completed_count_after, completed_count_before)
-

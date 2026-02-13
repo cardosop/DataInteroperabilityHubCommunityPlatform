@@ -1,0 +1,208 @@
+.ml-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.ml-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.ml-header h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  margin: 0;
+}
+
+.ml-tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ml-tab {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  transition: all 0.2s ease;
+}
+
+.ml-tab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+}
+
+.ml-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ml-content {
+  min-height: 400px;
+}
+
+.section-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+.filters {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.filter-select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-base);
+}
+
+.models-list,
+.training-jobs-list,
+.inference-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.model-card,
+.job-card,
+.deployment-card {
+  padding: var(--spacing-lg);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  transition: all 0.2s ease;
+}
+
+.model-card {
+  cursor: pointer;
+}
+
+.model-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.model-header,
+.job-header,
+.deployment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-md);
+}
+
+.model-header h3,
+.job-header h3,
+.deployment-header h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.status-badge {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.status-badge.status-training,
+.status-badge.status-deploying {
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.status-badge.status-trained,
+.status-badge.status-deployed {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.status-badge.status-failed,
+.status-badge.status-undeployed {
+  background: var(--color-error-light);
+  color: var(--color-error);
+}
+
+.status-badge.status-archived {
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+}
+
+.status-badge.status-pending {
+  background: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.status-badge.status-running {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.status-badge.status-completed {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.status-badge.status-cancelled {
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+}
+
+.model-meta,
+.job-meta,
+.deployment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.model-id {
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-family: monospace;
+}
+
+.job-error {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background: var(--color-error-light);
+  color: var(--color-error);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-sm);
+}
+
+.deployment-meta a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.deployment-meta a:hover {
+  text-decoration: underline;
+}

@@ -241,6 +241,16 @@ Published when a single file is processed during ingestion.
 - `dataset_id` (UUID)
 - `error_message` (string)
 
+#### `pipeline.started`
+Published when a pipeline run (ingestion or data pipeline) starts.
+
+**Required Fields:**
+- `pipeline_id` (UUID) or `ingestion_id` (UUID)
+
+**Optional Fields:**
+- `source_type` (string)
+- `started_at` (ISO 8601 datetime)
+
 ### Quality Events
 
 #### `quality.check.started`
@@ -848,6 +858,249 @@ Published when ODPS semantic mapping completes.
 - `mapped_entities_count` (integer)
 - `mapping_errors` (array of strings)
 
+### Marketplace Integration Events
+
+#### `marketplace.connection.created`
+Published when a marketplace connection is created.
+
+**Required Fields:**
+- `connection_id` (UUID)
+- `marketplace_type` (string)
+
+**Optional Fields:**
+- `name` (string)
+- `created_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+  "name": "Snowflake Production",
+  "created_at": "2025-01-15T10:30:00Z"
+}
+```
+
+#### `marketplace.connection.updated`
+Published when a marketplace connection is updated.
+
+**Required Fields:**
+- `connection_id` (UUID)
+- `changes` (object)
+
+**Optional Fields:**
+- `updated_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "changes": {
+    "name": {
+      "old": "Snowflake Production",
+      "new": "Snowflake Production Updated"
+    }
+  },
+  "updated_at": "2025-01-15T11:00:00Z"
+}
+```
+
+#### `marketplace.connection.deleted`
+Published when a marketplace connection is deleted.
+
+**Required Fields:**
+- `connection_id` (UUID)
+- `marketplace_type` (string)
+- `name` (string)
+
+**Optional Fields:**
+- `reason` (string)
+- `deleted_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+  "name": "Snowflake Production",
+  "reason": "User requested deletion",
+  "deleted_at": "2025-01-15T12:00:00Z"
+}
+```
+
+#### `marketplace.sync.started`
+Published when a marketplace sync job starts.
+
+**Required Fields:**
+- `sync_job_id` (UUID)
+- `connection_id` (UUID)
+- `direction` (string)
+
+**Optional Fields:**
+- `started_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "sync_job_id": "660e8400-e29b-41d4-a716-446655440000",
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "direction": "PULL",
+  "started_at": "2025-01-15T10:00:00Z"
+}
+```
+
+#### `marketplace.sync.completed`
+Published when a marketplace sync job completes successfully.
+
+**Required Fields:**
+- `sync_job_id` (UUID)
+- `connection_id` (UUID)
+- `direction` (string)
+- `status` (string)
+- `items_synced` (integer)
+- `items_failed` (integer)
+
+**Optional Fields:**
+- `completed_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "sync_job_id": "660e8400-e29b-41d4-a716-446655440000",
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "direction": "PULL",
+  "status": "COMPLETED",
+  "items_synced": 100,
+  "items_failed": 0,
+  "completed_at": "2025-01-15T10:05:00Z"
+}
+```
+
+#### `marketplace.sync.failed`
+Published when a marketplace sync job fails.
+
+**Required Fields:**
+- `sync_job_id` (UUID)
+- `connection_id` (UUID)
+- `direction` (string)
+- `error_message` (string)
+
+**Optional Fields:**
+- `error_details` (object)
+- `failed_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "sync_job_id": "660e8400-e29b-41d4-a716-446655440000",
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "direction": "PULL",
+  "error_message": "Connection timeout",
+  "error_details": {
+    "error_code": "CONNECTION_TIMEOUT",
+    "retry_count": 3
+  },
+  "failed_at": "2025-01-15T10:10:00Z"
+}
+```
+
+#### `marketplace.sync.cancelled`
+Published when a marketplace sync job is cancelled.
+
+**Required Fields:**
+- `sync_job_id` (UUID)
+- `connection_id` (UUID)
+- `direction` (string)
+
+**Optional Fields:**
+- `cancellation_reason` (string)
+- `cancelled_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "sync_job_id": "660e8400-e29b-41d4-a716-446655440000",
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "direction": "PULL",
+  "cancellation_reason": "User requested cancellation",
+  "cancelled_at": "2025-01-15T10:03:00Z"
+}
+```
+
+#### `marketplace.mapping.created`
+Published when a marketplace mapping is created.
+
+**Required Fields:**
+- `mapping_id` (UUID)
+- `connection_id` (UUID)
+- `hub_asset_id` (UUID)
+- `external_listing_id` (string)
+
+**Optional Fields:**
+- `created_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "mapping_id": "770e8400-e29b-41d4-a716-446655440000",
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "hub_asset_id": "880e8400-e29b-41d4-a716-446655440000",
+  "external_listing_id": "SNOWFLAKE_LISTING_123",
+  "created_at": "2025-01-15T10:00:00Z"
+}
+```
+
+#### `marketplace.mapping.updated`
+Published when a marketplace mapping is updated.
+
+**Required Fields:**
+- `mapping_id` (UUID)
+- `connection_id` (UUID)
+- `changes` (object)
+
+**Optional Fields:**
+- `updated_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "mapping_id": "770e8400-e29b-41d4-a716-446655440000",
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "changes": {
+    "external_listing_id": {
+      "old": "SNOWFLAKE_LISTING_123",
+      "new": "SNOWFLAKE_LISTING_456"
+    }
+  },
+  "updated_at": "2025-01-15T10:15:00Z"
+}
+```
+
+#### `marketplace.mapping.deleted`
+Published when a marketplace mapping is deleted.
+
+**Required Fields:**
+- `mapping_id` (UUID)
+- `connection_id` (UUID)
+- `hub_asset_id` (UUID)
+- `external_listing_id` (string)
+
+**Optional Fields:**
+- `reason` (string)
+- `deleted_at` (ISO 8601 datetime)
+
+**Event Data Schema:**
+```json
+{
+  "mapping_id": "770e8400-e29b-41d4-a716-446655440000",
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "hub_asset_id": "880e8400-e29b-41d4-a716-446655440000",
+  "external_listing_id": "SNOWFLAKE_LISTING_123",
+  "reason": "Asset deleted",
+  "deleted_at": "2025-01-15T11:00:00Z"
+}
+```
+
 ### Data Mesh Events
 
 #### `domain.created`
@@ -1438,6 +1691,18 @@ Published when an alert is triggered.
 - `metric_name` (string)
 - `threshold_value` (number)
 - `current_value` (number)
+
+### Integration Events
+
+Events for integrations, connectors, sync, and marketplace integration (e.g. `integration.sync.started`, `integration.sync.completed`).
+
+### BaaS Events
+
+Events for BaaS platform: usage, tier, API key, developer portal (e.g. `baas.usage.recorded`, `baas.tier.updated`).
+
+### ML Events
+
+Events for ML/ODH: training, inference, model registry (e.g. `ml.training.started`, `ml.inference.completed`).
 
 ## Event Schema Versioning
 

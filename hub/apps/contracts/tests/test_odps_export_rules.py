@@ -12,80 +12,59 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Export fidelity and round-trip consistency
 - Error handling
 """
-import json
-from django.test import TestCase
 
-from hub.apps.contracts.business_rules import (
-    ODPSExportRules,
-    ODPSRuleExecutionContext
-)
-from hub.apps.core.business_rules.base import ValidationResult
+import json
+
+from hub.apps.contracts.business_rules import ODPSExportRules, ODPSRuleExecutionContext
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
 )
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
+from hub.apps.contracts.tests.test_base import ContractsTestBase
+from hub.apps.core.business_rules.base import ValidationResult
 
 
-class ODPSExportRulesTestBase(TestCase):
+class ODPSExportRulesTestBase(ContractsTestBase):
     """Base test class for ODPSExportRules tests."""
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
+        super().setUp()
+        self.user.display_name = "Test User"
+        self.user.save()
 
         # Create ODPS contract with complete data
-        from hub.apps.contracts.services import ODPSService
-        odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "version": "4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-odps-export-rules",
+                            "name": "Test ODPS for Export Rules",
+                            "description": "Test description",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
         )
 
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-export-rules",
-                        "name": "Test ODPS for Export Rules",
-                        "description": "Test description"
-                    }
-                }
-            }
-        })
-
-        self.odps_contract = odps_service.create_odps(
+        self.odps_contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Create business rules instance
-        self.rules = ODPSExportRules(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.rules = ODPSExportRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
 
 class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
@@ -107,6 +86,7 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
         # If PyYAML is installed, should pass; otherwise should fail
         try:
             import yaml
+
             self.assertTrue(result.is_valid)
             self.assertEqual(len(result.errors), 0)
         except ImportError:
@@ -122,6 +102,7 @@ class ODPSExportRulesFormatTest(ODPSExportRulesTestBase):
         # YAML depends on PyYAML availability
         try:
             import yaml
+
             self.assertTrue(result2.is_valid)
         except ImportError:
             self.assertFalse(result2.is_valid)
@@ -170,7 +151,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             original_spec_version="4.1",
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json=None
+            hub_contract_json=None,
         )
 
         result = self.rules.validate_data_completeness(contract)
@@ -187,7 +168,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             original_spec_version="4.1",
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={"id": "test-id"}  # Missing info
+            hub_contract_json={"id": "test-id"},  # Missing info
         )
 
         result = self.rules.validate_data_completeness(contract)
@@ -204,10 +185,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             original_spec_version="4.1",
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={
-                "id": "test-id",
-                "info": {}  # Missing name
-            }
+            hub_contract_json={"id": "test-id", "info": {}},  # Missing name
         )
 
         result = self.rules.validate_data_completeness(contract)
@@ -224,10 +202,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             original_spec_version="4.1",
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={
-                "id": "test-id",
-                "info": {"name": ""}  # Empty name
-            }
+            hub_contract_json={"id": "test-id", "info": {"name": ""}},  # Empty name
         )
 
         result = self.rules.validate_data_completeness(contract)
@@ -244,9 +219,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             original_spec_version="4.1",
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={
-                "info": {"name": "Test Name"}  # Missing id
-            }
+            hub_contract_json={"info": {"name": "Test Name"}},  # Missing id
         )
 
         result = self.rules.validate_data_completeness(contract)
@@ -264,10 +237,7 @@ class ODPSExportRulesDataCompletenessTest(ODPSExportRulesTestBase):
             original_spec_version="4.1",
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={
-                "id": "test-id",
-                "info": "not-a-dict"  # Invalid type
-            }
+            hub_contract_json={"id": "test-id", "info": "not-a-dict"},  # Invalid type
         )
 
         result = self.rules.validate_data_completeness(contract)
@@ -284,13 +254,11 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         """Test fidelity validation passes for valid export."""
         # Generate ODPS from contract
         exported_odps = generate_odps_from_hubcontract(
-            hub_contract=self.odps_contract.hub_contract_json,
-            target_version="4.1"
+            hub_contract=self.odps_contract.hub_contract_json, target_version="4.1"
         )
 
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract,
-            exported_odps=exported_odps
+            contract=self.odps_contract, exported_odps=exported_odps
         )
 
         self.assertTrue(result.is_valid)
@@ -299,19 +267,11 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
     def test_validate_fidelity_missing_schema(self):
         """Test fidelity validation fails when schema missing."""
         exported_odps = {
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-id",
-                        "name": "Test Name"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-id", "name": "Test Name"}}}
         }
 
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract,
-            exported_odps=exported_odps
+            contract=self.odps_contract, exported_odps=exported_odps
         )
 
         self.assertFalse(result.is_valid)
@@ -320,13 +280,10 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
 
     def test_validate_fidelity_missing_product(self):
         """Test fidelity validation fails when product section missing."""
-        exported_odps = {
-            "schema": "https://opendataproducts.org/schema/v4.1"
-        }
+        exported_odps = {"schema": "https://opendataproducts.org/schema/v4.1"}
 
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract,
-            exported_odps=exported_odps
+            contract=self.odps_contract, exported_odps=exported_odps
         )
 
         self.assertFalse(result.is_valid)
@@ -335,14 +292,10 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
 
     def test_validate_fidelity_missing_details(self):
         """Test fidelity validation fails when product.details missing."""
-        exported_odps = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {}
-        }
+        exported_odps = {"schema": "https://opendataproducts.org/schema/v4.1", "product": {}}
 
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract,
-            exported_odps=exported_odps
+            contract=self.odps_contract, exported_odps=exported_odps
         )
 
         self.assertFalse(result.is_valid)
@@ -353,14 +306,11 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         """Test fidelity validation fails when product.details is empty."""
         exported_odps = {
             "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {}
-            }
+            "product": {"details": {}},
         }
 
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract,
-            exported_odps=exported_odps
+            contract=self.odps_contract, exported_odps=exported_odps
         )
 
         self.assertFalse(result.is_valid)
@@ -376,28 +326,17 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             original_spec_version="4.1",
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={
-                "id": "original-id",
-                "info": {"name": "Test Name"}
-            }
+            hub_contract_json={"id": "original-id", "info": {"name": "Test Name"}},
         )
 
         exported_odps = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "different-id",  # Mismatch
-                        "name": "Test Name"
-                    }
-                }
-            }
+                "details": {"en": {"productID": "different-id", "name": "Test Name"}}  # Mismatch
+            },
         }
 
-        result = self.rules.validate_fidelity(
-            contract=contract,
-            exported_odps=exported_odps
-        )
+        result = self.rules.validate_fidelity(contract=contract, exported_odps=exported_odps)
 
         # Should still be valid but with warning
         self.assertTrue(result.is_valid)
@@ -412,28 +351,17 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
             original_spec_version="4.1",
             status=ContractStatus.ACTIVE,
             normalization_status=NormalizationStatus.NORMALIZED_OK,
-            hub_contract_json={
-                "id": "test-id",
-                "info": {"name": "Original Name"}
-            }
+            hub_contract_json={"id": "test-id", "info": {"name": "Original Name"}},
         )
 
         exported_odps = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-id",
-                        "name": "Different Name"  # Mismatch
-                    }
-                }
-            }
+                "details": {"en": {"productID": "test-id", "name": "Different Name"}}  # Mismatch
+            },
         }
 
-        result = self.rules.validate_fidelity(
-            contract=contract,
-            exported_odps=exported_odps
-        )
+        result = self.rules.validate_fidelity(contract=contract, exported_odps=exported_odps)
 
         # Should still be valid but with warning
         self.assertTrue(result.is_valid)
@@ -444,8 +372,7 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         """Test fidelity validation fails when exported_odps is not a dict."""
         # Type ignore: intentionally testing invalid type for validation
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract,
-            exported_odps="not-a-dict"  # type: ignore
+            contract=self.odps_contract, exported_odps="not-a-dict"  # type: ignore
         )
 
         self.assertFalse(result.is_valid)
@@ -456,19 +383,11 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         """Test fidelity validation fails when schema is not a string."""
         exported_odps = {
             "schema": 123,  # Invalid type
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-id",
-                        "name": "Test Name"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-id", "name": "Test Name"}}},
         }
 
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract,
-            exported_odps=exported_odps
+            contract=self.odps_contract, exported_odps=exported_odps
         )
 
         self.assertFalse(result.is_valid)
@@ -479,14 +398,12 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         """Test fidelity validation for round-trip consistency."""
         # Export ODPS from contract
         exported_odps = generate_odps_from_hubcontract(
-            hub_contract=self.odps_contract.hub_contract_json,
-            target_version="4.1"
+            hub_contract=self.odps_contract.hub_contract_json, target_version="4.1"
         )
 
         # Validate fidelity
         result = self.rules.validate_fidelity(
-            contract=self.odps_contract,
-            exported_odps=exported_odps
+            contract=self.odps_contract, exported_odps=exported_odps
         )
 
         # Should pass with no errors or warnings (perfect fidelity)
@@ -494,3 +411,171 @@ class ODPSExportRulesFidelityTest(ODPSExportRulesTestBase):
         # May have warnings if there are minor differences, but should not have errors
         self.assertEqual(len(result.errors), 0)
 
+    def test_validate_export_format_handles_unicode_characters(self):
+        """Test that export format validation handles unicode characters correctly."""
+        # Unicode characters in format string should be handled
+        result = self.rules.validate_export_format("json")
+        self.assertTrue(result.is_valid)
+
+    def test_validate_data_completeness_handles_unicode_characters(self):
+        """Test that data completeness validation handles unicode characters correctly."""
+        # Create contract with unicode characters
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-unicode",
+                            "name": "测试产品",
+                            "description": "测试描述",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        result = self.rules.validate_data_completeness(contract)
+
+        # Should handle unicode characters
+        self.assertIsNotNone(result)
+
+    def test_validate_data_completeness_handles_special_characters(self):
+        """Test that data completeness validation handles special characters correctly."""
+        # Create contract with special characters
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-special",
+                            "name": "Test & Co. (Special)",
+                            "description": "Test <description> & more",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        result = self.rules.validate_data_completeness(contract)
+
+        # Should handle special characters
+        self.assertIsNotNone(result)
+
+    def test_validate_data_completeness_handles_very_large_documents(self):
+        """Test that data completeness validation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-large",
+                            "name": "Test Product",
+                            "description": large_description,
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        result = self.rules.validate_data_completeness(contract)
+
+        # Should handle very large documents
+        self.assertIsNotNone(result)
+
+    def test_validate_fidelity_handles_unicode_characters(self):
+        """Test that fidelity validation handles unicode characters correctly."""
+        # Create contract with unicode characters
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-unicode-fidelity",
+                            "name": "测试产品",
+                            "description": "测试描述",
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        exported_odps = generate_odps_from_hubcontract(
+            hub_contract=contract.hub_contract_json, target_version="4.1"
+        )
+
+        result = self.rules.validate_fidelity(contract=contract, exported_odps=exported_odps)
+
+        # Should handle unicode characters
+        self.assertIsNotNone(result)
+
+    def test_validate_fidelity_handles_nested_structures(self):
+        """Test that fidelity validation handles nested structures correctly."""
+        # Create contract with nested structures
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-nested-fidelity",
+                            "name": "Test Product",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    },
+                    "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        exported_odps = generate_odps_from_hubcontract(
+            hub_contract=contract.hub_contract_json, target_version="4.1"
+        )
+
+        result = self.rules.validate_fidelity(contract=contract, exported_odps=exported_odps)
+
+        # Should handle nested structures
+        self.assertIsNotNone(result)

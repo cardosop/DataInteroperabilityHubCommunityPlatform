@@ -55,6 +55,24 @@ This directory contains operational runbooks for the Interoperable Data Hub MVP.
   - Unauthorized access
   - Data exfiltration
 
+### Scheduled Ingestion
+
+- **RB-SCHEDULED-INGESTION-001**: Scheduled Ingestion Operations (Prefect Worker)
+  - Verify Prefect worker and pool
+  - Correlate Prefect flow_run_id with hub run_id
+  - Restart worker and redeploy flow
+  - Handle stuck runs and failed runs
+  - Rollback procedures
+
+### Scheduled Export
+
+- **RB-SCHEDULED-EXPORT-001**: Scheduled Export Operations (Prefect Worker)
+  - Verify Prefect worker and pool
+  - Correlate Prefect flow_run_id with hub run_id
+  - Restart worker and redeploy flow
+  - Handle stuck runs and failed runs
+  - Rollback procedures
+
 ## Runbook Structure
 
 All runbooks follow this structure:

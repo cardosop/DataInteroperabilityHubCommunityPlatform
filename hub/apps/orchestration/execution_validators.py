@@ -252,7 +252,7 @@ class WorkflowExecutionValidator:
 
     @staticmethod
     def validate_step_execution(
-        step: WorkflowStep,
+        step: Optional[WorkflowStep],
         workflow_instance: Optional[WorkflowInstance] = None
     ) -> ValidationResult:
         """
@@ -273,6 +273,14 @@ class WorkflowExecutionValidator:
         """
         errors = []
         warnings = []
+        if step is None:
+            errors.append("Step is required for step execution validation")
+            return ValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=[],
+                details={'step_execution_validation': 'workflow_step_execution', 'step': None}
+            )
         details: Dict[str, Any] = {
             'step_execution_validation': 'workflow_step_execution',
             'step_index': step.step_index,

@@ -79,22 +79,23 @@ class WorkflowStateMigrationTest(TestCase):
             self.assertTrue(cursor.fetchone()[0], "workflow_states table should exist")
     
     def test_migration_creates_indexes(self):
-        """Test that migration creates all required indexes."""
+        """Test that migration creates all required indexes (post-0002 renamed names)."""
         with connection.cursor() as cursor:
+            # After 0002_add_workflow_instance_to_pipeline_execution, indexes were renamed
             required_indexes = [
-                'workflow_def_name_active_idx',
-                'workflow_def_name_version_idx',
-                'workflow_def_active_created_idx',
-                'workflow_inst_tenant_status_idx',
-                'workflow_inst_tenant_name_status_idx',
-                'workflow_inst_status_created_idx',
-                'workflow_inst_name_status_created_idx',
-                'workflow_inst_status_started_idx',
-                'workflow_step_inst_status_idx',
-                'workflow_step_inst_index_idx',
-                'workflow_step_status_created_idx',
-                'workflow_state_inst_type_created_idx',
-                'workflow_state_type_created_idx',
+                'workflow_de_name_060d27_idx',
+                'workflow_de_name_6658a0_idx',
+                'workflow_de_is_acti_136d63_idx',
+                'workflow_in_tenant__bd9218_idx',
+                'workflow_in_tenant__eb9218_idx',
+                'workflow_in_status_293e15_idx',
+                'workflow_in_workflo_c26fa6_idx',
+                'workflow_in_status_57a7cd_idx',
+                'workflow_st_workflo_58d189_idx',
+                'workflow_st_workflo_1aceca_idx',
+                'workflow_st_status_fed7f5_idx',
+                'workflow_st_workflo_23c6e2_idx',
+                'workflow_st_snapsho_2f0950_idx',
             ]
             
             for index_name in required_indexes:
@@ -111,22 +112,29 @@ class WorkflowStateMigrationTest(TestCase):
                 )
     
     def test_migration_creates_constraints(self):
-        """Test that migration creates all required constraints."""
+        """Test that migration creates all required constraints (post-0002: unique_together)."""
         with connection.cursor() as cursor:
-            # Check unique constraint on workflow_definitions
+            # After 0002, workflow_def_name_version_unique was removed and replaced by
+            # AlterUniqueTogether(name, version) which creates a constraint with a generated name
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM pg_constraint 
-                    WHERE conname = 'workflow_def_name_version_unique'
+                    SELECT 1 FROM pg_constraint c
+                    JOIN pg_class t ON c.conrelid = t.oid
+                    WHERE t.relname = 'workflow_definitions'
+                    AND c.contype = 'u'
+                    AND array_length(c.conkey, 1) = 2
                 );
             """)
-            self.assertTrue(cursor.fetchone()[0], "Unique constraint on workflow_definitions should exist")
+            self.assertTrue(cursor.fetchone()[0], "Unique constraint on workflow_definitions (name, version) should exist")
             
-            # Check unique constraint on workflow_steps
+            # After 0002, workflow_step_inst_index_unique was removed and replaced by
+            # AlterUniqueTogether(workflow_instance, step_index)
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT FROM pg_constraint 
-                    WHERE conname = 'workflow_step_inst_index_unique'
+                    SELECT 1 FROM pg_constraint c
+                    JOIN pg_class t ON c.conrelid = t.oid
+                    WHERE t.relname = 'workflow_steps'
+                    AND c.contype = 'u'
                 );
             """)
             self.assertTrue(cursor.fetchone()[0], "Unique constraint on workflow_steps should exist")

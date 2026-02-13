@@ -3,13 +3,26 @@ Tenant Service
 
 Business logic for tenant operations.
 """
-from typing import Dict, Any, Optional
-from django.db import transaction
-from django.core.exceptions import ObjectDoesNotExist
 
-from hub.apps.core.services.base import BaseService, ValidationError, NotFoundError, PermissionError
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
+from django.db.models import Count, Q, Sum
+from django.utils import timezone
+
 from hub.apps.core.events.service_publishers import TenantEventPublisher
-from hub.apps.tenants.models import Tenant, TenantStatus, TenantConfig, KYCStatus
+from hub.apps.core.services.base import BaseService, NotFoundError, PermissionError, ValidationError
+from hub.apps.tenants.models import (
+    KYCStatus,
+    PlanTier,
+    Tenant,
+    TenantConfig,
+    TenantPlan,
+    TenantStatus,
+    TenantUsageSummary,
+)
 from hub.apps.tenants.validators import get_platform_defaults
 
 
@@ -51,15 +64,35 @@ def get_tenant_config(tenant: Tenant) -> Dict[str, Any]:
     # Only use platform defaults when the field is explicitly None (for nullable fields) or when config doesn't exist.
     result = {
         "tenant_id": str(tenant.id),
-        "default_dq_profile": config.default_dq_profile if config.default_dq_profile else platform_defaults["default_dq_profile"],
+        "default_dq_profile": (
+            config.default_dq_profile
+            if config.default_dq_profile
+            else platform_defaults["default_dq_profile"]
+        ),
         # For JSONField lists, they're never None (have default=default_empty_list), so return the actual saved value
         "allowed_compliance_regimes": config.allowed_compliance_regimes,
         "default_compliance_regimes": config.default_compliance_regimes,
-        "data_retention_days": config.data_retention_days if config.data_retention_days is not None else platform_defaults["data_retention_days"],
+        "data_retention_days": (
+            config.data_retention_days
+            if config.data_retention_days is not None
+            else platform_defaults["data_retention_days"]
+        ),
         "rate_limits": merged_rate_limits,
-        "max_file_size_bytes": config.max_file_size_bytes if config.max_file_size_bytes is not None else platform_defaults["max_file_size_bytes"],
-        "max_job_concurrency": config.max_job_concurrency if config.max_job_concurrency is not None else platform_defaults["max_job_concurrency"],
-        "max_queued_jobs": config.max_queued_jobs if config.max_queued_jobs is not None else platform_defaults["max_queued_jobs"],
+        "max_file_size_bytes": (
+            config.max_file_size_bytes
+            if config.max_file_size_bytes is not None
+            else platform_defaults["max_file_size_bytes"]
+        ),
+        "max_job_concurrency": (
+            config.max_job_concurrency
+            if config.max_job_concurrency is not None
+            else platform_defaults["max_job_concurrency"]
+        ),
+        "max_queued_jobs": (
+            config.max_queued_jobs
+            if config.max_queued_jobs is not None
+            else platform_defaults["max_queued_jobs"]
+        ),
         "created_at": config.created_at.isoformat() if config.created_at else None,
         "updated_at": config.updated_at.isoformat() if config.updated_at else None,
     }
@@ -207,6 +240,7 @@ class TenantService(BaseService, TenantEventPublisher):
 
     Provides business logic for retrieving, creating, updating, and deleting tenants.
     """
+
     service_name = "tenant_service"
 
     def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
@@ -223,10 +257,7 @@ class TenantService(BaseService, TenantEventPublisher):
         # Initialize event publisher
         TenantEventPublisher.__init__(self, tenant_id=tenant_id, user_id=user_id)
 
-    def get_tenant(
-        self,
-        tenant_id: str
-    ) -> Tenant:
+    def get_tenant(self, tenant_id: str) -> Tenant:
         """
         Get tenant by ID.
 
@@ -242,13 +273,10 @@ class TenantService(BaseService, TenantEventPublisher):
         return self.execute_with_metrics(
             operation="get_tenant",
             tenant_id=tenant_id,
-            func=lambda: self.get_resource_or_raise(Tenant, tenant_id)
+            func=lambda: self.get_resource_or_raise(Tenant, tenant_id),
         )
 
-    def validate_kyc_verified(
-        self,
-        tenant_id: str
-    ) -> Tenant:
+    def validate_kyc_verified(self, tenant_id: str) -> Tenant:
         """
         Validate that tenant exists and has verified KYC status.
 
@@ -262,6 +290,7 @@ class TenantService(BaseService, TenantEventPublisher):
             NotFoundError: If tenant not found
             PermissionError: If tenant KYC is not verified
         """
+
         def _validate():
             tenant = self.get_resource_or_raise(Tenant, tenant_id)
 
@@ -273,19 +302,11 @@ class TenantService(BaseService, TenantEventPublisher):
             return tenant
 
         return self.execute_with_metrics(
-            operation="validate_kyc_verified",
-            tenant_id=tenant_id,
-            func=_validate
+            operation="validate_kyc_verified", tenant_id=tenant_id, func=_validate
         )
 
     @transaction.atomic
-    def create_tenant(
-        self,
-        name: str,
-        slug: str,
-        region: Optional[str] = None,
-        **kwargs
-    ) -> Tenant:
+    def create_tenant(self, name: str, slug: str, region: Optional[str] = None, **kwargs) -> Tenant:
         """
         Create a new tenant.
 
@@ -301,13 +322,14 @@ class TenantService(BaseService, TenantEventPublisher):
         Raises:
             ValidationError: If tenant creation fails
         """
+
         def _create():
             tenant = Tenant.objects.create(
                 name=name,
                 slug=slug,
                 region=region,
                 status=TenantStatus.ACTIVE,
-                kyc_status=KYCStatus.UNVERIFIED
+                kyc_status=KYCStatus.UNVERIFIED,
             )
 
             # Publish tenant.created event
@@ -318,15 +340,13 @@ class TenantService(BaseService, TenantEventPublisher):
                 status=tenant.status,
                 kyc_status=tenant.kyc_status,
                 region=tenant.region,
-                **kwargs
+                **kwargs,
             )
 
             return tenant
 
         return self.execute_with_metrics(
-            operation="create_tenant",
-            tenant_id=None,  # No tenant_id yet for creation
-            func=_create
+            operation="create_tenant", tenant_id=None, func=_create  # No tenant_id yet for creation
         )
 
     @transaction.atomic
@@ -337,7 +357,7 @@ class TenantService(BaseService, TenantEventPublisher):
         slug: Optional[str] = None,
         kyc_status: Optional[str] = None,
         region: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> Tenant:
         """
         Update tenant.
@@ -357,6 +377,7 @@ class TenantService(BaseService, TenantEventPublisher):
             NotFoundError: If tenant not found
             ValidationError: If update fails
         """
+
         def _update():
             tenant = self.get_resource_or_raise(Tenant, tenant_id)
             previous_status = tenant.status
@@ -387,24 +408,17 @@ class TenantService(BaseService, TenantEventPublisher):
                     changes=changes,
                     previous_status=previous_status,
                     new_status=new_status,
-                    **kwargs
+                    **kwargs,
                 )
 
             return tenant
 
         return self.execute_with_metrics(
-            operation="update_tenant",
-            tenant_id=tenant_id,
-            func=_update
+            operation="update_tenant", tenant_id=tenant_id, func=_update
         )
 
     @transaction.atomic
-    def delete_tenant(
-        self,
-        tenant_id: str,
-        reason: Optional[str] = None,
-        **kwargs
-    ) -> Tenant:
+    def delete_tenant(self, tenant_id: str, reason: Optional[str] = None, **kwargs) -> Tenant:
         """
         Delete a tenant (soft delete).
 
@@ -420,6 +434,7 @@ class TenantService(BaseService, TenantEventPublisher):
             NotFoundError: If tenant not found
             ValidationError: If tenant is already deleted
         """
+
         def _delete():
             tenant = self.get_resource_or_raise(Tenant, tenant_id)
 
@@ -430,18 +445,12 @@ class TenantService(BaseService, TenantEventPublisher):
             tenant.soft_delete()
 
             # Publish tenant.deleted event
-            self.publish_tenant_deleted(
-                tenant_id=str(tenant.id),
-                reason=reason,
-                **kwargs
-            )
+            self.publish_tenant_deleted(tenant_id=str(tenant.id), reason=reason, **kwargs)
 
             return tenant
 
         return self.execute_with_metrics(
-            operation="delete_tenant",
-            tenant_id=tenant_id,
-            func=_delete
+            operation="delete_tenant", tenant_id=tenant_id, func=_delete
         )
 
     @transaction.atomic
@@ -456,7 +465,7 @@ class TenantService(BaseService, TenantEventPublisher):
         max_file_size_bytes: Optional[int] = None,
         max_job_concurrency: Optional[int] = None,
         max_queued_jobs: Optional[int] = None,
-        **kwargs
+        **kwargs,
     ) -> TenantConfig:
         """
         Update tenant configuration.
@@ -482,6 +491,7 @@ class TenantService(BaseService, TenantEventPublisher):
             NotFoundError: If tenant not found
             ValidationError: If update fails
         """
+
         def _update_config():
             tenant = self.get_resource_or_raise(Tenant, tenant_id)
 
@@ -525,12 +535,12 @@ class TenantService(BaseService, TenantEventPublisher):
                             quota_field=field_name,
                             previous_value=old_value,
                             new_value=new_value,
-                            **kwargs
+                            **kwargs,
                         )
 
                         # Force Django to mark the field as changed for JSONField
                         # This ensures the field is included in the save
-                        if hasattr(config, '_state'):
+                        if hasattr(config, "_state"):
                             config._state.adding = False
 
             # Track rate_limits update
@@ -538,7 +548,7 @@ class TenantService(BaseService, TenantEventPublisher):
                 old_rate_limits = config.rate_limits or {}
                 if old_rate_limits != rate_limits:
                     config.rate_limits = rate_limits
-                    updated_fields.append('rate_limits')
+                    updated_fields.append("rate_limits")
 
                     # Publish quota changed event for rate limits
                     self.publish_tenant_quota_changed(
@@ -547,7 +557,7 @@ class TenantService(BaseService, TenantEventPublisher):
                         quota_field="rate_limits",
                         previous_value=old_rate_limits,
                         new_value=rate_limits,
-                        **kwargs
+                        **kwargs,
                     )
 
             # Save config - always save all fields to ensure JSONField changes are persisted
@@ -560,7 +570,719 @@ class TenantService(BaseService, TenantEventPublisher):
             return config
 
         return self.execute_with_metrics(
-            operation="update_tenant_config",
-            tenant_id=tenant_id,
-            func=_update_config
+            operation="update_tenant_config", tenant_id=tenant_id, func=_update_config
+        )
+
+
+class PlanLimitService(BaseService):
+    """
+    Service for checking and enforcing plan limits.
+
+    Provides business logic for:
+    - Checking if a tenant has exceeded plan limits
+    - Enforcing limits with proper error responses
+    """
+
+    service_name = "plan_limit_service"
+
+    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+        """
+        Initialize PlanLimitService.
+
+        Args:
+            tenant_id: Optional tenant ID
+            user_id: Optional user ID
+        """
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+
+    def check_limit(
+        self, tenant_id: str, limit_key: str, current_usage: int, delta: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Check if tenant has exceeded plan limit for a specific limit key.
+
+        Args:
+            tenant_id: Tenant ID
+            limit_key: Limit key (e.g., 'max_assets', 'max_api_calls_per_month')
+            current_usage: Current usage count
+            delta: Additional usage to check (default: 0)
+
+        Returns:
+            Dictionary with 'allowed' (bool), 'current' (int), 'max' (int or None),
+            'remaining' (int or None), 'limit_key' (str)
+
+        Raises:
+            ValidationError: If limit exceeded (with code 'plan_limit_exceeded')
+            NotFoundError: If tenant or plan not found
+        """
+
+        def _check():
+            # Get tenant
+            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+
+            # Get tenant's plan (or default to FREE if no plan assigned)
+            plan = tenant.plan
+            if not plan:
+                # Default to FREE plan if no plan assigned - create if doesn't exist
+                plan, _ = TenantPlan.objects.get_or_create(
+                    slug="free",
+                    is_active=True,
+                    defaults={
+                        "name": "Free Plan",
+                        "tier": PlanTier.FREE,
+                        "limits_json": {
+                            "max_assets": 10,
+                            "max_datasets": 20,
+                            "max_api_calls_per_month": 10000,
+                            "max_scheduled_ingestions": 5,
+                            "max_scheduled_runs_per_month": 50,
+                            "max_scheduled_exports": 5,
+                            "max_export_runs_per_month": 20,
+                            "max_storage_gb": 1,
+                        },
+                    },
+                )
+
+            # Get limit from plan
+            max_limit = plan.get_limit(limit_key)
+
+            # If max_limit is None, it means unlimited (typically for ENTERPRISE)
+            if max_limit is None:
+                return {
+                    "allowed": True,
+                    "current": current_usage,
+                    "max": None,
+                    "remaining": None,
+                    "limit_key": limit_key,
+                    "plan_slug": plan.slug,
+                    "plan_tier": plan.tier,
+                }
+
+            # Calculate new usage with delta
+            new_usage = current_usage + delta
+
+            # Check if limit exceeded
+            if new_usage > max_limit:
+                raise ValidationError(
+                    f"Plan limit exceeded for {limit_key}",
+                    code="plan_limit_exceeded",
+                    details={
+                        "limit_key": limit_key,
+                        "current": current_usage,
+                        "max": max_limit,
+                        "requested_delta": delta,
+                        "new_usage": new_usage,
+                        "plan_slug": plan.slug,
+                        "plan_tier": plan.tier,
+                    },
+                    http_status=403,
+                )
+
+            # Calculate remaining
+            remaining = max_limit - new_usage
+
+            return {
+                "allowed": True,
+                "current": current_usage,
+                "max": max_limit,
+                "remaining": remaining,
+                "limit_key": limit_key,
+                "plan_slug": plan.slug,
+                "plan_tier": plan.tier,
+            }
+
+        return self.execute_with_metrics(operation="check_limit", tenant_id=tenant_id, func=_check)
+
+
+class TenantUsageService(BaseService):
+    """
+    Service for aggregating and retrieving tenant usage summaries.
+
+    Provides business logic for:
+    - Calculating usage summaries for a period
+    - Retrieving current usage
+    - Aggregating metrics for billing/admin
+    """
+
+    service_name = "tenant_usage_service"
+
+    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+        """
+        Initialize TenantUsageService.
+
+        Args:
+            tenant_id: Optional tenant ID
+            user_id: Optional user ID
+        """
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+
+    def calculate_usage_summary(
+        self,
+        tenant_id: str,
+        period_start: Optional[datetime] = None,
+        period_end: Optional[datetime] = None,
+    ) -> TenantUsageSummary:
+        """
+        Calculate usage summary for a tenant for a given period.
+
+        Args:
+            tenant_id: Tenant ID
+            period_start: Start of period (defaults to start of current month)
+            period_end: End of period (defaults to end of current month)
+
+        Returns:
+            TenantUsageSummary instance (created or updated)
+        """
+
+        def _calculate():
+            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+
+            # Default to current month if not specified
+            # Use local variables to avoid shadowing function parameters
+            local_period_start = period_start
+            local_period_end = period_end
+
+            if not local_period_start:
+                now = timezone.now()
+                local_period_start = datetime(now.year, now.month, 1, tzinfo=now.tzinfo)
+            if not local_period_end:
+                # End of current month
+                if local_period_start.month == 12:
+                    local_period_end = datetime(
+                        local_period_start.year + 1, 1, 1, tzinfo=local_period_start.tzinfo
+                    ) - timedelta(seconds=1)
+                else:
+                    local_period_end = datetime(
+                        local_period_start.year,
+                        local_period_start.month + 1,
+                        1,
+                        tzinfo=local_period_start.tzinfo,
+                    ) - timedelta(seconds=1)
+
+            # Get or create usage summary
+            usage_summary, created = TenantUsageSummary.objects.get_or_create(
+                tenant=tenant,
+                period_start=local_period_start,
+                period_end=local_period_end,
+                defaults={},
+            )
+
+            # Calculate API calls count (from BaaS APIUsage or audit events)
+            from hub.apps.baas.models import APIKey, APIUsage
+
+            api_keys = APIKey.objects.filter(tenant_id=tenant_id)
+            api_calls_count = APIUsage.objects.filter(
+                api_key__in=api_keys,
+                timestamp__gte=local_period_start,
+                timestamp__lte=local_period_end,
+            ).count()
+
+            # Get current asset count
+            from hub.apps.assets.models import Asset
+
+            asset_count = Asset.objects.filter(tenant_id=tenant_id).count()
+
+            # Get current dataset count
+            from hub.apps.datasets.models import Dataset
+
+            dataset_count = Dataset.objects.filter(tenant_id=tenant_id).count()
+
+            # Get scheduled ingestion runs count
+            from hub.apps.scheduled_ingestion.models import ScheduledIngestionRun
+
+            scheduled_ingestion_runs_count = ScheduledIngestionRun.objects.filter(
+                scheduled_ingestion__tenant_id=tenant_id,
+                created_at__gte=local_period_start,
+                created_at__lte=local_period_end,
+            ).count()
+
+            # Get scheduled export runs count
+            from hub.apps.scheduled_export.models import ScheduledExportRun
+
+            scheduled_export_runs_count = ScheduledExportRun.objects.filter(
+                scheduled_export__tenant_id=tenant_id,
+                created_at__gte=local_period_start,
+                created_at__lte=local_period_end,
+            ).count()
+
+            # Calculate storage bytes (from File model)
+            from hub.apps.files.models import File, FileStatus
+
+            storage_result = File.objects.filter(
+                tenant_id=tenant_id, status__in=[FileStatus.ACTIVE, FileStatus.COMPLETED]
+            ).aggregate(total_size=Sum("size"))
+            storage_bytes = storage_result["total_size"] or 0
+
+            # Calculate ingestion cost (optional, from cost tracking)
+            ingestion_cost = None
+            try:
+                from hub.apps.scheduled_ingestion.cost_tracking import CostTrackingManager
+
+                runs = ScheduledIngestionRun.objects.filter(
+                    scheduled_ingestion__tenant_id=tenant_id,
+                    created_at__gte=local_period_start,
+                    created_at__lte=local_period_end,
+                    status="COMPLETED",
+                )
+                total_cost = sum(
+                    CostTrackingManager.calculate_run_costs(str(run.id)).total_cost
+                    for run in runs
+                    if run.completed_at
+                )
+                if total_cost > 0:
+                    ingestion_cost = total_cost
+            except Exception:
+                # Cost tracking may not be available, skip
+                pass
+
+            # Update usage summary
+            usage_summary.api_calls_count = api_calls_count
+            usage_summary.asset_count = asset_count
+            usage_summary.dataset_count = dataset_count
+            usage_summary.scheduled_ingestion_runs_count = scheduled_ingestion_runs_count
+            usage_summary.scheduled_export_runs_count = scheduled_export_runs_count
+            usage_summary.storage_bytes = storage_bytes
+            usage_summary.ingestion_cost = ingestion_cost
+            usage_summary.save()
+
+            return usage_summary
+
+        return self.execute_with_metrics(
+            operation="calculate_usage_summary", tenant_id=tenant_id, func=_calculate
+        )
+
+    def get_current_usage(self, tenant_id: str) -> Dict[str, Any]:
+        """
+        Get current usage metrics for a tenant (not period-based, current counts).
+
+        Args:
+            tenant_id: Tenant ID
+
+        Returns:
+            Dictionary with current usage metrics
+        """
+
+        def _get_current():
+            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+
+            # Get current counts
+            from hub.apps.assets.models import Asset
+            from hub.apps.datasets.models import Dataset
+            from hub.apps.files.models import File, FileStatus
+            from hub.apps.scheduled_export.models import ScheduledExport
+            from hub.apps.scheduled_ingestion.models import ScheduledIngestion
+
+            asset_count = Asset.objects.filter(tenant_id=tenant_id).count()
+            dataset_count = Dataset.objects.filter(tenant_id=tenant_id).count()
+            scheduled_ingestion_count = ScheduledIngestion.objects.filter(
+                tenant_id=tenant_id
+            ).count()
+            scheduled_export_count = ScheduledExport.objects.filter(tenant_id=tenant_id).count()
+
+            storage_result = File.objects.filter(
+                tenant_id=tenant_id, status__in=[FileStatus.ACTIVE, FileStatus.COMPLETED]
+            ).aggregate(total_size=Sum("size"))
+            storage_bytes = storage_result["total_size"] or 0
+
+            # Get API calls for current month
+            from hub.apps.baas.models import APIKey, APIUsage
+
+            now = timezone.now()
+            month_start = datetime(now.year, now.month, 1, tzinfo=now.tzinfo)
+            api_keys = APIKey.objects.filter(tenant_id=tenant_id)
+            api_calls_count = APIUsage.objects.filter(
+                api_key__in=api_keys, timestamp__gte=month_start
+            ).count()
+
+            return {
+                "tenant_id": str(tenant_id),
+                "asset_count": asset_count,
+                "dataset_count": dataset_count,
+                "scheduled_ingestion_count": scheduled_ingestion_count,
+                "scheduled_export_count": scheduled_export_count,
+                "storage_bytes": storage_bytes,
+                "storage_gb": storage_bytes / (1024**3),
+                "api_calls_this_month": api_calls_count,
+            }
+
+        return self.execute_with_metrics(
+            operation="get_current_usage", tenant_id=tenant_id, func=_get_current
+        )
+
+    def get_usage_summary(
+        self,
+        tenant_id: str,
+        period_start: Optional[datetime] = None,
+        period_end: Optional[datetime] = None,
+    ) -> TenantUsageSummary:
+        """
+        Get or calculate usage summary for a period.
+
+        Args:
+            tenant_id: Tenant ID
+            period_start: Start of period (defaults to start of current month)
+            period_end: End of period (defaults to end of current month)
+
+        Returns:
+            TenantUsageSummary instance
+        """
+        # Calculate if doesn't exist or is stale
+        return self.calculate_usage_summary(tenant_id, period_start, period_end)
+
+
+class TenantOnboardingService(BaseService, TenantEventPublisher):
+    """
+    Service for self-service tenant onboarding.
+
+    Provides business logic for:
+    - Creating tenant with first user
+    - Assigning default plan (FREE)
+    - Creating Stripe customer and FREE subscription
+    - Creating TenantConfig with defaults
+    """
+
+    service_name = "tenant_onboarding_service"
+
+    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+        """
+        Initialize TenantOnboardingService.
+
+        Args:
+            tenant_id: Optional tenant ID (not used for onboarding)
+            user_id: Optional user ID (not used for onboarding)
+        """
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        TenantEventPublisher.__init__(self, tenant_id=tenant_id, user_id=user_id)
+
+    @transaction.atomic
+    def create_tenant_with_first_user(
+        self,
+        name: str,
+        slug: str,
+        plan_slug: str = "free",
+        first_user_email: str = None,
+        first_user_password: str = None,
+        first_user_display_name: str = None,
+        region: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a tenant with first user (self-service onboarding).
+
+        Args:
+            name: Tenant name
+            slug: Tenant slug (URL-safe identifier)
+            plan_slug: Plan slug (defaults to 'free')
+            first_user_email: Email for first user (tenant admin)
+            first_user_password: Password for first user
+            first_user_display_name: Display name for first user
+            region: Optional cloud region
+
+        Returns:
+            Dictionary with tenant, user, and subscription information
+
+        Raises:
+            ValidationError: If creation fails
+        """
+
+        def _create():
+            import logging
+
+            from hub.apps.billing.services import SubscriptionService
+            from hub.apps.tenants.models import TenantConfig
+            from hub.apps.tenants.validators import get_platform_defaults
+            from hub.apps.users.models import Role, User, UserRole, UserStatus
+
+            logger = logging.getLogger(__name__)
+
+            # Validate inputs
+            if not first_user_email:
+                raise ValidationError("first_user_email is required")
+            if not first_user_password:
+                raise ValidationError("first_user_password is required")
+
+            # Check if email already exists
+            if User.objects.filter(email=first_user_email).exists():
+                raise ValidationError("Email address is already registered", code="EMAIL_EXISTS")
+
+            # Check if tenant slug already exists
+            if Tenant.objects.filter(slug=slug).exists():
+                raise ValidationError(f"Tenant slug '{slug}' already exists", code="SLUG_EXISTS")
+
+            # Get plan
+            try:
+                plan = TenantPlan.objects.get(slug=plan_slug, is_active=True)
+            except TenantPlan.DoesNotExist:
+                raise NotFoundError(f"Plan with slug '{plan_slug}' not found")
+
+            # Create tenant
+            tenant = Tenant.objects.create(
+                name=name,
+                slug=slug,
+                region=region,
+                status=TenantStatus.ACTIVE,
+                kyc_status=KYCStatus.UNVERIFIED,
+                plan=plan,
+            )
+
+            # Create first user (tenant admin)
+            user = User.objects.create_user(
+                email=first_user_email,
+                password=first_user_password,
+                tenant=tenant,
+                display_name=first_user_display_name or first_user_email.split("@")[0],
+                status=UserStatus.ACTIVE,
+            )
+
+            # Assign TENANT_ADMIN role
+            try:
+                tenant_admin_role = Role.objects.get(tenant=tenant, name="TENANT_ADMIN")
+            except Role.DoesNotExist:
+                # Create TENANT_ADMIN role if doesn't exist
+                tenant_admin_role = Role.objects.create(
+                    tenant=tenant,
+                    name="TENANT_ADMIN",
+                    description="Tenant administrator with full access",
+                )
+
+            UserRole.objects.get_or_create(user=user, role=tenant_admin_role)
+
+            # Create TenantConfig with platform defaults
+            platform_defaults = get_platform_defaults()
+            TenantConfig.objects.create(
+                tenant=tenant,
+                default_dq_profile=platform_defaults.get("default_dq_profile"),
+                allowed_compliance_regimes=platform_defaults.get("allowed_compliance_regimes", []),
+                default_compliance_regimes=platform_defaults.get("default_compliance_regimes", []),
+                data_retention_days=platform_defaults.get("data_retention_days"),
+                rate_limits=platform_defaults.get("rate_limits", {}),
+                max_file_size_bytes=platform_defaults.get("max_file_size_bytes"),
+                max_job_concurrency=platform_defaults.get("max_job_concurrency"),
+                max_queued_jobs=platform_defaults.get("max_queued_jobs"),
+            )
+
+            # Create Stripe customer and subscription
+            subscription = None
+            if plan.tier != "FREE":
+                try:
+                    subscription_service = SubscriptionService()
+                    customer_result = subscription_service.create_customer(
+                        tenant=tenant, email=first_user_email
+                    )
+                    subscription = subscription_service.create_subscription(
+                        tenant=tenant, plan=plan, trial_days=14 if plan.tier == "PRO" else 0
+                    )
+                except Exception as e:
+                    # Log error but don't fail tenant creation
+                    logger.warning(
+                        "stripe_subscription_creation_failed_during_onboarding",
+                        tenant_id=str(tenant.id),
+                        error=str(e),
+                        message=f"Failed to create Stripe subscription during onboarding: {e}",
+                    )
+            else:
+                # For FREE plan, create a subscription record without Stripe
+                from hub.apps.billing.models import Subscription, SubscriptionStatus
+
+                subscription = Subscription.objects.create(
+                    tenant=tenant,
+                    plan=plan,
+                    status=SubscriptionStatus.ACTIVE,
+                    current_period_start=timezone.now(),
+                    current_period_end=timezone.now()
+                    + timedelta(days=365 * 100),  # Effectively forever
+                )
+
+            # Publish tenant.created event
+            self.publish_tenant_created(
+                tenant_id=str(tenant.id),
+                name=tenant.name,
+                slug=tenant.slug,
+                status=tenant.status,
+                kyc_status=tenant.kyc_status,
+                region=tenant.region,
+            )
+
+            # Log audit events
+            from hub.apps.audit.utils import create_audit_event
+
+            create_audit_event(
+                resource_type="TENANT",
+                action="TENANT_CREATED",
+                tenant=tenant,
+                actor_user=user,
+                resource_id=str(tenant.id),
+                details={
+                    "name": tenant.name,
+                    "slug": tenant.slug,
+                    "plan_slug": plan.slug,
+                    "self_service": True,
+                },
+            )
+
+            create_audit_event(
+                resource_type="USER",
+                action="USER_CREATED",
+                tenant=tenant,
+                actor_user=user,
+                resource_id=str(user.id),
+                details={
+                    "email": user.email,
+                    "display_name": user.display_name,
+                    "role": "TENANT_ADMIN",
+                    "self_service_onboarding": True,
+                },
+            )
+
+            return {"tenant": tenant, "user": user, "subscription": subscription, "plan": plan}
+
+        return self.execute_with_metrics(
+            operation="create_tenant_with_first_user",
+            tenant_id=None,  # No tenant_id yet
+            func=_create,
+        )
+
+
+class TenantLifecycleService(BaseService, TenantEventPublisher):
+    """
+    Service for tenant lifecycle management (suspend, resume).
+
+    Provides business logic for:
+    - Suspending tenants (read-only mode)
+    - Resuming suspended tenants
+    - Emitting audit events
+    """
+
+    service_name = "tenant_lifecycle_service"
+
+    def __init__(self, tenant_id: Optional[str] = None, user_id: Optional[str] = None):
+        """
+        Initialize TenantLifecycleService.
+
+        Args:
+            tenant_id: Optional tenant ID
+            user_id: Optional user ID (actor performing the action)
+        """
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        TenantEventPublisher.__init__(self, tenant_id=tenant_id, user_id=user_id)
+
+    @transaction.atomic
+    def suspend_tenant(self, tenant_id: str, reason: Optional[str] = None) -> Tenant:
+        """
+        Suspend a tenant (read-only mode).
+
+        Args:
+            tenant_id: Tenant ID to suspend
+            reason: Optional reason for suspension
+
+        Returns:
+            Suspended Tenant instance
+
+        Raises:
+            NotFoundError: If tenant not found
+            ValidationError: If tenant is already deleted
+        """
+
+        def _suspend():
+            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+
+            if tenant.status == TenantStatus.DELETED:
+                raise ValidationError("Cannot suspend a deleted tenant", code="TENANT_DELETED")
+
+            if tenant.status == TenantStatus.SUSPENDED:
+                # Already suspended, return as-is
+                return tenant
+
+            # Suspend tenant
+            tenant.suspend()
+
+            # Log audit event
+            from hub.apps.audit.utils import create_audit_event
+            from hub.apps.users.models import User
+
+            actor_user = None
+            if self.user_id:
+                try:
+                    actor_user = User.objects.get(id=self.user_id)
+                except User.DoesNotExist:
+                    pass
+
+            create_audit_event(
+                resource_type="TENANT",
+                action="TENANT_SUSPENDED",
+                tenant=tenant,
+                actor_user=actor_user,
+                resource_id=str(tenant.id),
+                details={
+                    "reason": reason,
+                    "previous_status": TenantStatus.ACTIVE,
+                    "new_status": TenantStatus.SUSPENDED,
+                },
+            )
+
+            return tenant
+
+        return self.execute_with_metrics(
+            operation="suspend_tenant", tenant_id=tenant_id, func=_suspend
+        )
+
+    @transaction.atomic
+    def resume_tenant(self, tenant_id: str) -> Tenant:
+        """
+        Resume a suspended tenant.
+
+        Args:
+            tenant_id: Tenant ID to resume
+
+        Returns:
+            Resumed Tenant instance
+
+        Raises:
+            NotFoundError: If tenant not found
+            ValidationError: If tenant is not suspended
+        """
+
+        def _resume():
+            tenant = self.get_resource_or_raise(Tenant, tenant_id)
+
+            if tenant.status != TenantStatus.SUSPENDED:
+                raise ValidationError(
+                    "Can only resume suspended tenants",
+                    code="TENANT_NOT_SUSPENDED",
+                    details={"current_status": tenant.status},
+                )
+
+            # Resume tenant
+            tenant.reactivate()
+
+            # Log audit event
+            from hub.apps.audit.utils import create_audit_event
+            from hub.apps.users.models import User
+
+            actor_user = None
+            if self.user_id:
+                try:
+                    actor_user = User.objects.get(id=self.user_id)
+                except User.DoesNotExist:
+                    pass
+
+            create_audit_event(
+                resource_type="TENANT",
+                action="TENANT_REACTIVATED",
+                tenant=tenant,
+                actor_user=actor_user,
+                resource_id=str(tenant.id),
+                details={
+                    "previous_status": TenantStatus.SUSPENDED,
+                    "new_status": TenantStatus.ACTIVE,
+                },
+            )
+
+            return tenant
+
+        return self.execute_with_metrics(
+            operation="resume_tenant", tenant_id=tenant_id, func=_resume
         )

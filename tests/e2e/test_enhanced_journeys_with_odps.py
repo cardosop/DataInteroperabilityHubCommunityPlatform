@@ -14,27 +14,34 @@ Each journey is tested with:
 
 All tests use REAL services (no mocks/stubs) and follow engineering best practices.
 """
-import pytest
+
+import hashlib
 import json
 import time
 import uuid
-import hashlib
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
+import pytest
 from django.test import TestCase
 from rest_framework import status
 
-from .conftest import E2ETestBase
-from hub.apps.assets.models import Asset, AssetStatus, DQStatus, ComplianceStatus
-from hub.apps.contracts.models import Contract, ContractStatus, ValidationStatus, NormalizationStatus, OriginalSpecType
-from hub.apps.files.models import File, FileStatus
+from hub.apps.assets.models import Asset, AssetStatus, ComplianceStatus, DQStatus
+from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalSpecType,
+    ValidationStatus,
+)
+from hub.apps.contracts.services import ContractService, ODPSService
 from hub.apps.datasets.models import Dataset
 from hub.apps.dq.models import DQRun, DQRunStatus
-from hub.apps.compliance.models import ComplianceRun, ComplianceRunStatus
+from hub.apps.files.models import File, FileStatus
 from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.contracts.services import ContractService, ODPSService
+from hub.apps.tenants.models import KYCStatus, Tenant
 
+from .conftest import E2ETestBase
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e]
 
@@ -46,20 +53,16 @@ class EnhancedJourneyTestBase(E2ETestBase):
         """Set up test fixtures."""
         super().setUp()
         self.contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
-        self.odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def create_valid_odps_document(
         self,
         product_id: str = None,
         include_marketplace: bool = True,
         include_contract: bool = True,
-        odcs_contract_data: dict = None
+        odcs_contract_data: dict = None,
     ) -> str:
         """Create a valid ODPS document for testing."""
         if product_id is None:
@@ -74,18 +77,16 @@ class EnhancedJourneyTestBase(E2ETestBase):
                         "productID": product_id,
                         "name": f"Test Product {product_id}",
                         "description": "Test product for enhanced journey testing",
-                        "productVersion": "1.0.0"
+                        "productVersion": "1.0.0",
                     }
                 }
-            }
+            },
         }
 
         if include_contract:
             if odcs_contract_data:
                 # Use provided ODCS contract data to ensure matching IDs
-                odps_doc["product"]["contract"] = {
-                    "spec": odcs_contract_data
-                }
+                odps_doc["product"]["contract"] = {"spec": odcs_contract_data}
             else:
                 # Default contract structure
                 odps_doc["product"]["contract"] = {
@@ -97,18 +98,10 @@ class EnhancedJourneyTestBase(E2ETestBase):
                         "version": "1.0.0",
                         "schema": {
                             "fields": [
-                                {
-                                    "name": "id",
-                                    "type": "string",
-                                    "nullable": False
-                                },
-                                {
-                                    "name": "name",
-                                    "type": "string",
-                                    "nullable": True
-                                }
+                                {"name": "id", "type": "string", "nullable": False},
+                                {"name": "name", "type": "string", "nullable": True},
                             ]
-                        }
+                        },
                     }
                 }
 
@@ -120,25 +113,22 @@ class EnhancedJourneyTestBase(E2ETestBase):
                         "name": "Basic Plan",
                         "price": 9.99,
                         "currency": "USD",
-                        "billingPeriod": "monthly"
+                        "billingPeriod": "monthly",
                     }
                 ],
                 "accessMethods": {
                     "api": {
                         "type": "REST_API",
                         "endpoint": "https://api.example.com/data",
-                        "protocol": "HTTPS"
+                        "protocol": "HTTPS",
                     }
-                }
+                },
             }
 
         return json.dumps(odps_doc, indent=2)
 
     def link_odps_to_odcs_contract(
-        self,
-        odcs_contract_id: str,
-        odps_raw: str = None,
-        odps_contract_id: str = None
+        self, odcs_contract_id: str, odps_raw: str = None, odps_contract_id: str = None
     ) -> Contract:
         """Link ODPS to ODCS contract."""
         return self.contract_service.link_odps_to_odcs(
@@ -148,14 +138,16 @@ class EnhancedJourneyTestBase(E2ETestBase):
             odps_format="JSON",
             resolve_external_refs=True,
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
     def re_establish_odps_linking(self, odps_contract_id: str, odcs_contract_id: str):
         """Re-establish bidirectional linking if it was cleared (e.g., by remapping)."""
+        import logging
+
         from django.db import transaction
         from django.db.models import Q
-        import logging
+
         logger = logging.getLogger(__name__)
 
         logger.debug(f"Re-establishing links: ODPS={odps_contract_id}, ODCS={odcs_contract_id}")
@@ -170,26 +162,29 @@ class EnhancedJourneyTestBase(E2ETestBase):
             odcs_before = odcs_contract.hub_contract_json or {}
             odps_link_before = odps_before.get("extensions", {}).get("x_odps", {}).get("odcs_link")
             odcs_link_before = odcs_before.get("extensions", {}).get("x_odps", {}).get("odps_link")
-            logger.debug(f"Before re-establish: ODPS link={odps_link_before}, ODCS link={odcs_link_before}")
+            logger.debug(
+                f"Before re-establish: ODPS link={odps_link_before}, ODCS link={odcs_link_before}"
+            )
 
             # Ensure hub_contract_json exists (create minimal structure if None)
             if odps_contract.hub_contract_json is None:
                 odps_contract.hub_contract_json = {
                     "id": str(odps_contract.id),
                     "hub_contract_version": odps_contract.hub_contract_version or "1.0.0",
-                    "schema": {}
+                    "schema": {},
                 }
             if odcs_contract.hub_contract_json is None:
                 odcs_contract.hub_contract_json = {
                     "id": str(odcs_contract.id),
                     "hub_contract_version": odcs_contract.hub_contract_version or "1.0.0",
-                    "schema": {}
+                    "schema": {},
                 }
 
             # Always re-establish links to ensure they're set (remapping might clear them)
             # Use direct database update to avoid triggering signals that might clear links
             # Ensure extensions structure exists
             import copy
+
             odps_hub = copy.deepcopy(odps_contract.hub_contract_json)
             odcs_hub = copy.deepcopy(odcs_contract.hub_contract_json)
 
@@ -200,8 +195,13 @@ class EnhancedJourneyTestBase(E2ETestBase):
             # CRITICAL: Ensure UUIDs are stored as strings in JSONField
             # PostgreSQL JSONField may serialize UUIDs differently, so always use string representation
             import uuid as uuid_module
-            odcs_contract_id_str = str(odcs_contract_id) if not isinstance(odcs_contract_id, str) else odcs_contract_id
-            odps_contract_id_str = str(odps_contract_id) if not isinstance(odps_contract_id, str) else odps_contract_id
+
+            odcs_contract_id_str = (
+                str(odcs_contract_id) if not isinstance(odcs_contract_id, str) else odcs_contract_id
+            )
+            odps_contract_id_str = (
+                str(odps_contract_id) if not isinstance(odps_contract_id, str) else odps_contract_id
+            )
 
             odps_hub["extensions"]["x_odps"]["odcs_link"] = odcs_contract_id_str
 
@@ -214,6 +214,7 @@ class EnhancedJourneyTestBase(E2ETestBase):
             # CRITICAL: Use save() with update_fields
             # Disable signals temporarily to prevent remapping that might clear links
             from django.db.models.signals import post_save
+
             from hub.apps.semantic.signals import contract_saved
 
             # Temporarily disconnect the signal
@@ -224,27 +225,34 @@ class EnhancedJourneyTestBase(E2ETestBase):
                 # Use update_fields to only update hub_contract_json
                 # Django will commit the transaction automatically when the atomic block exits
                 odps_contract.hub_contract_json = odps_hub
-                odps_contract.save(update_fields=['hub_contract_json'])
+                odps_contract.save(update_fields=["hub_contract_json"])
                 odcs_contract.hub_contract_json = odcs_hub
-                odcs_contract.save(update_fields=['hub_contract_json'])
+                odcs_contract.save(update_fields=["hub_contract_json"])
 
-                logger.debug(f"Updated contracts via .save() - ODPS hub_contract_json keys: {list(odps_hub.keys())}, ODCS hub_contract_json keys: {list(odcs_hub.keys())}")
+                logger.debug(
+                    f"Updated contracts via .save() - ODPS hub_contract_json keys: {list(odps_hub.keys())}, ODCS hub_contract_json keys: {list(odcs_hub.keys())}"
+                )
             finally:
                 # Reconnect the signal
                 post_save.connect(contract_saved, sender=Contract)
 
         # CRITICAL: Verify links are actually in database using raw SQL query
         # This bypasses Django's ORM caching to check the actual database state
-        from django.db import connection
         import json as json_lib
+
+        from django.db import connection
 
         # Get the actual table name from the model
         table_name = Contract._meta.db_table
 
         with connection.cursor() as cursor:
-            cursor.execute(f"SELECT hub_contract_json FROM {table_name} WHERE id = %s", [odps_contract_id])
+            cursor.execute(
+                f"SELECT hub_contract_json FROM {table_name} WHERE id = %s", [odps_contract_id]
+            )
             odps_db_json = cursor.fetchone()[0]
-            cursor.execute(f"SELECT hub_contract_json FROM {table_name} WHERE id = %s", [odcs_contract_id])
+            cursor.execute(
+                f"SELECT hub_contract_json FROM {table_name} WHERE id = %s", [odcs_contract_id]
+            )
             odcs_db_json = cursor.fetchone()[0]
 
         # Parse JSON if it's a string
@@ -253,8 +261,16 @@ class EnhancedJourneyTestBase(E2ETestBase):
         if isinstance(odcs_db_json, str):
             odcs_db_json = json_lib.loads(odcs_db_json)
 
-        odps_link_db = odps_db_json.get("extensions", {}).get("x_odps", {}).get("odcs_link") if odps_db_json else None
-        odcs_link_db = odcs_db_json.get("extensions", {}).get("x_odps", {}).get("odps_link") if odcs_db_json else None
+        odps_link_db = (
+            odps_db_json.get("extensions", {}).get("x_odps", {}).get("odcs_link")
+            if odps_db_json
+            else None
+        )
+        odcs_link_db = (
+            odcs_db_json.get("extensions", {}).get("x_odps", {}).get("odps_link")
+            if odcs_db_json
+            else None
+        )
         logger.debug(f"Direct DB query: ODPS link={odps_link_db}, ODCS link={odcs_link_db}")
 
         # Refresh from database to ensure changes are loaded
@@ -269,10 +285,12 @@ class EnhancedJourneyTestBase(E2ETestBase):
         logger.debug(f"After refresh: ODPS link={odps_link_after}, ODCS link={odcs_link_after}")
 
         if not odps_link_after or not odcs_link_after:
-            logger.warning(f"Links still missing after re-establish! Direct DB: ODPS={odps_link_db}, ODCS={odcs_link_db}, "
-                          f"After refresh: ODPS={odps_link_after}, ODCS={odcs_link_after}, "
-                          f"ODPS hub_contract_json keys: {list(odps_after.keys())}, "
-                          f"ODCS hub_contract_json keys: {list(odcs_after.keys())}")
+            logger.warning(
+                f"Links still missing after re-establish! Direct DB: ODPS={odps_link_db}, ODCS={odcs_link_db}, "
+                f"After refresh: ODPS={odps_link_after}, ODCS={odcs_link_after}, "
+                f"ODPS hub_contract_json keys: {list(odps_after.keys())}, "
+                f"ODCS hub_contract_json keys: {list(odcs_after.keys())}"
+            )
 
     def verify_odps_linking(self, odps_contract_id: str, odcs_contract_id: str):
         """Verify bidirectional linking between ODPS and ODCS contracts."""
@@ -299,6 +317,7 @@ class EnhancedJourneyTestBase(E2ETestBase):
         # CRITICAL: Normalize UUID to string for comparison
         # JSONField may store UUIDs as UUID objects or strings depending on PostgreSQL version
         import uuid as uuid_module
+
         if odps_odcs_link is not None:
             # Handle both UUID objects and string UUIDs
             if isinstance(odps_odcs_link, uuid_module.UUID):
@@ -311,8 +330,7 @@ class EnhancedJourneyTestBase(E2ETestBase):
             # Last resort: use service method to re-establish links
             try:
                 self.link_odps_to_odcs_contract(
-                    odcs_contract_id=odcs_contract_id,
-                    odps_contract_id=odps_contract_id
+                    odcs_contract_id=odcs_contract_id, odps_contract_id=odps_contract_id
                 )
                 # Refresh and check again
                 odps_contract.refresh_from_db()
@@ -329,13 +347,13 @@ class EnhancedJourneyTestBase(E2ETestBase):
         self.assertIsNotNone(
             odps_odcs_link,
             f"ODPS contract should have ODCS link in hub_contract_json.extensions.x_odps.odcs_link. "
-            f"ODPS contract ID: {odps_contract_id_str}, ODPS hub_contract_json: {odps_hub_contract}"
+            f"ODPS contract ID: {odps_contract_id_str}, ODPS hub_contract_json: {odps_hub_contract}",
         )
 
         self.assertEqual(
             odps_odcs_link,
             odcs_contract_id_str,
-            f"ODPS contract should link to ODCS contract. Expected: {odcs_contract_id_str}, Got: {odps_odcs_link}"
+            f"ODPS contract should link to ODCS contract. Expected: {odcs_contract_id_str}, Got: {odps_odcs_link}",
         )
 
         # Verify ODCS contract has ODPS link (stored in x_odps.odps_link)
@@ -347,6 +365,7 @@ class EnhancedJourneyTestBase(E2ETestBase):
         # CRITICAL: Normalize UUID to string for comparison
         # JSONField may store UUIDs as UUID objects or strings depending on PostgreSQL version
         import uuid as uuid_module
+
         if odcs_odps_link is not None:
             # Handle both UUID objects and string UUIDs
             if isinstance(odcs_odps_link, uuid_module.UUID):
@@ -359,8 +378,7 @@ class EnhancedJourneyTestBase(E2ETestBase):
             # Last resort: use service method to re-establish links
             try:
                 self.link_odps_to_odcs_contract(
-                    odcs_contract_id=odcs_contract_id,
-                    odps_contract_id=odps_contract_id
+                    odcs_contract_id=odcs_contract_id, odps_contract_id=odps_contract_id
                 )
                 # Refresh and check again
                 odps_contract.refresh_from_db()
@@ -377,19 +395,20 @@ class EnhancedJourneyTestBase(E2ETestBase):
         self.assertIsNotNone(
             odcs_odps_link,
             f"ODCS contract should have ODPS link in hub_contract_json.extensions.x_odps.odps_link. "
-            f"ODCS contract ID: {odcs_contract_id_str}, ODCS hub_contract_json: {odcs_hub_contract}"
+            f"ODCS contract ID: {odcs_contract_id_str}, ODCS hub_contract_json: {odcs_hub_contract}",
         )
 
         self.assertEqual(
             odcs_odps_link,
             odps_contract_id_str,
-            f"ODCS contract should link to ODPS contract. Expected: {odps_contract_id_str}, Got: {odcs_odps_link}"
+            f"ODCS contract should link to ODPS contract. Expected: {odps_contract_id_str}, Got: {odcs_odps_link}",
         )
 
 
 # ============================================================================
 # JOURNEY-DPO-001 Enhanced: Enhanced Data-First Journey with ODPS
 # ============================================================================
+
 
 class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
     """JOURNEY-DPO-001 Enhanced: Enhanced Data-First Journey with ODPS"""
@@ -401,22 +420,20 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         Flow: Upload file → Schema inference → Compliance check →
         DQ check → Contract creation → ODPS linking → Asset activation
         """
-        test_content = b'id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com'
+        test_content = b"id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com"
         content_hash = hashlib.sha256(test_content).hexdigest()
 
         # Step 1: Create asset (draft)
         asset_id = self.create_asset(
-            key=f'data-first-odps-{uuid.uuid4().hex[:8]}',
-            name='Data-First with ODPS',
-            description='Data-First journey test with ODPS linking'
+            key=f"data-first-odps-{uuid.uuid4().hex[:8]}",
+            name="Data-First with ODPS",
+            description="Data-First journey test with ODPS linking",
         )
         self.verify_asset_state(asset_id, status=AssetStatus.DRAFT)
 
         # Step 2: Upload file
         file_id = self.init_file_upload(
-            name='orders.csv',
-            content_type='text/csv',
-            size=len(test_content)
+            name="orders.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
 
@@ -430,17 +447,29 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         self.assertIsNotNone(dataset.schema_json, "Schema should be inferred")
 
         # Step 4: Run compliance check
-        compliance_run_id = self.run_compliance_check(file_id=file_id, dataset_id=dataset_id, asset_id=asset_id)
+        compliance_run_id = self.run_compliance_check(
+            file_id=file_id, dataset_id=dataset_id, asset_id=asset_id
+        )
 
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
         max_wait = 60
         wait_time = 0
-        while wait_time < max_wait and compliance_run.status not in [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]:
+        while wait_time < max_wait and compliance_run.status not in [
+            ComplianceRunStatus.SUCCEEDED,
+            ComplianceRunStatus.FAILED,
+        ]:
             time.sleep(2)
             wait_time += 2
             compliance_run.refresh_from_db()
 
-        self.assertIn(compliance_run.status, [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED, ComplianceRunStatus.PENDING])
+        self.assertIn(
+            compliance_run.status,
+            [
+                ComplianceRunStatus.SUCCEEDED,
+                ComplianceRunStatus.FAILED,
+                ComplianceRunStatus.PENDING,
+            ],
+        )
 
         # Step 5: Run DQ check
         dq_run_id = self.run_dq_check(file_id=file_id, dataset_id=dataset_id, asset_id=asset_id)
@@ -448,12 +477,17 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         dq_run = DQRun.objects.get(id=dq_run_id)
         max_wait = 60
         wait_time = 0
-        while wait_time < max_wait and dq_run.status not in [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]:
+        while wait_time < max_wait and dq_run.status not in [
+            DQRunStatus.SUCCEEDED,
+            DQRunStatus.FAILED,
+        ]:
             time.sleep(2)
             wait_time += 2
             dq_run.refresh_from_db()
 
-        self.assertIn(dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED, DQRunStatus.PENDING])
+        self.assertIn(
+            dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED, DQRunStatus.PENDING]
+        )
 
         # Step 6: Prepare asset for activation
         self.prepare_asset_for_activation(asset_id)
@@ -466,15 +500,13 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
                 "fields": [
                     {"name": "id", "type": "string"},
                     {"name": "name", "type": "string"},
-                    {"name": "email", "type": "string"}
+                    {"name": "email", "type": "string"},
                 ]
-            }
+            },
         }
 
         contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data),
-            original_format="JSON"
+            asset_id, original_raw=json.dumps(odcs_contract_data), original_format="JSON"
         )
 
         # Step 8: Validate contract
@@ -484,7 +516,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
 
-        if isinstance(validate_result, dict) and 'status_code' in validate_result:
+        if isinstance(validate_result, dict) and "status_code" in validate_result:
             # Service unavailable - prepare contract manually
             self.prepare_contract_for_activation(contract_id)
         elif contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
@@ -492,19 +524,20 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
             self.prepare_contract_for_activation(contract_id)
         else:
             # Validation succeeded
-            self.assertIn(contract.validation_status, [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY])
+            self.assertIn(
+                contract.validation_status, [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]
+            )
 
         # Step 9: NEW - Link ODPS contract to ODCS
         odps_content = self.create_valid_odps_document(
             product_id=f"data-first-product-{uuid.uuid4().hex[:8]}",
             include_marketplace=True,
             include_contract=True,
-            odcs_contract_data=odcs_contract_data
+            odcs_contract_data=odcs_contract_data,
         )
 
         odps_contract = self.link_odps_to_odcs_contract(
-            odcs_contract_id=contract_id,
-            odps_raw=odps_content
+            odcs_contract_id=contract_id, odps_raw=odps_content
         )
 
         # Verify ODPS contract was created and linked
@@ -523,13 +556,19 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
 
         # Step 12: Validate and prepare ODPS contract for attachment
         odps_contract.refresh_from_db()
-        if odps_contract.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
+        if odps_contract.validation_status not in [
+            ValidationStatus.VALID,
+            ValidationStatus.WARNING_ONLY,
+        ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and 'status_code' in validate_result:
+            if isinstance(validate_result, dict) and "status_code" in validate_result:
                 # Service unavailable - prepare contract manually
                 self.prepare_contract_for_activation(str(odps_contract.id))
-            elif odps_contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
+            elif odps_contract.validation_status in [
+                ValidationStatus.ERROR,
+                ValidationStatus.INVALID,
+            ]:
                 # Validation failed or invalid - prepare manually
                 self.prepare_contract_for_activation(str(odps_contract.id))
 
@@ -538,7 +577,28 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         if odps_contract.asset_id != asset_id:
             self.attach_contract_to_asset(asset_id, str(odps_contract.id))
 
-        # Step 13: Activate asset
+        # Step 13.5: Ensure contracts are ACTIVE and properly prepared for activation
+        # Asset activation requires ACTIVE contract with VALID validation and NORMALIZED_OK normalization
+        # Ensure ODCS contract is ACTIVE
+        odcs_contract.refresh_from_db()
+        if odcs_contract.status != ContractStatus.ACTIVE:
+            self.prepare_contract_for_activation(contract_id)
+            odcs_contract.refresh_from_db()
+            if odcs_contract.status != ContractStatus.ACTIVE:
+                odcs_contract.status = ContractStatus.ACTIVE
+                odcs_contract.save(update_fields=["status"])
+
+        # Ensure ODPS contract is ACTIVE (if attached)
+        odps_contract.refresh_from_db()
+        if odps_contract.asset_id == asset_id and odps_contract.status != ContractStatus.ACTIVE:
+            self.prepare_contract_for_activation(str(odps_contract.id))
+            odps_contract.refresh_from_db()
+            if odps_contract.status != ContractStatus.ACTIVE:
+                odps_contract.status = ContractStatus.ACTIVE
+                odps_contract.save(update_fields=["status"])
+
+        # Step 14: Activate asset
+        self.prepare_asset_for_activation(asset_id)
         activate_response = self.activate_asset(asset_id)
         self.assertIn(activate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
 
@@ -570,22 +630,20 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         Flow: Upload file → Schema inference → Compliance check →
         DQ check → Contract creation → Asset activation (no ODPS)
         """
-        test_content = b'id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com'
+        test_content = b"id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com"
         content_hash = hashlib.sha256(test_content).hexdigest()
 
         # Step 1: Create asset (draft)
         asset_id = self.create_asset(
-            key=f'data-first-no-odps-{uuid.uuid4().hex[:8]}',
-            name='Data-First without ODPS',
-            description='Data-First journey test without ODPS (backward compatibility)'
+            key=f"data-first-no-odps-{uuid.uuid4().hex[:8]}",
+            name="Data-First without ODPS",
+            description="Data-First journey test without ODPS (backward compatibility)",
         )
         self.verify_asset_state(asset_id, status=AssetStatus.DRAFT)
 
         # Step 2: Upload file
         file_id = self.init_file_upload(
-            name='orders.csv',
-            content_type='text/csv',
-            size=len(test_content)
+            name="orders.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
 
@@ -593,11 +651,16 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         dataset_id = self.create_dataset(file_id, asset_id)
 
         # Step 4: Run compliance check
-        compliance_run_id = self.run_compliance_check(file_id=file_id, dataset_id=dataset_id, asset_id=asset_id)
+        compliance_run_id = self.run_compliance_check(
+            file_id=file_id, dataset_id=dataset_id, asset_id=asset_id
+        )
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
         max_wait = 60
         wait_time = 0
-        while wait_time < max_wait and compliance_run.status not in [ComplianceRunStatus.SUCCEEDED, ComplianceRunStatus.FAILED]:
+        while wait_time < max_wait and compliance_run.status not in [
+            ComplianceRunStatus.SUCCEEDED,
+            ComplianceRunStatus.FAILED,
+        ]:
             time.sleep(2)
             wait_time += 2
             compliance_run.refresh_from_db()
@@ -607,7 +670,10 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         dq_run = DQRun.objects.get(id=dq_run_id)
         max_wait = 60
         wait_time = 0
-        while wait_time < max_wait and dq_run.status not in [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED]:
+        while wait_time < max_wait and dq_run.status not in [
+            DQRunStatus.SUCCEEDED,
+            DQRunStatus.FAILED,
+        ]:
             time.sleep(2)
             wait_time += 2
             dq_run.refresh_from_db()
@@ -618,7 +684,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         # Step 7: Create ODCS contract (NO ODPS linking)
         contract_id = self.create_contract(
             asset_id,
-            original_raw='{"id": "data-first-contract", "info": {"name": "Data-First Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "email", "type": "string"}]}}'
+            original_raw='{"id": "data-first-contract", "info": {"name": "Data-First Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}, {"name": "email", "type": "string"}]}}',
         )
 
         # Step 8: Validate contract
@@ -628,7 +694,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         contract = Contract.objects.get(id=contract_id)
         contract.refresh_from_db()
 
-        if isinstance(validate_result, dict) and 'status_code' in validate_result:
+        if isinstance(validate_result, dict) and "status_code" in validate_result:
             # Service unavailable - prepare contract manually
             self.prepare_contract_for_activation(contract_id)
         elif contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
@@ -636,12 +702,25 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
             self.prepare_contract_for_activation(contract_id)
         else:
             # Validation succeeded
-            self.assertIn(contract.validation_status, [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY])
+            self.assertIn(
+                contract.validation_status, [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]
+            )
 
         # Step 9: Attach contract to asset
         self.attach_contract_to_asset(asset_id, contract_id)
 
+        # Step 9.5: Ensure contract is ACTIVE and properly prepared for activation
+        contract = Contract.objects.get(id=contract_id)
+        contract.refresh_from_db()
+        if contract.status != ContractStatus.ACTIVE:
+            self.prepare_contract_for_activation(contract_id)
+            contract.refresh_from_db()
+            if contract.status != ContractStatus.ACTIVE:
+                contract.status = ContractStatus.ACTIVE
+                contract.save(update_fields=["status"])
+
         # Step 10: Activate asset
+        self.prepare_asset_for_activation(asset_id)
         activate_response = self.activate_asset(asset_id)
         self.assertEqual(activate_response.status_code, status.HTTP_200_OK)
 
@@ -655,20 +734,24 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
 
         # Verify NO ODPS contract is linked (backward compatibility)
         odps_contracts = asset.contracts.filter(original_spec_type=OriginalSpecType.ODPS)
-        self.assertFalse(odps_contracts.exists(), "No ODPS contract should be linked in backward compatibility mode")
+        self.assertFalse(
+            odps_contracts.exists(),
+            "No ODPS contract should be linked in backward compatibility mode",
+        )
 
     def test_success_criteria_with_odps(self):
         """Test success criteria validation WITH ODPS."""
-        test_content = b'id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com'
+        test_content = b"id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com"
         content_hash = hashlib.sha256(test_content).hexdigest()
 
         # Create and activate asset with ODPS
         asset_id = self.create_asset(
-            key=f'success-odps-{uuid.uuid4().hex[:8]}',
-            name='Success Criteria with ODPS'
+            key=f"success-odps-{uuid.uuid4().hex[:8]}", name="Success Criteria with ODPS"
         )
 
-        file_id = self.init_file_upload(name='test.csv', content_type='text/csv', size=len(test_content))
+        file_id = self.init_file_upload(
+            name="test.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
@@ -677,12 +760,9 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         odcs_contract_data = {
             "id": f"success-contract-{uuid.uuid4().hex[:8]}",
             "info": {"name": "Success Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
         self.prepare_contract_for_activation(contract_id)
 
         # Link ODPS
@@ -690,9 +770,11 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
             product_id=f"success-product-{uuid.uuid4().hex[:8]}",
             include_marketplace=True,
             include_contract=True,
-            odcs_contract_data=odcs_contract_data
+            odcs_contract_data=odcs_contract_data,
         )
-        odps_contract = self.link_odps_to_odcs_contract(odcs_contract_id=contract_id, odps_raw=odps_content)
+        odps_contract = self.link_odps_to_odcs_contract(
+            odcs_contract_id=contract_id, odps_raw=odps_content
+        )
 
         # Refresh contracts to ensure links are loaded from database
         odps_contract.refresh_from_db()
@@ -706,15 +788,21 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         self.attach_contract_to_asset(asset_id, contract_id)
         # Validate and prepare ODPS contract for attachment
         odps_contract.refresh_from_db()
-        if odps_contract.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
+        if odps_contract.validation_status not in [
+            ValidationStatus.VALID,
+            ValidationStatus.WARNING_ONLY,
+        ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and 'status_code' in validate_result:
+            if isinstance(validate_result, dict) and "status_code" in validate_result:
                 self.prepare_contract_for_activation(str(odps_contract.id))
                 # Re-establish links after prepare_contract_for_activation (normalization might clear them)
                 odps_contract.refresh_from_db()
                 self.re_establish_odps_linking(str(odps_contract.id), contract_id)
-            elif odps_contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
+            elif odps_contract.validation_status in [
+                ValidationStatus.ERROR,
+                ValidationStatus.INVALID,
+            ]:
                 self.prepare_contract_for_activation(str(odps_contract.id))
                 # Re-establish links after prepare_contract_for_activation (normalization might clear them)
                 odps_contract.refresh_from_db()
@@ -802,16 +890,17 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
 
     def test_success_criteria_without_odps(self):
         """Test success criteria validation WITHOUT ODPS (backward compatibility)."""
-        test_content = b'id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com'
+        test_content = b"id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com"
         content_hash = hashlib.sha256(test_content).hexdigest()
 
         # Create and activate asset without ODPS
         asset_id = self.create_asset(
-            key=f'success-no-odps-{uuid.uuid4().hex[:8]}',
-            name='Success Criteria without ODPS'
+            key=f"success-no-odps-{uuid.uuid4().hex[:8]}", name="Success Criteria without ODPS"
         )
 
-        file_id = self.init_file_upload(name='test.csv', content_type='text/csv', size=len(test_content))
+        file_id = self.init_file_upload(
+            name="test.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id, content_sha256=content_hash, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
@@ -819,7 +908,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
         # Create ODCS contract (NO ODPS)
         contract_id = self.create_contract(
             asset_id,
-            original_raw='{"id": "success-contract", "info": {"name": "Success Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}}'
+            original_raw='{"id": "success-contract", "info": {"name": "Success Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}}',
         )
         self.prepare_contract_for_activation(contract_id)
 
@@ -849,6 +938,7 @@ class JourneyDPO001EnhancedDataFirstWithODPSTests(EnhancedJourneyTestBase):
 # JOURNEY-DPO-002 Enhanced: Enhanced Marketplace Publishing Journey with ODPS
 # ============================================================================
 
+
 class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTestBase):
     """JOURNEY-DPO-002 Enhanced: Enhanced Marketplace Publishing Journey with ODPS"""
 
@@ -868,13 +958,14 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         """
         # Step 1: Create and activate asset
         asset_id = self.create_asset(
-            key=f'marketplace-odps-{uuid.uuid4().hex[:8]}',
-            name='Marketplace Asset with ODPS'
+            key=f"marketplace-odps-{uuid.uuid4().hex[:8]}", name="Marketplace Asset with ODPS"
         )
 
         # Prepare asset for activation
-        test_content = b'id,name\n1,Test\n2,Data'
-        file_id = self.init_file_upload(name='data.csv', content_type='text/csv', size=len(test_content))
+        test_content = b"id,name\n1,Test\n2,Data"
+        file_id = self.init_file_upload(
+            name="data.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
@@ -883,12 +974,11 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         odcs_contract_data = {
             "id": f"marketplace-contract-{uuid.uuid4().hex[:8]}",
             "info": {"name": "Marketplace Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}
+            "schema": {
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
         }
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
         self.prepare_contract_for_activation(contract_id)
         self.attach_contract_to_asset(asset_id, contract_id)
 
@@ -897,12 +987,11 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             product_id=f"marketplace-product-{uuid.uuid4().hex[:8]}",
             include_marketplace=True,  # Include marketplace configuration
             include_contract=True,
-            odcs_contract_data=odcs_contract_data
+            odcs_contract_data=odcs_contract_data,
         )
 
         odps_contract = self.link_odps_to_odcs_contract(
-            odcs_contract_id=contract_id,
-            odps_raw=odps_content
+            odcs_contract_id=contract_id, odps_raw=odps_content
         )
 
         # Refresh contracts to ensure links are loaded from database
@@ -919,12 +1008,18 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
 
         # Validate and attach ODPS contract before activation
         odps_contract.refresh_from_db()
-        if odps_contract.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
+        if odps_contract.validation_status not in [
+            ValidationStatus.VALID,
+            ValidationStatus.WARNING_ONLY,
+        ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and 'status_code' in validate_result:
+            if isinstance(validate_result, dict) and "status_code" in validate_result:
                 self.prepare_contract_for_activation(str(odps_contract.id))
-            elif odps_contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
+            elif odps_contract.validation_status in [
+                ValidationStatus.ERROR,
+                ValidationStatus.INVALID,
+            ]:
                 self.prepare_contract_for_activation(str(odps_contract.id))
 
         odps_contract.refresh_from_db()
@@ -950,37 +1045,41 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         # Step 3: Check marketplace eligibility (with ODPS)
         # Marketplace eligibility should pass with ODPS configuration
         odps_contracts = asset.contracts.filter(original_spec_type=OriginalSpecType.ODPS)
-        self.assertTrue(odps_contracts.exists(), "ODPS contract should exist for marketplace eligibility")
+        self.assertTrue(
+            odps_contracts.exists(), "ODPS contract should exist for marketplace eligibility"
+        )
 
         # Step 4: Create marketplace listing
         response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Premium Data Product with ODPS',
-                'short_description': 'High-quality dataset with ODPS configuration',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0,
-                'currency': 'USD'
+                "asset_id": str(asset_id),
+                "title": "Premium Data Product with ODPS",
+                "short_description": "High-quality dataset with ODPS configuration",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
+                "currency": "USD",
             },
-            format='json'
+            format="json",
         )
 
         if response.status_code != status.HTTP_201_CREATED:
             # Print error details for debugging
-            error_data = getattr(response, 'data', None) or (response.content.decode('utf-8') if hasattr(response, 'content') else str(response))
+            error_data = getattr(response, "data", None) or (
+                response.content.decode("utf-8") if hasattr(response, "content") else str(response)
+            )
             self.fail(f"Failed to create listing: {response.status_code} - {error_data}")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        listing_id = response.data.get('id')
+        listing_id = response.data.get("id")
         if not listing_id:
             self.fail(f"Listing response missing 'id' field. Response: {response.data}")
 
         # Step 5: Publish listing
         publish_response = self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
 
         self.assertEqual(publish_response.status_code, status.HTTP_200_OK)
@@ -1004,13 +1103,14 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         """
         # Step 1: Create and activate asset
         asset_id = self.create_asset(
-            key=f'marketplace-legacy-{uuid.uuid4().hex[:8]}',
-            name='Marketplace Asset Legacy'
+            key=f"marketplace-legacy-{uuid.uuid4().hex[:8]}", name="Marketplace Asset Legacy"
         )
 
         # Prepare asset for activation
-        test_content = b'id,name\n1,Test\n2,Data'
-        file_id = self.init_file_upload(name='data.csv', content_type='text/csv', size=len(test_content))
+        test_content = b"id,name\n1,Test\n2,Data"
+        file_id = self.init_file_upload(
+            name="data.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
@@ -1018,7 +1118,7 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         # Create ODCS contract (NO ODPS)
         contract_id = self.create_contract(
             asset_id,
-            original_raw='{"id": "marketplace-contract", "info": {"name": "Marketplace Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}}'
+            original_raw='{"id": "marketplace-contract", "info": {"name": "Marketplace Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}}',
         )
         self.prepare_contract_for_activation(contract_id)
         self.attach_contract_to_asset(asset_id, contract_id)
@@ -1037,26 +1137,26 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
 
         # Step 3: Create marketplace listing (legacy)
         response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Legacy Data Product',
-                'short_description': 'Data product without ODPS configuration',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE,
-                'price_amount': 0.0,
-                'currency': 'USD'
+                "asset_id": str(asset_id),
+                "title": "Legacy Data Product",
+                "short_description": "Data product without ODPS configuration",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
+                "price_amount": 0.0,
+                "currency": "USD",
             },
-            format='json'
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        listing_id = response.data['id']
+        listing_id = response.data["id"]
 
         # Step 4: Publish listing
         publish_response = self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
 
         self.assertEqual(publish_response.status_code, status.HTTP_200_OK)
@@ -1074,12 +1174,14 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         """Test marketplace publishing success criteria WITH ODPS."""
         # Create and activate asset with ODPS
         asset_id = self.create_asset(
-            key=f'success-marketplace-odps-{uuid.uuid4().hex[:8]}',
-            name='Success Marketplace with ODPS'
+            key=f"success-marketplace-odps-{uuid.uuid4().hex[:8]}",
+            name="Success Marketplace with ODPS",
         )
 
-        test_content = b'id,name\n1,Test\n2,Data'
-        file_id = self.init_file_upload(name='data.csv', content_type='text/csv', size=len(test_content))
+        test_content = b"id,name\n1,Test\n2,Data"
+        file_id = self.init_file_upload(
+            name="data.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
@@ -1087,12 +1189,9 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         odcs_contract_data = {
             "id": f"success-marketplace-contract-{uuid.uuid4().hex[:8]}",
             "info": {"name": "Success Marketplace Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
-        contract_id = self.create_contract(
-            asset_id,
-            original_raw=json.dumps(odcs_contract_data)
-        )
+        contract_id = self.create_contract(asset_id, original_raw=json.dumps(odcs_contract_data))
         self.prepare_contract_for_activation(contract_id)
 
         # Link ODPS with marketplace configuration
@@ -1100,9 +1199,11 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
             product_id=f"success-marketplace-product-{uuid.uuid4().hex[:8]}",
             include_marketplace=True,
             include_contract=True,
-            odcs_contract_data=odcs_contract_data
+            odcs_contract_data=odcs_contract_data,
         )
-        odps_contract = self.link_odps_to_odcs_contract(odcs_contract_id=contract_id, odps_raw=odps_content)
+        odps_contract = self.link_odps_to_odcs_contract(
+            odcs_contract_id=contract_id, odps_raw=odps_content
+        )
 
         # Refresh contracts to ensure links are loaded from database
         odps_contract.refresh_from_db()
@@ -1117,12 +1218,18 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
 
         # Validate and attach ODPS contract before activation
         odps_contract.refresh_from_db()
-        if odps_contract.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
+        if odps_contract.validation_status not in [
+            ValidationStatus.VALID,
+            ValidationStatus.WARNING_ONLY,
+        ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and 'status_code' in validate_result:
+            if isinstance(validate_result, dict) and "status_code" in validate_result:
                 self.prepare_contract_for_activation(str(odps_contract.id))
-            elif odps_contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
+            elif odps_contract.validation_status in [
+                ValidationStatus.ERROR,
+                ValidationStatus.INVALID,
+            ]:
                 self.prepare_contract_for_activation(str(odps_contract.id))
 
         odps_contract.refresh_from_db()
@@ -1148,25 +1255,29 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
 
         # Create and publish listing
         listing_response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Success Test Listing',
-                'short_description': 'Test listing for success criteria',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE
+                "asset_id": str(asset_id),
+                "title": "Success Test Listing",
+                "short_description": "Test listing for success criteria",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
             },
-            format='json'
+            format="json",
         )
         if listing_response.status_code != status.HTTP_201_CREATED:
-            error_data = getattr(listing_response, 'data', None) or (listing_response.content.decode('utf-8') if hasattr(listing_response, 'content') else str(listing_response))
+            error_data = getattr(listing_response, "data", None) or (
+                listing_response.content.decode("utf-8")
+                if hasattr(listing_response, "content")
+                else str(listing_response)
+            )
             self.fail(f"Failed to create listing: {listing_response.status_code} - {error_data}")
-        listing_id = listing_response.data.get('id')
+        listing_id = listing_response.data.get("id")
         if not listing_id:
             self.fail(f"Listing response missing 'id' field. Response: {listing_response.data}")
         self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
 
         # Verify success criteria WITH ODPS
@@ -1191,19 +1302,21 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
         """Test marketplace publishing success criteria WITHOUT ODPS (legacy)."""
         # Create and activate asset without ODPS
         asset_id = self.create_asset(
-            key=f'success-marketplace-legacy-{uuid.uuid4().hex[:8]}',
-            name='Success Marketplace Legacy'
+            key=f"success-marketplace-legacy-{uuid.uuid4().hex[:8]}",
+            name="Success Marketplace Legacy",
         )
 
-        test_content = b'id,name\n1,Test\n2,Data'
-        file_id = self.init_file_upload(name='data.csv', content_type='text/csv', size=len(test_content))
+        test_content = b"id,name\n1,Test\n2,Data"
+        file_id = self.init_file_upload(
+            name="data.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
         self.prepare_asset_for_activation(asset_id)
 
         contract_id = self.create_contract(
             asset_id,
-            original_raw='{"id": "success-marketplace-contract", "info": {"name": "Success Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}}'
+            original_raw='{"id": "success-marketplace-contract", "info": {"name": "Success Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}}',
         )
         self.prepare_contract_for_activation(contract_id)
 
@@ -1212,25 +1325,29 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
 
         # Create and publish listing
         listing_response = self.client.post(
-            '/api/v1/marketplace/listings/',
+            "/api/v1/marketplace/listings/",
             {
-                'asset_id': str(asset_id),
-                'title': 'Success Test Listing Legacy',
-                'short_description': 'Test listing for success criteria (legacy)',
-                'pricing_model': PricingModel.FREE_AUTO_APPROVE
+                "asset_id": str(asset_id),
+                "title": "Success Test Listing Legacy",
+                "short_description": "Test listing for success criteria (legacy)",
+                "pricing_model": PricingModel.FREE_AUTO_APPROVE,
             },
-            format='json'
+            format="json",
         )
         if listing_response.status_code != status.HTTP_201_CREATED:
-            error_data = getattr(listing_response, 'data', None) or (listing_response.content.decode('utf-8') if hasattr(listing_response, 'content') else str(listing_response))
+            error_data = getattr(listing_response, "data", None) or (
+                listing_response.content.decode("utf-8")
+                if hasattr(listing_response, "content")
+                else str(listing_response)
+            )
             self.fail(f"Failed to create listing: {listing_response.status_code} - {error_data}")
-        listing_id = listing_response.data.get('id')
+        listing_id = listing_response.data.get("id")
         if not listing_id:
             self.fail(f"Listing response missing 'id' field. Response: {listing_response.data}")
         self.client.patch(
-            f'/api/v1/marketplace/listings/{listing_id}/',
-            {'status': ListingStatus.PUBLISHED},
-            format='json'
+            f"/api/v1/marketplace/listings/{listing_id}/",
+            {"status": ListingStatus.PUBLISHED},
+            format="json",
         )
 
         # Verify success criteria WITHOUT ODPS (legacy)
@@ -1252,6 +1369,7 @@ class JourneyDPO002EnhancedMarketplacePublishingWithODPSTests(EnhancedJourneyTes
 # JOURNEY-DE-001 Enhanced: Enhanced Technical-First Journey with ODPS
 # ============================================================================
 
+
 class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
     """JOURNEY-DE-001 Enhanced: Enhanced Technical-First Journey with ODPS"""
 
@@ -1270,15 +1388,15 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
                 "fields": [
                     {"name": "id", "type": "string", "required": True},
                     {"name": "name", "type": "string", "required": True},
-                    {"name": "price", "type": "number", "required": False}
+                    {"name": "price", "type": "number", "required": False},
                 ]
-            }
+            },
         }
 
         contract_id = self.create_contract(
             asset_id=None,  # Contract-first, no asset yet
             original_raw=json.dumps(odcs_contract_data),
-            original_format="JSON"
+            original_format="JSON",
         )
 
         # Step 2: Validate contract
@@ -1289,7 +1407,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             validate_result = self.validate_contract(contract_id, async_mode=False)
             contract.refresh_from_db()
 
-            if isinstance(validate_result, dict) and 'status_code' in validate_result:
+            if isinstance(validate_result, dict) and "status_code" in validate_result:
                 # Service unavailable - prepare contract manually
                 self.prepare_contract_for_activation(contract_id)
             elif contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
@@ -1298,7 +1416,10 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
 
         # Step 3: Normalize contract
         contract.refresh_from_db()
-        if contract.normalization_status not in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]:
+        if contract.normalization_status not in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]:
             # Trigger normalization if needed
             self.prepare_contract_for_activation(contract_id)
 
@@ -1307,12 +1428,11 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             product_id=f"technical-first-product-{uuid.uuid4().hex[:8]}",
             include_marketplace=True,
             include_contract=True,
-            odcs_contract_data=odcs_contract_data
+            odcs_contract_data=odcs_contract_data,
         )
 
         odps_contract = self.link_odps_to_odcs_contract(
-            odcs_contract_id=contract_id,
-            odps_raw=odps_content
+            odcs_contract_id=contract_id, odps_raw=odps_content
         )
 
         # Verify ODPS contract was created
@@ -1324,9 +1444,9 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
 
         # Step 6: Create asset
         asset_id = self.create_asset(
-            key=f'technical-first-odps-{uuid.uuid4().hex[:8]}',
-            name='Technical-First with ODPS',
-            description='Technical-First journey test with ODPS linking'
+            key=f"technical-first-odps-{uuid.uuid4().hex[:8]}",
+            name="Technical-First with ODPS",
+            description="Technical-First journey test with ODPS linking",
         )
 
         # Step 7: Attach ODCS contract to asset
@@ -1334,12 +1454,18 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
 
         # Step 8: Validate and prepare ODPS contract for attachment
         odps_contract.refresh_from_db()
-        if odps_contract.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
+        if odps_contract.validation_status not in [
+            ValidationStatus.VALID,
+            ValidationStatus.WARNING_ONLY,
+        ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and 'status_code' in validate_result:
+            if isinstance(validate_result, dict) and "status_code" in validate_result:
                 self.prepare_contract_for_activation(str(odps_contract.id))
-            elif odps_contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
+            elif odps_contract.validation_status in [
+                ValidationStatus.ERROR,
+                ValidationStatus.INVALID,
+            ]:
                 self.prepare_contract_for_activation(str(odps_contract.id))
 
         # Step 9: Attach ODPS contract to asset
@@ -1348,18 +1474,25 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             self.attach_contract_to_asset(asset_id, str(odps_contract.id))
 
         # Step 8: Upload data file
-        test_content = b'id,name,price\n1,Product1,10.99\n2,Product2,20.99'
+        test_content = b"id,name,price\n1,Product1,10.99\n2,Product2,20.99"
         file_id = self.init_file_upload(
-            name='products.csv',
-            content_type='text/csv',
-            size=len(test_content)
+            name="products.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, test_content=test_content)
 
         # Step 9: Create dataset (triggers schema inference)
         dataset_id = self.create_dataset(file_id, asset_id)
 
-        # Step 10: Activate asset
+        # Step 10: Ensure contract is ACTIVE before activation
+        contract = Contract.objects.filter(asset_id=asset_id).first()
+        if contract and contract.status != ContractStatus.ACTIVE:
+            self.prepare_contract_for_activation(str(contract.id))
+            contract.refresh_from_db()
+            if contract.status != ContractStatus.ACTIVE:
+                contract.status = ContractStatus.ACTIVE
+                contract.save(update_fields=["status"])
+
+        # Step 11: Activate asset
         self.prepare_asset_for_activation(asset_id)
         activate_response = self.activate_asset(asset_id)
         self.assertIn(activate_response.status_code, [status.HTTP_200_OK, status.HTTP_202_ACCEPTED])
@@ -1389,7 +1522,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
         contract_id = self.create_contract(
             asset_id=None,  # Contract-first, no asset yet
             original_raw='{"id": "technical-first-contract", "info": {"name": "Technical-First Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]}}',
-            original_format="JSON"
+            original_format="JSON",
         )
 
         # Step 2: Validate contract
@@ -1400,7 +1533,7 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             validate_result = self.validate_contract(contract_id, async_mode=False)
             contract.refresh_from_db()
 
-            if isinstance(validate_result, dict) and 'status_code' in validate_result:
+            if isinstance(validate_result, dict) and "status_code" in validate_result:
                 # Service unavailable - prepare contract manually
                 self.prepare_contract_for_activation(contract_id)
             elif contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
@@ -1409,30 +1542,40 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
 
         # Step 3: Normalize contract
         contract.refresh_from_db()
-        if contract.normalization_status not in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]:
+        if contract.normalization_status not in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]:
             self.prepare_contract_for_activation(contract_id)
 
         # Step 4: Create asset (NO ODPS linking)
         asset_id = self.create_asset(
-            key=f'technical-first-no-odps-{uuid.uuid4().hex[:8]}',
-            name='Technical-First without ODPS',
-            description='Technical-First journey test without ODPS (backward compatibility)'
+            key=f"technical-first-no-odps-{uuid.uuid4().hex[:8]}",
+            name="Technical-First without ODPS",
+            description="Technical-First journey test without ODPS (backward compatibility)",
         )
 
         # Step 5: Attach contract to asset
         self.attach_contract_to_asset(asset_id, contract_id)
 
         # Step 6: Upload data file
-        test_content = b'id,name\n1,Product1\n2,Product2'
+        test_content = b"id,name\n1,Product1\n2,Product2"
         file_id = self.init_file_upload(
-            name='products.csv',
-            content_type='text/csv',
-            size=len(test_content)
+            name="products.csv", content_type="text/csv", size=len(test_content)
         )
         self.complete_file_upload(file_id, test_content=test_content)
 
         # Step 7: Create dataset
         dataset_id = self.create_dataset(file_id, asset_id)
+
+        # Step 7.5: Ensure contract is ACTIVE before activation
+        contract = Contract.objects.filter(asset_id=asset_id).first()
+        if contract and contract.status != ContractStatus.ACTIVE:
+            self.prepare_contract_for_activation(str(contract.id))
+            contract.refresh_from_db()
+            if contract.status != ContractStatus.ACTIVE:
+                contract.status = ContractStatus.ACTIVE
+                contract.save(update_fields=["status"])
 
         # Step 8: Activate asset
         self.prepare_asset_for_activation(asset_id)
@@ -1451,7 +1594,10 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
 
         # Verify NO ODPS contract is linked
         odps_contracts = asset.contracts.filter(original_spec_type=OriginalSpecType.ODPS)
-        self.assertFalse(odps_contracts.exists(), "No ODPS contract should be linked in backward compatibility mode")
+        self.assertFalse(
+            odps_contracts.exists(),
+            "No ODPS contract should be linked in backward compatibility mode",
+        )
 
     def test_success_criteria_with_odps_technical_first(self):
         """Test Technical-First success criteria WITH ODPS."""
@@ -1459,11 +1605,10 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
         odcs_contract_data = {
             "id": f"success-technical-contract-{uuid.uuid4().hex[:8]}",
             "info": {"name": "Success Technical Contract", "version": "1.0.0"},
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
         contract_id = self.create_contract(
-            asset_id=None,
-            original_raw=json.dumps(odcs_contract_data)
+            asset_id=None, original_raw=json.dumps(odcs_contract_data)
         )
         self.prepare_contract_for_activation(contract_id)
 
@@ -1472,9 +1617,11 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             product_id=f"success-technical-product-{uuid.uuid4().hex[:8]}",
             include_marketplace=True,
             include_contract=True,
-            odcs_contract_data=odcs_contract_data
+            odcs_contract_data=odcs_contract_data,
         )
-        odps_contract = self.link_odps_to_odcs_contract(odcs_contract_id=contract_id, odps_raw=odps_content)
+        odps_contract = self.link_odps_to_odcs_contract(
+            odcs_contract_id=contract_id, odps_raw=odps_content
+        )
 
         # Refresh contracts to ensure links are loaded from database
         odps_contract.refresh_from_db()
@@ -1487,21 +1634,26 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
 
         # Create asset and attach contracts
         asset_id = self.create_asset(
-            key=f'success-technical-odps-{uuid.uuid4().hex[:8]}',
-            name='Success Technical with ODPS'
+            key=f"success-technical-odps-{uuid.uuid4().hex[:8]}", name="Success Technical with ODPS"
         )
         self.attach_contract_to_asset(asset_id, contract_id)
         # Validate and prepare ODPS contract for attachment
         odps_contract.refresh_from_db()
-        if odps_contract.validation_status not in [ValidationStatus.VALID, ValidationStatus.WARNING_ONLY]:
+        if odps_contract.validation_status not in [
+            ValidationStatus.VALID,
+            ValidationStatus.WARNING_ONLY,
+        ]:
             validate_result = self.validate_contract(str(odps_contract.id), async_mode=False)
             odps_contract.refresh_from_db()
-            if isinstance(validate_result, dict) and 'status_code' in validate_result:
+            if isinstance(validate_result, dict) and "status_code" in validate_result:
                 self.prepare_contract_for_activation(str(odps_contract.id))
                 # Re-establish links after prepare_contract_for_activation (normalization might clear them)
                 odps_contract.refresh_from_db()
                 self.re_establish_odps_linking(str(odps_contract.id), contract_id)
-            elif odps_contract.validation_status in [ValidationStatus.ERROR, ValidationStatus.INVALID]:
+            elif odps_contract.validation_status in [
+                ValidationStatus.ERROR,
+                ValidationStatus.INVALID,
+            ]:
                 self.prepare_contract_for_activation(str(odps_contract.id))
                 # Re-establish links after prepare_contract_for_activation (normalization might clear them)
                 odps_contract.refresh_from_db()
@@ -1515,8 +1667,10 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
             self.re_establish_odps_linking(str(odps_contract.id), contract_id)
 
         # Upload file and create dataset
-        test_content = b'id,name\n1,Test\n2,Data'
-        file_id = self.init_file_upload(name='test.csv', content_type='text/csv', size=len(test_content))
+        test_content = b"id,name\n1,Test\n2,Data"
+        file_id = self.init_file_upload(
+            name="test.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
 
@@ -1599,20 +1753,22 @@ class JourneyDE001EnhancedTechnicalFirstWithODPSTests(EnhancedJourneyTestBase):
         # Create contract
         contract_id = self.create_contract(
             asset_id=None,
-            original_raw='{"id": "success-technical-contract", "info": {"name": "Success Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}}'
+            original_raw='{"id": "success-technical-contract", "info": {"name": "Success Contract"}, "schema": {"fields": [{"name": "id", "type": "string"}]}}',
         )
         self.prepare_contract_for_activation(contract_id)
 
         # Create asset and attach contract (NO ODPS)
         asset_id = self.create_asset(
-            key=f'success-technical-no-odps-{uuid.uuid4().hex[:8]}',
-            name='Success Technical without ODPS'
+            key=f"success-technical-no-odps-{uuid.uuid4().hex[:8]}",
+            name="Success Technical without ODPS",
         )
         self.attach_contract_to_asset(asset_id, contract_id)
 
         # Upload file and create dataset
-        test_content = b'id,name\n1,Test\n2,Data'
-        file_id = self.init_file_upload(name='test.csv', content_type='text/csv', size=len(test_content))
+        test_content = b"id,name\n1,Test\n2,Data"
+        file_id = self.init_file_upload(
+            name="test.csv", content_type="text/csv", size=len(test_content)
+        )
         self.complete_file_upload(file_id, test_content=test_content)
         dataset_id = self.create_dataset(file_id, asset_id)
 

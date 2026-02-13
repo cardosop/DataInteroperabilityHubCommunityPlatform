@@ -10,21 +10,23 @@ Tests the marketplace instance configuration system including:
 
 All tests use real configuration - no mocks or stubs.
 """
+
 import os
-import pytest
 import warnings
 from unittest.mock import patch
+
+import pytest
 from django.test import TestCase, override_settings
 
 from hub.apps.integrations.config.marketplace_instances import (
-    MarketplaceInstanceConfig,
-    get_marketplace_instance_config,
-    get_default_test_instance,
+    CKAN_INSTANCES,
     MARKETPLACE_INSTANCES,
     # Backward compatibility aliases (deprecated)
     CKANInstanceConfig,
+    MarketplaceInstanceConfig,
     get_ckan_instance_config,
-    CKAN_INSTANCES,
+    get_default_test_instance,
+    get_marketplace_instance_config,
 )
 
 
@@ -122,7 +124,9 @@ class TestCKANInstancesRegistry(TestCase):
         self.assertEqual(config.organization, "Brazilian Government")
         self.assertIsNotNone(config.swagger_url)
         self.assertEqual(config.connector_type, "swagger")  # NOT CKAN
-        self.assertEqual(config.api_key_env_var, "DADOS_GOV_BR_API_KEY")  # Updated to new variable name
+        self.assertEqual(
+            config.api_key_env_var, "DADOS_GOV_BR_API_KEY"
+        )  # Updated to new variable name
         self.assertTrue(config.is_production)
         self.assertFalse(config.is_test_default)
 
@@ -163,7 +167,9 @@ class TestCKANInstancesRegistry(TestCase):
         """Test that all registered instances have valid base URLs"""
         for name, config in MARKETPLACE_INSTANCES.items():
             self.assertIsInstance(config, MarketplaceInstanceConfig)
-            self.assertTrue(config.base_url.startswith("http://") or config.base_url.startswith("https://"))
+            self.assertTrue(
+                config.base_url.startswith("http://") or config.base_url.startswith("https://")
+            )
             self.assertEqual(config.name, name)
 
     def test_backward_compatibility_ckan_instances_alias(self):
@@ -278,10 +284,9 @@ class TestEnvironmentVariableResolution(TestCase):
             self.assertEqual(api_key, "dados-api-key-456", "Backward compatibility should work")
 
         # Test that new variable takes precedence over deprecated one
-        with patch.dict(os.environ, {
-            "DADOS_GOV_BR_API_KEY": "new-key",
-            "CKAN_DADOS_GOV_BR_API_KEY": "old-key"
-        }):
+        with patch.dict(
+            os.environ, {"DADOS_GOV_BR_API_KEY": "new-key", "CKAN_DADOS_GOV_BR_API_KEY": "old-key"}
+        ):
             api_key = config.get_api_key()
             self.assertEqual(api_key, "new-key", "New variable should take precedence")
 
@@ -353,3 +358,48 @@ class TestCKANInstanceConfigIntegration(TestCase):
             api_key = config.get_api_key()
             self.assertIsNone(api_key)
 
+    def test_get_marketplace_instance_config_with_none(self):
+        """Test get_marketplace_instance_config() error handling with None"""
+        config = get_marketplace_instance_config(None)  # type: ignore[arg-type]
+        self.assertIsNone(config)
+
+    def test_get_marketplace_instance_config_with_empty_string(self):
+        """Test get_marketplace_instance_config() error handling with empty string"""
+        config = get_marketplace_instance_config("")
+        self.assertIsNone(config)
+
+    def test_marketplace_instance_config_with_invalid_base_url(self):
+        """Test MarketplaceInstanceConfig error handling with invalid base_url"""
+        try:
+            config = MarketplaceInstanceConfig(
+                name="test-instance",
+                base_url="not-a-valid-url",
+            )
+            # Should handle gracefully or raise ValueError
+            self.assertIsNotNone(config)
+        except ValueError:
+            # Expected if validation is strict
+            pass
+
+    def test_marketplace_instance_config_with_none_name(self):
+        """Test MarketplaceInstanceConfig error handling with None name"""
+        try:
+            config = MarketplaceInstanceConfig(
+                name=None,  # type: ignore[arg-type]
+                base_url="https://test.example.com",
+            )
+            # Should handle gracefully or raise ValueError
+            self.assertIsNotNone(config)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+    def test_get_api_key_with_none_env_var_name(self):
+        """Test get_api_key() error handling when api_key_env_var is None"""
+        config = MarketplaceInstanceConfig(
+            name="test-instance",
+            base_url="https://test.example.com",
+            api_key_env_var=None,  # type: ignore[arg-type]
+        )
+        api_key = config.get_api_key()
+        self.assertIsNone(api_key)

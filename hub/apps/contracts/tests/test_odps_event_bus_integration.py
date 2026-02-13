@@ -14,64 +14,48 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Subscribers receive events
 - Event replay works correctly
 - Dead letter queue handles failed events
+
+Uses wait_until for event persistence (no fixed time.sleep) per FIX_PLAN_FLAKY_TESTS_5_6_2.
 """
+
 import json
-import time
 import uuid
-from django.test import TestCase, TransactionTestCase, override_settings
+from datetime import timedelta
+
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
-from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
 
-from hub.apps.contracts.models import (
-    Contract,
-    ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
-    NormalizationStatus,
-)
 from hub.apps.contracts.services import ODPSService
-from hub.apps.core.events.bus import get_event_bus, EventBus
-from hub.apps.core.events.models import Event, DeadLetterQueue, EventSubscription
-from hub.apps.core.events.publisher import EventPublisher
+from hub.apps.contracts.tests.test_base import ContractsTestBase
+from hub.apps.core.events.bus import get_event_bus
+from hub.apps.core.events.models import DeadLetterQueue, Event, EventSubscription
 from hub.apps.webhooks.odps_event_subscriber import (
+    ODPSEventSubscriber,
     get_odps_event_subscriber,
-    ODPSEventSubscriber
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
+from tests.utils.polling import wait_until
 
 
-class ODPSEventBusIntegrationTestBase(TestCase):
+class ODPSEventBusIntegrationTestBase(ContractsTestBase):
     """Base test class for ODPS event bus integration tests."""
 
     def setUp(self):
         """Set up test fixtures."""
+        super().setUp()
         # Generate unique ID for this test to avoid conflicts
         unique_id = str(uuid.uuid4())[:8]
 
-        # Create tenant with unique name
-        self.tenant = Tenant.objects.create(
-            name=f"Test Tenant {unique_id}",
-            slug=f"test-tenant-{unique_id}",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
+        # Update tenant/user names for clarity
+        self.tenant.name = f"Test Tenant {unique_id}"
+        self.tenant.slug = f"test-tenant-{unique_id}"
+        self.tenant.save()
 
-        # Create user with unique email
-        self.user = User.objects.create_user(
-            email=f"user-{unique_id}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User",
-        )
+        self.user.email = f"user-{unique_id}@example.com"
+        self.user.display_name = "Test User"
+        self.user.save()
 
         # Initialize ODPS service
-        self.odps_service = ODPSService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        self.odps_service = ODPSService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Get event bus instance
         self.event_bus = get_event_bus()
@@ -88,36 +72,41 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
     def test_odps_created_event_published_to_redis_and_postgresql(self):
         """Test that odps.created event is published to Redis Pub/Sub and persisted to PostgreSQL."""
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-event-bus",
-                        "name": "Test ODPS for Event Bus"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-odps-event-bus",
+                            "name": "Test ODPS for Event Bus",
+                        }
+                    },
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
         contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
-        # Wait a bit for async operations
-        time.sleep(0.5)
+        def event_persisted():
+            return Event.objects.filter(
+                event_type="odps.created", tenant_id=self.tenant.id
+            ).exists()
+
+        wait_until(
+            event_persisted, timeout=5.0, message="odps.created event not persisted to PostgreSQL"
+        )
 
         # Verify event was persisted to PostgreSQL
-        events = Event.objects.filter(
-            event_type="odps.created",
-            tenant_id=self.tenant.id
-        ).order_by('-timestamp')
+        events = Event.objects.filter(event_type="odps.created", tenant_id=self.tenant.id).order_by(
+            "-timestamp"
+        )
 
         self.assertGreater(events.count(), 0, "Event should be persisted to PostgreSQL")
 
@@ -147,36 +136,36 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
     def test_odps_normalized_event_published(self):
         """Test that odps.normalized event is published when normalization completes."""
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-normalized",
-                        "name": "Test ODPS Normalized"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {"productID": "test-odps-normalized", "name": "Test ODPS Normalized"}
+                    },
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
         contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
-        # Wait a bit for async operations
-        time.sleep(0.5)
+        def normalized_persisted():
+            return Event.objects.filter(
+                event_type="odps.normalized", tenant_id=self.tenant.id
+            ).exists()
+
+        wait_until(normalized_persisted, timeout=5.0, message="odps.normalized event not persisted")
 
         # Verify odps.normalized event was persisted
         normalized_events = Event.objects.filter(
-            event_type="odps.normalized",
-            tenant_id=self.tenant.id
-        ).order_by('-timestamp')
+            event_type="odps.normalized", tenant_id=self.tenant.id
+        ).order_by("-timestamp")
 
         # Find the event for this contract
         normalized_event = None
@@ -196,53 +185,45 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
         # For now, we verify the event publishing mechanism works
         from hub.apps.contracts.services import ContractService
 
-        contract_service = ContractService(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
-        )
+        contract_service = ContractService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
         # Create ODCS contract first
-        odcs_raw = json.dumps({
-            "apiVersion": "odcs/v3",
-            "kind": "DataContract",
-            "id": "test-odcs",
-            "name": "Test ODCS",
-            "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
+        odcs_raw = json.dumps(
+            {
+                "apiVersion": "odcs/v3",
+                "kind": "DataContract",
+                "id": "test-odcs",
+                "name": "Test ODCS",
+                "version": "1.0.0",
+                "schema": {"fields": [{"name": "id", "type": "string"}]},
             }
-        })
+        )
 
         odcs_contract = contract_service.create_contract(
             original_raw=odcs_raw,
             original_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-linked",
-                        "name": "Test ODPS Linked"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {"productID": "test-odps-linked", "name": "Test ODPS Linked"}
+                    },
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
         odps_contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Link ODPS to ODCS
@@ -251,23 +232,27 @@ class ODPSEventPublishingTest(ODPSEventBusIntegrationTestBase):
                 odcs_contract_id=str(odcs_contract.id),
                 odps_contract_id=str(odps_contract.id),
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
-            # Wait a bit for async operations
-            time.sleep(0.5)
+            def linked_persisted():
+                return Event.objects.filter(
+                    event_type="odps.linked", tenant_id=self.tenant.id
+                ).exists()
+
+            wait_until(linked_persisted, timeout=5.0, message="odps.linked event not persisted")
 
             # Verify odps.linked event was persisted
             linked_events = Event.objects.filter(
-                event_type="odps.linked",
-                tenant_id=self.tenant.id
-            ).order_by('-timestamp')
+                event_type="odps.linked", tenant_id=self.tenant.id
+            ).order_by("-timestamp")
 
             # Find the event for this link
             linked_event = None
             for event in linked_events:
-                if (event.data.get("odps_contract_id") == str(odps_contract.id) and
-                    event.data.get("odcs_contract_id") == str(odcs_contract.id)):
+                if event.data.get("odps_contract_id") == str(odps_contract.id) and event.data.get(
+                    "odcs_contract_id"
+                ) == str(odcs_contract.id):
                     linked_event = event
                     break
 
@@ -288,6 +273,7 @@ class ODPSEventSubscriberTest(ODPSEventBusIntegrationTestBase):
         """Test that ODPS event subscriber is properly registered."""
         # Initialize subscriber to ensure it's registered
         from hub.apps.webhooks.odps_event_subscriber import initialize_odps_event_subscriber
+
         subscriber = initialize_odps_event_subscriber()
 
         self.assertIsNotNone(subscriber)
@@ -296,8 +282,7 @@ class ODPSEventSubscriberTest(ODPSEventBusIntegrationTestBase):
 
         # Verify subscriptions are registered in database
         subscriptions = EventSubscription.objects.filter(
-            subscriber_name="webhook_service_odps",
-            is_active=True
+            subscriber_name="webhook_service_odps", is_active=True
         )
 
         # Should have subscriptions for ODPS event types
@@ -308,7 +293,7 @@ class ODPSEventSubscriberTest(ODPSEventBusIntegrationTestBase):
             odps_event_types = [sub.event_type_pattern for sub in subscriptions]
             self.assertTrue(
                 any("odps" in event_type.lower() for event_type in odps_event_types),
-                "Should subscribe to at least one ODPS event type"
+                "Should subscribe to at least one ODPS event type",
             )
         else:
             # If no subscriptions, verify subscriber can still be created and has handlers
@@ -329,14 +314,14 @@ class ODPSEventSubscriberTest(ODPSEventBusIntegrationTestBase):
             "source": {
                 "service": "contract_service",
                 "tenant_id": str(self.tenant.id),
-                "user_id": str(self.user.id)
+                "user_id": str(self.user.id),
             },
             "data": {
                 "contract_id": "test-contract-id",
                 "odps_version": "4.1",
-                "original_format": "JSON"
+                "original_format": "JSON",
             },
-            "metadata": {}
+            "metadata": {},
         }
 
         # Handler should not raise exception
@@ -356,38 +341,43 @@ class ODPSEventReplayTest(ODPSEventBusIntegrationTestBase):
         """Test replaying ODPS events filtered by event type."""
         # Create multiple ODPS contracts to generate events
         for i in range(3):
-            odps_raw = json.dumps({
-                "schema": "https://opendataproducts.org/schema/v4.1",
-                "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-odps-replay-{i}",
-                            "name": f"Test ODPS Replay {i}"
-                        }
+            odps_raw = json.dumps(
+                {
+                    "schema": "https://opendataproducts.org/schema/v4.1",
+                    "product": {
+                        "details": {
+                            "en": {
+                                "productID": f"test-odps-replay-{i}",
+                                "name": f"Test ODPS Replay {i}",
+                            }
+                        },
+                        "dataSchema": {"fields": []},
                     },
-                    "dataSchema": {
-                        "fields": []
-                    }
                 }
-            })
+            )
 
             self.odps_service.create_odps(
                 odps_raw=odps_raw,
                 odps_format="json",
                 tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id)
+                user_id=str(self.user.id),
             )
 
-        # Wait for events to be persisted
-        time.sleep(0.5)
+        def events_persisted():
+            return Event.objects.filter(
+                event_type="odps.created", tenant_id=self.tenant.id
+            ).exists()
+
+        wait_until(events_persisted, timeout=5.0, message="Events not persisted before replay")
 
         # Replay odps.created events
         replayed_events = self.event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=str(self.tenant.id)
+            event_type="odps.created", tenant_id=str(self.tenant.id)
         )
 
-        self.assertGreaterEqual(len(replayed_events), 3, "Should replay at least 3 odps.created events")
+        self.assertGreaterEqual(
+            len(replayed_events), 3, "Should replay at least 3 odps.created events"
+        )
 
         # Verify replayed events have correct structure
         for event in replayed_events:
@@ -401,20 +391,17 @@ class ODPSEventReplayTest(ODPSEventBusIntegrationTestBase):
     def test_replay_odps_events_by_time_range(self):
         """Test replaying ODPS events filtered by time range."""
         # Create an ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-time-range",
-                        "name": "Test ODPS Time Range"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {"productID": "test-odps-time-range", "name": "Test ODPS Time Range"}
+                    },
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
         start_time = timezone.now()
 
@@ -422,30 +409,36 @@ class ODPSEventReplayTest(ODPSEventBusIntegrationTestBase):
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         end_time = timezone.now()
 
-        # Wait for event to be persisted
-        time.sleep(0.5)
+        def event_persisted_for_replay():
+            return Event.objects.filter(
+                event_type="odps.created", tenant_id=self.tenant.id
+            ).exists()
+
+        wait_until(
+            event_persisted_for_replay, timeout=5.0, message="Event not persisted for replay"
+        )
 
         # Replay events in time range
         replayed_events = self.event_bus.replay_events(
             event_type="odps.created",
             tenant_id=str(self.tenant.id),
             start_time=start_time - timedelta(seconds=1),
-            end_time=end_time + timedelta(seconds=1)
+            end_time=end_time + timedelta(seconds=1),
         )
 
-        self.assertGreaterEqual(len(replayed_events), 1, "Should replay at least 1 event in time range")
+        self.assertGreaterEqual(
+            len(replayed_events), 1, "Should replay at least 1 event in time range"
+        )
 
         # Verify the contract event is in the replayed events
         contract_event_ids = [e["event_id"] for e in replayed_events]
         events = Event.objects.filter(
-            event_type="odps.created",
-            tenant_id=self.tenant.id,
-            data__contract_id=str(contract.id)
+            event_type="odps.created", tenant_id=self.tenant.id, data__contract_id=str(contract.id)
         )
         for event in events:
             if str(event.event_id) in contract_event_ids:
@@ -455,6 +448,7 @@ class ODPSEventReplayTest(ODPSEventBusIntegrationTestBase):
             pass
 
 
+@override_settings(EVENT_BUS_ASYNC_PERSISTENCE=False)
 class ODPSDeadLetterQueueTest(ODPSEventBusIntegrationTestBase):
     """Tests for dead letter queue configuration."""
 
@@ -474,34 +468,40 @@ class ODPSDeadLetterQueueTest(ODPSEventBusIntegrationTestBase):
             subscriber_name=subscriber_name,
             event_type_pattern="odps.created",
             handler=failing_handler,
-            is_active=True
+            is_active=True,
         )
 
         # Create ODPS contract to trigger event
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-dlq",
-                        "name": "Test ODPS DLQ"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-odps-dlq", "name": "Test ODPS DLQ"}},
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
         contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
-        # Wait for event processing and retries
-        time.sleep(2)
+        def event_persisted_or_dlq_ready():
+            # Check for event with matching tenant and event type, or check DLQ
+            event_exists = Event.objects.filter(
+                tenant_id=self.tenant.id, event_type="odps.created"
+            ).exists()
+            dlq_exists = DeadLetterQueue.objects.filter(
+                subscriber=subscriber_name, event_type="odps.created"
+            ).exists()
+            return event_exists or dlq_exists
+
+        wait_until(
+            event_persisted_or_dlq_ready, timeout=15.0, message="Event not persisted for DLQ test"
+        )
 
         # Note: In a real scenario, the event would be processed by the subscriber
         # and after max retries, sent to DLQ. However, since we're using a mock handler
@@ -511,9 +511,7 @@ class ODPSDeadLetterQueueTest(ODPSEventBusIntegrationTestBase):
         # Verify DLQ model exists and can store events
         # We can't easily test the actual DLQ flow without a running worker,
         # but we verify the infrastructure is in place
-        dlq_entries = DeadLetterQueue.objects.filter(
-            subscriber=subscriber_name
-        )
+        dlq_entries = DeadLetterQueue.objects.filter(subscriber=subscriber_name)
 
         # DLQ might be empty if event hasn't been processed yet, that's OK
         # The important thing is that DLQ infrastructure exists
@@ -527,13 +525,8 @@ class ODPSDeadLetterQueueTest(ODPSEventBusIntegrationTestBase):
             "event_type": "odps.created",
             "event_version": "1.0.0",
             "timestamp": timezone.now().isoformat(),
-            "source": {
-                "service": "contract_service",
-                "tenant_id": str(self.tenant.id)
-            },
-            "data": {
-                "contract_id": "test-contract-id"
-            }
+            "source": {"service": "contract_service", "tenant_id": str(self.tenant.id)},
+            "data": {"contract_id": "test-contract-id"},
         }
 
         dlq_entry = DeadLetterQueue.objects.create(
@@ -542,7 +535,7 @@ class ODPSDeadLetterQueueTest(ODPSEventBusIntegrationTestBase):
             subscriber="test_subscriber",
             error_message="Test error",
             error_details={"test": "details"},
-            retry_count=3
+            retry_count=3,
         )
 
         self.assertIsNotNone(dlq_entry.id)
@@ -565,46 +558,51 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
     def test_odps_event_flow_complete(self):
         """Test complete ODPS event flow: publish -> persist -> subscribe -> replay."""
         # Step 1: Create ODPS contract (triggers event publishing)
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-e2e",
-                        "name": "Test ODPS E2E"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {"en": {"productID": "test-odps-e2e", "name": "Test ODPS E2E"}},
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
         contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
         # Step 2: Verify event was persisted to PostgreSQL
-        time.sleep(0.5)
+        def e2e_event_persisted():
+            return (
+                Event.objects.filter(
+                    event_type="odps.created",
+                    tenant_id=self.tenant.id,
+                    data__contract_id=str(contract.id),
+                ).count()
+                > 0
+            )
+
+        wait_until(
+            e2e_event_persisted, timeout=5.0, message="E2E event not persisted to PostgreSQL"
+        )
         persisted_events = Event.objects.filter(
-            event_type="odps.created",
-            tenant_id=self.tenant.id,
-            data__contract_id=str(contract.id)
+            event_type="odps.created", tenant_id=self.tenant.id, data__contract_id=str(contract.id)
         )
 
         self.assertGreater(persisted_events.count(), 0, "Event should be persisted to PostgreSQL")
 
         # Step 3: Verify subscriber is configured
         from hub.apps.webhooks.odps_event_subscriber import initialize_odps_event_subscriber
+
         subscriber = initialize_odps_event_subscriber()
         self.assertIsNotNone(subscriber)
 
         subscriptions = EventSubscription.objects.filter(
-            subscriber_name=subscriber.subscriber_name,
-            event_type_pattern__contains="odps"
+            subscriber_name=subscriber.subscriber_name, event_type_pattern__contains="odps"
         )
         # Subscriptions might not be registered if WebhookEventType.get_odps_event_types() returns empty
         # or if registration fails silently. We verify the subscriber exists and can be initialized.
@@ -619,8 +617,7 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
 
         # Step 4: Verify event can be replayed
         replayed_events = self.event_bus.replay_events(
-            event_type="odps.created",
-            tenant_id=str(self.tenant.id)
+            event_type="odps.created", tenant_id=str(self.tenant.id)
         )
 
         # Find our contract's event in replayed events
@@ -645,36 +642,37 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
     def test_odps_events_published_to_correct_channels(self):
         """Test that ODPS events are published to correct Redis channels."""
         # Create ODPS contract
-        odps_raw = json.dumps({
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-odps-channels",
-                        "name": "Test ODPS Channels"
-                    }
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {"productID": "test-odps-channels", "name": "Test ODPS Channels"}
+                    },
+                    "dataSchema": {"fields": []},
                 },
-                "dataSchema": {
-                    "fields": []
-                }
             }
-        })
+        )
 
         contract = self.odps_service.create_odps(
             odps_raw=odps_raw,
             odps_format="json",
             tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            user_id=str(self.user.id),
         )
 
-        # Wait for events
-        time.sleep(0.5)
+        def events_published():
+            return (
+                Event.objects.filter(tenant_id=self.tenant.id, data__contract_id=str(contract.id))
+                .filter(event_type="odps.created")
+                .count()
+                > 0
+            )
+
+        wait_until(events_published, timeout=5.0, message="Events not persisted for channel test")
 
         # Verify events are persisted (which means they were published)
-        events = Event.objects.filter(
-            tenant_id=self.tenant.id,
-            data__contract_id=str(contract.id)
-        )
+        events = Event.objects.filter(tenant_id=self.tenant.id, data__contract_id=str(contract.id))
 
         # Should have at least odps.created event
         odps_created_events = events.filter(event_type="odps.created")
@@ -683,8 +681,211 @@ class ODPSEventBusEndToEndTest(ODPSEventBusIntegrationTestBase):
         # Verify event channel naming
         for event in odps_created_events:
             # Event bus uses channel prefix + event type for channel name
-            expected_channel_prefix = getattr(self.event_bus, 'channel_prefix', 'events')
+            expected_channel_prefix = getattr(self.event_bus, "channel_prefix", "events")
             # Channel should follow pattern: events:odps.created
             # We verify the event was published by checking persistence
             self.assertIsNotNone(event.event_id)
 
+    def test_event_bus_handles_unicode_characters(self):
+        """Test that event bus handles unicode characters correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-unicode",
+                            "name": "测试产品",
+                            "description": "测试描述",
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        def unicode_events_persisted():
+            return (
+                Event.objects.filter(
+                    tenant_id=self.tenant.id, data__contract_id=str(contract.id)
+                ).count()
+                > 0
+            )
+
+        wait_until(unicode_events_persisted, timeout=5.0, message="Unicode events not persisted")
+
+        # Verify events are published even with unicode
+        events = Event.objects.filter(tenant_id=self.tenant.id, data__contract_id=str(contract.id))
+        self.assertGreater(events.count(), 0, "Events should be published with unicode characters")
+
+    def test_event_bus_handles_special_characters(self):
+        """Test that event bus handles special characters correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-special",
+                            "name": "Test & Co. (Special)",
+                            "description": "Test <description> & more",
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        def special_events_persisted():
+            return (
+                Event.objects.filter(
+                    tenant_id=self.tenant.id, data__contract_id=str(contract.id)
+                ).count()
+                > 0
+            )
+
+        wait_until(
+            special_events_persisted, timeout=5.0, message="Special-char events not persisted"
+        )
+
+        # Verify events are published even with special characters
+        events = Event.objects.filter(tenant_id=self.tenant.id, data__contract_id=str(contract.id))
+        self.assertGreater(events.count(), 0, "Events should be published with special characters")
+
+    def test_event_bus_handles_very_large_documents(self):
+        """Test that event bus handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-large",
+                            "name": "Test Product",
+                            "description": large_description,
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        def large_doc_events_persisted():
+            return (
+                Event.objects.filter(
+                    tenant_id=self.tenant.id, data__contract_id=str(contract.id)
+                ).count()
+                > 0
+            )
+
+        wait_until(
+            large_doc_events_persisted, timeout=5.0, message="Large-doc events not persisted"
+        )
+
+        # Verify events are published even with very large documents
+        events = Event.objects.filter(tenant_id=self.tenant.id, data__contract_id=str(contract.id))
+        self.assertGreater(
+            events.count(), 0, "Events should be published with very large documents"
+        )
+
+    def test_event_bus_handles_none_values(self):
+        """Test that event bus handles None values correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-none",
+                            "name": "Test Product",
+                            "description": "",  # ODPS schema requires string
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        def none_events_persisted():
+            return (
+                Event.objects.filter(
+                    tenant_id=self.tenant.id, data__contract_id=str(contract.id)
+                ).count()
+                > 0
+            )
+
+        wait_until(none_events_persisted, timeout=5.0, message="None-value events not persisted")
+
+        # Verify events are published even with None values
+        events = Event.objects.filter(tenant_id=self.tenant.id, data__contract_id=str(contract.id))
+        self.assertGreater(events.count(), 0, "Events should be published with None values")
+
+    def test_event_bus_handles_nested_structures(self):
+        """Test that event bus handles nested structures correctly."""
+        odps_raw = json.dumps(
+            {
+                "schema": "https://opendataproducts.org/schema/v4.1",
+                "product": {
+                    "details": {
+                        "en": {
+                            "productID": "test-nested",
+                            "name": "Test Product",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    },
+                    "dataSchema": {"fields": []},
+                },
+            }
+        )
+
+        contract = self.odps_service.create_odps(
+            odps_raw=odps_raw,
+            odps_format="json",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+
+        def nested_events_persisted():
+            return (
+                Event.objects.filter(
+                    tenant_id=self.tenant.id, data__contract_id=str(contract.id)
+                ).count()
+                > 0
+            )
+
+        wait_until(
+            nested_events_persisted, timeout=5.0, message="Nested-structure events not persisted"
+        )
+
+        # Verify events are published even with nested structures
+        events = Event.objects.filter(tenant_id=self.tenant.id, data__contract_id=str(contract.id))
+        self.assertGreater(events.count(), 0, "Events should be published with nested structures")

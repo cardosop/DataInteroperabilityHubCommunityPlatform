@@ -1,0 +1,84 @@
+.contract-lineage-visualization {
+  padding: 1rem 0;
+}
+
+.lineage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.lineage-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.lineage-summary {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.lineage-canvas {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.lineage-canvas svg {
+  display: block;
+  width: 100%;
+  height: 600px;
+  background: #fafafa;
+}
+
+.lineage-node-details {
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1rem;
+}
+
+.lineage-node-details h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+}
+
+.lineage-node-details p {
+  margin: 0.5rem 0;
+}
+
+.lineage-legend {
+  background: white;
+  padding: 0.75rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.lineage-legend h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9375rem;
+}
+
+.lineage-legend .legend-items {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.lineage-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lineage-legend .legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #333;
+}

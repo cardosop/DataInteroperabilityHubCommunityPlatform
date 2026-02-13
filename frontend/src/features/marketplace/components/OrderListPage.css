@@ -1,0 +1,124 @@
+.order-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.order-list-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.order-list-header h1 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.order-list-filters {
+  margin-bottom: var(--spacing-lg);
+}
+
+.filter-select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  min-width: 200px;
+}
+
+.order-list-table {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+
+.order-list-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.order-list-table thead {
+  background: var(--color-gray-light);
+}
+
+.order-list-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.order-list-table td {
+  padding: var(--spacing-md);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.order-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.order-row:hover {
+  background: var(--color-gray-light);
+}
+
+.order-status {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+
+.order-status-requested {
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
+}
+
+.order-status-approved {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.order-status-rejected {
+  background: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+.order-status-cancelled {
+  background: var(--color-gray-light);
+  color: var(--color-gray-dark);
+}
+
+.order-status-fulfilled {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.order-list-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.pagination-info {
+  color: var(--color-text-secondary);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+}
+
+.btn-link:hover {
+  color: var(--color-primary-dark);
+}

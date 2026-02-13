@@ -4,15 +4,21 @@ Unit tests for MarketplaceEventPublisher.
 Tests event publishing functionality using real EventPublisher and EventBus (no mocks/stubs).
 All tests use real services and models following engineering best practices.
 """
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, UserStatus
-from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob, MarketplaceMapping
-from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
-from hub.apps.core.events.models import Event
+
 from hub.apps.assets.models import Asset
+from hub.apps.core.events.models import Event
+from hub.apps.integrations.base import MarketplaceType, SyncDirection, SyncStatus
+from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
+from hub.apps.integrations.models import (
+    MarketplaceConnection,
+    MarketplaceMapping,
+    MarketplaceSyncJob,
+)
+from hub.apps.tenants.models import KYCStatus, Tenant
+from hub.apps.users.models import User, UserStatus
 
 
 @override_settings(
@@ -25,22 +31,32 @@ class MarketplaceEventPublisherUnitTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
+        # CRITICAL: Disconnect semantic service signals to prevent timeouts
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.disconnect(contract_saved, sender=Contract)
+            post_save.disconnect(asset_saved, sender=Asset)
+        except (ImportError, AttributeError):
+            pass
+
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
 
         # Create MarketplaceEventPublisher instance
         self.publisher = MarketplaceEventPublisher(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Create test connection
@@ -49,15 +65,12 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             marketplace_type=MarketplaceType.SNOWFLAKE_DATA_MARKETPLACE.value,
             name="Test Connection",
             config={"api_key": "test-key"},
-            is_active=True
+            is_active=True,
         )
 
         # Create test asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            created_by=self.user,
-            name="Test Asset",
-            source_type="FEDERATED"
+            tenant=self.tenant, created_by=self.user, name="Test Asset", source_type="FEDERATED"
         )
 
         # Create test sync job
@@ -65,7 +78,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             tenant=self.tenant,
             connection=self.connection,
             direction=SyncDirection.PULL.value,
-            status=SyncStatus.PENDING.value
+            status=SyncStatus.PENDING.value,
         )
 
         # Create test mapping
@@ -74,7 +87,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             connection=self.connection,
             hub_asset=self.asset,
             external_listing_id="ext-listing-123",
-            external_resource_ids=["res-1", "res-2"]
+            external_resource_ids=["res-1", "res-2"],
         )
 
     def test_publish_connection_created(self):
@@ -82,7 +95,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         event_id = self.publisher.publish_connection_created(
             connection_id=str(self.connection.id),
             marketplace_type=self.connection.marketplace_type,
-            name=self.connection.name
+            name=self.connection.name,
         )
 
         # Verify event was published
@@ -103,11 +116,10 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         """Test publishing marketplace.connection.updated event."""
         changes = {
             "name": {"old": "Old Name", "new": "New Name"},
-            "is_active": {"old": True, "new": False}
+            "is_active": {"old": True, "new": False},
         }
         event_id = self.publisher.publish_connection_updated(
-            connection_id=str(self.connection.id),
-            changes=changes
+            connection_id=str(self.connection.id), changes=changes
         )
 
         # Verify event was published
@@ -128,7 +140,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             connection_id=str(self.connection.id),
             marketplace_type=self.connection.marketplace_type,
             name=self.connection.name,
-            reason=reason
+            reason=reason,
         )
 
         # Verify event was published
@@ -149,7 +161,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         event_id = self.publisher.publish_sync_started(
             sync_job_id=str(self.sync_job.id),
             connection_id=str(self.connection.id),
-            direction=self.sync_job.direction
+            direction=self.sync_job.direction,
         )
 
         # Verify event was published
@@ -174,7 +186,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             direction=self.sync_job.direction,
             status=SyncStatus.COMPLETED.value,
             items_synced=items_synced,
-            items_failed=items_failed
+            items_failed=items_failed,
         )
 
         # Verify event was published
@@ -201,7 +213,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             connection_id=str(self.connection.id),
             direction=self.sync_job.direction,
             error_message=error_message,
-            error_details=error_details
+            error_details=error_details,
         )
 
         # Verify event was published
@@ -224,7 +236,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             mapping_id=str(self.mapping.id),
             connection_id=str(self.connection.id),
             hub_asset_id=str(self.asset.id),
-            external_listing_id=self.mapping.external_listing_id
+            external_listing_id=self.mapping.external_listing_id,
         )
 
         # Verify event was published
@@ -244,12 +256,10 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         """Test publishing marketplace.mapping.updated event."""
         changes = {
             "external_listing_id": {"old": "old-listing", "new": "new-listing"},
-            "sync_metadata": {"old": {}, "new": {"last_sync": "2025-01-01"}}
+            "sync_metadata": {"old": {}, "new": {"last_sync": "2025-01-01"}},
         }
         event_id = self.publisher.publish_mapping_updated(
-            mapping_id=str(self.mapping.id),
-            connection_id=str(self.connection.id),
-            changes=changes
+            mapping_id=str(self.mapping.id), connection_id=str(self.connection.id), changes=changes
         )
 
         # Verify event was published
@@ -272,7 +282,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             connection_id=str(self.connection.id),
             hub_asset_id=str(self.asset.id),
             external_listing_id=self.mapping.external_listing_id,
-            reason=reason
+            reason=reason,
         )
 
         # Verify event was published
@@ -294,7 +304,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         event_id = self.publisher.publish_connection_created(
             connection_id=str(self.connection.id),
             marketplace_type=self.connection.marketplace_type,
-            name=self.connection.name
+            name=self.connection.name,
         )
 
         # Verify event was published
@@ -313,7 +323,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         event_id = self.publisher.publish_sync_started(
             sync_job_id=str(self.sync_job.id),
             connection_id=str(self.connection.id),
-            direction=self.sync_job.direction
+            direction=self.sync_job.direction,
         )
 
         # Verify event was published
@@ -333,7 +343,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             sync_job_id=str(self.sync_job.id),
             connection_id=str(self.connection.id),
             direction=self.sync_job.direction,
-            error_message="Test error"
+            error_message="Test error",
         )
 
         # Verify event was published
@@ -353,7 +363,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         event_id = self.publisher.publish_connection_created(
             connection_id=str(self.connection.id),
             marketplace_type=self.connection.marketplace_type,
-            name=self.connection.name
+            name=self.connection.name,
         )
 
         event = Event.objects.get(event_id=event_id)
@@ -367,7 +377,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         event_id = self.publisher.publish_connection_created(
             connection_id=str(self.connection.id),
             marketplace_type=self.connection.marketplace_type,
-            name=self.connection.name
+            name=self.connection.name,
         )
         after_publish = timezone.now()
 
@@ -382,7 +392,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         event_id = self.publisher.publish_connection_deleted(
             connection_id=str(self.connection.id),
             marketplace_type=self.connection.marketplace_type,
-            name=self.connection.name
+            name=self.connection.name,
         )
 
         # Verify event was published
@@ -402,7 +412,7 @@ class MarketplaceEventPublisherUnitTest(TestCase):
             mapping_id=str(self.mapping.id),
             connection_id=str(self.connection.id),
             hub_asset_id=str(self.asset.id),
-            external_listing_id=self.mapping.external_listing_id
+            external_listing_id=self.mapping.external_listing_id,
         )
 
         # Verify event was published
@@ -416,3 +426,16 @@ class MarketplaceEventPublisherUnitTest(TestCase):
         self.assertIsNone(event.data.get("reason"))
         self.assertIn("deleted_at", event.data)
 
+    def tearDown(self):
+        """Reconnect signals after test"""
+        from django.db.models.signals import post_save
+
+        try:
+            from hub.apps.assets.models import Asset
+            from hub.apps.contracts.models import Contract
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+
+            post_save.connect(contract_saved, sender=Contract, weak=False)
+            post_save.connect(asset_saved, sender=Asset, weak=False)
+        except (ImportError, AttributeError):
+            pass

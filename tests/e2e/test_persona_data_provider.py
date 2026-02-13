@@ -7,7 +7,7 @@ Tests that DATA_PROVIDER:
 - Can use CLI tool
 """
 import pytest
-from django.test import TestCase
+from django.test import TestCase, RequestFactory
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -81,18 +81,13 @@ class DataProviderPersonaTest(E2ETestBase):
     
     def test_data_provider_subject_to_rate_limits(self):
         """Test DATA_PROVIDER is subject to rate limits"""
-        # Make a request to test rate limiting
-        # Rate limits should be enforced based on tenant config or platform defaults
-        
-        # Create a mock request object
-        from unittest.mock import Mock
-        request = Mock()
+        # Use real request (no mocks) to exercise rate limit service
+        rf = RequestFactory()
+        request = rf.get("/api/v1/contracts/")
         request.tenant_id = str(self.tenant.id)
         request.user = self.provider_user
-        request.path = "/api/v1/contracts/"
-        request.method = "GET"
         request.api_key_obj = None
-        
+
         # Check rate limit (should allow first request)
         is_allowed, results = check_rate_limit(
             request=request,
@@ -198,16 +193,13 @@ class DataProviderPersonaTest(E2ETestBase):
             tenant=self.tenant
         )
         
-        # CLI requests should be subject to rate limits
-        # This is tested through API key rate limiting
-        from unittest.mock import Mock
-        request = Mock()
+        # CLI requests should be subject to rate limits (real request, no mocks)
+        rf = RequestFactory()
+        request = rf.get("/api/v1/contracts/")
         request.tenant_id = str(self.tenant.id)
         request.user = None
-        request.path = "/api/v1/contracts/"
-        request.method = "GET"
         request.api_key_obj = api_key
-        
+
         is_allowed, results = check_rate_limit(
             request=request,
             tenant_id=str(self.tenant.id),
@@ -280,23 +272,21 @@ class DataProviderPersonaTest(E2ETestBase):
                 }
             }
         )
-        
-        # Provider should be subject to tenant rate limits
-        from unittest.mock import Mock
-        request = Mock()
+
+        # Provider should be subject to tenant rate limits (real request, no mocks)
+        rf = RequestFactory()
+        request = rf.get("/api/v1/contracts/")
         request.tenant_id = str(self.tenant.id)
         request.user = self.provider_user
-        request.path = "/api/v1/contracts/"
-        request.method = "GET"
         request.api_key_obj = None
-        
+
         is_allowed, results = check_rate_limit(
             request=request,
             tenant_id=str(self.tenant.id),
             user_id=str(self.provider_user.id),
             api_key_id=None
         )
-        
+
         # Should respect tenant rate limits
         self.assertIsInstance(is_allowed, bool)
         self.assertIsInstance(results, list)
@@ -305,16 +295,14 @@ class DataProviderPersonaTest(E2ETestBase):
         """Test platform defaults apply when tenant config not set"""
         # Delete tenant config to test platform defaults
         TenantConfig.objects.filter(tenant=self.tenant).delete()
-        
-        # Provider should be subject to platform defaults
-        from unittest.mock import Mock
-        request = Mock()
+
+        # Provider should be subject to platform defaults (real request, no mocks)
+        rf = RequestFactory()
+        request = rf.get("/api/v1/contracts/")
         request.tenant_id = str(self.tenant.id)
         request.user = self.provider_user
-        request.path = "/api/v1/contracts/"
-        request.method = "GET"
         request.api_key_obj = None
-        
+
         is_allowed, results = check_rate_limit(
             request=request,
             tenant_id=str(self.tenant.id),
@@ -390,23 +378,18 @@ class DataProviderPersonaTest(E2ETestBase):
         )
         UserRole.objects.create(user=other_provider, role=self.provider_role)
         
-        # Each user should have separate rate limit counters
-        from unittest.mock import Mock
-        
-        request1 = Mock()
+        # Each user should have separate rate limit counters (real requests, no mocks)
+        rf = RequestFactory()
+        request1 = rf.get("/api/v1/contracts/")
         request1.tenant_id = str(self.tenant.id)
         request1.user = self.provider_user
-        request1.path = "/api/v1/contracts/"
-        request1.method = "GET"
         request1.api_key_obj = None
-        
-        request2 = Mock()
+
+        request2 = rf.get("/api/v1/contracts/")
         request2.tenant_id = str(self.tenant.id)
         request2.user = other_provider
-        request2.path = "/api/v1/contracts/"
-        request2.method = "GET"
         request2.api_key_obj = None
-        
+
         is_allowed1, results1 = check_rate_limit(
             request=request1,
             tenant_id=str(self.tenant.id),

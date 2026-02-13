@@ -8,19 +8,21 @@ Tests ensure that $ref resolution works correctly for all modes with comprehensi
 - Recursive $ref resolution (nested and chained refs)
 - Integration scenarios combining multiple ref types
 """
+
 import json
 import tempfile
 from pathlib import Path
-from unittest import TestCase
-from typing import Dict, Any
+from typing import Any, Dict
 
-from hub.apps.contracts.ref_resolver import (
-    RefResolver,
-    RefMode,
-    ExternalRefHandling,
-)
-from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+from django.test import TestCase
+
 from hub.apps.contracts.config.odps_refs_config import ODPSRefsConfig
+from hub.apps.contracts.odps_errors import ODPSRefResolutionError
+from hub.apps.contracts.ref_resolver import (
+    ExternalRefHandling,
+    RefMode,
+    RefResolver,
+)
 
 
 class RefResolverIntegrationTestBase(TestCase):
@@ -39,19 +41,20 @@ class RefResolverIntegrationTestBase(TestCase):
         config = ODPSRefsConfig()
         # Add temp directory to allowed base dirs via _config_data
         config._config_data = {
-            'allowed_base_dirs': [str(self.temp_dir)],
-            'url_allowlist': [],
-            'url_denylist': []
+            "allowed_base_dirs": [str(self.temp_dir)],
+            "url_allowlist": [],
+            "url_denylist": [],
         }
         self.resolver = RefResolver(
             config=config,
             base_path=self.temp_dir,
-            enable_caching=False  # Disable caching for deterministic tests
+            enable_caching=False,  # Disable caching for deterministic tests
         )
 
     def _cleanup_temp_dir(self):
         """Clean up temporary directory."""
         import shutil
+
         if self.temp_dir.exists():
             shutil.rmtree(self.temp_dir)
 
@@ -66,77 +69,76 @@ class RefResolverIntegrationTestBase(TestCase):
         definitions_dir.mkdir(parents=True, exist_ok=True)
 
         # Test file 1: Simple schema
-        (schemas_dir / "email.json").write_text(json.dumps({
-            "type": "string",
-            "format": "email",
-            "description": "Email address schema"
-        }))
+        (schemas_dir / "email.json").write_text(
+            json.dumps({"type": "string", "format": "email", "description": "Email address schema"})
+        )
 
         # Test file 2: User schema with nested refs
         # Note: Nested $refs must be relative to base_path, not the file's directory
-        (schemas_dir / "user.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "id": {"type": "string"},
-                "email": {"$ref": "./schemas/email.json"},
-                "name": {"type": "string"}
-            },
-            "required": ["id", "email"]
-        }))
+        (schemas_dir / "user.json").write_text(
+            json.dumps(
+                {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "email": {"$ref": "./schemas/email.json"},
+                        "name": {"type": "string"},
+                    },
+                    "required": ["id", "email"],
+                }
+            )
+        )
 
         # Test file 3: Product schema
-        (schemas_dir / "product.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "id": {"type": "string"},
-                "name": {"type": "string"},
-                "price": {"type": "number"}
-            }
-        }))
+        (schemas_dir / "product.json").write_text(
+            json.dumps(
+                {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "name": {"type": "string"},
+                        "price": {"type": "number"},
+                    },
+                }
+            )
+        )
 
         # Test file 4: Quality definition
-        (definitions_dir / "quality.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "score": {"type": "number", "minimum": 0, "maximum": 100},
-                "metrics": {
-                    "type": "array",
-                    "items": {"type": "string"}
+        (definitions_dir / "quality.json").write_text(
+            json.dumps(
+                {
+                    "type": "object",
+                    "properties": {
+                        "score": {"type": "number", "minimum": 0, "maximum": 100},
+                        "metrics": {"type": "array", "items": {"type": "string"}},
+                    },
                 }
-            }
-        }))
+            )
+        )
 
         # Test file 5: Schema with internal ref (for recursive testing)
         # Note: Nested $refs must be relative to base_path, not the file's directory
-        (schemas_dir / "order.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "id": {"type": "string"},
-                "user": {"$ref": "./schemas/user.json"},
-                "products": {
-                    "type": "array",
-                    "items": {"$ref": "./schemas/product.json"}
+        (schemas_dir / "order.json").write_text(
+            json.dumps(
+                {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "user": {"$ref": "./schemas/user.json"},
+                        "products": {"type": "array", "items": {"$ref": "./schemas/product.json"}},
+                    },
                 }
-            }
-        }))
+            )
+        )
 
     def _assert_resolved_value(
-        self,
-        resolved: Dict[str, Any],
-        expected_keys: list,
-        description: str = ""
+        self, resolved: Dict[str, Any], expected_keys: list, description: str = ""
     ):
         """Assert that resolved value has expected structure."""
-        desc_suffix = f': {description}' if description else ''
-        self.assertIsInstance(
-            resolved, dict,
-            f"Resolved value should be a dict{desc_suffix}"
-        )
+        desc_suffix = f": {description}" if description else ""
+        self.assertIsInstance(resolved, dict, f"Resolved value should be a dict{desc_suffix}")
         for key in expected_keys:
-            self.assertIn(
-                key, resolved,
-                f"Resolved value should have key '{key}'{desc_suffix}"
-            )
+            self.assertIn(key, resolved, f"Resolved value should have key '{key}'{desc_suffix}")
 
 
 class RefResolverInternalRefIntegrationTest(RefResolverIntegrationTestBase):
@@ -146,15 +148,9 @@ class RefResolverInternalRefIntegrationTest(RefResolverIntegrationTestBase):
         """Test resolving simple internal $ref to definitions."""
         document = {
             "definitions": {
-                "Email": {
-                    "type": "string",
-                    "format": "email",
-                    "description": "Email address"
-                }
+                "Email": {"type": "string", "format": "email", "description": "Email address"}
             },
-            "product": {
-                "dataQuality": {"$ref": "#/definitions/Email"}
-            }
+            "product": {"dataQuality": {"$ref": "#/definitions/Email"}},
         }
 
         resolved = self.resolver.resolve_internal("#/definitions/Email", document)
@@ -169,16 +165,11 @@ class RefResolverInternalRefIntegrationTest(RefResolverIntegrationTestBase):
                 "schemas": {
                     "User": {
                         "type": "object",
-                        "properties": {
-                            "id": {"type": "string"},
-                            "name": {"type": "string"}
-                        }
+                        "properties": {"id": {"type": "string"}, "name": {"type": "string"}},
                     }
                 }
             },
-            "product": {
-                "owner": {"$ref": "#/components/schemas/User"}
-            }
+            "product": {"owner": {"$ref": "#/components/schemas/User"}},
         }
 
         resolved = self.resolver.resolve_internal("#/components/schemas/User", document)
@@ -190,12 +181,8 @@ class RefResolverInternalRefIntegrationTest(RefResolverIntegrationTestBase):
         """Test resolving internal $ref to root level."""
         document = {
             "type": "object",
-            "properties": {
-                "id": {"type": "string"}
-            },
-            "product": {
-                "schema": {"$ref": "#"}
-            }
+            "properties": {"id": {"type": "string"}},
+            "product": {"schema": {"$ref": "#"}},
         }
 
         resolved = self.resolver.resolve_internal("#", document)
@@ -205,15 +192,8 @@ class RefResolverInternalRefIntegrationTest(RefResolverIntegrationTestBase):
     def test_resolve_internal_array_reference(self):
         """Test resolving internal $ref to array element."""
         document = {
-            "definitions": {
-                "items": [
-                    {"type": "string"},
-                    {"type": "number"}
-                ]
-            },
-            "product": {
-                "types": {"$ref": "#/definitions/items/0"}
-            }
+            "definitions": {"items": [{"type": "string"}, {"type": "number"}]},
+            "product": {"types": {"$ref": "#/definitions/items/0"}},
         }
 
         resolved = self.resolver.resolve_internal("#/definitions/items/0", document)
@@ -222,11 +202,7 @@ class RefResolverInternalRefIntegrationTest(RefResolverIntegrationTestBase):
 
     def test_resolve_internal_missing_reference(self):
         """Test that missing internal $ref raises error."""
-        document = {
-            "definitions": {
-                "Email": {"type": "string"}
-            }
-        }
+        document = {"definitions": {"Email": {"type": "string"}}}
 
         with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_internal("#/definitions/NonExistent", document)
@@ -275,11 +251,11 @@ class RefResolverLocalRefIntegrationTest(RefResolverIntegrationTestBase):
         error_msg = str(cm.exception).lower()
         # Should fail due to security validation
         self.assertTrue(
-            "not allowed" in error_msg or
-            "outside" in error_msg or
-            "security" in error_msg or
-            "not in allowed" in error_msg,
-            f"Expected security/validation error, got: {cm.exception}"
+            "not allowed" in error_msg
+            or "outside" in error_msg
+            or "security" in error_msg
+            or "not in allowed" in error_msg,
+            f"Expected security/validation error, got: {cm.exception}",
         )
 
 
@@ -298,9 +274,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
         # Configure resolver with URL restrictions
         config = ODPSRefsConfig()
         config._config_data = {
-            'allowed_base_dirs': [],
-            'url_allowlist': [self.test_base_url],
-            'url_denylist': []
+            "allowed_base_dirs": [],
+            "url_allowlist": [self.test_base_url],
+            "url_denylist": [],
         }
         resolver = RefResolver(config=config, enable_caching=False)
 
@@ -311,7 +287,7 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
         error_msg = str(cm.exception).lower()
         self.assertTrue(
             "not allowed" in error_msg or "denied" in error_msg or "security" in error_msg,
-            f"Expected security/validation error, got: {cm.exception}"
+            f"Expected security/validation error, got: {cm.exception}",
         )
 
     def test_resolve_external_url_validation_denylist(self):
@@ -319,9 +295,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
         # Configure resolver with URL restrictions
         config = ODPSRefsConfig()
         config._config_data = {
-            'allowed_base_dirs': [],
-            'url_allowlist': [],  # Empty allowlist means all allowed (unless in denylist)
-            'url_denylist': ["https://blocked.com"]
+            "allowed_base_dirs": [],
+            "url_allowlist": [],  # Empty allowlist means all allowed (unless in denylist)
+            "url_denylist": ["https://blocked.com"],
         }
         resolver = RefResolver(config=config, enable_caching=False)
 
@@ -332,16 +308,16 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
         error_msg = str(cm.exception).lower()
         self.assertTrue(
             "not allowed" in error_msg or "denied" in error_msg or "security" in error_msg,
-            f"Expected security/validation error, got: {cm.exception}"
+            f"Expected security/validation error, got: {cm.exception}",
         )
 
     def test_resolve_external_invalid_url(self):
         """Test that invalid external URL raises error."""
         config = ODPSRefsConfig()
         config._config_data = {
-            'allowed_base_dirs': [],
-            'url_allowlist': [],  # Allow all for this test
-            'url_denylist': []
+            "allowed_base_dirs": [],
+            "url_allowlist": [],  # Allow all for this test
+            "url_denylist": [],
         }
         resolver = RefResolver(config=config, enable_caching=False)
 
@@ -353,9 +329,9 @@ class RefResolverExternalRefIntegrationTest(RefResolverIntegrationTestBase):
         """Test that nonexistent external URL raises error."""
         config = ODPSRefsConfig()
         config._config_data = {
-            'allowed_base_dirs': [],
-            'url_allowlist': [],  # Allow all for this test
-            'url_denylist': []
+            "allowed_base_dirs": [],
+            "url_allowlist": [],  # Allow all for this test
+            "url_denylist": [],
         }
         resolver = RefResolver(config=config, enable_caching=False, timeout_per_ref=2)
 
@@ -370,15 +346,8 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
     def test_resolve_all_refs_simple_internal(self):
         """Test resolving all refs with simple internal refs."""
         document = {
-            "product": {
-                "dataQuality": {"$ref": "#/definitions/quality"}
-            },
-            "definitions": {
-                "quality": {
-                    "score": 95,
-                    "metrics": ["completeness", "validity"]
-                }
-            }
+            "product": {"dataQuality": {"$ref": "#/definitions/quality"}},
+            "definitions": {"quality": {"score": 95, "metrics": ["completeness", "validity"]}},
         }
 
         original, resolved = self.resolver.resolve_all_refs(document)
@@ -396,7 +365,7 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
         document = {
             "product": {
                 "owner": {"$ref": "#/components/schemas/user"},
-                "schema": {"$ref": "#/components/schemas/product"}
+                "schema": {"$ref": "#/components/schemas/product"},
             },
             "components": {
                 "schemas": {
@@ -404,21 +373,13 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
                         "type": "object",
                         "properties": {
                             "id": {"type": "string"},
-                            "email": {"$ref": "#/components/schemas/email"}
-                        }
+                            "email": {"$ref": "#/components/schemas/email"},
+                        },
                     },
-                    "email": {
-                        "type": "string",
-                        "format": "email"
-                    },
-                    "product": {
-                        "type": "object",
-                        "properties": {
-                            "id": {"type": "string"}
-                        }
-                    }
+                    "email": {"type": "string", "format": "email"},
+                    "product": {"type": "object", "properties": {"id": {"type": "string"}}},
                 }
-            }
+            },
         }
 
         original, resolved = self.resolver.resolve_all_refs(document)
@@ -432,18 +393,13 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
         self.assertEqual(resolved["product"]["owner"]["type"], "object")
         self.assertEqual(resolved["product"]["schema"]["type"], "object")
         self.assertEqual(
-            resolved["components"]["schemas"]["user"]["properties"]["email"]["type"],
-            "string"
+            resolved["components"]["schemas"]["user"]["properties"]["email"]["type"], "string"
         )
 
     def test_resolve_all_refs_with_local_refs(self):
         """Test resolving all refs with local file refs."""
         # Create a document that references local files
-        document = {
-            "product": {
-                "schema": {"$ref": "./schemas/user.json"}
-            }
-        }
+        document = {"product": {"schema": {"$ref": "./schemas/user.json"}}}
 
         original, resolved = self.resolver.resolve_all_refs(document)
 
@@ -457,17 +413,17 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
         document = {
             "product": {
                 "owner": {"$ref": "#/definitions/user"},
-                "schema": {"$ref": "./schemas/product.json"}
+                "schema": {"$ref": "./schemas/product.json"},
             },
             "definitions": {
                 "user": {
                     "type": "object",
                     "properties": {
                         "id": {"type": "string"},
-                        "email": {"$ref": "./schemas/email.json"}
-                    }
+                        "email": {"$ref": "./schemas/email.json"},
+                    },
                 }
-            }
+            },
         }
 
         original, resolved = self.resolver.resolve_all_refs(document)
@@ -480,81 +436,55 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
         # Verify resolved values
         self.assertEqual(resolved["product"]["owner"]["type"], "object")
         self.assertEqual(resolved["product"]["schema"]["type"], "object")
-        self.assertEqual(
-            resolved["definitions"]["user"]["properties"]["email"]["type"],
-            "string"
-        )
+        self.assertEqual(resolved["definitions"]["user"]["properties"]["email"]["type"], "string")
 
     def test_resolve_all_refs_recursive_chain(self):
         """Test resolving refs in a recursive chain."""
         # Create a chain: A -> B -> C
         # Note: Nested $refs must be relative to base_path, not the file's directory
-        (self.temp_dir / "schemas" / "c.json").write_text(json.dumps({
-            "type": "string",
-            "description": "C schema"
-        }))
+        (self.temp_dir / "schemas" / "c.json").write_text(
+            json.dumps({"type": "string", "description": "C schema"})
+        )
 
-        (self.temp_dir / "schemas" / "b.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "c": {"$ref": "./schemas/c.json"}
-            }
-        }))
+        (self.temp_dir / "schemas" / "b.json").write_text(
+            json.dumps({"type": "object", "properties": {"c": {"$ref": "./schemas/c.json"}}})
+        )
 
-        (self.temp_dir / "schemas" / "a.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "b": {"$ref": "./schemas/b.json"}
-            }
-        }))
+        (self.temp_dir / "schemas" / "a.json").write_text(
+            json.dumps({"type": "object", "properties": {"b": {"$ref": "./schemas/b.json"}}})
+        )
 
-        document = {
-            "product": {
-                "schema": {"$ref": "./schemas/a.json"}
-            }
-        }
+        document = {"product": {"schema": {"$ref": "./schemas/a.json"}}}
 
         original, resolved = self.resolver.resolve_all_refs(document)
 
         # All refs in chain should be resolved
         self.assertNotIn("$ref", resolved["product"]["schema"])
         self.assertNotIn("$ref", resolved["product"]["schema"]["properties"]["b"])
-        self.assertNotIn("$ref", resolved["product"]["schema"]["properties"]["b"]["properties"]["c"])
+        self.assertNotIn(
+            "$ref", resolved["product"]["schema"]["properties"]["b"]["properties"]["c"]
+        )
 
         # Verify chain resolution
         self.assertEqual(resolved["product"]["schema"]["type"], "object")
+        self.assertEqual(resolved["product"]["schema"]["properties"]["b"]["type"], "object")
         self.assertEqual(
-            resolved["product"]["schema"]["properties"]["b"]["type"],
-            "object"
-        )
-        self.assertEqual(
-            resolved["product"]["schema"]["properties"]["b"]["properties"]["c"]["type"],
-            "string"
+            resolved["product"]["schema"]["properties"]["b"]["properties"]["c"]["type"], "string"
         )
 
     def test_resolve_all_refs_circular_detection(self):
         """Test that circular references are detected."""
         # Create circular reference: A -> B -> A
         # Note: Nested $refs must be relative to base_path, not the file's directory
-        (self.temp_dir / "schemas" / "a.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "b": {"$ref": "./schemas/b.json"}
-            }
-        }))
+        (self.temp_dir / "schemas" / "a.json").write_text(
+            json.dumps({"type": "object", "properties": {"b": {"$ref": "./schemas/b.json"}}})
+        )
 
-        (self.temp_dir / "schemas" / "b.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "a": {"$ref": "./schemas/a.json"}
-            }
-        }))
+        (self.temp_dir / "schemas" / "b.json").write_text(
+            json.dumps({"type": "object", "properties": {"a": {"$ref": "./schemas/a.json"}}})
+        )
 
-        document = {
-            "product": {
-                "schema": {"$ref": "./schemas/a.json"}
-            }
-        }
+        document = {"product": {"schema": {"$ref": "./schemas/a.json"}}}
 
         with self.assertRaises(ODPSRefResolutionError) as cm:
             self.resolver.resolve_all_refs(document)
@@ -564,15 +494,12 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
         """Test resolving refs in arrays."""
         document = {
             "product": {
-                "schemas": [
-                    {"$ref": "#/definitions/email"},
-                    {"$ref": "#/definitions/user"}
-                ]
+                "schemas": [{"$ref": "#/definitions/email"}, {"$ref": "#/definitions/user"}]
             },
             "definitions": {
                 "email": {"type": "string", "format": "email"},
-                "user": {"type": "object", "properties": {"id": {"type": "string"}}}
-            }
+                "user": {"type": "object", "properties": {"id": {"type": "string"}}},
+            },
         }
 
         original, resolved = self.resolver.resolve_all_refs(document)
@@ -586,12 +513,8 @@ class RefResolverRecursiveRefIntegrationTest(RefResolverIntegrationTestBase):
     def test_resolve_all_refs_preserves_original(self):
         """Test that original document is preserved."""
         document = {
-            "product": {
-                "dataQuality": {"$ref": "#/definitions/quality"}
-            },
-            "definitions": {
-                "quality": {"score": 95}
-            }
+            "product": {"dataQuality": {"$ref": "#/definitions/quality"}},
+            "definitions": {"quality": {"score": 95}},
         }
 
         original, resolved = self.resolver.resolve_all_refs(document, preserve_original=True)
@@ -614,34 +537,34 @@ class RefResolverIntegrationScenariosTest(RefResolverIntegrationTestBase):
     def test_integration_complex_document(self):
         """Test resolving refs in a complex document with all ref types."""
         # Create additional test files
-        (self.temp_dir / "schemas" / "address.json").write_text(json.dumps({
-            "type": "object",
-            "properties": {
-                "street": {"type": "string"},
-                "city": {"type": "string"}
-            }
-        }))
+        (self.temp_dir / "schemas" / "address.json").write_text(
+            json.dumps(
+                {
+                    "type": "object",
+                    "properties": {"street": {"type": "string"}, "city": {"type": "string"}},
+                }
+            )
+        )
 
         document = {
             "product": {
                 "owner": {"$ref": "#/definitions/user"},
                 "schema": {"$ref": "./schemas/user.json"},
-                "address": {"$ref": "./schemas/address.json"}
+                "address": {"$ref": "./schemas/address.json"},
             },
             "definitions": {
                 "user": {
                     "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "email": {"$ref": "#/definitions/email"},
-                    "profile": {"$ref": "./schemas/user.json"}  # This will work since it's relative to base_path
-                }
+                    "properties": {
+                        "id": {"type": "string"},
+                        "email": {"$ref": "#/definitions/email"},
+                        "profile": {
+                            "$ref": "./schemas/user.json"
+                        },  # This will work since it's relative to base_path
+                    },
                 },
-                "email": {
-                    "type": "string",
-                    "format": "email"
-                }
-            }
+                "email": {"type": "string", "format": "email"},
+            },
         }
 
         original, resolved = self.resolver.resolve_all_refs(document)
@@ -657,10 +580,7 @@ class RefResolverIntegrationScenariosTest(RefResolverIntegrationTestBase):
         self.assertEqual(resolved["product"]["owner"]["type"], "object")
         self.assertEqual(resolved["product"]["schema"]["type"], "object")
         self.assertEqual(resolved["product"]["address"]["type"], "object")
-        self.assertEqual(
-            resolved["definitions"]["user"]["properties"]["email"]["type"],
-            "string"
-        )
+        self.assertEqual(resolved["definitions"]["user"]["properties"]["email"]["type"], "string")
 
     def test_integration_external_ref_handling_modes(self):
         """Test different external ref handling modes."""
@@ -672,25 +592,22 @@ class RefResolverIntegrationScenariosTest(RefResolverIntegrationTestBase):
         document = {
             "product": {
                 "schema": {"$ref": "https://example.com/schema.json"},
-                "owner": {"$ref": "#/definitions/user"}
+                "owner": {"$ref": "#/definitions/user"},
             },
-            "definitions": {
-                "user": {"type": "object", "properties": {"id": {"type": "string"}}}
-            }
+            "definitions": {"user": {"type": "object", "properties": {"id": {"type": "string"}}}},
         }
 
         config = ODPSRefsConfig()
         config._config_data = {
-            'allowed_base_dirs': [],
-            'url_allowlist': [],  # Empty allowlist means external refs will be rejected
-            'url_denylist': []
+            "allowed_base_dirs": [],
+            "url_allowlist": [],  # Empty allowlist means external refs will be rejected
+            "url_denylist": [],
         }
         resolver = RefResolver(config=config, enable_caching=False)
 
         # Test REMOVE mode - external refs should be removed, internal refs should work
         original, resolved = resolver.resolve_all_refs(
-            document,
-            external_ref_handling=ExternalRefHandling.REMOVE
+            document, external_ref_handling=ExternalRefHandling.REMOVE
         )
         # The external $ref key should be removed
         self.assertNotIn("schema", resolved["product"])
@@ -699,31 +616,22 @@ class RefResolverIntegrationScenariosTest(RefResolverIntegrationTestBase):
 
         # Test DISABLE mode - should raise error for external refs
         with self.assertRaises(ODPSRefResolutionError):
-            resolver.resolve_all_refs(
-                document,
-                external_ref_handling=ExternalRefHandling.DISABLE
-            )
+            resolver.resolve_all_refs(document, external_ref_handling=ExternalRefHandling.DISABLE)
 
     def test_integration_nested_resolved_values(self):
         """Test that resolved values can contain nested structures."""
         document = {
-            "product": {
-                "dataQuality": {"$ref": "#/definitions/quality"}
-            },
+            "product": {"dataQuality": {"$ref": "#/definitions/quality"}},
             "definitions": {
                 "quality": {
                     "score": 95,
                     "metrics": {
                         "completeness": {"$ref": "#/definitions/metric"},
-                        "validity": {"$ref": "#/definitions/metric"}
-                    }
+                        "validity": {"$ref": "#/definitions/metric"},
+                    },
                 },
-                "metric": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 100
-                }
-            }
+                "metric": {"type": "number", "minimum": 0, "maximum": 100},
+            },
         }
 
         original, resolved = self.resolver.resolve_all_refs(document)
@@ -736,7 +644,5 @@ class RefResolverIntegrationScenariosTest(RefResolverIntegrationTestBase):
         # Verify nested structure
         self.assertEqual(resolved["product"]["dataQuality"]["score"], 95)
         self.assertEqual(
-            resolved["product"]["dataQuality"]["metrics"]["completeness"]["type"],
-            "number"
+            resolved["product"]["dataQuality"]["metrics"]["completeness"]["type"], "number"
         )
-

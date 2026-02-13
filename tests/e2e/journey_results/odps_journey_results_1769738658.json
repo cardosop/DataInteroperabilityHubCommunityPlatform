@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-86464625",
+      "journey_name": "Product-First Flow Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1769738597.9842985,
+      "end_time": 1769738658.5578492,
+      "duration": 60.57355070114136,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'RUNNING' != WorkflowStatus.COMPLETED : Workflow should complete successfully",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769738597.9843085,
+          "end_time": 1769738598.291951,
+          "duration": 0.30764245986938477,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Document",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769738598.2919676,
+          "end_time": 1769738598.2920468,
+          "duration": 7.915496826171875e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Product (Product-First Flow)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769738598.2920496,
+          "end_time": 1769738598.4181573,
+          "duration": 0.12610769271850586,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Wait for Workflow Completion",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769738598.418168,
+          "end_time": 1769738658.5578246,
+          "duration": 60.13965654373169,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "WorkflowInstance"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-30T02:04:18.558023"
+}

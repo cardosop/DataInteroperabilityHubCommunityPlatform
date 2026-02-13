@@ -429,3 +429,187 @@ class JobFactory:
             )
         return jobs
 
+
+# --- Workflow and business rules factories (Phase 6.1.2, 6.1.3) ---
+
+try:
+    from hub.apps.orchestration.models import (
+        WorkflowDefinition,
+        WorkflowInstance,
+        WorkflowStep,
+        WorkflowStatus,
+        StepStatus,
+    )
+    from hub.apps.core.business_rules.base import ValidationResult, RuleExecutionContext
+    from hub.apps.orchestration.business_rules import OrchestrationRuleExecutionContext
+
+    _ORCHESTRATION_AVAILABLE = True
+except ImportError:
+    _ORCHESTRATION_AVAILABLE = False
+    WorkflowDefinition = None
+    WorkflowInstance = None
+    WorkflowStep = None
+    WorkflowStatus = None
+    StepStatus = None
+    ValidationResult = None
+    RuleExecutionContext = None
+    OrchestrationRuleExecutionContext = None
+
+
+if _ORCHESTRATION_AVAILABLE:
+
+    class WorkflowDefinitionFactory:
+        """Factory for creating WorkflowDefinition instances (Phase 6.1.2)."""
+
+        @staticmethod
+        def create_workflow_definition(
+            name: str = "test_workflow",
+            version: str = "1.0.0",
+            dsl_json: Optional[Dict[str, Any]] = None,
+            description: Optional[str] = None,
+            is_active: bool = True,
+            created_by=None,
+            **kwargs
+        ):
+            if dsl_json is None:
+                dsl_json = {
+                    "version": "1.0.0",
+                    "steps": [
+                        {"name": "step1", "type": "task", "task": "test.step1"},
+                    ],
+                }
+            return WorkflowDefinition.objects.create(
+                name=name,
+                version=version,
+                dsl_json=dsl_json,
+                description=description or f"Test workflow {name}",
+                is_active=is_active,
+                created_by=created_by,
+                **kwargs
+            )
+
+    class WorkflowInstanceFactory:
+        """Factory for creating WorkflowInstance instances in various states (Phase 6.1.2)."""
+
+        @staticmethod
+        def create_workflow_instance(
+            workflow_definition,
+            tenant=None,
+            status: str = WorkflowStatus.DRAFT,
+            workflow_name: Optional[str] = None,
+            workflow_version: Optional[str] = None,
+            input_data: Optional[Dict[str, Any]] = None,
+            state_data: Optional[Dict[str, Any]] = None,
+            created_by=None,
+            **kwargs
+        ):
+            workflow_name = workflow_name or workflow_definition.name
+            workflow_version = workflow_version or workflow_definition.version
+            input_data = input_data or {}
+            state_data = state_data or {}
+            return WorkflowInstance.objects.create(
+                workflow_definition=workflow_definition,
+                tenant=tenant,
+                workflow_name=workflow_name,
+                workflow_version=workflow_version,
+            status=status if isinstance(status, str) else getattr(status, "value", status),
+            input_data=input_data,
+            state_data=state_data,
+            created_by=created_by,
+            **kwargs
+        )
+
+    class WorkflowStepFactory:
+        """Factory for creating WorkflowStep instances (Phase 6.1.2)."""
+
+        @staticmethod
+        def create_workflow_step(
+            workflow_instance,
+            step_index: int = 0,
+            step_name: str = "step1",
+            step_type: str = "task",
+            status: str = StepStatus.PENDING,
+            input_data: Optional[Dict[str, Any]] = None,
+            output_data: Optional[Dict[str, Any]] = None,
+            **kwargs
+        ):
+            input_data = input_data or {}
+            output_data = output_data or {}
+            return WorkflowStep.objects.create(
+                workflow_instance=workflow_instance,
+                step_index=step_index,
+                step_name=step_name,
+            step_type=step_type,
+            status=status if isinstance(status, str) else getattr(status, "value", status),
+            input_data=input_data,
+                output_data=output_data,
+                **kwargs
+            )
+
+    class ValidationResultFactory:
+        """Factory for ValidationResult (business rules; Phase 6.1.3)."""
+
+        @staticmethod
+        def create_valid_result(warnings: Optional[List[str]] = None, details: Optional[Dict[str, Any]] = None):
+            return ValidationResult(
+                is_valid=True,
+                errors=[],
+                warnings=warnings or [],
+                details=details or {},
+            )
+
+        @staticmethod
+        def create_invalid_result(
+            errors: List[str],
+            warnings: Optional[List[str]] = None,
+            details: Optional[Dict[str, Any]] = None,
+        ):
+            return ValidationResult(
+                is_valid=False,
+                errors=errors,
+                warnings=warnings or [],
+                details=details or {},
+            )
+
+    class RuleExecutionContextFactory:
+        """Factory for RuleExecutionContext (Phase 6.1.3)."""
+
+        @staticmethod
+        def create_context(
+            tenant_id: Optional[str] = None,
+            user_id: Optional[str] = None,
+            resource=None,
+            metadata: Optional[Dict[str, Any]] = None,
+        ):
+            return RuleExecutionContext(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                resource=resource,
+                metadata=metadata or {},
+            )
+
+    class OrchestrationRuleExecutionContextFactory:
+        """Factory for OrchestrationRuleExecutionContext (Phase 6.1.3)."""
+
+        @staticmethod
+        def create_context(
+            workflow=None,
+            step=None,
+            workflow_definition=None,
+            tenant=None,
+            user=None,
+            tenant_id: Optional[str] = None,
+            user_id: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None,
+        ):
+            return OrchestrationRuleExecutionContext(
+                workflow=workflow,
+                step=step,
+                workflow_definition=workflow_definition,
+                tenant=tenant,
+                user=user,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                metadata=metadata or {},
+            )
+

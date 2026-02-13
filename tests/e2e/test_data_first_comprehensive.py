@@ -88,9 +88,10 @@ class DataFirstFlowSuccessTests(E2ETestBase):
         self.assertIn(dq_run.status, [DQRunStatus.SUCCEEDED, DQRunStatus.FAILED, DQRunStatus.PENDING])
 
         # Step 6: Create contract from inferred schema
+        # ODCS requires: id, info.name, schema.fields
         contract_id = self.create_contract(
             asset_id,
-            original_raw='{"id": "customer-orders", "name": "Customer Orders", "schema": {"fields": [{"name": "col1", "type": "string"}, {"name": "col2", "type": "string"}]}}'
+            original_raw='{"id": "customer-orders", "info": {"name": "Customer Orders"}, "schema": {"fields": [{"name": "col1", "type": "string"}, {"name": "col2", "type": "string"}]}}'
         )
 
         # Step 7: Validate contract

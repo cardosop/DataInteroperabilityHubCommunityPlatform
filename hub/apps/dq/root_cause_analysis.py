@@ -149,23 +149,42 @@ class RootCauseAnalyzer:
         avg_count = statistics.mean(historical_counts)
         std_dev = statistics.stdev(historical_counts) if len(historical_counts) > 1 else 0.0
         
-        if current_row_count and std_dev > 0:
-            z_score = abs((current_row_count - avg_count) / std_dev)
-            
-            if z_score > 2.0:  # Significant change
+        if current_row_count:
+            # Handle case where all historical values are the same (std_dev == 0)
+            if std_dev == 0:
+                # If current value differs significantly from historical average, it's a volume change
                 change_percent = ((current_row_count - avg_count) / avg_count * 100) if avg_count > 0 else 0
+                # Consider it significant if change is > 20%
+                if abs(change_percent) > 20:
+                    return {
+                        "type": "VOLUME_CHANGE",
+                        "description": f"Data volume changed by {change_percent:.1f}%",
+                        "details": {
+                            "current_count": current_row_count,
+                            "average_count": avg_count,
+                            "change_percent": change_percent,
+                            "z_score": None  # Cannot calculate z-score when std_dev == 0
+                        },
+                        "confidence": min(0.8, 0.5 + (abs(change_percent) / 100))
+                    }
+            else:
+                # Standard deviation > 0, use z-score
+                z_score = abs((current_row_count - avg_count) / std_dev)
                 
-                return {
-                    "type": "VOLUME_CHANGE",
-                    "description": f"Data volume changed by {change_percent:.1f}%",
-                    "details": {
-                        "current_count": current_row_count,
-                        "average_count": avg_count,
-                        "change_percent": change_percent,
-                        "z_score": z_score
-                    },
-                    "confidence": min(0.8, 0.5 + (z_score / 10))
-                }
+                if z_score > 2.0:  # Significant change
+                    change_percent = ((current_row_count - avg_count) / avg_count * 100) if avg_count > 0 else 0
+                    
+                    return {
+                        "type": "VOLUME_CHANGE",
+                        "description": f"Data volume changed by {change_percent:.1f}%",
+                        "details": {
+                            "current_count": current_row_count,
+                            "average_count": avg_count,
+                            "change_percent": change_percent,
+                            "z_score": z_score
+                        },
+                        "confidence": min(0.8, 0.5 + (z_score / 10))
+                    }
         
         return None
     

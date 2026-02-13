@@ -27,6 +27,6 @@ COPY . .
 EXPOSE 8090
 
 # Default command: run FastAPI health service
-# Uses uvicorn to serve the FastAPI application
-CMD ["uvicorn", "services.event-bus.health:app", "--host", "0.0.0.0", "--port", "8090"]
+# Run from event-bus dir so "health:app" works; PYTHONPATH=/app for Django/hub (health.py uses hub.settings)
+CMD ["sh", "-c", "cd /app/services/event-bus && PYTHONPATH=/app uvicorn health:app --host 0.0.0.0 --port 8090"]
 

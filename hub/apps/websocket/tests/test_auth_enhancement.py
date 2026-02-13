@@ -8,9 +8,21 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.db import connections
 from hub.apps.websocket.tests.test_base import AsyncWebSocketTestCase
-from channels.db import database_sync_to_async
+
+# Optional channels import
+try:
+    from channels.db import database_sync_to_async
+    CHANNELS_AVAILABLE = True
+except ImportError:
+    # Fallback to asgiref if channels not available
+    from asgiref.sync import sync_to_async
+    database_sync_to_async = sync_to_async
+    CHANNELS_AVAILABLE = False
 
 import pytest
+
+# Skip tests if channels not available
+pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
 
 from hub.apps.auth.models import APIKey
 from hub.apps.auth.jwt_utils import JWTTokenGenerator

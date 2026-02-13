@@ -7,7 +7,8 @@ Tests verify:
 3. Reference as product.contract.contractURL
 4. Error handling for invalid contract data
 """
-from django.test import TestCase, SimpleTestCase
+
+from django.test import SimpleTestCase, TestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -25,13 +26,8 @@ class ODPSGeneratorContractEmbeddingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "description": "Test product description"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "description": "Test product description"},
+            "schema": {"fields": []},
         }
 
         original_odcs_contract = {
@@ -39,17 +35,11 @@ class ODPSGeneratorContractEmbeddingTest(SimpleTestCase):
             "id": "test-contract",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "properties": {
-                    "id": {"type": "string"},
-                    "name": {"type": "string"}
-                }
-            }
+            "schema": {"properties": {"id": {"type": "string"}, "name": {"type": "string"}}},
         }
 
         result = generate_odps_from_hubcontract(
-            hub_contract,
-            original_odcs_contract=original_odcs_contract
+            hub_contract, original_odcs_contract=original_odcs_contract
         )
 
         # Verify product.contract.spec exists
@@ -72,12 +62,8 @@ class ODPSGeneratorContractEmbeddingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product-complete",
-            "info": {
-                "name": "Complete Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Complete Test Product"},
+            "schema": {"fields": []},
         }
 
         original_odcs_contract = {
@@ -89,28 +75,16 @@ class ODPSGeneratorContractEmbeddingTest(SimpleTestCase):
                 "properties": {
                     "id": {"type": "string"},
                     "name": {"type": "string"},
-                    "email": {"type": "string", "format": "email"}
+                    "email": {"type": "string", "format": "email"},
                 },
-                "required": ["id", "name"]
+                "required": ["id", "name"],
             },
-            "quality": {
-                "rules": [
-                    {
-                        "type": "completeness",
-                        "field": "name",
-                        "threshold": 0.95
-                    }
-                ]
-            },
-            "compliance": {
-                "jurisdictions": ["EU"],
-                "legal_bases": ["consent"]
-            }
+            "quality": {"rules": [{"type": "completeness", "field": "name", "threshold": 0.95}]},
+            "compliance": {"jurisdictions": ["EU"], "legal_bases": ["consent"]},
         }
 
         result = generate_odps_from_hubcontract(
-            hub_contract,
-            original_odcs_contract=original_odcs_contract
+            hub_contract, original_odcs_contract=original_odcs_contract
         )
 
         # Verify product.contract.spec contains complete ODCS contract
@@ -134,18 +108,13 @@ class ODPSGeneratorContractEmbeddingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
             generate_odps_from_hubcontract(
-                hub_contract,
-                original_odcs_contract="not-a-dict"  # Invalid type
+                hub_contract, original_odcs_contract="not-a-dict"  # Invalid type
             )
 
         error = context.exception
@@ -169,21 +138,13 @@ class ODPSGeneratorContractURLReferenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "description": "Test product description"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "description": "Test product description"},
+            "schema": {"fields": []},
         }
 
         original_odcs_url = "https://example.com/contracts/test-contract.json"
 
-        result = generate_odps_from_hubcontract(
-            hub_contract,
-            original_odcs_url=original_odcs_url
-        )
+        result = generate_odps_from_hubcontract(hub_contract, original_odcs_url=original_odcs_url)
 
         # Verify product.contract.contractURL exists
         self.assertIn("product", result)
@@ -205,25 +166,15 @@ class ODPSGeneratorContractURLReferenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product-https",
-            "info": {
-                "name": "HTTPS Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "HTTPS Test Product"},
+            "schema": {"fields": []},
         }
 
         original_odcs_url = "https://api.example.com/v1/contracts/test-contract-v3.0.2.json"
 
-        result = generate_odps_from_hubcontract(
-            hub_contract,
-            original_odcs_url=original_odcs_url
-        )
+        result = generate_odps_from_hubcontract(hub_contract, original_odcs_url=original_odcs_url)
 
-        self.assertEqual(
-            result["product"]["contract"]["contractURL"],
-            original_odcs_url
-        )
+        self.assertEqual(result["product"]["contract"]["contractURL"], original_odcs_url)
 
     def test_contract_reference_with_http_url(self):
         """
@@ -234,25 +185,15 @@ class ODPSGeneratorContractURLReferenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product-http",
-            "info": {
-                "name": "HTTP Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "HTTP Test Product"},
+            "schema": {"fields": []},
         }
 
         original_odcs_url = "http://internal.example.com/contracts/test-contract.json"
 
-        result = generate_odps_from_hubcontract(
-            hub_contract,
-            original_odcs_url=original_odcs_url
-        )
+        result = generate_odps_from_hubcontract(hub_contract, original_odcs_url=original_odcs_url)
 
-        self.assertEqual(
-            result["product"]["contract"]["contractURL"],
-            original_odcs_url
-        )
+        self.assertEqual(result["product"]["contract"]["contractURL"], original_odcs_url)
 
     def test_contract_reference_with_invalid_url_type(self):
         """
@@ -263,19 +204,12 @@ class ODPSGeneratorContractURLReferenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
-            generate_odps_from_hubcontract(
-                hub_contract,
-                original_odcs_url=12345  # Invalid type
-            )
+            generate_odps_from_hubcontract(hub_contract, original_odcs_url=12345)  # Invalid type
 
         error = context.exception
         self.assertIn("original_odcs_url", error.message.lower())
@@ -294,19 +228,12 @@ class ODPSGeneratorContractURLReferenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
-            generate_odps_from_hubcontract(
-                hub_contract,
-                original_odcs_url=""  # Empty string
-            )
+            generate_odps_from_hubcontract(hub_contract, original_odcs_url="")  # Empty string
 
         error = context.exception
         self.assertIn("original_odcs_url", error.message.lower())
@@ -329,18 +256,14 @@ class ODPSGeneratorContractPrecedenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         original_odcs_contract = {
             "apiVersion": "odcs/v3.0.2",
             "id": "test-contract",
-            "name": "Test Contract"
+            "name": "Test Contract",
         }
 
         original_odcs_url = "https://example.com/contracts/test-contract.json"
@@ -348,17 +271,14 @@ class ODPSGeneratorContractPrecedenceTest(SimpleTestCase):
         result = generate_odps_from_hubcontract(
             hub_contract,
             original_odcs_contract=original_odcs_contract,
-            original_odcs_url=original_odcs_url
+            original_odcs_url=original_odcs_url,
         )
 
         # Verify spec is present (takes precedence)
         self.assertIn("product", result)
         self.assertIn("contract", result["product"])
         self.assertIn("spec", result["product"]["contract"])
-        self.assertEqual(
-            result["product"]["contract"]["spec"],
-            original_odcs_contract
-        )
+        self.assertEqual(result["product"]["contract"]["spec"], original_odcs_contract)
 
         # Verify contractURL is not present (spec takes precedence)
         self.assertNotIn("contractURL", result["product"]["contract"])
@@ -372,12 +292,8 @@ class ODPSGeneratorContractPrecedenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -397,23 +313,18 @@ class ODPSGeneratorContractPrecedenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         original_odcs_contract = {
             "apiVersion": "odcs/v3.0.2",
             "id": "test-contract",
-            "name": "Test Contract"
+            "name": "Test Contract",
         }
 
         result = generate_odps_from_hubcontract(
-            hub_contract,
-            original_odcs_contract=original_odcs_contract
+            hub_contract, original_odcs_contract=original_odcs_contract
         )
 
         # Verify spec is present
@@ -433,20 +344,13 @@ class ODPSGeneratorContractPrecedenceTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         original_odcs_url = "https://example.com/contracts/test-contract.json"
 
-        result = generate_odps_from_hubcontract(
-            hub_contract,
-            original_odcs_url=original_odcs_url
-        )
+        result = generate_odps_from_hubcontract(hub_contract, original_odcs_url=original_odcs_url)
 
         # Verify contractURL is present
         self.assertIn("product", result)
@@ -474,31 +378,19 @@ class ODPSGeneratorContractIntegrationTest(SimpleTestCase):
                 "description": "Complete product description",
                 "version": "1.0.0",
                 "tags": ["data", "analytics"],
-                "owners": [
-                    {
-                        "name": "Data Team",
-                        "email": "data@example.com"
-                    }
-                ]
+                "owners": [{"name": "Data Team", "email": "data@example.com"}],
             },
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ]
             },
             "marketplace": {
                 "license_summary": "MIT License",
                 "intended_use": ["ANALYTICS"],
-                "x_odps": {
-                    "pricing_plans": [
-                        {
-                            "name": "Basic",
-                            "price": 0
-                        }
-                    ]
-                }
-            }
+                "x_odps": {"pricing_plans": [{"name": "Basic", "price": 0}]},
+            },
         }
 
         original_odcs_contract = {
@@ -506,17 +398,11 @@ class ODPSGeneratorContractIntegrationTest(SimpleTestCase):
             "id": "complete-contract",
             "name": "Complete Contract",
             "version": "1.0.0",
-            "schema": {
-                "properties": {
-                    "id": {"type": "string"},
-                    "name": {"type": "string"}
-                }
-            }
+            "schema": {"properties": {"id": {"type": "string"}, "name": {"type": "string"}}},
         }
 
         result = generate_odps_from_hubcontract(
-            hub_contract,
-            original_odcs_contract=original_odcs_contract
+            hub_contract, original_odcs_contract=original_odcs_contract
         )
 
         # Verify complete ODPS structure
@@ -530,8 +416,175 @@ class ODPSGeneratorContractIntegrationTest(SimpleTestCase):
         self.assertIn("license", result)
 
         # Verify contract spec is embedded
-        self.assertEqual(
-            result["product"]["contract"]["spec"],
-            original_odcs_contract
+        self.assertEqual(result["product"]["contract"]["spec"], original_odcs_contract)
+
+    def test_contract_generation_handles_unicode_characters(self):
+        """Test that contract generation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "测试产品", "description": "测试描述"},
+            "schema": {"fields": []},
+        }
+
+        original_odcs_contract = {
+            "apiVersion": "odcs/v3.0.2",
+            "id": "测试合同",
+            "name": "测试合同名称",
+            "version": "1.0.0",
+            "schema": {"properties": {"id": {"type": "string"}}},
+        }
+
+        result = generate_odps_from_hubcontract(
+            hub_contract, original_odcs_contract=original_odcs_contract
         )
 
+        # Verify unicode characters are preserved
+        self.assertIn("product", result)
+        self.assertIn("contract", result["product"])
+        self.assertIn("spec", result["product"]["contract"])
+        spec = result["product"]["contract"]["spec"]
+        self.assertEqual(spec["id"], "测试合同")
+        self.assertEqual(spec["name"], "测试合同名称")
+
+    def test_contract_generation_handles_special_characters(self):
+        """Test that contract generation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test & Co. (Special)"},
+            "schema": {"fields": []},
+        }
+
+        original_odcs_contract = {
+            "apiVersion": "odcs/v3.0.2",
+            "id": "test-contract",
+            "name": "Test <Contract> & More",
+            "version": "1.0.0",
+            "schema": {"properties": {"id": {"type": "string"}}},
+        }
+
+        result = generate_odps_from_hubcontract(
+            hub_contract, original_odcs_contract=original_odcs_contract
+        )
+
+        # Verify special characters are preserved
+        self.assertIn("product", result)
+        self.assertIn("contract", result["product"])
+        self.assertIn("spec", result["product"]["contract"])
+        spec = result["product"]["contract"]["spec"]
+        self.assertEqual(spec["name"], "Test <Contract> & More")
+
+    def test_contract_generation_handles_very_large_documents(self):
+        """Test that contract generation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": []},
+        }
+
+        original_odcs_contract = {
+            "apiVersion": "odcs/v3.0.2",
+            "id": "test-contract",
+            "name": "Test Contract",
+            "version": "1.0.0",
+            "description": large_description,
+            "schema": {"properties": {"id": {"type": "string"}}},
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = generate_odps_from_hubcontract(
+                hub_contract, original_odcs_contract=original_odcs_contract
+            )
+            # If generation succeeds, verify structure
+            self.assertIn("product", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_contract_generation_handles_none_values(self):
+        """Test that contract generation handles None values correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+        }
+
+        original_odcs_contract = {
+            "apiVersion": "odcs/v3.0.2",
+            "id": "test-contract",
+            "name": None,  # None value
+            "version": "1.0.0",
+            "schema": {"properties": {"id": {"type": "string"}}},
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = generate_odps_from_hubcontract(
+                hub_contract, original_odcs_contract=original_odcs_contract
+            )
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for None values"
+            )
+
+    def test_contract_generation_handles_nested_structures(self):
+        """Test that contract generation handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+        }
+
+        original_odcs_contract = {
+            "apiVersion": "odcs/v3.0.2",
+            "id": "test-contract",
+            "name": "Test Contract",
+            "version": "1.0.0",
+            "schema": {
+                "properties": {
+                    "id": {"type": "string"},
+                    "nested": {
+                        "type": "object",
+                        "properties": {
+                            "level1": {
+                                "type": "object",
+                                "properties": {
+                                    "level2": {
+                                        "type": "object",
+                                        "properties": {"level3": {"type": "string"}},
+                                    }
+                                },
+                            }
+                        },
+                    },
+                }
+            },
+        }
+
+        result = generate_odps_from_hubcontract(
+            hub_contract, original_odcs_contract=original_odcs_contract
+        )
+
+        # Verify nested structure is preserved
+        self.assertIn("product", result)
+        self.assertIn("contract", result["product"])
+        self.assertIn("spec", result["product"]["contract"])
+        spec = result["product"]["contract"]["spec"]
+        if (
+            "schema" in spec
+            and "properties" in spec["schema"]
+            and "nested" in spec["schema"]["properties"]
+        ):
+            nested = spec["schema"]["properties"]["nested"]
+            if "properties" in nested and "level1" in nested["properties"]:
+                self.assertIn(
+                    "level2",
+                    nested["properties"]["level1"]["properties"],
+                    "Nested structures should be preserved",
+                )

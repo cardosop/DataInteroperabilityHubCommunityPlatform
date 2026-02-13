@@ -210,6 +210,37 @@ All messages follow a standard JSON format:
 - `compliance.check.failed`
 - `compliance.report.generated`
 
+### ODPS Events
+
+#### Lifecycle Events
+- `odps.created` - ODPS contract created
+- `odps.updated` - ODPS contract updated
+- `odps.deleted` - ODPS contract deleted
+- `odps.normalized` - ODPS contract normalized
+- `odps.linked` - ODPS contract linked to ODCS
+- `odps.unlinked` - ODPS contract unlinked from ODCS
+
+#### Processing Events
+- `odps.ref.resolved` - ODPS $ref resolution completed
+- `odps.ref.failed` - ODPS $ref resolution failed
+- `odps.export.started` - ODPS export started
+- `odps.export.completed` - ODPS export completed
+- `odps.export.failed` - ODPS export failed
+
+#### Workflow Events
+- `odps.workflow.started` - ODPS workflow started
+- `odps.workflow.completed` - ODPS workflow completed
+- `odps.workflow.failed` - ODPS workflow failed
+- `odps.workflow.step.completed` - ODPS workflow step completed
+- `odps.workflow.step.failed` - ODPS workflow step failed
+
+#### Progress Events
+- `odps.creation.progress` - ODPS creation progress update
+- `odps.normalization.progress` - ODPS normalization progress update
+- `odps.ref.progress` - ODPS $ref resolution progress update
+- `odps.export.progress` - ODPS export progress update
+- `odps.workflow.progress` - ODPS workflow progress update
+
 ## Error Handling
 
 ### Error Message Format
@@ -247,9 +278,98 @@ ws.onopen = () => {
 
 ws.onmessage = (event) => {
   const message = JSON.parse(event.data);
-  
+
   if (message.type === 'event') {
     console.log('Received event:', message.data);
+  }
+};
+
+ws.onerror = (error) => {
+  console.error('WebSocket error:', error);
+};
+
+ws.onclose = () => {
+  console.log('WebSocket closed');
+};
+```
+
+### JavaScript Example - ODPS Events
+
+```javascript
+const ws = new WebSocket('ws://api.example.com/ws/events/?token=YOUR_JWT_TOKEN');
+
+ws.onopen = () => {
+  // Subscribe to ODPS events
+  ws.send(JSON.stringify({
+    type: 'subscribe',
+    data: {
+      event_types: [
+        'odps.created',
+        'odps.normalized',
+        'odps.export.completed',
+        'odps.creation.progress',
+        'odps.normalization.progress',
+        'odps.export.progress'
+      ]
+    }
+  }));
+};
+
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+
+  if (message.type === 'event') {
+    const eventData = message.data;
+    const eventType = eventData.event_type;
+
+    switch (eventType) {
+      case 'odps.created':
+        console.log('ODPS contract created:', eventData.data.contract_id);
+        break;
+
+      case 'odps.normalized':
+        console.log('ODPS contract normalized:', {
+          contract_id: eventData.data.contract_id,
+          status: eventData.data.normalization_status
+        });
+        break;
+
+      case 'odps.export.completed':
+        console.log('ODPS export completed:', {
+          contract_id: eventData.data.contract_id,
+          format: eventData.data.export_format,
+          size: eventData.data.export_size
+        });
+        break;
+
+      case 'odps.creation.progress':
+        console.log('ODPS creation progress:', {
+          contract_id: eventData.data.contract_id,
+          progress: eventData.data.progress_percent + '%',
+          step: eventData.data.current_step
+        });
+        updateProgressBar(eventData.data.progress_percent);
+        break;
+
+      case 'odps.normalization.progress':
+        console.log('ODPS normalization progress:', {
+          contract_id: eventData.data.contract_id,
+          progress: eventData.data.progress_percent + '%'
+        });
+        updateNormalizationProgress(eventData.data.progress_percent);
+        break;
+
+      case 'odps.export.progress':
+        console.log('ODPS export progress:', {
+          contract_id: eventData.data.contract_id,
+          progress: eventData.data.progress_percent + '%'
+        });
+        updateExportProgress(eventData.data.progress_percent);
+        break;
+
+      default:
+        console.log('Received ODPS event:', eventType);
+    }
   }
 };
 
@@ -271,7 +391,7 @@ import json
 
 async def connect_websocket():
     uri = "ws://api.example.com/ws/events/?token=YOUR_JWT_TOKEN"
-    
+
     async with websockets.connect(uri) as websocket:
         # Subscribe to events
         subscribe_message = {
@@ -281,7 +401,7 @@ async def connect_websocket():
             }
         }
         await websocket.send(json.dumps(subscribe_message))
-        
+
         # Listen for events
         async for message in websocket:
             data = json.loads(message)
@@ -289,6 +409,139 @@ async def connect_websocket():
                 print(f"Received event: {data['data']}")
 
 asyncio.run(connect_websocket())
+```
+
+### Python Example - ODPS Events
+
+```python
+import asyncio
+import websockets
+import json
+
+async def handle_odps_event(event_data):
+    """Handle ODPS events."""
+    event_type = event_data.get("event_type")
+    data = event_data.get("data", {})
+
+    if event_type == "odps.created":
+        print(f"ODPS contract created: {data.get('contract_id')}")
+
+    elif event_type == "odps.normalized":
+        print(f"ODPS contract normalized: {data.get('contract_id')} - {data.get('normalization_status')}")
+
+    elif event_type == "odps.export.completed":
+        print(f"ODPS export completed: {data.get('contract_id')} - {data.get('export_format')}")
+
+    elif event_type == "odps.creation.progress":
+        progress = data.get("progress_percent", 0)
+        step = data.get("current_step", "unknown")
+        print(f"ODPS creation progress: {progress}% - {step}")
+
+    elif event_type == "odps.normalization.progress":
+        progress = data.get("progress_percent", 0)
+        print(f"ODPS normalization progress: {progress}%")
+
+    elif event_type == "odps.export.progress":
+        progress = data.get("progress_percent", 0)
+        print(f"ODPS export progress: {progress}%")
+
+async def connect_odps_websocket():
+    """Connect to WebSocket and subscribe to ODPS events."""
+    uri = "ws://api.example.com/ws/events/?token=YOUR_JWT_TOKEN"
+
+    async with websockets.connect(uri) as websocket:
+        # Subscribe to ODPS events
+        subscribe_message = {
+            "type": "subscribe",
+            "data": {
+                "event_types": [
+                    "odps.created",
+                    "odps.normalized",
+                    "odps.export.completed",
+                    "odps.creation.progress",
+                    "odps.normalization.progress",
+                    "odps.export.progress",
+                    "odps.ref.progress"
+                ]
+            }
+        }
+        await websocket.send(json.dumps(subscribe_message))
+
+        # Listen for events
+        async for message in websocket:
+            data = json.loads(message)
+            if data["type"] == "event":
+                handle_odps_event(data["data"])
+
+asyncio.run(connect_odps_websocket())
+```
+
+### Real-Time ODPS Workflow Progress Example
+
+```javascript
+// Subscribe to ODPS workflow progress events
+const ws = new WebSocket('ws://api.example.com/ws/events/?token=YOUR_JWT_TOKEN');
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    type: 'subscribe',
+    data: {
+      event_types: [
+        'odps.workflow.started',
+        'odps.workflow.progress',
+        'odps.workflow.completed',
+        'odps.workflow.failed',
+        'odps.creation.progress',
+        'odps.normalization.progress',
+        'odps.ref.progress'
+      ],
+      filters: {
+        contract_id: '550e8400-e29b-41d4-a716-446655440000'  // Filter by specific contract
+      }
+    }
+  }));
+};
+
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+
+  if (message.type === 'event') {
+    const eventData = message.data;
+    const eventType = eventData.event_type;
+    const data = eventData.data;
+
+    // Update UI based on event type
+    switch (eventType) {
+      case 'odps.workflow.started':
+        showWorkflowStatus('ODPS workflow started');
+        break;
+
+      case 'odps.creation.progress':
+        updateProgressBar('Creation', data.progress_percent);
+        updateStatusText(data.current_step);
+        break;
+
+      case 'odps.normalization.progress':
+        updateProgressBar('Normalization', data.progress_percent);
+        break;
+
+      case 'odps.ref.progress':
+        updateProgressBar('Reference Resolution', data.progress_percent);
+        updateRefCount(data.resolved_refs_count, data.total_refs_count);
+        break;
+
+      case 'odps.workflow.completed':
+        showWorkflowStatus('ODPS workflow completed successfully');
+        hideProgressBars();
+        break;
+
+      case 'odps.workflow.failed':
+        showWorkflowStatus(`ODPS workflow failed: ${data.error_message}`);
+        hideProgressBars();
+        break;
+    }
+  }
+};
 ```
 
 ## Best Practices

@@ -16,26 +16,39 @@ Features:
 Google Cloud Analytics Hub Documentation:
 https://cloud.google.com/analytics-hub/docs
 """
+
+import csv
+import json
 import logging
 import os
 import time
-import csv
-import json
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from google.cloud.bigquery_analyticshub_v1 import AnalyticsHubServiceClient
 
-from google.cloud import bigquery
-from google.api_core import exceptions as google_exceptions
-from google.auth import default as google_auth_default
-from google.auth.exceptions import GoogleAuthError
-from google.oauth2 import service_account
+# Optional Google Cloud imports - handle gracefully if not available
+try:
+    from google.api_core import exceptions as google_exceptions
+    from google.auth import default as google_auth_default
+    from google.auth.exceptions import GoogleAuthError
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
 
-# Use GoogleAPIError from google.api_core.exceptions
-GoogleAPIError = google_exceptions.GoogleAPIError
+    # Use GoogleAPIError from google.api_core.exceptions
+    GoogleAPIError = google_exceptions.GoogleAPIError
+    GOOGLE_CLOUD_AVAILABLE = True
+except ImportError:
+    # Google Cloud libraries not available - mark as unavailable
+    bigquery = None
+    google_exceptions = None
+    google_auth_default = None
+    GoogleAuthError = None
+    service_account = None
+    GoogleAPIError = Exception  # Fallback
+    GOOGLE_CLOUD_AVAILABLE = False
 
 # Analytics Hub client - optional import
 try:
@@ -44,6 +57,7 @@ try:
         DataExchange,
         Listing,
     )
+
     ANALYTICSHUB_AVAILABLE = True
 except ImportError:
     # Analytics Hub client not available
@@ -52,21 +66,21 @@ except ImportError:
     Listing = None
     ANALYTICSHUB_AVAILABLE = False
 
-from hub.apps.integrations.base import (
-    DataMarketplaceConnector,
-    MarketplaceType,
-    SyncDirection,
-    MarketplaceListing,
-    MarketplaceResource,
-    MarketplaceAssetMapping,
-    SyncResult,
-    SyncStatus,
-)
 from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError, PermissionError
 from hub.apps.core.resilience.circuit_breaker import (
     CircuitBreaker,
     get_redis_client,
+)
+from hub.apps.core.services.base import NotFoundError, PermissionError
+from hub.apps.integrations.base import (
+    DataMarketplaceConnector,
+    MarketplaceAssetMapping,
+    MarketplaceListing,
+    MarketplaceResource,
+    MarketplaceType,
+    SyncDirection,
+    SyncResult,
+    SyncStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,8 +112,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         self,
         project_id: Optional[str] = None,
         credentials_json: Optional[Dict[str, Any]] = None,
-        location: str = 'US',
-        use_adc: bool = False
+        location: str = "US",
+        use_adc: bool = False,
     ):
         """
         Initialize GCP Marketplace connector.
@@ -110,6 +124,13 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             location: GCP location/region (default: 'US')
             use_adc: If True, use Application Default Credentials (default: False)
         """
+        # Check if Google Cloud libraries are available
+        if not GOOGLE_CLOUD_AVAILABLE:
+            raise ImportError(
+                "Google Cloud libraries are not installed. "
+                "Install them with: pip install google-cloud-bigquery google-cloud-bigquery-analyticshub google-auth"
+            )
+
         # Validate that at least one authentication method is specified
         if not use_adc and not credentials_json:
             raise ValueError(
@@ -128,7 +149,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             failure_threshold=5,
             timeout_seconds=60,
             success_threshold=2,
-            redis_client=get_redis_client()
+            redis_client=get_redis_client(),
         )
 
         # Retry configuration (same pattern as CKAN)
@@ -136,7 +157,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         self.backoff_factor = 1
 
         # Initialize client placeholders (lazy initialization)
-        self._bigquery_client: Optional[bigquery.Client] = None
+        self._bigquery_client = None  # type: Optional[Any]  # bigquery.Client when available
         self._analyticshub_client: Optional[Any] = None  # AnalyticsHubServiceClient when available
         self._credentials = None
 
@@ -159,10 +180,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         return error_code in (429, 500, 502, 503, 504)
 
     def _map_google_error(
-        self,
-        error: GoogleAPIError,
-        context: str = '',
-        operation: str = ''
+        self, error: GoogleAPIError, context: str = "", operation: str = ""
     ) -> Exception:
         """
         Map Google Cloud API error to appropriate connector exception.
@@ -175,18 +193,18 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         Returns:
             Mapped exception (NotFoundError, PermissionError, ValueError, ConnectionError)
         """
-        error_code = getattr(error, 'code', None)
+        error_code = getattr(error, "code", None)
         error_message = str(error)
 
         # Extract error message from Google Cloud error response if available
-        if hasattr(error, 'message'):
+        if hasattr(error, "message"):
             error_message = error.message
-        elif hasattr(error, 'errors') and error.errors:
+        elif hasattr(error, "errors") and error.errors:
             # Try to extract more detailed error message
             error_details = error.errors[0] if isinstance(error.errors, list) else error.errors
             if isinstance(error_details, dict):
-                error_message = error_details.get('message', error_message)
-            elif hasattr(error_details, 'message'):
+                error_message = error_details.get("message", error_message)
+            elif hasattr(error_details, "message"):
                 error_message = error_details.message
 
         # Map error codes to exceptions
@@ -222,13 +240,13 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         self,
         level: str,
         message: str,
-        operation: str = '',
+        operation: str = "",
         error_code: Optional[int] = None,
-        error_message: str = '',
+        error_message: str = "",
         attempt: int = 0,
         max_retries: int = 0,
         delay: float = 0.0,
-        **kwargs
+        **kwargs,
     ):
         """
         Log message with structured context (correlation IDs, tenant_id, user_id).
@@ -249,58 +267,54 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         trace_id = None
         try:
             from hub.apps.api.middleware.trace_propagation import get_current_request
+
             request = get_current_request()
             if request:
-                correlation_id = getattr(request, 'trace_id', None)
-                trace_id = getattr(request, 'trace_id', None)
+                correlation_id = getattr(request, "trace_id", None)
+                trace_id = getattr(request, "trace_id", None)
         except Exception:
             pass
 
         # Build structured log context
         log_context = {
-            'operation': operation,
-            'connector': 'gcp-marketplace',
-            'project_id': self.project_id,
+            "operation": operation,
+            "connector": "gcp-marketplace",
+            "project_id": self.project_id,
         }
 
         # Add correlation IDs if available
         if correlation_id:
-            log_context['correlation_id'] = correlation_id
+            log_context["correlation_id"] = correlation_id
         if trace_id:
-            log_context['trace_id'] = trace_id
+            log_context["trace_id"] = trace_id
 
         # Add error context if available
         if error_code is not None:
-            log_context['error_code'] = error_code
+            log_context["error_code"] = error_code
         if error_message:
-            log_context['error_message'] = error_message
+            log_context["error_message"] = error_message
 
         # Add retry context if available
         if attempt > 0:
-            log_context['attempt'] = attempt
-            log_context['max_retries'] = max_retries
+            log_context["attempt"] = attempt
+            log_context["max_retries"] = max_retries
         if delay > 0:
-            log_context['retry_delay'] = delay
+            log_context["retry_delay"] = delay
 
         # Add any additional context
         log_context.update(kwargs)
 
         # Log with appropriate level
-        if level == 'error':
+        if level == "error":
             logger.error(message, extra=log_context)
-        elif level == 'warning':
+        elif level == "warning":
             logger.warning(message, extra=log_context)
-        elif level == 'debug':
+        elif level == "debug":
             logger.debug(message, extra=log_context)
         else:
             logger.info(message, extra=log_context)
 
-    def _execute_with_retry(
-        self,
-        operation: callable,
-        operation_name: str,
-        context: str = ''
-    ):
+    def _execute_with_retry(self, operation: callable, operation_name: str, context: str = ""):
         """
         Execute Google Cloud API operation with retry logic and circuit breaker protection.
 
@@ -323,6 +337,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             ValueError: If validation error (400)
             ConnectionError: If connection failed after retries or other errors
         """
+
         def execute_with_retry_inner():
             """Inner function for retry logic."""
             last_exception = None
@@ -333,22 +348,22 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     # Log success on retry
                     if attempt > 0:
                         self._log_with_context(
-                            'info',
+                            "info",
                             f"GCP Marketplace {operation_name} succeeded after {attempt} retries",
                             operation=operation_name,
                             attempt=attempt + 1,
-                            max_retries=self.max_retries + 1
+                            max_retries=self.max_retries + 1,
                         )
                     return result
 
                 except GoogleAPIError as e:
-                    error_code = getattr(e, 'code', None)
+                    error_code = getattr(e, "code", None)
 
                     # Check if error is transient and should be retried
                     if self._is_transient_error(error_code) and attempt < self.max_retries:
-                        delay = self.backoff_factor * (2 ** attempt)
+                        delay = self.backoff_factor * (2**attempt)
                         self._log_with_context(
-                            'warning',
+                            "warning",
                             f"GCP Marketplace {operation_name} returned {error_code}. "
                             f"Retrying in {delay}s... (attempt {attempt + 1}/{self.max_retries + 1})",
                             operation=operation_name,
@@ -356,7 +371,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                             error_message=str(e),
                             attempt=attempt + 1,
                             max_retries=self.max_retries + 1,
-                            delay=delay
+                            delay=delay,
                         )
                         time.sleep(delay)
                         last_exception = e
@@ -373,10 +388,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 except Exception as e:
                     # Unexpected error - log and raise
                     self._log_with_context(
-                        'error',
+                        "error",
                         f"Unexpected error in {operation_name}: {e}",
                         operation=operation_name,
-                        error_message=str(e)
+                        error_message=str(e),
                     )
                     raise ConnectionError(f"Unexpected error in {operation_name}: {e}") from e
 
@@ -391,10 +406,10 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             return self._circuit_breaker.call(execute_with_retry_inner)
         except Exception as e:
             self._log_with_context(
-                'error',
+                "error",
                 f"GCP Marketplace connector {operation_name} failed: {e}",
                 operation=operation_name,
-                error_message=str(e)
+                error_message=str(e),
             )
             raise
 
@@ -428,9 +443,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     self.credentials_json
                 )
             else:
-                raise ValueError(
-                    "Either 'use_adc=True' or 'credentials_json' must be provided"
-                )
+                raise ValueError("Either 'use_adc=True' or 'credentials_json' must be provided")
 
             return self._credentials
         except GoogleAuthError as e:
@@ -440,7 +453,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             logger.error(f"Unexpected error getting credentials: {e}")
             raise ValueError(f"Failed to initialize credentials: {e}") from e
 
-    def _get_bigquery_client(self) -> bigquery.Client:
+    def _get_bigquery_client(self):
         """
         Get or create BigQuery client instance.
 
@@ -458,9 +471,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         credentials = self._get_credentials()
         self._bigquery_client = bigquery.Client(
-            credentials=credentials,
-            project=self.project_id,
-            location=self.location
+            credentials=credentials, project=self.project_id, location=self.location
         )
         return self._bigquery_client
 
@@ -538,8 +549,14 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         Returns:
             Tuple of (project_id, location, data_exchange_id, listing_id)
         """
-        parts = listing_name.split('/')
-        if len(parts) != 8 or parts[0] != 'projects' or parts[2] != 'locations' or parts[4] != 'dataExchanges' or parts[6] != 'listings':
+        parts = listing_name.split("/")
+        if (
+            len(parts) != 8
+            or parts[0] != "projects"
+            or parts[2] != "locations"
+            or parts[4] != "dataExchanges"
+            or parts[6] != "listings"
+        ):
             # If not a full path, assume it's just the listing ID and use current project/location
             return (self.project_id, self.location, None, listing_name)
         return (parts[1], parts[3], parts[5], parts[7])
@@ -581,13 +598,13 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             raise ValueError("Credentials dictionary is required")
 
         # Extract credentials
-        project_id = credentials.get('project_id')
+        project_id = credentials.get("project_id")
         if not project_id:
             raise ValueError("project_id is required in credentials")
 
-        credentials_json = credentials.get('credentials_json')
-        location = credentials.get('location', 'US')
-        use_adc = credentials.get('use_adc', False)
+        credentials_json = credentials.get("credentials_json")
+        location = credentials.get("location", "US")
+        use_adc = credentials.get("use_adc", False)
 
         # Validate that at least one authentication method is specified
         if not use_adc and not credentials_json:
@@ -637,6 +654,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             PermissionError: If access denied (403)
             ConnectionError: If unable to connect or other errors occur
         """
+
         def execute_test() -> bool:
             """Execute connection test."""
             try:
@@ -644,17 +662,17 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 # Perform lightweight operation: list datasets with max_results=1
                 datasets = list(client.list_datasets(max_results=1))
                 self._log_with_context(
-                    'info',
+                    "info",
                     f"Connection test successful for GCP project {self.project_id}",
-                    operation='test_connection'
+                    operation="test_connection",
                 )
                 return True
             except GoogleAuthError as e:
                 self._log_with_context(
-                    'error',
+                    "error",
                     f"Google Cloud authentication error: {e}",
-                    operation='test_connection',
-                    error_message=str(e)
+                    operation="test_connection",
+                    error_message=str(e),
                 )
                 raise ConnectionError(f"Authentication failed: {e}") from e
             except ValueError as e:
@@ -663,16 +681,14 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         # Execute with retry logic and circuit breaker protection
         return self._execute_with_retry(
-            execute_test,
-            'test_connection',
-            f"GCP project '{self.project_id}'"
+            execute_test, "test_connection", f"GCP project '{self.project_id}'"
         )
 
     def list_listings(
         self,
         filters: Optional[Dict[str, Any]] = None,
         limit: Optional[int] = None,
-        offset: Optional[int] = None
+        offset: Optional[int] = None,
     ) -> List[MarketplaceListing]:
         """
         List available listings from Analytics Hub.
@@ -697,6 +713,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             ConnectionError: If unable to connect to Analytics Hub
             ValueError: If filters or pagination parameters are invalid
         """
+
         def execute_list_listings() -> List[MarketplaceListing]:
             """Execute list_listings."""
             if not ANALYTICSHUB_AVAILABLE:
@@ -721,9 +738,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             # List data exchanges
             data_exchanges = []
-            if filters and filters.get('data_exchange_id'):
+            if filters and filters.get("data_exchange_id"):
                 # Get specific data exchange
-                exchange_path = self._get_data_exchange_path(filters['data_exchange_id'])
+                exchange_path = self._get_data_exchange_path(filters["data_exchange_id"])
                 exchange = client.get_data_exchange(name=exchange_path)
                 data_exchanges = [exchange]
             else:
@@ -734,7 +751,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             # For each data exchange, list listings
             for exchange in data_exchanges:
                 try:
-                    exchange_id = exchange.name.split('/')[-1] if '/' in exchange.name else exchange.name
+                    exchange_id = (
+                        exchange.name.split("/")[-1] if "/" in exchange.name else exchange.name
+                    )
                     exchange_path = self._get_data_exchange_path(exchange_id)
 
                     # List listings in this exchange
@@ -742,21 +761,21 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                         listings_response = client.list_listings(parent=exchange_path)
                         exchange_listings = list(listings_response)
                     except GoogleAPIError as e:
-                        error_code = getattr(e, 'code', None)
+                        error_code = getattr(e, "code", None)
                         if error_code == 404:
                             self._log_with_context(
-                                'debug',
+                                "debug",
                                 f"Data exchange '{exchange_id}' has no listings or not found",
-                                operation='list_listings',
-                                error_code=error_code
+                                operation="list_listings",
+                                error_code=error_code,
                             )
                             continue
                         elif error_code == 403:
                             self._log_with_context(
-                                'warning',
+                                "warning",
                                 f"Permission denied accessing listings in '{exchange_id}'",
-                                operation='list_listings',
-                                error_code=error_code
+                                operation="list_listings",
+                                error_code=error_code,
                             )
                             continue
                         # Transient errors will be retried by _execute_with_retry
@@ -768,45 +787,47 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                             # Get full listing details
                             listing_details = self._get_listing_details(
                                 exchange_id,
-                                listing.name.split('/')[-1] if '/' in listing.name else listing.name
+                                (
+                                    listing.name.split("/")[-1]
+                                    if "/" in listing.name
+                                    else listing.name
+                                ),
                             )
 
                             # Build MarketplaceListing
                             marketplace_listing = self._build_marketplace_listing(
-                                listing_details,
-                                exchange_id,
-                                exchange
+                                listing_details, exchange_id, exchange
                             )
 
                             # Apply filters
                             if filters:
-                                if filters.get('category'):
-                                    if marketplace_listing.category != filters['category']:
+                                if filters.get("category"):
+                                    if marketplace_listing.category != filters["category"]:
                                         continue
 
                             all_listings.append(marketplace_listing)
                         except NotFoundError:
                             self._log_with_context(
-                                'warning',
+                                "warning",
                                 f"Listing not found, skipping: {listing.name}",
-                                operation='list_listings'
+                                operation="list_listings",
                             )
                             continue
                         except Exception as e:
                             self._log_with_context(
-                                'warning',
+                                "warning",
                                 f"Failed to process listing {listing.name}: {e}",
-                                operation='list_listings',
-                                error_message=str(e)
+                                operation="list_listings",
+                                error_message=str(e),
                             )
                             continue
 
                 except Exception as e:
                     self._log_with_context(
-                        'warning',
+                        "warning",
                         f"Failed to process data exchange {exchange.name}: {e}",
-                        operation='list_listings',
-                        error_message=str(e)
+                        operation="list_listings",
+                        error_message=str(e),
                     )
                     continue
 
@@ -819,11 +840,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             return all_listings
 
         # Execute with retry logic and circuit breaker protection
-        return self._execute_with_retry(
-            execute_list_listings,
-            'list_listings',
-            'Analytics Hub'
-        )
+        return self._execute_with_retry(execute_list_listings, "list_listings", "Analytics Hub")
 
     def get_listing(self, listing_id: str) -> MarketplaceListing:
         """
@@ -844,6 +861,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             NotFoundError: If listing not found (404)
             ConnectionError: If unable to connect to Analytics Hub
         """
+
         def execute_get_listing() -> MarketplaceListing:
             """Execute get_listing."""
             if not ANALYTICSHUB_AVAILABLE or AnalyticsHubServiceClient is None:
@@ -857,7 +875,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 raise ImportError("Analytics Hub client is not available")
 
             # Parse listing name to get components
-            project_id, location, data_exchange_id, listing_id_short = self._parse_listing_name(listing_id)
+            project_id, location, data_exchange_id, listing_id_short = self._parse_listing_name(
+                listing_id
+            )
 
             # If we have full path, use it directly
             if data_exchange_id:
@@ -875,23 +895,25 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             exchanges = list(exchanges_response)
 
             for exchange in exchanges:
-                exchange_id = exchange.name.split('/')[-1] if '/' in exchange.name else exchange.name
+                exchange_id = (
+                    exchange.name.split("/")[-1] if "/" in exchange.name else exchange.name
+                )
                 try:
                     listing_path = self._get_listing_path(exchange_id, listing_id_short)
                     listing = client.get_listing(name=listing_path)
                     listing_details = self._get_listing_details(exchange_id, listing_id_short)
                     return self._build_marketplace_listing(listing_details, exchange_id, exchange)
                 except GoogleAPIError as e:
-                    error_code = getattr(e, 'code', None)
+                    error_code = getattr(e, "code", None)
                     if error_code == 404:
                         # Not in this exchange, try next
                         continue
                     elif error_code == 403:
                         self._log_with_context(
-                            'warning',
+                            "warning",
                             f"Permission denied accessing listing in exchange '{exchange_id}'",
-                            operation='get_listing',
-                            error_code=error_code
+                            operation="get_listing",
+                            error_code=error_code,
                         )
                         continue
                     # Transient errors will be retried by _execute_with_retry
@@ -902,9 +924,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         # Execute with retry logic and circuit breaker protection
         return self._execute_with_retry(
-            execute_get_listing,
-            'get_listing',
-            f"listing '{listing_id}'"
+            execute_get_listing, "get_listing", f"listing '{listing_id}'"
         )
 
     def _get_listing_details(self, data_exchange_id: str, listing_id: str) -> Dict[str, Any]:
@@ -943,15 +963,12 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         # Execute with retry logic and circuit breaker protection
         return self._execute_with_retry(
             execute_get_listing_details,
-            'get_listing_details',
-            f"listing '{listing_id}' in data exchange '{data_exchange_id}'"
+            "get_listing_details",
+            f"listing '{listing_id}' in data exchange '{data_exchange_id}'",
         )
 
     def _build_marketplace_listing(
-        self,
-        listing_details: Dict[str, Any],
-        data_exchange_id: str,
-        exchange: Any = None
+        self, listing_details: Dict[str, Any], data_exchange_id: str, exchange: Any = None
     ) -> MarketplaceListing:
         """
         Build MarketplaceListing object from Analytics Hub listing details.
@@ -965,35 +982,35 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             MarketplaceListing object with ODPS and ODCS metadata
         """
         # Extract basic listing information
-        listing_name = listing_details.get('name', '')
-        display_name = listing_details.get('display_name', '')
-        description = listing_details.get('description', '')
-        categories = listing_details.get('categories', [])
+        listing_name = listing_details.get("name", "")
+        display_name = listing_details.get("display_name", "")
+        description = listing_details.get("description", "")
+        categories = listing_details.get("categories", [])
         category = categories[0] if categories else None
 
         # Extract listing ID from name path
-        listing_id = listing_name.split('/')[-1] if '/' in listing_name else listing_name
+        listing_id = listing_name.split("/")[-1] if "/" in listing_name else listing_name
 
         # Extract timestamps
         created_at = None
         updated_at = None
         # Analytics Hub listings may have create_time/update_time in different formats
-        if listing_details.get('create_time'):
+        if listing_details.get("create_time"):
             try:
-                create_time = listing_details['create_time']
+                create_time = listing_details["create_time"]
                 if isinstance(create_time, str):
-                    created_at = datetime.fromisoformat(create_time.replace('Z', '+00:00'))
-                elif hasattr(create_time, 'timestamp'):
+                    created_at = datetime.fromisoformat(create_time.replace("Z", "+00:00"))
+                elif hasattr(create_time, "timestamp"):
                     created_at = datetime.fromtimestamp(create_time.timestamp())
             except (ValueError, AttributeError):
                 pass
 
-        if listing_details.get('update_time'):
+        if listing_details.get("update_time"):
             try:
-                update_time = listing_details['update_time']
+                update_time = listing_details["update_time"]
                 if isinstance(update_time, str):
-                    updated_at = datetime.fromisoformat(update_time.replace('Z', '+00:00'))
-                elif hasattr(update_time, 'timestamp'):
+                    updated_at = datetime.fromisoformat(update_time.replace("Z", "+00:00"))
+                elif hasattr(update_time, "timestamp"):
                     updated_at = datetime.fromtimestamp(update_time.timestamp())
             except (ValueError, AttributeError):
                 pass
@@ -1015,18 +1032,20 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         # Build metadata dictionary
         metadata = {
-            'analytics_hub_listing': listing_details,
-            'data_exchange_id': data_exchange_id,
-            'listing_name': listing_name,
+            "analytics_hub_listing": listing_details,
+            "data_exchange_id": data_exchange_id,
+            "listing_name": listing_name,
         }
         if exchange:
-            metadata['data_exchange'] = exchange.to_dict() if hasattr(exchange, 'to_dict') else str(exchange)
+            metadata["data_exchange"] = (
+                exchange.to_dict() if hasattr(exchange, "to_dict") else str(exchange)
+            )
 
         # Extract tags from categories or other metadata
         tags = []
         if categories:
             tags.extend(categories)
-        if listing_details.get('data_provider'):
+        if listing_details.get("data_provider"):
             tags.append(f"provider:{listing_details['data_provider']}")
 
         return MarketplaceListing(
@@ -1037,20 +1056,17 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             product_id=listing_id,
             category=category,
             tags=tags,
-            pricing_plans=odps_metadata.get('pricing_plans', []) if odps_metadata else [],
-            access_methods=odps_metadata.get('access_methods', {}) if odps_metadata else {},
-            payment_gateways=odps_metadata.get('payment_gateways', {}) if odps_metadata else {},
+            pricing_plans=odps_metadata.get("pricing_plans", []) if odps_metadata else [],
+            access_methods=odps_metadata.get("access_methods", {}) if odps_metadata else {},
+            payment_gateways=odps_metadata.get("payment_gateways", {}) if odps_metadata else {},
             metadata=metadata,
             created_at=created_at,
             updated_at=updated_at,
-            url=url
+            url=url,
         )
 
     def _extract_odps_metadata(
-        self,
-        listing_details: Dict[str, Any],
-        data_exchange_id: str,
-        exchange: Any = None
+        self, listing_details: Dict[str, Any], data_exchange_id: str, exchange: Any = None
     ) -> Optional[Dict[str, Any]]:
         """
         Extract ODPS contract metadata from Analytics Hub listing.
@@ -1072,112 +1088,122 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         odps_metadata: Dict[str, Any] = {}
 
         # Extract product details
-        listing_name = listing_details.get('name', '')
-        listing_id = listing_name.split('/')[-1] if '/' in listing_name else listing_name
-        display_name = listing_details.get('display_name', '')
-        description = listing_details.get('description', '')
+        listing_name = listing_details.get("name", "")
+        listing_id = listing_name.split("/")[-1] if "/" in listing_name else listing_name
+        display_name = listing_details.get("display_name", "")
+        description = listing_details.get("description", "")
 
         product_details: Dict[str, Any] = {
-            'productID': listing_id,
-            'product_name': display_name or listing_id,
-            'product_description': description or '',
+            "productID": listing_id,
+            "product_name": display_name or listing_id,
+            "product_description": description or "",
         }
 
         # Extract version if available (may be in metadata or exchange)
-        version = listing_details.get('version')
+        version = listing_details.get("version")
         if version:
-            product_details['product_version'] = str(version)
+            product_details["product_version"] = str(version)
 
         # Extract categories
-        categories = listing_details.get('categories', [])
+        categories = listing_details.get("categories", [])
         if categories:
-            product_details['categories'] = categories
+            product_details["categories"] = categories
 
         # Extract data provider and publisher
-        data_provider = listing_details.get('data_provider')
-        publisher = listing_details.get('publisher')
+        data_provider = listing_details.get("data_provider")
+        publisher = listing_details.get("publisher")
         if data_provider:
-            product_details['data_provider'] = data_provider
+            product_details["data_provider"] = data_provider
         if publisher:
-            product_details['publisher'] = publisher
+            product_details["publisher"] = publisher
 
         # Track if we have ODPS-specific data
         has_odps_data = False
 
         # Extract pricing plans from commercial_info
-        commercial_info = listing_details.get('commercial_info')
+        commercial_info = listing_details.get("commercial_info")
         pricing_plans = []
         if commercial_info:
             # Commercial info may contain pricing information
             # GCP Marketplace uses subscription-based pricing
-            pricing_info = commercial_info.get('pricing') if isinstance(commercial_info, dict) else None
+            pricing_info = (
+                commercial_info.get("pricing") if isinstance(commercial_info, dict) else None
+            )
             if pricing_info:
-                pricing_plans.append({
-                    'plan_name': 'subscription',
-                    'plan_type': 'SUBSCRIPTION',
-                    'pricing_model': 'SUBSCRIPTION',
-                    'price_amount': pricing_info.get('amount'),
-                    'currency': pricing_info.get('currency', 'USD'),
-                    'billing_period': pricing_info.get('period', 'MONTHLY'),
-                })
+                pricing_plans.append(
+                    {
+                        "plan_name": "subscription",
+                        "plan_type": "SUBSCRIPTION",
+                        "pricing_model": "SUBSCRIPTION",
+                        "price_amount": pricing_info.get("amount"),
+                        "currency": pricing_info.get("currency", "USD"),
+                        "billing_period": pricing_info.get("period", "MONTHLY"),
+                    }
+                )
                 has_odps_data = True
 
         # Check for pricing in metadata
-        if listing_details.get('metadata') and isinstance(listing_details['metadata'], dict):
-            metadata_pricing = listing_details['metadata'].get('pricing_plans')
+        if listing_details.get("metadata") and isinstance(listing_details["metadata"], dict):
+            metadata_pricing = listing_details["metadata"].get("pricing_plans")
             if metadata_pricing and isinstance(metadata_pricing, list):
                 pricing_plans.extend(metadata_pricing)
                 has_odps_data = True
 
         if pricing_plans:
-            odps_metadata['pricing_plans'] = pricing_plans
+            odps_metadata["pricing_plans"] = pricing_plans
 
         # Extract access methods
         # Analytics Hub listings provide BigQuery dataset access
-        bigquery_dataset = listing_details.get('bigquery_dataset')
+        bigquery_dataset = listing_details.get("bigquery_dataset")
         access_methods = {}
         if bigquery_dataset:
-            dataset_ref = bigquery_dataset.get('dataset') if isinstance(bigquery_dataset, dict) else str(bigquery_dataset)
-            access_methods['bigquery'] = {
-                'method': 'LINKED_DATASET',
-                'dataset_reference': dataset_ref,
-                'query_access': True,
-                'description': 'Access via BigQuery linked dataset'
+            dataset_ref = (
+                bigquery_dataset.get("dataset")
+                if isinstance(bigquery_dataset, dict)
+                else str(bigquery_dataset)
+            )
+            access_methods["bigquery"] = {
+                "method": "LINKED_DATASET",
+                "dataset_reference": dataset_ref,
+                "query_access": True,
+                "description": "Access via BigQuery linked dataset",
             }
             has_odps_data = True
 
         # Also check for Pub/Sub topic source
-        pubsub_topic = listing_details.get('pubsub_topic')
+        pubsub_topic = listing_details.get("pubsub_topic")
         if pubsub_topic:
-            topic_ref = pubsub_topic.get('topic') if isinstance(pubsub_topic, dict) else str(pubsub_topic)
-            access_methods['pubsub'] = {
-                'method': 'PUBSUB_TOPIC',
-                'topic_reference': topic_ref,
-                'description': 'Access via Pub/Sub topic'
+            topic_ref = (
+                pubsub_topic.get("topic") if isinstance(pubsub_topic, dict) else str(pubsub_topic)
+            )
+            access_methods["pubsub"] = {
+                "method": "PUBSUB_TOPIC",
+                "topic_reference": topic_ref,
+                "description": "Access via Pub/Sub topic",
             }
             has_odps_data = True
 
         if access_methods:
-            odps_metadata['access_methods'] = access_methods
+            odps_metadata["access_methods"] = access_methods
 
         # Extract payment gateways
         # GCP Marketplace uses Google payment gateway
         payment_gateways = {}
         if commercial_info or pricing_plans:
-            payment_gateways['google'] = {
-                'gateway_name': 'Google Cloud Billing',
-                'gateway_type': 'GOOGLE_CLOUD_BILLING',
-                'enabled': True,
-                'description': 'Google Cloud Marketplace billing'
+            payment_gateways["google"] = {
+                "gateway_name": "Google Cloud Billing",
+                "gateway_type": "GOOGLE_CLOUD_BILLING",
+                "enabled": True,
+                "description": "Google Cloud Marketplace billing",
             }
             has_odps_data = True
 
         if payment_gateways:
-            odps_metadata['payment_gateways'] = payment_gateways
+            odps_metadata["payment_gateways"] = payment_gateways
 
         # Only return ODPS metadata if we have meaningful ODPS-specific data
         if has_odps_data:
-            odps_metadata['product_details'] = product_details
+            odps_metadata["product_details"] = product_details
             return odps_metadata
 
         return None
@@ -1200,57 +1226,69 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         odcs_metadata: Dict[str, Any] = {}
 
         # Extract schema hints from BigQuery dataset reference
-        bigquery_dataset = listing_details.get('bigquery_dataset')
+        bigquery_dataset = listing_details.get("bigquery_dataset")
         schema_hints = {}
         if bigquery_dataset:
-            dataset_ref = bigquery_dataset.get('dataset') if isinstance(bigquery_dataset, dict) else str(bigquery_dataset)
-            schema_hints['dataset_reference'] = dataset_ref
-            schema_hints['data_format'] = 'BIGQUERY'
-            schema_hints['description'] = 'Schema available via BigQuery INFORMATION_SCHEMA after subscription'
+            dataset_ref = (
+                bigquery_dataset.get("dataset")
+                if isinstance(bigquery_dataset, dict)
+                else str(bigquery_dataset)
+            )
+            schema_hints["dataset_reference"] = dataset_ref
+            schema_hints["data_format"] = "BIGQUERY"
+            schema_hints["description"] = (
+                "Schema available via BigQuery INFORMATION_SCHEMA after subscription"
+            )
 
         # Check for schema information in metadata
-        if listing_details.get('metadata') and isinstance(listing_details['metadata'], dict):
-            metadata_schema = listing_details['metadata'].get('schema') or listing_details['metadata'].get('schema_hints')
+        if listing_details.get("metadata") and isinstance(listing_details["metadata"], dict):
+            metadata_schema = listing_details["metadata"].get("schema") or listing_details[
+                "metadata"
+            ].get("schema_hints")
             if metadata_schema:
                 if isinstance(metadata_schema, dict):
                     schema_hints.update(metadata_schema)
                 else:
-                    schema_hints['schema_data'] = metadata_schema
+                    schema_hints["schema_data"] = metadata_schema
 
         if schema_hints:
-            odcs_metadata['schema'] = schema_hints
+            odcs_metadata["schema"] = schema_hints
 
         # Extract quality hints (if available in metadata)
         quality_hints = {}
-        if listing_details.get('metadata') and isinstance(listing_details['metadata'], dict):
-            metadata_quality = listing_details['metadata'].get('quality') or listing_details['metadata'].get('quality_hints')
+        if listing_details.get("metadata") and isinstance(listing_details["metadata"], dict):
+            metadata_quality = listing_details["metadata"].get("quality") or listing_details[
+                "metadata"
+            ].get("quality_hints")
             if metadata_quality:
                 if isinstance(metadata_quality, dict):
                     quality_hints.update(metadata_quality)
                 else:
-                    quality_hints['quality_data'] = metadata_quality
+                    quality_hints["quality_data"] = metadata_quality
 
         if quality_hints:
-            odcs_metadata['quality'] = quality_hints
+            odcs_metadata["quality"] = quality_hints
 
         # Extract SLA hints (if available in metadata)
         sla_hints = {}
-        if listing_details.get('metadata') and isinstance(listing_details['metadata'], dict):
-            metadata_sla = listing_details['metadata'].get('sla') or listing_details['metadata'].get('sla_hints')
+        if listing_details.get("metadata") and isinstance(listing_details["metadata"], dict):
+            metadata_sla = listing_details["metadata"].get("sla") or listing_details[
+                "metadata"
+            ].get("sla_hints")
             if metadata_sla:
                 if isinstance(metadata_sla, dict):
                     sla_hints.update(metadata_sla)
                 else:
-                    sla_hints['sla_data'] = metadata_sla
+                    sla_hints["sla_data"] = metadata_sla
 
         # Analytics Hub may have availability information
-        state = listing_details.get('state')
+        state = listing_details.get("state")
         if state:
-            sla_hints['availability'] = state
-            sla_hints['description'] = f'Listing state: {state}'
+            sla_hints["availability"] = state
+            sla_hints["description"] = f"Listing state: {state}"
 
         if sla_hints:
-            odcs_metadata['sla'] = sla_hints
+            odcs_metadata["sla"] = sla_hints
 
         # Only return ODCS metadata if we have meaningful data
         if odcs_metadata:
@@ -1275,40 +1313,41 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             NotFoundError: If listing not found
             ConnectionError: If unable to connect to BigQuery or Analytics Hub
         """
+
         def execute_list_resources() -> List[MarketplaceResource]:
             """Execute list_resources."""
             # First, get the listing to find the BigQuery dataset
             listing = self.get_listing(listing_id)
-            listing_details = listing.metadata.get('analytics_hub_listing', {})
+            listing_details = listing.metadata.get("analytics_hub_listing", {})
 
             # Extract BigQuery dataset reference
-            bigquery_dataset = listing_details.get('bigquery_dataset')
+            bigquery_dataset = listing_details.get("bigquery_dataset")
             if not bigquery_dataset:
                 # No BigQuery dataset associated with this listing
                 self._log_with_context(
-                    'info',
+                    "info",
                     f"Listing '{listing_id}' has no BigQuery dataset, returning empty resources",
-                    operation='list_resources'
+                    operation="list_resources",
                 )
                 return []
 
             # Get dataset reference
             dataset_ref = None
             if isinstance(bigquery_dataset, dict):
-                dataset_ref = bigquery_dataset.get('dataset')
+                dataset_ref = bigquery_dataset.get("dataset")
             else:
                 dataset_ref = str(bigquery_dataset)
 
             if not dataset_ref:
                 self._log_with_context(
-                    'warning',
+                    "warning",
                     f"Listing '{listing_id}' has invalid BigQuery dataset reference",
-                    operation='list_resources'
+                    operation="list_resources",
                 )
                 return []
 
             # Parse dataset reference (format: project.dataset or just dataset)
-            dataset_parts = dataset_ref.split('.')
+            dataset_parts = dataset_ref.split(".")
             if len(dataset_parts) == 2:
                 dataset_project, dataset_id = dataset_parts
             else:
@@ -1339,19 +1378,19 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             for row in results:
                 try:
-                    table_schema = row.get('table_schema', '')
-                    table_name = row.get('table_name', '')
-                    table_type = row.get('table_type', 'BASE TABLE')
-                    description = row.get('description', '')
-                    creation_time = row.get('creation_time')
+                    table_schema = row.get("table_schema", "")
+                    table_name = row.get("table_name", "")
+                    table_type = row.get("table_type", "BASE TABLE")
+                    description = row.get("description", "")
+                    creation_time = row.get("creation_time")
 
                     # Build resource ID
                     resource_id = f"{dataset_project}.{dataset_id}.{table_schema}.{table_name}"
 
                     # Determine resource type
-                    resource_type = 'BIGQUERY_TABLE'
-                    if table_type == 'VIEW':
-                        resource_type = 'BIGQUERY_VIEW'
+                    resource_type = "BIGQUERY_TABLE"
+                    if table_type == "VIEW":
+                        resource_type = "BIGQUERY_VIEW"
 
                     # Build resource URL
                     resource_url = (
@@ -1364,26 +1403,27 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                         resource_id=resource_id,
                         resource_type=resource_type,
                         name=table_name,
-                        description=description or f"{table_type} {table_name} in dataset {dataset_id}",
+                        description=description
+                        or f"{table_type} {table_name} in dataset {dataset_id}",
                         url=resource_url,
-                        format='BIGQUERY',
+                        format="BIGQUERY",
                         size_bytes=None,  # Table size not available in INFORMATION_SCHEMA
                         metadata={
-                            'table_catalog': row.get('table_catalog'),
-                            'table_schema': table_schema,
-                            'table_name': table_name,
-                            'table_type': table_type,
-                            'creation_time': creation_time.isoformat() if creation_time else None,
-                            'dataset_reference': dataset_ref,
-                        }
+                            "table_catalog": row.get("table_catalog"),
+                            "table_schema": table_schema,
+                            "table_name": table_name,
+                            "table_type": table_type,
+                            "creation_time": creation_time.isoformat() if creation_time else None,
+                            "dataset_reference": dataset_ref,
+                        },
                     )
                     resources.append(resource)
                 except Exception as e:
                     self._log_with_context(
-                        'warning',
+                        "warning",
                         f"Failed to process table {row.get('table_name', 'unknown')}: {e}",
-                        operation='list_resources',
-                        error_message=str(e)
+                        operation="list_resources",
+                        error_message=str(e),
                     )
                     continue
 
@@ -1391,9 +1431,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         # Execute with retry logic and circuit breaker protection
         return self._execute_with_retry(
-            execute_list_resources,
-            'list_resources',
-            f"listing '{listing_id}'"
+            execute_list_resources, "list_resources", f"listing '{listing_id}'"
         )
 
     def create_listing(self, listing):
@@ -1494,6 +1532,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             PermissionError: If user lacks permission to subscribe or access dataset
             ValueError: If resource_id is invalid or operation fails
         """
+
         def execute_download_resource() -> str:
             """Execute download_resource with circuit breaker protection."""
             # Parse resource_id to determine if it's a listing or table
@@ -1505,12 +1544,12 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             table_ref = None
             data_exchange_id = None
 
-            if '/' in resource_id:
+            if "/" in resource_id:
                 # Full listing path
                 project, location, exchange, listing = self._parse_listing_name(resource_id)
                 listing_id = listing
                 data_exchange_id = exchange
-            elif '.' in resource_id and resource_id.count('.') >= 2:
+            elif "." in resource_id and resource_id.count(".") >= 2:
                 # Table identifier: project.dataset.table
                 table_ref = resource_id
             else:
@@ -1523,15 +1562,27 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 # Get listing details to find data exchange
                 if not data_exchange_id:
                     listing = self.get_listing(listing_id)
-                    data_exchange_id = listing.metadata.get('data_exchange_id', '') if listing.metadata else ''
-                    listing_details = listing.metadata.get('analytics_hub_listing', {}) if listing.metadata else {}
+                    data_exchange_id = (
+                        listing.metadata.get("data_exchange_id", "") if listing.metadata else ""
+                    )
+                    listing_details = (
+                        listing.metadata.get("analytics_hub_listing", {})
+                        if listing.metadata
+                        else {}
+                    )
                     # Check if already subscribed (has bigquery_dataset)
-                    bigquery_dataset = listing_details.get('bigquery_dataset')
+                    bigquery_dataset = listing_details.get("bigquery_dataset")
                     if bigquery_dataset:
-                        dataset_ref = bigquery_dataset.get('dataset') if isinstance(bigquery_dataset, dict) else str(bigquery_dataset)
+                        dataset_ref = (
+                            bigquery_dataset.get("dataset")
+                            if isinstance(bigquery_dataset, dict)
+                            else str(bigquery_dataset)
+                        )
                         if dataset_ref:
                             linked_dataset = dataset_ref
-                            logger.info(f"Listing {listing_id} already has linked dataset: {linked_dataset}")
+                            logger.info(
+                                f"Listing {listing_id} already has linked dataset: {linked_dataset}"
+                            )
 
                 # Subscribe if not already subscribed
                 if not linked_dataset:
@@ -1542,19 +1593,27 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     # List tables in the linked dataset
                     resources = self.list_resources(listing_id)
                     if not resources:
-                        raise NotFoundError(f"No tables found in linked dataset for listing {listing_id}")
+                        raise NotFoundError(
+                            f"No tables found in linked dataset for listing {listing_id}"
+                        )
                     # Use the first resource's table reference
                     first_resource = resources[0]
-                    table_ref = first_resource.metadata.get('table_reference') if first_resource.metadata else None
+                    table_ref = (
+                        first_resource.metadata.get("table_reference")
+                        if first_resource.metadata
+                        else None
+                    )
                     if not table_ref:
                         # Construct from resource_id
                         table_ref = f"{linked_dataset}.{first_resource.resource_id}"
 
             if not table_ref:
-                raise ValueError(f"Could not determine table reference from resource_id: {resource_id}")
+                raise ValueError(
+                    f"Could not determine table reference from resource_id: {resource_id}"
+                )
 
             # Parse table reference
-            table_parts = table_ref.split('.')
+            table_parts = table_ref.split(".")
             if len(table_parts) == 3:
                 table_project, dataset_id, table_id = table_parts
             elif len(table_parts) == 2:
@@ -1576,24 +1635,24 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             # Determine file format from destination path extension
             file_ext = dest_path.suffix.lower()
-            if file_ext in ['.csv', '.json', '.avro', '.parquet']:
+            if file_ext in [".csv", ".json", ".avro", ".parquet"]:
                 format_type = file_ext[1:].upper()  # Remove dot and uppercase
             else:
                 # Default to CSV
-                format_type = 'CSV'
-                dest_path = dest_path.with_suffix('.csv')
+                format_type = "CSV"
+                dest_path = dest_path.with_suffix(".csv")
 
             # Export to GCS first (BigQuery requires GCS for exports)
             # For now, export directly to local file using extract_table
             # Note: In production, you might want to export to GCS first, then download
             job_config = bigquery.ExtractJobConfig()
-            if format_type == 'CSV':
+            if format_type == "CSV":
                 job_config.destination_format = bigquery.DestinationFormat.CSV
-            elif format_type == 'JSON':
+            elif format_type == "JSON":
                 job_config.destination_format = bigquery.DestinationFormat.NEWLINE_DELIMITED_JSON
-            elif format_type == 'AVRO':
+            elif format_type == "AVRO":
                 job_config.destination_format = bigquery.DestinationFormat.AVRO
-            elif format_type == 'PARQUET':
+            elif format_type == "PARQUET":
                 job_config.destination_format = bigquery.DestinationFormat.PARQUET
             else:
                 job_config.destination_format = bigquery.DestinationFormat.CSV
@@ -1611,8 +1670,8 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             results = query_job.result()
 
             # Write results to file
-            if format_type == 'CSV':
-                with open(dest_path, 'w', newline='', encoding='utf-8') as f:
+            if format_type == "CSV":
+                with open(dest_path, "w", newline="", encoding="utf-8") as f:
                     writer = None
                     for row in results:
                         if writer is None:
@@ -1620,14 +1679,14 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                             writer = csv.DictWriter(f, fieldnames=row.keys())
                             writer.writeheader()
                         writer.writerow(dict(row))
-            elif format_type == 'JSON':
-                with open(dest_path, 'w', encoding='utf-8') as f:
+            elif format_type == "JSON":
+                with open(dest_path, "w", encoding="utf-8") as f:
                     for row in results:
                         json.dump(dict(row), f)
-                        f.write('\n')
+                        f.write("\n")
             else:
                 # For other formats, default to CSV
-                with open(dest_path, 'w', newline='', encoding='utf-8') as f:
+                with open(dest_path, "w", newline="", encoding="utf-8") as f:
                     writer = None
                     for row in results:
                         if writer is None:
@@ -1640,18 +1699,16 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
         try:
             return self._execute_with_retry(
-                execute_download_resource,
-                'download_resource',
-                f"resource '{resource_id}'"
+                execute_download_resource, "download_resource", f"resource '{resource_id}'"
             )
         except (NotFoundError, PermissionError, ValueError):
             raise
         except Exception as e:
             self._log_with_context(
-                'error',
+                "error",
                 f"Failed to download resource {resource_id}: {e}",
-                operation='download_resource',
-                error_message=str(e)
+                operation="download_resource",
+                error_message=str(e),
             )
             raise ConnectionError(f"Failed to download resource: {e}") from e
 
@@ -1692,35 +1749,29 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
             # Create destination dataset ID (use listing ID as dataset name, sanitized)
             # Dataset IDs must be alphanumeric and underscores, max 1024 chars
-            dataset_id = listing_id.replace('-', '_').replace('/', '_')[:1024]
+            dataset_id = listing_id.replace("-", "_").replace("/", "_")[:1024]
             # Ensure it starts with a letter
             if dataset_id and not dataset_id[0].isalpha():
-                dataset_id = 'dataset_' + dataset_id
+                dataset_id = "dataset_" + dataset_id
 
             # Import SubscribeListingRequest and DestinationDataset
             from google.cloud.bigquery_analyticshub_v1.types import (
-                SubscribeListingRequest,
                 DestinationDataset,
                 DestinationDatasetReference,
+                SubscribeListingRequest,
             )
 
             # Build destination dataset reference
             # Note: location is not part of DestinationDatasetReference, it's inferred from the dataset
             dataset_ref = DestinationDatasetReference(
-                project_id=self.project_id,
-                dataset_id=dataset_id
+                project_id=self.project_id, dataset_id=dataset_id
             )
 
             # Build destination dataset object
-            dest_dataset = DestinationDataset(
-                dataset_reference=dataset_ref
-            )
+            dest_dataset = DestinationDataset(dataset_reference=dataset_ref)
 
             # Build subscribe request
-            request = SubscribeListingRequest(
-                name=listing_path,
-                destination_dataset=dest_dataset
-            )
+            request = SubscribeListingRequest(name=listing_path, destination_dataset=dest_dataset)
 
             # Subscribe to listing
             try:
@@ -1729,38 +1780,48 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
                 # Build dataset reference string
                 if linked_dataset_ref:
-                    linked_dataset = f"{linked_dataset_ref.project_id}.{linked_dataset_ref.dataset_id}"
+                    linked_dataset = (
+                        f"{linked_dataset_ref.project_id}.{linked_dataset_ref.dataset_id}"
+                    )
                     self._log_with_context(
-                        'info',
+                        "info",
                         f"Successfully subscribed to listing {listing_id}, linked dataset: {linked_dataset}",
-                        operation='subscribe_to_listing'
+                        operation="subscribe_to_listing",
                     )
                     return linked_dataset
                 else:
                     # Fallback: construct from destination_dataset
                     linked_dataset = f"{self.project_id}.{dataset_id}"
                     self._log_with_context(
-                        'info',
+                        "info",
                         f"Subscribed to listing {listing_id}, using dataset: {linked_dataset}",
-                        operation='subscribe_to_listing'
+                        operation="subscribe_to_listing",
                     )
                     return linked_dataset
             except GoogleAPIError as e:
-                error_code = getattr(e, 'code', None)
+                error_code = getattr(e, "code", None)
                 if error_code == 409:
                     # Already subscribed - get the existing dataset
                     self._log_with_context(
-                        'info',
+                        "info",
                         f"Listing {listing_id} is already subscribed",
-                        operation='subscribe_to_listing',
-                        error_code=error_code
+                        operation="subscribe_to_listing",
+                        error_code=error_code,
                     )
                     # Try to get the listing to find the linked dataset
                     listing = self.get_listing(listing_id)
-                    listing_details = listing.metadata.get('analytics_hub_listing', {}) if listing.metadata else {}
-                    bigquery_dataset = listing_details.get('bigquery_dataset')
+                    listing_details = (
+                        listing.metadata.get("analytics_hub_listing", {})
+                        if listing.metadata
+                        else {}
+                    )
+                    bigquery_dataset = listing_details.get("bigquery_dataset")
                     if bigquery_dataset:
-                        dataset_ref = bigquery_dataset.get('dataset') if isinstance(bigquery_dataset, dict) else str(bigquery_dataset)
+                        dataset_ref = (
+                            bigquery_dataset.get("dataset")
+                            if isinstance(bigquery_dataset, dict)
+                            else str(bigquery_dataset)
+                        )
                         if dataset_ref:
                             return dataset_ref
                     # Fallback: construct dataset name
@@ -1771,15 +1832,12 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         # Execute with retry logic and circuit breaker protection
         return self._execute_with_retry(
             execute_subscribe_to_listing,
-            'subscribe_to_listing',
-            f"listing '{listing_id}' in data exchange '{data_exchange_id}'"
+            "subscribe_to_listing",
+            f"listing '{listing_id}' in data exchange '{data_exchange_id}'",
         )
 
     def _extract_schema_from_bigquery_dataset(
-        self,
-        dataset_id: str,
-        table_id: str,
-        project_id: Optional[str] = None
+        self, dataset_id: str, table_id: str, project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Extract schema from BigQuery dataset table.
@@ -1822,9 +1880,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         """
 
         job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("table_name", "STRING", table_id)
-            ]
+            query_parameters=[bigquery.ScalarQueryParameter("table_name", "STRING", table_id)]
         )
 
         try:
@@ -1835,34 +1891,38 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             fields = []
             for row in results:
                 field = {
-                    'name': row.column_name,
-                    'type': self._map_bigquery_type(row.data_type),
-                    'nullable': row.is_nullable == 'YES',
+                    "name": row.column_name,
+                    "type": self._map_bigquery_type(row.data_type),
+                    "nullable": row.is_nullable == "YES",
                 }
                 if row.description:
-                    field['description'] = row.description
+                    field["description"] = row.description
                 if row.column_default:
-                    field['default'] = row.column_default
+                    field["default"] = row.column_default
                 fields.append(field)
 
             if not fields:
-                raise NotFoundError(f"Table {project_id}.{dataset_id}.{table_id} not found or has no columns")
+                raise NotFoundError(
+                    f"Table {project_id}.{dataset_id}.{table_id} not found or has no columns"
+                )
 
             schema = {
-                'fields': fields,
-                'table_name': table_id,
-                'dataset_id': dataset_id,
-                'project_id': project_id,
+                "fields": fields,
+                "table_name": table_id,
+                "dataset_id": dataset_id,
+                "project_id": project_id,
             }
 
             return schema
 
         except GoogleAPIError as e:
-            error_code = getattr(e, 'code', None)
+            error_code = getattr(e, "code", None)
             if error_code == 404:
                 raise NotFoundError(f"Table {project_id}.{dataset_id}.{table_id} not found") from e
             elif error_code == 403:
-                raise PermissionError(f"Permission denied accessing table {project_id}.{dataset_id}.{table_id}") from e
+                raise PermissionError(
+                    f"Permission denied accessing table {project_id}.{dataset_id}.{table_id}"
+                ) from e
             raise ConnectionError(f"Unable to extract schema: {e}") from e
         except Exception as e:
             logger.error(f"Unexpected error extracting schema: {e}", exc_info=True)
@@ -1881,45 +1941,43 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         bigquery_type_upper = bigquery_type.upper()
 
         # String types
-        if bigquery_type_upper in ['STRING', 'BYTES']:
-            return 'string'
+        if bigquery_type_upper in ["STRING", "BYTES"]:
+            return "string"
 
         # Number types
-        if bigquery_type_upper in ['INTEGER', 'INT64', 'FLOAT', 'FLOAT64', 'NUMERIC', 'BIGNUMERIC']:
-            return 'number'
+        if bigquery_type_upper in ["INTEGER", "INT64", "FLOAT", "FLOAT64", "NUMERIC", "BIGNUMERIC"]:
+            return "number"
 
         # Boolean types
-        if bigquery_type_upper in ['BOOLEAN', 'BOOL']:
-            return 'boolean'
+        if bigquery_type_upper in ["BOOLEAN", "BOOL"]:
+            return "boolean"
 
         # Date/time types
-        if bigquery_type_upper in ['TIMESTAMP', 'DATETIME']:
-            return 'datetime'
-        if bigquery_type_upper == 'DATE':
-            return 'date'
-        if bigquery_type_upper == 'TIME':
-            return 'time'
+        if bigquery_type_upper in ["TIMESTAMP", "DATETIME"]:
+            return "datetime"
+        if bigquery_type_upper == "DATE":
+            return "date"
+        if bigquery_type_upper == "TIME":
+            return "time"
 
         # Geography types
-        if bigquery_type_upper == 'GEOGRAPHY':
-            return 'string'
+        if bigquery_type_upper == "GEOGRAPHY":
+            return "string"
 
         # Array types
-        if bigquery_type_upper == 'ARRAY':
-            return 'array'
+        if bigquery_type_upper == "ARRAY":
+            return "array"
 
         # Struct/Record types
-        if bigquery_type_upper in ['STRUCT', 'RECORD']:
-            return 'object'
+        if bigquery_type_upper in ["STRUCT", "RECORD"]:
+            return "object"
 
         # Default to string for unknown types
         logger.warning(f"Unknown BigQuery type '{bigquery_type}', mapping to 'string'")
-        return 'string'
+        return "string"
 
     def map_to_hub_asset(
-        self,
-        listing: MarketplaceListing,
-        sync_job_id: Optional[str] = None
+        self, listing: MarketplaceListing, sync_job_id: Optional[str] = None
     ) -> MarketplaceAssetMapping:
         """
         Map an Analytics Hub listing to a Hub asset representation.
@@ -1945,14 +2003,16 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             raise ValueError("Listing is required")
 
         # Extract Analytics Hub listing data from metadata
-        listing_details = listing.metadata.get('analytics_hub_listing', {}) if listing.metadata else {}
-        data_exchange_id = listing.metadata.get('data_exchange_id', '') if listing.metadata else ''
-        odps_metadata = listing.metadata.get('odps_metadata', {}) if listing.metadata else {}
-        odcs_metadata = listing.metadata.get('odcs_metadata', {}) if listing.metadata else {}
+        listing_details = (
+            listing.metadata.get("analytics_hub_listing", {}) if listing.metadata else {}
+        )
+        data_exchange_id = listing.metadata.get("data_exchange_id", "") if listing.metadata else ""
+        odps_metadata = listing.metadata.get("odps_metadata", {}) if listing.metadata else {}
+        odcs_metadata = listing.metadata.get("odcs_metadata", {}) if listing.metadata else {}
 
         # Extract title and description
-        title = listing.title or listing_details.get('display_name', 'Untitled Listing')
-        description = listing.description or listing_details.get('description', '')
+        title = listing.title or listing_details.get("display_name", "Untitled Listing")
+        description = listing.description or listing_details.get("description", "")
 
         # Extract domain from exchange_name (data_exchange_id) as per specification
         # Use data_exchange_id as domain, fallback to category if exchange not available
@@ -1962,59 +2022,63 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             domain = data_exchange_id
         elif listing.category:
             domain = listing.category
-        elif listing_details.get('categories'):
-            categories = listing_details['categories']
+        elif listing_details.get("categories"):
+            categories = listing_details["categories"]
             if isinstance(categories, list) and categories:
                 domain = categories[0]
 
         # Determine status and visibility
         # Analytics Hub listings are typically ACTIVE and PUBLIC
-        status = 'ACTIVE'
-        visibility = 'PUBLIC'
+        status = "ACTIVE"
+        visibility = "PUBLIC"
 
         # Extract tags
         tags = listing.tags or []
 
         # Build comprehensive asset_data
         asset_data: Dict[str, Any] = {
-            'name': title,
-            'description': description,
-            'key': f"gcp-marketplace-{listing.marketplace_id}",
-            'tags': tags,
-            'status': status,
-            'visibility': visibility,
+            "name": title,
+            "description": description,
+            "key": f"gcp-marketplace-{listing.marketplace_id}",
+            "tags": tags,
+            "status": status,
+            "visibility": visibility,
         }
 
         # Add optional fields if available
         if domain:
-            asset_data['domain'] = domain
+            asset_data["domain"] = domain
 
         # Extract data provider/publisher from listing details
-        provider = listing_details.get('data_provider') or listing_details.get('publisher')
+        provider = listing_details.get("data_provider") or listing_details.get("publisher")
 
         # Extract source metadata
         source_metadata: Dict[str, Any] = {
-            'marketplace_type': MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
-            'marketplace_id': listing.marketplace_id,
-            'listing_id': listing.marketplace_id,
-            'listing_url': listing.url,
-            'synced_at': datetime.now().isoformat(),
-            'data_exchange_id': data_exchange_id,
+            "marketplace_type": MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
+            "marketplace_id": listing.marketplace_id,
+            "listing_id": listing.marketplace_id,
+            "listing_url": listing.url,
+            "synced_at": datetime.now().isoformat(),
+            "data_exchange_id": data_exchange_id,
         }
 
         # Add Provider if available
         if provider:
-            source_metadata['provider'] = provider
+            source_metadata["provider"] = provider
 
         # Add BigQuery dataset reference if available
-        bigquery_dataset = listing_details.get('bigquery_dataset')
+        bigquery_dataset = listing_details.get("bigquery_dataset")
         if bigquery_dataset:
-            dataset_ref = bigquery_dataset.get('dataset') if isinstance(bigquery_dataset, dict) else str(bigquery_dataset)
-            source_metadata['bigquery_dataset'] = dataset_ref
+            dataset_ref = (
+                bigquery_dataset.get("dataset")
+                if isinstance(bigquery_dataset, dict)
+                else str(bigquery_dataset)
+            )
+            source_metadata["bigquery_dataset"] = dataset_ref
 
         # Add sync_job_id if provided
         if sync_job_id:
-            source_metadata['sync_job_id'] = sync_job_id
+            source_metadata["sync_job_id"] = sync_job_id
 
         # Use ODPS and ODCS metadata from listing (already extracted)
         # If not present, extract them
@@ -2031,12 +2095,16 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             for resource in resources:
                 if not resource.metadata:
                     resource.metadata = {}
-                resource.metadata['external'] = True
-                resource.metadata['listing_id'] = listing.marketplace_id
-                resource.metadata['data_exchange_id'] = data_exchange_id
+                resource.metadata["external"] = True
+                resource.metadata["listing_id"] = listing.marketplace_id
+                resource.metadata["data_exchange_id"] = data_exchange_id
                 if bigquery_dataset:
-                    dataset_ref = bigquery_dataset.get('dataset') if isinstance(bigquery_dataset, dict) else str(bigquery_dataset)
-                    resource.metadata['bigquery_dataset'] = dataset_ref
+                    dataset_ref = (
+                        bigquery_dataset.get("dataset")
+                        if isinstance(bigquery_dataset, dict)
+                        else str(bigquery_dataset)
+                    )
+                    resource.metadata["bigquery_dataset"] = dataset_ref
         except Exception as e:
             logger.warning(f"Failed to fetch resources for mapping: {e}")
 
@@ -2046,14 +2114,14 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             source_metadata=source_metadata,
             odps_metadata=odps_metadata if odps_metadata else None,
             odcs_metadata=odcs_metadata if odcs_metadata else None,
-            resources=resources
+            resources=resources,
         )
 
     def map_from_hub_asset(
         self,
         asset_data: Dict[str, Any],
         odps_metadata: Optional[Dict[str, Any]] = None,
-        odcs_metadata: Optional[Dict[str, Any]] = None
+        odcs_metadata: Optional[Dict[str, Any]] = None,
     ):
         """
         Map a Hub asset to an Analytics Hub listing representation.
@@ -2105,7 +2173,7 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
         self,
         listing_ids: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
-        options: Optional[Dict[str, Any]] = None
+        options: Optional[Dict[str, Any]] = None,
     ) -> SyncResult:
         """
         Perform bulk pull synchronization (Analytics Hub → Hub) following metadata-first pattern.
@@ -2157,9 +2225,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
             ConnectionError: If unable to connect to Analytics Hub
         """
         options = options or {}
-        dry_run = options.get('dry_run', False)
-        limit = options.get('limit')
-        include_resources = options.get('include_resources', True)
+        dry_run = options.get("dry_run", False)
+        limit = options.get("limit")
+        include_resources = options.get("include_resources", True)
         started_at = datetime.now()
 
         successful_items = 0
@@ -2203,9 +2271,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     failed_items=0,
                     skipped_items=0,
                     errors=errors,
-                    metadata={'dry_run': dry_run},
+                    metadata={"dry_run": dry_run},
                     started_at=started_at,
-                    completed_at=datetime.now()
+                    completed_at=datetime.now(),
                 )
 
             # If we have skipped items but no listings, return early
@@ -2218,9 +2286,9 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     failed_items=failed_items,
                     skipped_items=skipped_items,
                     errors=errors,
-                    metadata={'dry_run': dry_run, 'reason': 'no_listings_found', 'mappings': []},
+                    metadata={"dry_run": dry_run, "reason": "no_listings_found", "mappings": []},
                     started_at=started_at,
-                    completed_at=datetime.now()
+                    completed_at=datetime.now(),
                 )
 
             if not listings:
@@ -2232,16 +2300,18 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     failed_items=0,
                     skipped_items=0,
                     errors=[],
-                    metadata={'dry_run': dry_run, 'reason': 'no_listings_found', 'mappings': []},
+                    metadata={"dry_run": dry_run, "reason": "no_listings_found", "mappings": []},
                     started_at=started_at,
-                    completed_at=datetime.now()
+                    completed_at=datetime.now(),
                 )
 
             # Process each listing
             for listing in listings:
                 try:
                     if dry_run:
-                        logger.info(f"DRY RUN: Would pull listing {listing.marketplace_id} from Analytics Hub")
+                        logger.info(
+                            f"DRY RUN: Would pull listing {listing.marketplace_id} from Analytics Hub"
+                        )
                         successful_items += 1
                         continue
 
@@ -2254,18 +2324,32 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                             for resource in resources:
                                 if not resource.metadata:
                                     resource.metadata = {}
-                                resource.metadata['external'] = True
-                                resource.metadata['listing_id'] = listing.marketplace_id
+                                resource.metadata["external"] = True
+                                resource.metadata["listing_id"] = listing.marketplace_id
                                 # Get data exchange ID and BigQuery dataset from listing metadata
-                                data_exchange_id = listing.metadata.get('data_exchange_id', '') if listing.metadata else ''
-                                resource.metadata['data_exchange_id'] = data_exchange_id
-                                listing_details = listing.metadata.get('analytics_hub_listing', {}) if listing.metadata else {}
-                                bigquery_dataset = listing_details.get('bigquery_dataset')
+                                data_exchange_id = (
+                                    listing.metadata.get("data_exchange_id", "")
+                                    if listing.metadata
+                                    else ""
+                                )
+                                resource.metadata["data_exchange_id"] = data_exchange_id
+                                listing_details = (
+                                    listing.metadata.get("analytics_hub_listing", {})
+                                    if listing.metadata
+                                    else {}
+                                )
+                                bigquery_dataset = listing_details.get("bigquery_dataset")
                                 if bigquery_dataset:
-                                    dataset_ref = bigquery_dataset.get('dataset') if isinstance(bigquery_dataset, dict) else str(bigquery_dataset)
-                                    resource.metadata['bigquery_dataset'] = dataset_ref
+                                    dataset_ref = (
+                                        bigquery_dataset.get("dataset")
+                                        if isinstance(bigquery_dataset, dict)
+                                        else str(bigquery_dataset)
+                                    )
+                                    resource.metadata["bigquery_dataset"] = dataset_ref
                         except Exception as e:
-                            logger.warning(f"Listing {listing.marketplace_id}: Failed to fetch resources: {e}")
+                            logger.warning(
+                                f"Listing {listing.marketplace_id}: Failed to fetch resources: {e}"
+                            )
                             # Continue without resources
 
                     # Map listing to Hub asset format
@@ -2277,34 +2361,42 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
 
                         # Serialize mapping to dict for SyncResult metadata
                         mapping_dict = {
-                            'asset_data': mapping.asset_data,
-                            'source_type': mapping.source_type.value if hasattr(mapping.source_type, 'value') else str(mapping.source_type),
-                            'source_metadata': mapping.source_metadata,
-                            'odps_metadata': mapping.odps_metadata,
-                            'odcs_metadata': mapping.odcs_metadata,
-                            'resources': [
+                            "asset_data": mapping.asset_data,
+                            "source_type": (
+                                mapping.source_type.value
+                                if hasattr(mapping.source_type, "value")
+                                else str(mapping.source_type)
+                            ),
+                            "source_metadata": mapping.source_metadata,
+                            "odps_metadata": mapping.odps_metadata,
+                            "odcs_metadata": mapping.odcs_metadata,
+                            "resources": [
                                 {
-                                    'resource_id': r.resource_id,
-                                    'resource_type': r.resource_type,
-                                    'name': r.name,
-                                    'description': r.description,
-                                    'url': r.url,
-                                    'format': r.format,
-                                    'size_bytes': r.size_bytes,
-                                    'metadata': r.metadata
+                                    "resource_id": r.resource_id,
+                                    "resource_type": r.resource_type,
+                                    "name": r.name,
+                                    "description": r.description,
+                                    "url": r.url,
+                                    "format": r.format,
+                                    "size_bytes": r.size_bytes,
+                                    "metadata": r.metadata,
                                 }
                                 for r in mapping.resources
-                            ]
+                            ],
                         }
-                        mappings.append({
-                            'listing_id': listing.marketplace_id,
-                            'mapping': mapping_dict,
-                        })
+                        mappings.append(
+                            {
+                                "listing_id": listing.marketplace_id,
+                                "mapping": mapping_dict,
+                            }
+                        )
                         successful_items += 1
                         logger.info(f"Listing {listing.marketplace_id}: Mapped to Hub asset format")
                     except Exception as e:
                         failed_items += 1
-                        error_msg = f"Listing {listing.marketplace_id}: Failed to map to Hub asset: {e}"
+                        error_msg = (
+                            f"Listing {listing.marketplace_id}: Failed to map to Hub asset: {e}"
+                        )
                         errors.append(error_msg)
                         logger.error(error_msg, exc_info=True)
                         continue
@@ -2317,7 +2409,11 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                     continue
 
             completed_at = datetime.now()
-            status = SyncStatus.COMPLETED if failed_items == 0 else SyncStatus.PARTIAL if successful_items > 0 else SyncStatus.FAILED
+            status = (
+                SyncStatus.COMPLETED
+                if failed_items == 0
+                else SyncStatus.PARTIAL if successful_items > 0 else SyncStatus.FAILED
+            )
 
             return SyncResult(
                 status=status,
@@ -2327,18 +2423,15 @@ class GCPMarketplaceConnector(DataMarketplaceConnector):
                 skipped_items=skipped_items,
                 errors=errors,
                 metadata={
-                    'dry_run': dry_run,
-                    'mappings': mappings,  # List of mappings for asset creation
-                    'include_resources': include_resources,
+                    "dry_run": dry_run,
+                    "mappings": mappings,  # List of mappings for asset creation
+                    "include_resources": include_resources,
                 },
                 started_at=started_at,
-                completed_at=completed_at
+                completed_at=completed_at,
             )
 
         # Execute with retry logic and circuit breaker protection
         return self._execute_with_retry(
-            execute_sync_pull,
-            'sync_pull',
-            'Analytics Hub synchronization'
+            execute_sync_pull, "sync_pull", "Analytics Hub synchronization"
         )
-

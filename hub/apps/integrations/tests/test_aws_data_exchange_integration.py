@@ -10,31 +10,31 @@ Requirements:
 - Optional: AWS_ROLE_ARN for IAM role assumption
 - AWS_REGION environment variable (default: us-east-1)
 """
+
 import os
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.aws_data_exchange_connector import (
-    AWSDataExchangeConnector
-)
+from hub.apps.assets.models import AssetSourceType
+from hub.apps.core.services.base import ConnectionError, NotFoundError, PermissionError
 from hub.apps.integrations.base import (
-    MarketplaceType,
-    SyncStatus,
-    SyncResult,
     MarketplaceListing,
     MarketplaceResource,
+    MarketplaceType,
+    SyncResult,
+    SyncStatus,
 )
-from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError, PermissionError, ConnectionError
+from hub.apps.integrations.connectors.aws_data_exchange_connector import AWSDataExchangeConnector
 
 
 def get_aws_credentials() -> dict:
     """Get AWS credentials from environment variables."""
-    access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
-    secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-    session_token = os.getenv('AWS_SESSION_TOKEN')
-    role_arn = os.getenv('AWS_ROLE_ARN')
-    region = os.getenv('AWS_REGION', 'us-east-1')
+    access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    session_token = os.getenv("AWS_SESSION_TOKEN")
+    role_arn = os.getenv("AWS_ROLE_ARN")
+    region = os.getenv("AWS_REGION", "us-east-1")
 
     if not access_key_id or not secret_access_key:
         pytest.skip(
@@ -42,16 +42,16 @@ def get_aws_credentials() -> dict:
         )
 
     credentials = {
-        'aws_access_key_id': access_key_id,
-        'aws_secret_access_key': secret_access_key,
-        'region_name': region,
+        "aws_access_key_id": access_key_id,
+        "aws_secret_access_key": secret_access_key,
+        "region_name": region,
     }
 
     if session_token:
-        credentials['aws_session_token'] = session_token
+        credentials["aws_session_token"] = session_token
 
     if role_arn:
-        credentials['role_arn'] = role_arn
+        credentials["role_arn"] = role_arn
 
     return credentials
 
@@ -85,7 +85,9 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
             # Verify connection
             if not verify_aws_connection(cls.connector):
-                pytest.skip("Cannot connect to AWS Data Exchange - check credentials and permissions")
+                pytest.skip(
+                    "Cannot connect to AWS Data Exchange - check credentials and permissions"
+                )
 
             # Cache a test dataset ID for get_listing and list_resources tests
             cls.test_dataset_id = None
@@ -101,16 +103,16 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        if not hasattr(self, 'connector') or not self.connector:
+        if not hasattr(self, "connector") or not self.connector:
             self.skipTest("AWS Data Exchange connector not available")
 
     def test_authentication_with_access_keys(self):
         """Test authentication with access keys."""
         credentials = get_aws_credentials()
         connector = AWSDataExchangeConnector(
-            aws_access_key_id=credentials['aws_access_key_id'],
-            aws_secret_access_key=credentials['aws_secret_access_key'],
-            region_name=credentials['region_name']
+            aws_access_key_id=credentials["aws_access_key_id"],
+            aws_secret_access_key=credentials["aws_secret_access_key"],
+            region_name=credentials["region_name"],
         )
 
         result = connector.authenticate(credentials)
@@ -120,14 +122,14 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_authentication_with_session_token(self):
         """Test authentication with session token."""
         credentials = get_aws_credentials()
-        if 'aws_session_token' not in credentials:
+        if "aws_session_token" not in credentials:
             self.skipTest("AWS_SESSION_TOKEN not available")
 
         connector = AWSDataExchangeConnector(
-            aws_access_key_id=credentials['aws_access_key_id'],
-            aws_secret_access_key=credentials['aws_secret_access_key'],
-            aws_session_token=credentials['aws_session_token'],
-            region_name=credentials['region_name']
+            aws_access_key_id=credentials["aws_access_key_id"],
+            aws_secret_access_key=credentials["aws_secret_access_key"],
+            aws_session_token=credentials["aws_session_token"],
+            region_name=credentials["region_name"],
         )
 
         result = connector.authenticate(credentials)
@@ -137,12 +139,11 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_authentication_with_role_arn(self):
         """Test authentication with IAM role ARN."""
         credentials = get_aws_credentials()
-        if 'role_arn' not in credentials:
+        if "role_arn" not in credentials:
             self.skipTest("AWS_ROLE_ARN not available")
 
         connector = AWSDataExchangeConnector(
-            role_arn=credentials['role_arn'],
-            region_name=credentials['region_name']
+            role_arn=credentials["role_arn"], region_name=credentials["region_name"]
         )
 
         result = connector.authenticate({})
@@ -171,13 +172,13 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_list_listings_with_filters(self):
         """Test listing retrieval with filters."""
         # Test with origin filter
-        listings = self.connector.list_listings(limit=5, filters={'origin': 'OWNED'})
+        listings = self.connector.list_listings(limit=5, filters={"origin": "OWNED"})
         self.assertIsInstance(listings, list)
 
         # Test with name filter
         if listings:
             first_name = listings[0].title
-            filtered = self.connector.list_listings(limit=5, filters={'name': first_name})
+            filtered = self.connector.list_listings(limit=5, filters={"name": first_name})
             self.assertIsInstance(filtered, list)
 
     def test_list_listings_with_pagination(self):
@@ -205,7 +206,7 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_get_listing_not_found(self):
         """Test getting a non-existent listing."""
         with self.assertRaises(NotFoundError):
-            self.connector.get_listing('non-existent-dataset-id-12345')
+            self.connector.get_listing("non-existent-dataset-id-12345")
 
     def test_list_resources_success(self):
         """Test listing resources for a dataset."""
@@ -223,14 +224,14 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
     def test_sync_pull_basic(self):
         """Test basic sync_pull operation."""
-        result = self.connector.sync_pull(options={'limit': 5})
+        result = self.connector.sync_pull(options={"limit": 5})
 
         self.assertIsInstance(result, SyncResult)
         self.assertEqual(result.status, SyncStatus.COMPLETED)
         self.assertGreaterEqual(result.total_items, 0)
         self.assertGreaterEqual(result.successful_items, 0)
-        self.assertIn('mappings', result.metadata)
-        self.assertIsInstance(result.metadata['mappings'], list)
+        self.assertIn("mappings", result.metadata)
+        self.assertIsInstance(result.metadata["mappings"], list)
 
     def test_sync_pull_with_listing_ids(self):
         """Test sync_pull with specific listing IDs."""
@@ -245,12 +246,12 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
 
     def test_sync_pull_dry_run(self):
         """Test sync_pull with dry_run option."""
-        result = self.connector.sync_pull(options={'dry_run': True, 'limit': 5})
+        result = self.connector.sync_pull(options={"dry_run": True, "limit": 5})
 
         self.assertIsInstance(result, SyncResult)
         self.assertEqual(result.status, SyncStatus.COMPLETED)
         # Dry run should not create mappings
-        self.assertEqual(len(result.metadata.get('mappings', [])), 0)
+        self.assertEqual(len(result.metadata.get("mappings", [])), 0)
 
     def test_map_to_hub_asset_success(self):
         """Test mapping a listing to Hub asset."""
@@ -261,28 +262,27 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         mapping = self.connector.map_to_hub_asset(listing)
 
         self.assertIsNotNone(mapping)
-        self.assertEqual(mapping.source_metadata['marketplace_id'], self.test_dataset_id)
-        self.assertIn('name', mapping.asset_data)
+        self.assertEqual(mapping.source_metadata["marketplace_id"], self.test_dataset_id)
+        self.assertIn("name", mapping.asset_data)
         self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
 
     def test_error_handling_invalid_credentials(self):
         """Test error handling with invalid credentials."""
         connector = AWSDataExchangeConnector(
-            aws_access_key_id='invalid-key',
-            aws_secret_access_key='invalid-secret',
-            region_name='us-east-1'
+            aws_access_key_id="invalid-key",
+            aws_secret_access_key="invalid-secret",
+            region_name="us-east-1",
         )
 
         with self.assertRaises((PermissionError, ConnectionError)):
-            connector.authenticate({
-                'aws_access_key_id': 'invalid-key',
-                'aws_secret_access_key': 'invalid-secret'
-            })
+            connector.authenticate(
+                {"aws_access_key_id": "invalid-key", "aws_secret_access_key": "invalid-secret"}
+            )
 
     def test_error_handling_dataset_not_found(self):
         """Test error handling when dataset is not found."""
         with self.assertRaises(NotFoundError):
-            self.connector.get_listing('non-existent-dataset-id-12345')
+            self.connector.get_listing("non-existent-dataset-id-12345")
 
     def test_error_handling_permission_denied(self):
         """Test error handling when permissions are denied."""
@@ -294,12 +294,11 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
     def test_iam_role_assumption(self):
         """Test IAM role assumption if role_arn provided."""
         credentials = get_aws_credentials()
-        if 'role_arn' not in credentials:
+        if "role_arn" not in credentials:
             self.skipTest("AWS_ROLE_ARN not available")
 
         connector = AWSDataExchangeConnector(
-            role_arn=credentials['role_arn'],
-            region_name=credentials['region_name']
+            role_arn=credentials["role_arn"], region_name=credentials["region_name"]
         )
 
         result = connector.authenticate({})
@@ -310,3 +309,75 @@ class TestAWSDataExchangeConnectorIntegration(TestCase):
         test_result = connector.test_connection()
         self.assertTrue(test_result)
 
+    def test_list_listings_with_zero_limit(self):
+        """Test list_listings() edge case with zero limit"""
+        listings = self.connector.list_listings(limit=0)
+        self.assertIsInstance(listings, list)
+        self.assertEqual(len(listings), 0)
+
+    def test_list_listings_with_none_limit(self):
+        """Test list_listings() error handling with None limit"""
+        try:
+            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+            # Should handle None limit gracefully (may use default)
+            self.assertIsInstance(listings, list)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+    def test_get_listing_with_empty_id(self):
+        """Test get_listing() error handling with empty ID"""
+        with self.assertRaises((ValueError, NotFoundError)):
+            self.connector.get_listing("")
+
+    def test_get_listing_with_none_id(self):
+        """Test get_listing() error handling with None ID"""
+        with self.assertRaises((ValueError, TypeError, NotFoundError)):
+            self.connector.get_listing(None)  # type: ignore[arg-type]
+
+    def test_list_resources_with_empty_listing_id(self):
+        """Test list_resources() error handling with empty listing ID"""
+        with self.assertRaises((ValueError, NotFoundError)):
+            self.connector.list_resources("")
+
+    def test_list_resources_with_none_listing_id(self):
+        """Test list_resources() error handling with None listing ID"""
+        with self.assertRaises((ValueError, TypeError, NotFoundError)):
+            self.connector.list_resources(None)  # type: ignore[arg-type]
+
+    def test_sync_pull_with_empty_listing_ids(self):
+        """Test sync_pull() error handling with empty listing_ids list"""
+        result = self.connector.sync_pull(listing_ids=[])
+        self.assertIsInstance(result, SyncResult)
+        self.assertEqual(result.total_items, 0)
+        self.assertEqual(result.successful_items, 0)
+
+    def test_sync_pull_with_none_options(self):
+        """Test sync_pull() error handling with None options"""
+        try:
+            result = self.connector.sync_pull(options=None)
+            # Should handle None options gracefully
+            self.assertIsInstance(result, SyncResult)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+
+    def test_authenticate_with_empty_credentials(self):
+        """Test authenticate() error handling with empty credentials dict"""
+        connector = AWSDataExchangeConnector(
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            region_name="us-east-1",
+        )
+        with self.assertRaises((ValueError, PermissionError, ConnectionError)):
+            connector.authenticate({})
+
+    def test_authenticate_with_none_credentials(self):
+        """Test authenticate() error handling with None credentials"""
+        connector = AWSDataExchangeConnector(
+            aws_access_key_id="test-key",
+            aws_secret_access_key="test-secret",
+            region_name="us-east-1",
+        )
+        with self.assertRaises((ValueError, TypeError)):
+            connector.authenticate(None)  # type: ignore[arg-type]

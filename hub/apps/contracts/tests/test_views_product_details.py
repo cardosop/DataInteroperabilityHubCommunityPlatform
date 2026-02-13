@@ -1,37 +1,24 @@
 """
 Unit tests for contract product details endpoint.
 """
-import pytest
-import json
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
-from rest_framework import status
-from hub.apps.tenants.models import Tenant
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
 
+import json
+
+import pytest
+from rest_framework import status
+
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
-User = get_user_model()
 
 
-class ContractProductDetailsViewTest(TestCase):
+class ContractProductDetailsViewTest(ContractsAPITestBase):
     """Test contract product details endpoint"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
+        super().setUp()
 
         # Create ODPS contract with product details
         odps_data = {
@@ -45,15 +32,15 @@ class ContractProductDetailsViewTest(TestCase):
                         "description": "A test product description",
                         "productVersion": "1.0.0",
                         "category": "Data Product",
-                        "tags": ["test", "product"]
+                        "tags": ["test", "product"],
                     },
                     "fi": {
                         "productID": "test-product",
                         "name": "Testi Tuote",
-                        "description": "Testituotteen kuvaus"
-                    }
+                        "description": "Testituotteen kuvaus",
+                    },
                 }
-            }
+            },
         }
 
         self.odps_contract = Contract.objects.create(
@@ -74,9 +61,9 @@ class ContractProductDetailsViewTest(TestCase):
                     "description": "A test product description",
                     "version": "1.0.0",
                     "category": "Data Product",
-                    "tags": ["test", "product"]
-                }
-            }
+                    "tags": ["test", "product"],
+                },
+            },
         )
 
         # Create ODCS contract (not ODPS)
@@ -90,7 +77,7 @@ class ContractProductDetailsViewTest(TestCase):
             original_format=OriginalFormat.JSON,
             original_raw='{"id": "test", "name": "Test Contract"}',
             hub_contract_version="1.0.0",
-            hub_contract_json={"hub_contract_version": "1.0.0", "id": "test"}
+            hub_contract_json={"hub_contract_version": "1.0.0", "id": "test"},
         )
 
     def test_get_product_details_success_default_language(self):
@@ -98,105 +85,103 @@ class ContractProductDetailsViewTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
-            format='json'
+            f"/api/v1/contracts/{self.odps_contract.id}/product-details/", format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('product_details', response.data)
-        product_details = response.data['product_details']
+        self.assertIn("product_details", response.data)
+        product_details = response.data["product_details"]
         self.assertIsNotNone(product_details)
-        self.assertEqual(product_details.get('productID'), 'test-product')
-        self.assertEqual(product_details.get('name'), 'Test Product')
-        self.assertEqual(product_details.get('description'), 'A test product description')
+        self.assertEqual(product_details.get("productID"), "test-product")
+        self.assertEqual(product_details.get("name"), "Test Product")
+        self.assertEqual(product_details.get("description"), "A test product description")
 
     def test_get_product_details_success_specific_language(self):
         """Test getting product details with specific language"""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
-            {'lang': 'fi'},
-            format='json'
+            f"/api/v1/contracts/{self.odps_contract.id}/product-details/",
+            {"lang": "fi"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('product_details', response.data)
-        product_details = response.data['product_details']
+        self.assertIn("product_details", response.data)
+        product_details = response.data["product_details"]
         self.assertIsNotNone(product_details)
-        self.assertEqual(product_details.get('name'), 'Testi Tuote')
-        self.assertEqual(product_details.get('description'), 'Testituotteen kuvaus')
+        self.assertEqual(product_details.get("name"), "Testi Tuote")
+        self.assertEqual(product_details.get("description"), "Testituotteen kuvaus")
 
     def test_get_product_details_missing_language(self):
         """Test getting product details for language that doesn't exist"""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
-            {'lang': 'fr'},
-            format='json'
+            f"/api/v1/contracts/{self.odps_contract.id}/product-details/",
+            {"lang": "fr"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('product_details', response.data)
+        self.assertIn("product_details", response.data)
         # Should return None or fallback to hub_contract_json
-        product_details = response.data['product_details']
+        product_details = response.data["product_details"]
         # May be None or reconstructed from hub_contract_json
         if product_details:
             # If reconstructed, should have at least name or productID
-            self.assertTrue(product_details.get('productID') or product_details.get('name'))
+            self.assertTrue(product_details.get("productID") or product_details.get("name"))
 
     def test_get_product_details_not_odps_contract(self):
         """Test getting product details from non-ODPS contract (should fail)"""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/{self.odcs_contract.id}/product-details/',
-            format='json'
+            f"/api/v1/contracts/{self.odcs_contract.id}/product-details/", format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
-        self.assertIn('not an ODPS contract', response.data['error'])
+        self.assertIn("error", response.data)
+        self.assertIn("not an ODPS contract", response.data["error"])
 
     def test_get_product_details_invalid_language_code(self):
         """Test getting product details with invalid language code"""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
-            {'lang': 'invalid'},
-            format='json'
+            f"/api/v1/contracts/{self.odps_contract.id}/product-details/",
+            {"lang": "invalid"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
-        self.assertIn('language code', response.data['error'].lower())
+        self.assertIn("error", response.data)
+        self.assertIn("language code", response.data["error"].lower())
 
     def test_get_product_details_language_code_too_long(self):
         """Test getting product details with language code that is too long"""
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(
-            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
-            {'lang': 'eng'},
-            format='json'
+            f"/api/v1/contracts/{self.odps_contract.id}/product-details/",
+            {"lang": "eng"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
-        self.assertIn('language code', response.data['error'].lower())
+        self.assertIn("error", response.data)
+        self.assertIn("language code", response.data["error"].lower())
 
     def test_get_product_details_contract_not_found(self):
         """Test getting product details from non-existent contract"""
         self.client.force_authenticate(user=self.user)
 
         import uuid
+
         non_existent_id = uuid.uuid4()
 
         response = self.client.get(
-            f'/api/v1/contracts/{non_existent_id}/product-details/',
-            format='json'
+            f"/api/v1/contracts/{non_existent_id}/product-details/", format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -204,8 +189,7 @@ class ContractProductDetailsViewTest(TestCase):
     def test_get_product_details_unauthenticated(self):
         """Test getting product details without authentication"""
         response = self.client.get(
-            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
-            format='json'
+            f"/api/v1/contracts/{self.odps_contract.id}/product-details/", format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -231,23 +215,22 @@ class ContractProductDetailsViewTest(TestCase):
                 "info": {
                     "name": "Reconstructed Product",
                     "description": "Reconstructed from hub contract",
-                    "version": "2.0.0"
-                }
-            }
+                    "version": "2.0.0",
+                },
+            },
         )
 
         response = self.client.get(
-            f'/api/v1/contracts/{contract_no_original.id}/product-details/',
-            format='json'
+            f"/api/v1/contracts/{contract_no_original.id}/product-details/", format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('product_details', response.data)
-        product_details = response.data['product_details']
+        self.assertIn("product_details", response.data)
+        product_details = response.data["product_details"]
         # Should be reconstructed from hub_contract_json
         if product_details:
-            self.assertEqual(product_details.get('productID'), 'reconstructed-product')
-            self.assertEqual(product_details.get('name'), 'Reconstructed Product')
+            self.assertEqual(product_details.get("productID"), "reconstructed-product")
+            self.assertEqual(product_details.get("name"), "Reconstructed Product")
 
     def test_get_product_details_case_insensitive_language(self):
         """Test that language code is case-insensitive (converted to lowercase)"""
@@ -255,12 +238,11 @@ class ContractProductDetailsViewTest(TestCase):
 
         # Test with uppercase language code
         response = self.client.get(
-            f'/api/v1/contracts/{self.odps_contract.id}/product-details/',
-            {'lang': 'EN'},
-            format='json'
+            f"/api/v1/contracts/{self.odps_contract.id}/product-details/",
+            {"lang": "EN"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Should work (converted to lowercase internally)
-        self.assertIn('product_details', response.data)
-
+        self.assertIn("product_details", response.data)

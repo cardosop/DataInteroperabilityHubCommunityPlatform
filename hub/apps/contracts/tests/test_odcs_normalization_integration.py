@@ -8,20 +8,23 @@ with comprehensive coverage including:
 - Baseline comparison (no regression)
 - Technical normalization correctness
 """
+
 import json
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from unittest import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import (
-    get_normalizer,
     NormalizationResult,
+    get_normalizer,
 )
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import ODCSNormalizerV3_0_0_Preview
 from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import (
+    ODCSNormalizerV3_0_0_Preview,
+)
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
 
 
 class ODCSNormalizationIntegrationTestBase(TestCase):
@@ -39,40 +42,24 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
             "description": "Comprehensive baseline contract for integration testing",
             "info": {
                 "owners": [
-                    {
-                        "name": "Data Engineering Team",
-                        "email": "data-eng@example.com"
-                    },
-                    {
-                        "name": "Product Team",
-                        "email": "product@example.com"
-                    }
+                    {"name": "Data Engineering Team", "email": "data-eng@example.com"},
+                    {"name": "Product Team", "email": "product@example.com"},
                 ],
                 "tags": ["integration", "test", "baseline", "technical"],
                 "domain": "analytics",
-                "tenant": "test-tenant"
+                "tenant": "test-tenant",
             },
             "support": [
-                {
-                    "name": "Support Team",
-                    "email": "support@example.com"
-                },
-                {
-                    "type": "slack",
-                    "url": "https://slack.example.com/channels/support"
-                }
+                {"name": "Support Team", "email": "support@example.com"},
+                {"type": "slack", "url": "https://slack.example.com/channels/support"},
             ],
             "servers": [
                 {
                     "type": "postgres",
                     "url": "postgresql://localhost:5432/testdb",
-                    "description": "Test database server"
+                    "description": "Test database server",
                 },
-                {
-                    "type": "s3",
-                    "url": "s3://bucket/path",
-                    "description": "S3 storage"
-                }
+                {"type": "s3", "url": "s3://bucket/path", "description": "S3 storage"},
             ],
             "schema": {
                 "fields": [
@@ -81,75 +68,50 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
                         "type": "string",
                         "nullable": False,
                         "description": "Unique identifier",
-                        "constraints": {
-                            "unique": True
-                        }
+                        "constraints": {"unique": True},
                     },
                     {
                         "name": "name",
                         "type": "string",
                         "nullable": True,
                         "description": "Name field",
-                        "constraints": {
-                            "minLength": 1,
-                            "maxLength": 100
-                        }
+                        "constraints": {"minLength": 1, "maxLength": 100},
                     },
                     {
                         "name": "value",
                         "type": "number",
                         "nullable": True,
                         "description": "Numeric value",
-                        "constraints": {
-                            "minimum": 0,
-                            "maximum": 1000
-                        }
+                        "constraints": {"minimum": 0, "maximum": 1000},
                     },
                     {
                         "name": "timestamp",
                         "type": "datetime",
                         "nullable": False,
-                        "description": "Timestamp field"
-                    }
+                        "description": "Timestamp field",
+                    },
                 ]
             },
             "quality": {
                 "default_profile_key": "test_profile",
                 "rules": [
-                    {
-                        "type": "completeness",
-                        "field": "id",
-                        "threshold": 1.0
-                    },
-                    {
-                        "type": "validity",
-                        "field": "value",
-                        "threshold": 0.95
-                    }
-                ]
+                    {"type": "completeness", "field": "id", "threshold": 1.0},
+                    {"type": "validity", "field": "value", "threshold": 0.95},
+                ],
             },
             "privacy_compliance": {
                 "contains_personal_data": False,
                 "personal_data_categories": [],
                 "jurisdictions": ["US"],
-                "legal_bases": ["legitimate_interest"]
+                "legal_bases": ["legitimate_interest"],
             },
-            "lifecycle": {
-                "data_source": "database",
-                "refresh_cadence": "daily"
-            },
+            "lifecycle": {"data_source": "database", "refresh_cadence": "daily"},
             "marketplace": {
                 "license_summary": "MIT",
                 "intended_use": ["analytics", "reporting"],
-                "restricted_use": ["commercial"]
+                "restricted_use": ["commercial"],
             },
-            "slaProperties": [
-                {
-                    "name": "availability",
-                    "target": 0.99,
-                    "unit": "percentage"
-                }
-            ]
+            "slaProperties": [{"name": "availability", "target": 0.99, "unit": "percentage"}],
         }
 
         # Store baseline normalization result for comparison
@@ -159,13 +121,13 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
         """Create a versioned contract from the baseline."""
         contract = self.baseline_contract_3_0_2.copy()
         contract["apiVersion"] = f"odcs.io/v{version}"
-        contract["id"] = f"integration-test-{version.replace('.', '-').replace('-preview', '-preview')}"
+        contract["id"] = (
+            f"integration-test-{version.replace('.', '-').replace('-preview', '-preview')}"
+        )
         return contract
 
     def _normalize_with_version_specific_normalizer(
-        self,
-        contract_data: Dict[str, Any],
-        version: str
+        self, contract_data: Dict[str, Any], version: str
     ) -> NormalizationResult:
         """Normalize using version-specific normalizer."""
         normalizers = {
@@ -181,9 +143,7 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
         return normalizer.normalize(contract_data, spec_version=version)
 
     def _normalize_via_registry(
-        self,
-        contract_data: Dict[str, Any],
-        version: str
+        self, contract_data: Dict[str, Any], version: str
     ) -> NormalizationResult:
         """Normalize using the normalizer registry."""
         normalizer = get_normalizer(OriginalSpecType.ODCS, version, contract_data)
@@ -208,41 +168,58 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
         assert "fields" in schema, f"HubContract.schema missing 'fields' for version {version}"
 
         # Normalization metadata
-        assert "normalization" in hub_contract, f"HubContract missing 'normalization' metadata for version {version}"
+        assert (
+            "normalization" in hub_contract
+        ), f"HubContract missing 'normalization' metadata for version {version}"
         normalization = hub_contract["normalization"]
-        assert "original_spec_type" in normalization, f"HubContract.normalization missing 'original_spec_type' for version {version}"
-        assert "original_spec_version" in normalization, f"HubContract.normalization missing 'original_spec_version' for version {version}"
-        assert normalization["original_spec_type"] == OriginalSpecType.ODCS, f"HubContract.normalization.original_spec_type should be ODCS for version {version}"
+        assert (
+            "original_spec_type" in normalization
+        ), f"HubContract.normalization missing 'original_spec_type' for version {version}"
+        assert (
+            "original_spec_version" in normalization
+        ), f"HubContract.normalization missing 'original_spec_version' for version {version}"
+        assert (
+            normalization["original_spec_type"] == OriginalSpecType.ODCS
+        ), f"HubContract.normalization.original_spec_type should be ODCS for version {version}"
 
     def _assert_normalization_result_valid(
-        self,
-        result: NormalizationResult,
-        version: str,
-        expect_success: bool = True
+        self, result: NormalizationResult, version: str, expect_success: bool = True
     ):
         """Assert that normalization result is valid."""
         assert result is not None, f"NormalizationResult is None for version {version}"
-        assert result.spec_type == OriginalSpecType.ODCS, f"NormalizationResult.spec_type should be ODCS for version {version}"
-        assert result.spec_version == version, f"NormalizationResult.spec_version should be {version}, got {result.spec_version}"
-        assert isinstance(result.errors, list), f"NormalizationResult.errors should be a list for version {version}"
-        assert isinstance(result.warnings, list), f"NormalizationResult.warnings should be a list for version {version}"
+        assert (
+            result.spec_type == OriginalSpecType.ODCS
+        ), f"NormalizationResult.spec_type should be ODCS for version {version}"
+        assert (
+            result.spec_version == version
+        ), f"NormalizationResult.spec_version should be {version}, got {result.spec_version}"
+        assert isinstance(
+            result.errors, list
+        ), f"NormalizationResult.errors should be a list for version {version}"
+        assert isinstance(
+            result.warnings, list
+        ), f"NormalizationResult.warnings should be a list for version {version}"
 
         if expect_success:
             assert result.status in [
                 NormalizationStatus.NORMALIZED_OK,
-                NormalizationStatus.NORMALIZED_WITH_WARNINGS
+                NormalizationStatus.NORMALIZED_WITH_WARNINGS,
             ], f"Normalization should succeed for version {version}, got status {result.status}. Errors: {result.errors if result.errors else 'None'}"
-            assert result.hub_contract is not None, f"HubContract should not be None for version {version}"
+            assert (
+                result.hub_contract is not None
+            ), f"HubContract should not be None for version {version}"
             self._assert_hub_contract_structure(result.hub_contract, version)
         else:
-            assert result.status == NormalizationStatus.NORMALIZATION_FAILED, f"Normalization should fail for version {version}"
+            assert (
+                result.status == NormalizationStatus.NORMALIZATION_FAILED
+            ), f"Normalization should fail for version {version}"
 
     def _compare_with_baseline(
         self,
         result: NormalizationResult,
         baseline: NormalizationResult,
         version: str,
-        allow_version_differences: bool = True
+        allow_version_differences: bool = True,
     ):
         """Compare normalization result with baseline."""
         # Both should have hub_contract
@@ -269,8 +246,9 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
 
             # Version should match
             if "version" in baseline_info and "version" in result_info:
-                assert baseline_info["version"] == result_info["version"], \
-                    f"Version mismatch: baseline={baseline_info['version']}, result={result_info['version']} for version {version}"
+                assert (
+                    baseline_info["version"] == result_info["version"]
+                ), f"Version mismatch: baseline={baseline_info['version']}, result={result_info['version']} for version {version}"
 
         # Schema structure should be similar
         if "schema" in baseline_hc and "schema" in result_hc:
@@ -284,7 +262,9 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
                 # Field count may differ due to version-specific schema differences
                 # But structure should be similar
                 assert isinstance(baseline_fields, list), "Baseline fields should be a list"
-                assert isinstance(result_fields, list), f"Result fields should be a list for version {version}"
+                assert isinstance(
+                    result_fields, list
+                ), f"Result fields should be a list for version {version}"
 
         # Normalization metadata should be consistent
         if "normalization" in baseline_hc and "normalization" in result_hc:
@@ -293,13 +273,15 @@ class ODCSNormalizationIntegrationTestBase(TestCase):
 
             # Original spec type should match
             if "original_spec_type" in baseline_norm and "original_spec_type" in result_norm:
-                assert baseline_norm["original_spec_type"] == result_norm["original_spec_type"], \
-                    f"Original spec type mismatch for version {version}"
+                assert (
+                    baseline_norm["original_spec_type"] == result_norm["original_spec_type"]
+                ), f"Original spec type mismatch for version {version}"
 
             # Original spec version should match the version being tested
             if "original_spec_version" in result_norm:
-                assert result_norm["original_spec_version"] == version, \
-                    f"Original spec version should be {version}, got {result_norm['original_spec_version']}"
+                assert (
+                    result_norm["original_spec_version"] == version
+                ), f"Original spec version should be {version}, got {result_norm['original_spec_version']}"
 
 
 class ODCSNormalizationAllVersionsTest(ODCSNormalizationIntegrationTestBase):
@@ -352,13 +334,8 @@ class ODCSNormalizationAllVersionsTest(ODCSNormalizationIntegrationTestBase):
             "version": "1.0.0",
             "description": "ODCS 2.2.2 contract for integration testing",
             "info": {
-                "owners": [
-                    {
-                        "name": "Data Engineering Team",
-                        "email": "data-eng@example.com"
-                    }
-                ],
-                "tags": ["integration", "test"]
+                "owners": [{"name": "Data Engineering Team", "email": "data-eng@example.com"}],
+                "tags": ["integration", "test"],
             },
             "schema": {
                 "fields": [
@@ -366,25 +343,17 @@ class ODCSNormalizationAllVersionsTest(ODCSNormalizationIntegrationTestBase):
                         "name": "id",
                         "type": "string",
                         "nullable": False,
-                        "description": "Unique identifier"
+                        "description": "Unique identifier",
                     },
                     {
                         "name": "name",
                         "type": "string",
                         "nullable": True,
-                        "description": "Name field"
-                    }
+                        "description": "Name field",
+                    },
                 ]
             },
-            "quality": {
-                "rules": [
-                    {
-                        "type": "completeness",
-                        "field": "id",
-                        "threshold": 1.0
-                    }
-                ]
-            }
+            "quality": {"rules": [{"type": "completeness", "field": "id", "threshold": 1.0}]},
         }
         result = self._normalize_with_version_specific_normalizer(contract_data, "2.2.2")
 
@@ -405,15 +374,7 @@ class ODCSNormalizationAllVersionsTest(ODCSNormalizationIntegrationTestBase):
                     "id": f"integration-test-{version.replace('.', '-')}",
                     "name": f"Integration Test {version} Contract",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {
-                                "name": "id",
-                                "type": "string",
-                                "nullable": False
-                            }
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
             else:
                 contract_data = self._create_versioned_contract(version)
@@ -433,23 +394,16 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
             "id": "test-missing-name",
             # Missing 'name' field
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
 
         # Should have errors for missing required field
         assert len(result.errors) > 0, "Should have errors for missing 'name' field"
-        assert any("name" in error.lower() for error in result.errors), \
-            "Error should mention 'name' field"
+        assert any(
+            "name" in error.lower() for error in result.errors
+        ), "Error should mention 'name' field"
         # But should still return a hub_contract (for debugging)
         assert result.hub_contract is not None, "Should return hub_contract even with errors"
 
@@ -460,7 +414,7 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
             "kind": "DataContract",
             "id": "test-missing-schema",
             "name": "Test Missing Schema",
-            "version": "1.0.0"
+            "version": "1.0.0",
             # Missing 'schema' field
         }
 
@@ -468,10 +422,11 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
 
         # Should have errors for missing required field
         assert len(result.errors) > 0, "Should have errors for missing 'schema' field"
-        assert any("schema" in error.lower() or "fields" in error.lower() for error in result.errors), \
-            "Error should mention 'schema' or 'fields'"
-        # But should still return a hub_contract (for debugging)
-        assert result.hub_contract is not None, "Should return hub_contract even with errors"
+        assert any(
+            "schema" in error.lower() or "fields" in error.lower() for error in result.errors
+        ), "Error should mention 'schema' or 'fields'"
+        # When schema is missing, normalization fails; hub_contract may be None
+        assert result.status == NormalizationStatus.NORMALIZATION_FAILED
 
     def test_normalize_with_missing_optional_fields(self):
         """Test that normalization handles missing optional fields gracefully."""
@@ -481,15 +436,7 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
             "id": "test-missing-optional",
             "name": "Test Missing Optional Fields",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
             # Missing optional fields: info, quality, lifecycle, marketplace, etc.
         }
 
@@ -498,7 +445,7 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
         # Should succeed (optional fields are optional)
         assert result.status in [
             NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         ], "Should succeed with missing optional fields"
         assert result.hub_contract is not None, "Should return hub_contract"
         # Should have warnings for missing optional fields (if any)
@@ -516,15 +463,7 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
                 # Missing 'owners'
                 "tags": ["test"]
             },
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
@@ -532,7 +471,7 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
         # Should succeed (owners is optional)
         assert result.status in [
             NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         ], "Should succeed with missing 'info.owners'"
         assert result.hub_contract is not None, "Should return hub_contract"
 
@@ -544,19 +483,11 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
             "id": "test-missing-quality-rules",
             "name": "Test Missing Quality Rules",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            },
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
             "quality": {
                 "default_profile_key": "test_profile"
                 # Missing 'rules'
-            }
+            },
         }
 
         result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
@@ -564,7 +495,7 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
         # Should succeed (rules is optional)
         assert result.status in [
             NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
         ], "Should succeed with missing 'quality.rules'"
         assert result.hub_contract is not None, "Should return hub_contract"
         assert "quality" in result.hub_contract, "Should have 'quality' section"
@@ -580,15 +511,7 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
                 "id": f"test-missing-{version.replace('.', '-')}",
                 "name": f"Test Missing Fields {version}",
                 "version": "1.0.0",
-                "schema": {
-                    "fields": [
-                        {
-                            "name": "id",
-                            "type": "string",
-                            "nullable": False
-                        }
-                    ]
-                }
+                "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 # Missing optional fields
             }
 
@@ -597,9 +520,11 @@ class ODCSNormalizationGracefulDegradationTest(ODCSNormalizationIntegrationTestB
             # Should succeed (only required fields present)
             assert result.status in [
                 NormalizationStatus.NORMALIZED_OK,
-                NormalizationStatus.NORMALIZED_WITH_WARNINGS
+                NormalizationStatus.NORMALIZED_WITH_WARNINGS,
             ], f"Should succeed for version {version} with missing optional fields"
-            assert result.hub_contract is not None, f"Should return hub_contract for version {version}"
+            assert (
+                result.hub_contract is not None
+            ), f"Should return hub_contract for version {version}"
 
 
 class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBase):
@@ -611,8 +536,7 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
         # Normalize baseline contract
         baseline_contract = self.baseline_contract_3_0_2
         self.baseline_result = self._normalize_with_version_specific_normalizer(
-            baseline_contract,
-            "3.0.2"
+            baseline_contract, "3.0.2"
         )
         self._assert_normalization_result_valid(self.baseline_result, "3.0.2", expect_success=True)
 
@@ -631,7 +555,9 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
 
         self._assert_normalization_result_valid(result, "3.0.1", expect_success=True)
         # Compare structure (not exact match, as versions may differ)
-        self._compare_with_baseline(result, self.baseline_result, "3.0.1", allow_version_differences=True)
+        self._compare_with_baseline(
+            result, self.baseline_result, "3.0.1", allow_version_differences=True
+        )
 
     def test_3_0_0_compared_to_baseline(self):
         """Test that ODCS 3.0.0 normalization is consistent with baseline structure."""
@@ -640,7 +566,9 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
 
         self._assert_normalization_result_valid(result, "3.0.0", expect_success=True)
         # Compare structure (not exact match, as versions may differ)
-        self._compare_with_baseline(result, self.baseline_result, "3.0.0", allow_version_differences=True)
+        self._compare_with_baseline(
+            result, self.baseline_result, "3.0.0", allow_version_differences=True
+        )
 
     def test_3_0_0_preview_compared_to_baseline(self):
         """Test that ODCS 3.0.0-preview normalization is consistent with baseline structure."""
@@ -649,7 +577,9 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
 
         self._assert_normalization_result_valid(result, "3.0.0-preview", expect_success=True)
         # Compare structure (not exact match, as versions may differ)
-        self._compare_with_baseline(result, self.baseline_result, "3.0.0-preview", allow_version_differences=True)
+        self._compare_with_baseline(
+            result, self.baseline_result, "3.0.0-preview", allow_version_differences=True
+        )
 
     def test_2_2_2_compared_to_baseline(self):
         """Test that ODCS 2.2.2 normalization is consistent with baseline structure."""
@@ -662,13 +592,8 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
             "version": "1.0.0",
             "description": "Comprehensive baseline contract for integration testing",
             "info": {
-                "owners": [
-                    {
-                        "name": "Data Engineering Team",
-                        "email": "data-eng@example.com"
-                    }
-                ],
-                "tags": ["integration", "test", "baseline", "technical"]
+                "owners": [{"name": "Data Engineering Team", "email": "data-eng@example.com"}],
+                "tags": ["integration", "test", "baseline", "technical"],
             },
             "schema": {
                 "fields": [
@@ -676,31 +601,25 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
                         "name": "id",
                         "type": "string",
                         "nullable": False,
-                        "description": "Unique identifier"
+                        "description": "Unique identifier",
                     },
                     {
                         "name": "name",
                         "type": "string",
                         "nullable": True,
-                        "description": "Name field"
-                    }
+                        "description": "Name field",
+                    },
                 ]
             },
-            "quality": {
-                "rules": [
-                    {
-                        "type": "completeness",
-                        "field": "id",
-                        "threshold": 1.0
-                    }
-                ]
-            }
+            "quality": {"rules": [{"type": "completeness", "field": "id", "threshold": 1.0}]},
         }
         result = self._normalize_with_version_specific_normalizer(contract_data, "2.2.2")
 
         self._assert_normalization_result_valid(result, "2.2.2", expect_success=True)
         # Compare structure (not exact match, as 2.2.2 may have different features)
-        self._compare_with_baseline(result, self.baseline_result, "2.2.2", allow_version_differences=True)
+        self._compare_with_baseline(
+            result, self.baseline_result, "2.2.2", allow_version_differences=True
+        )
 
     def test_all_versions_consistent_structure(self):
         """Test that all versions produce consistent HubContract structure."""
@@ -716,15 +635,7 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
                     "id": f"integration-test-{version.replace('.', '-')}",
                     "name": "Integration Test Baseline Contract",
                     "version": "1.0.0",
-                    "schema": {
-                        "fields": [
-                            {
-                                "name": "id",
-                                "type": "string",
-                                "nullable": False
-                            }
-                        ]
-                    }
+                    "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
                 }
             else:
                 contract_data = self._create_versioned_contract(version)
@@ -735,16 +646,22 @@ class ODCSNormalizationBaselineComparisonTest(ODCSNormalizationIntegrationTestBa
 
         # All results should have consistent structure
         for version, result in results.items():
-            assert result.hub_contract is not None, f"HubContract should not be None for version {version}"
+            assert (
+                result.hub_contract is not None
+            ), f"HubContract should not be None for version {version}"
             self._assert_hub_contract_structure(result.hub_contract, version)
 
             # All should have same normalization metadata structure
-            assert "normalization" in result.hub_contract, f"Missing normalization metadata for version {version}"
+            assert (
+                "normalization" in result.hub_contract
+            ), f"Missing normalization metadata for version {version}"
             normalization = result.hub_contract["normalization"]
-            assert normalization["original_spec_type"] == OriginalSpecType.ODCS, \
-                f"Original spec type should be ODCS for version {version}"
-            assert normalization["original_spec_version"] == version, \
-                f"Original spec version should be {version} for version {version}"
+            assert (
+                normalization["original_spec_type"] == OriginalSpecType.ODCS
+            ), f"Original spec type should be ODCS for version {version}"
+            assert (
+                normalization["original_spec_version"] == version
+            ), f"Original spec version should be {version} for version {version}"
 
 
 class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTestBase):
@@ -765,18 +682,16 @@ class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTest
                         "type": "string",
                         "nullable": False,
                         "description": "Unique identifier",
-                        "constraints": {
-                            "unique": True
-                        }
+                        "constraints": {"unique": True},
                     },
                     {
                         "name": "value",
                         "type": "number",
                         "nullable": True,
-                        "description": "Numeric value"
-                    }
+                        "description": "Numeric value",
+                    },
                 ]
-            }
+            },
         }
 
         result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
@@ -800,23 +715,10 @@ class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTest
             "name": "Test Info Section",
             "version": "1.0.0",
             "info": {
-                "owners": [
-                    {
-                        "name": "Data Team",
-                        "email": "data@example.com"
-                    }
-                ],
-                "tags": ["test", "integration"]
+                "owners": [{"name": "Data Team", "email": "data@example.com"}],
+                "tags": ["test", "integration"],
             },
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
@@ -842,25 +744,11 @@ class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTest
             "id": "test-quality-section",
             "name": "Test Quality Section",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            },
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
             "quality": {
                 "default_profile_key": "test_profile",
-                "rules": [
-                    {
-                        "type": "completeness",
-                        "field": "id",
-                        "threshold": 1.0
-                    }
-                ]
-            }
+                "rules": [{"type": "completeness", "field": "id", "threshold": 1.0}],
+            },
         }
 
         result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
@@ -880,19 +768,8 @@ class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTest
             "id": "test-lifecycle-section",
             "name": "Test Lifecycle Section",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            },
-            "lifecycle": {
-                "data_source": "database",
-                "refresh_cadence": "daily"
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
+            "lifecycle": {"data_source": "database", "refresh_cadence": "daily"},
         }
 
         result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
@@ -914,15 +791,7 @@ class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTest
             "id": "test-normalization-metadata",
             "name": "Test Normalization Metadata",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
@@ -932,10 +801,112 @@ class ODCSNormalizationTechnicalCorrectnessTest(ODCSNormalizationIntegrationTest
         assert "normalization" in result.hub_contract, "Should have 'normalization' metadata"
         normalization = result.hub_contract["normalization"]
         assert "original_spec_type" in normalization, "Should have 'original_spec_type'"
-        assert normalization["original_spec_type"] == OriginalSpecType.ODCS, \
-            "Original spec type should be ODCS"
+        assert (
+            normalization["original_spec_type"] == OriginalSpecType.ODCS
+        ), "Original spec type should be ODCS"
         assert "original_spec_version" in normalization, "Should have 'original_spec_version'"
-        assert normalization["original_spec_version"] == "3.0.2", \
-            "Original spec version should be 3.0.2"
+        assert (
+            normalization["original_spec_version"] == "3.0.2"
+        ), "Original spec version should be 3.0.2"
         assert "coverage" in normalization, "Should have 'coverage' in normalization"
 
+    def test_integration_handles_unicode_characters(self):
+        """Test that integration handles unicode characters correctly."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-unicode",
+            "name": "测试合同",
+            "version": "1.0.0",
+            "description": "测试描述",
+            "schema": {"fields": [{"name": "字段名称", "type": "string"}]},
+        }
+
+        result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
+        self._assert_normalization_result_valid(result, "3.0.2", expect_success=True)
+
+        # Should handle unicode characters
+        assert result.hub_contract is not None
+        if result.hub_contract and "info" in result.hub_contract:
+            assert result.hub_contract["info"] is not None
+
+    def test_integration_handles_special_characters(self):
+        """Test that integration handles special characters correctly."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-special",
+            "name": "Test & Co. (Special)",
+            "version": "1.0.0",
+            "description": "Test <description> & more",
+            "schema": {"fields": [{"name": "field-name", "type": "string"}]},
+        }
+
+        result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
+        self._assert_normalization_result_valid(result, "3.0.2", expect_success=True)
+
+        # Should handle special characters
+        assert result.hub_contract is not None
+        if result.hub_contract and "info" in result.hub_contract:
+            assert result.hub_contract["info"] is not None
+
+    def test_integration_handles_very_large_documents(self):
+        """Test that integration handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-large",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": large_description,
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
+
+        # Should handle very large documents
+        assert result.hub_contract is not None
+
+    def test_integration_handles_none_values(self):
+        """Test that integration handles None values correctly."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-none",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": None,  # None value
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
+
+        # Should handle None values gracefully
+        assert result.hub_contract is not None
+
+    def test_integration_handles_nested_structures(self):
+        """Test that integration handles nested structures correctly."""
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-nested",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                ]
+            },
+        }
+
+        result = self._normalize_with_version_specific_normalizer(contract_data, "3.0.2")
+
+        # Should handle nested structures
+        assert result.hub_contract is not None
+        if result.hub_contract and "schema" in result.hub_contract:
+            assert result.hub_contract["schema"] is not None

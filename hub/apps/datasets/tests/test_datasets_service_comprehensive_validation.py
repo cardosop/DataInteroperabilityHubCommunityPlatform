@@ -1255,3 +1255,94 @@ class TestDatasetsODPSIntegration(TransactionTestCase):
         self.assertEqual(
             self.asset.contracts.filter(original_spec_type=OriginalSpecType.ODPS).count(), 1
         )
+
+    # ========== EDGE CASES ==========
+
+    def test_comprehensive_validation_edge_case_empty_dataset(self):
+        """Test comprehensive validation with empty dataset (edge case)"""
+        # Use a distinct asset with unique key so (tenant, asset, version=1) is unique and we avoid
+        # unique_dataset_version_per_asset / unique_asset_key_per_tenant collisions (e.g. with --reuse-db).
+        unique_key = f"edge-empty-{uuid.uuid4().hex}"
+        edge_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=unique_key,
+            name="Edge Empty Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+        empty_dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=edge_asset,
+            file=self.file,
+            schema_json={},
+            format="CSV",
+            version=1,
+            created_by=self.user,
+        )
+
+        # Should handle empty dataset gracefully
+        self.assertIsNotNone(empty_dataset)
+        self.assertEqual(empty_dataset.schema_json, {})
+
+    def test_comprehensive_validation_edge_case_large_dataset(self):
+        """Test comprehensive validation with large dataset (edge case)"""
+        # Use a distinct asset with unique key so (tenant, asset, version=1) is unique and we avoid
+        # unique_dataset_version_per_asset / unique_asset_key_per_tenant collisions (e.g. with --reuse-db).
+        unique_key = f"edge-large-{uuid.uuid4().hex}"
+        edge_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=unique_key,
+            name="Edge Large Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+        large_schema = {"fields": [{"name": f"col{i}", "data_type": "string"} for i in range(1000)]}
+
+        large_dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=edge_asset,
+            file=self.file,
+            schema_json=large_schema,
+            format="CSV",
+            version=1,
+            created_by=self.user,
+        )
+
+        # Should handle large dataset gracefully
+        self.assertIsNotNone(large_dataset)
+        self.assertEqual(len(large_dataset.schema_json.get("fields", [])), 1000)
+
+    def test_comprehensive_validation_edge_case_multiple_versions(self):
+        """Test comprehensive validation with multiple versions (edge case)"""
+        # setUp already created version 1 (self.dataset_v1). Create versions 2–5 with parent chain.
+        # Use a dedicated asset so (tenant, asset, version) is unique and we avoid collisions with
+        # any existing datasets for self.asset from other tests or --reuse-db state.
+        multi_asset = Asset.objects.create(
+            tenant=self.tenant,
+            key=f"edge-multi-version-{uuid.uuid4().hex}",
+            name="Edge Multi Version Asset",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+        dataset_service = DatasetService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        parent = dataset_service.create_dataset(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            file_id=str(self.file.id),
+            asset_id=str(multi_asset.id),
+        )
+        for version_number in (2, 3, 4, 5):
+            parent = Dataset.objects.create(
+                tenant=self.tenant,
+                asset=multi_asset,
+                file=self.file,
+                schema_json={"fields": []},
+                format="CSV",
+                version=version_number,
+                parent_version=parent,
+                created_by=self.user,
+            )
+
+        # Should handle multiple versions gracefully
+        versions = Dataset.objects.filter(tenant=self.tenant, asset=multi_asset)
+        self.assertEqual(versions.count(), 5)

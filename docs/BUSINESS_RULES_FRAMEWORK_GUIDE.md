@@ -10,10 +10,11 @@
 2. [Architecture](#architecture)
 3. [Framework Features](#framework-features)
 4. [Business Rules Classes](#business-rules-classes)
-5. [Getting Started](#getting-started)
-6. [Advanced Usage](#advanced-usage)
-7. [Best Practices](#best-practices)
-8. [Troubleshooting](#troubleshooting)
+5. [REST API alignment](#rest-api-alignment)
+6. [Getting Started](#getting-started)
+7. [Advanced Usage](#advanced-usage)
+8. [Best Practices](#best-practices)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -669,6 +670,100 @@ The framework includes **23 business rules classes** across all services:
 - Tenant context validation
 - Access permissions validation
 
+#### 27. `MarketplaceIntegrationBusinessRules`
+**Location**: `hub/apps/integrations/business_rules.py`
+**Rule Name**: `marketplace_integration_validation`
+**Tags**: `["integrations", "marketplace", "validation"]`
+
+**Purpose**: Validates marketplace connection, sync, and mapping operations
+
+**Validation Capabilities**:
+- Connection name and config validation
+- Sync job validation
+- Mapping validation
+- Tenant context validation
+
+#### 28. `SocialBusinessRules`
+**Location**: `hub/apps/social/business_rules.py`
+**Rule Name**: `social_rating_validation`
+**Tags**: `["social", "rating", "validation"]`
+
+**Purpose**: Validates social operations (e.g. ratings)
+
+**Validation Capabilities**:
+- Rating: asset ACTIVE and in tenant, user in tenant, rating 1–5
+- Tenant context validation
+
+---
+
+## REST API alignment
+
+All REST create/update/delete operations for the apps below go through a **service layer** that invokes the same business rules as workflows. Validation failures return **400** (or the appropriate HTTP error) with `error`, `code` (e.g. `BUSINESS_RULES_VALIDATION`), and `details`; no mutation occurs. This ensures a single source of truth for domain rules and consistent behaviour whether the caller uses REST or workflows.
+
+### Per-app alignment table
+
+| App | REST entry points | Business rule class | Rule methods / validation type | Layer |
+|-----|-------------------|---------------------|--------------------------------|-------|
+| **Assets** | `POST/PATCH/DELETE /api/v1/assets/` | `AssetsBusinessRules` | `validate(asset=..., validation_type=...)` | Asset views → service (create/update/delete) |
+| **Contracts** | `POST/PATCH/DELETE /api/v1/contracts/` | `ContractsBusinessRules` | `validate(contract=..., validation_type=...)` | ContractViewSet → ContractService |
+| **Datasets** | `POST/PATCH/DELETE /api/v1/datasets/` | `DatasetsBusinessRules` | `validate(dataset=..., validation_type=...)` | DatasetViewSet → DatasetService |
+| **Marketplace** | `POST/PATCH/DELETE /api/v1/marketplace/listings/`, `orders/`, `entitlements/` | `MarketplaceBusinessRules` | Listing/order/entitlement validation | Marketplace views → MarketplaceService |
+| **Files** | `POST/PATCH/DELETE /api/v1/files/` | `FilesBusinessRules` | `validate(file=..., validation_type=...)` | FileViewSet → FileService |
+| **Governance** | `POST /api/v1/governance/access-requests/`, `.../{id}/approve/`, `.../{id}/reject/` | `GovernanceBusinessRules` | `validate(access_request=...)`, approval/rejection | Access_request_views → GovernanceService |
+| **Compliance** | `POST /api/v1/compliance/runs/` | `ComplianceBusinessRules` | `validate(compliance_run=..., validation_type=compliance_run)` | ComplianceRunViewSet create → ComplianceService |
+| **DQ** | `POST /api/v1/dq/runs/` | `DQBusinessRules` | `validate(dq_run=..., validation_type=dq_run)` | DQRunViewSet create → DQService |
+| **Mesh** | `POST/PATCH/DELETE /api/v1/mesh/domains/` | `DataMeshBusinessRules` | `validate(domain=..., validation_type=structure)` | DomainViewSet → DataMeshService |
+| **Virtualization** | `POST/PATCH /api/v1/virtualization/datasets/` | `VirtualizationBusinessRules` | `validate(virtual_dataset=..., validation_type=all)` | VirtualDatasetViewSet → VirtualizationService |
+| **Scheduled ingestion** | `POST/PATCH/DELETE /api/v1/scheduled-ingestions/` | `ScheduledIngestionBusinessRules` | `validate(schedule=..., validation_type=schedule)` | ScheduledIngestionViewSet create → IngestionService |
+| **Integrations** | `POST/PATCH/DELETE /api/v1/integrations/marketplace/connections/` | `MarketplaceIntegrationBusinessRules` | `validate(connection=..., validation_type=connection)` | MarketplaceConnectionViewSet → MarketplaceIntegrationService |
+| **Social** | `POST /api/v1/ratings/` (and reviews/comments/communities as implemented) | `SocialBusinessRules` | `validate(asset=..., user=..., tenant=..., rating_value=..., validation_type=rating)` | RatingViewSet create → SocialService |
+
+### Error response contract
+
+When a business rule rejects a request, the API returns **400 Bad Request** with a JSON body:
+
+- **`error`**: Human-readable message (e.g. from `ValidationError.message`).
+- **`code`**: Machine-readable code (e.g. `BUSINESS_RULES_VALIDATION`, `VALIDATION_ERROR`).
+- **`details`**: Optional dict with rule-specific context (e.g. `validation_type`, field-level details).
+
+Views catch `ServiceValidationError` (or the service base `ValidationError`) and return this shape; they do not re-raise as DRF `ValidationError` without the `code` field.
+
+### Tests
+
+Integration tests that assert REST → business rules alignment (no mocks) live in:
+
+- **`tests.integration.test_rest_business_rules_alignment`**
+
+Run the Phase 18.7 alignment tests (see `openspec/changes/workflows1/tasks.md`):
+
+```bash
+./scripts/run_phase18_rest_business_rules_tests.sh --no-keepdb   # first run or fresh DB
+./scripts/run_phase18_rest_business_rules_tests.sh               # reuse DB (--keepdb)
+```
+
+---
+
+## Serializers and domain validation
+
+**Serializers are responsible for input shape and format only.** Domain validation (e.g. “name cannot be empty”, “at least one resource required”, “asset must be ACTIVE”) stays in **business rules** invoked from the **service layer**; it must not be duplicated in serializers.
+
+### Principle
+
+| Responsibility | Where it lives | Examples |
+|----------------|----------------|----------|
+| **Input shape/format** | Serializers | Field types, `required`, `allow_blank`, max length, choice lists, JSON structure. |
+| **Domain rules** | Business rules (called by services) | “Name cannot be empty”, “Asset must be ACTIVE for rating”, “At least one of asset_id/dataset_id/file_id required”, “Connection name unique per tenant”. |
+
+### Why
+
+- **Single source of truth**: Workflows and REST both call the same service → same business rules. No divergence between “serializer validation” and “workflow validation”.
+- **Consistent errors**: Failures from business rules return 400 with `code` (e.g. `BUSINESS_RULES_VALIDATION`) and `details`; serializer-only validation typically does not set `code`.
+- **Testability**: Integration tests can assert that invalid domain data is rejected by the service and returns the expected 400 body.
+
+### Implementation note
+
+For create/update payloads where “empty/whitespace name” or similar is a **domain** rule: serializers use `allow_blank=True` (or pass-through in `validate_*`) so that the value reaches the service; the service then calls the business rule, which rejects it and raises `ValidationError` with `code=BUSINESS_RULES_VALIDATION`. The view catches that and returns 400 with `error`, `code`, and `details`. Serializers do **not** raise `ValidationError` for those domain rules so that the response format and code remain consistent.
+
 ---
 
 ## Getting Started
@@ -796,6 +891,405 @@ results = registry.execute_rules(
     short_circuit=True  # Stop on first error
 )
 ```
+
+---
+
+## Workflow Integration
+
+### Overview
+
+Business rules are seamlessly integrated with the Workflow Orchestration system to provide comprehensive validation at every workflow step. This integration ensures consistent validation, error handling, and observability across all workflow operations.
+
+**Related Documentation**: [Workflow Orchestration Guide](WORKFLOW_ORCHESTRATION.md)
+
+### Integration Points
+
+Business rules are integrated at three key points in workflow execution:
+
+1. **Pre-Step Validation**: Before executing a workflow step
+2. **Post-Step Validation**: After executing a workflow step  
+3. **Compensation Validation**: During workflow rollback
+
+### OrchestrationBusinessRules
+
+The `OrchestrationBusinessRules` class provides workflow-specific validation methods:
+
+#### `validate_workflow_step_execution()`
+
+Validates that a workflow step can execute in the current workflow state.
+
+**Usage**:
+```python
+from hub.apps.orchestration.business_rules import OrchestrationBusinessRules
+
+business_rules = OrchestrationBusinessRules(tenant_id=tenant_id, user_id=user_id)
+result = business_rules.validate_workflow_step_execution(
+    workflow=workflow_instance,
+    step=workflow_step,
+    tenant=tenant,
+    user=user
+)
+
+if not result.is_valid:
+    raise WorkflowExecutionError(f"Step cannot execute: {', '.join(result.errors)}")
+```
+
+**Validates**:
+- Workflow status is RUNNING
+- Step status allows execution (PENDING or RUNNING)
+- Step index matches workflow current_step_index
+- Workflow state is consistent
+- Tenant context is valid
+- User permissions are valid
+
+#### `validate_step_input()`
+
+Validates step input data structure and schema.
+
+**Usage**:
+```python
+result = business_rules.validate_step_input(
+    workflow=workflow_instance,
+    step=workflow_step,
+    step_input=task_input,
+    tenant=tenant,
+    user=user
+)
+
+if not result.is_valid:
+    raise WorkflowExecutionError(f"Step input invalid: {', '.join(result.errors)}")
+```
+
+**Validates**:
+- Input is a dictionary
+- Input is JSON serializable (for state persistence)
+- Required fields are present (if schema defined)
+- Data types are correct (if schema defined)
+- Input size is reasonable (<10MB)
+
+#### `validate_step_output()`
+
+Validates step output data structure and schema.
+
+**Usage**:
+```python
+result = business_rules.validate_step_output(
+    workflow=workflow_instance,
+    step=workflow_step,
+    step_output=step_result,
+    tenant=tenant,
+    user=user
+)
+
+if not result.is_valid:
+    raise WorkflowExecutionError(f"Step output invalid: {', '.join(result.errors)}")
+```
+
+**Validates**:
+- Output is a dictionary
+- Output is JSON serializable (for state persistence)
+- Required fields are present (if schema defined)
+- Data types are correct (if schema defined)
+- Output size is reasonable (<10MB)
+
+#### `validate_workflow_state()`
+
+Validates workflow state consistency.
+
+**Usage**:
+```python
+result = business_rules.validate_workflow_state(
+    workflow=workflow_instance,
+    tenant=tenant,
+    user=user
+)
+
+if not result.is_valid:
+    raise WorkflowExecutionError(f"Workflow state invalid: {', '.join(result.errors)}")
+```
+
+**Validates**:
+- Workflow state_data is consistent
+- Step indices match workflow current_step_index
+- Completed steps are in correct order
+- State transitions are valid
+- State data is JSON serializable
+
+### Workflow Integration Patterns
+
+#### Pattern 1: Using OrchestrationBusinessRules in Workflow Engine
+
+The `WorkflowEngine` automatically uses `OrchestrationBusinessRules` for validation:
+
+```python
+# In WorkflowEngine._execute_task_step()
+business_rules = OrchestrationBusinessRules(
+    tenant_id=str(tenant.id) if tenant else None,
+    user_id=str(user.id) if user else None
+)
+
+# Pre-step validation
+workflow_state_result = business_rules.validate_workflow_state(instance, tenant, user)
+step_input_result = business_rules.validate_step_input(instance, step, task_input, tenant, user)
+
+# Execute step
+result = task_func(task_input, instance, step)
+
+# Post-step validation
+step_output_result = business_rules.validate_step_output(instance, step, result, tenant, user)
+post_workflow_state_result = business_rules.validate_workflow_state(instance, tenant, user)
+```
+
+#### Pattern 2: Using Service-Specific Business Rules in Task Functions
+
+Task functions can use service-specific business rules for domain validation:
+
+```python
+def create_contract_task(
+    input_data: Dict[str, Any],
+    instance: WorkflowInstance,
+    step: WorkflowStep
+) -> Dict[str, Any]:
+    """Create contract with business rules validation"""
+    
+    from hub.apps.contracts.business_rules import ContractsBusinessRules
+    
+    # Get tenant and user context
+    tenant = instance.tenant
+    user = instance.created_by
+    
+    # Create service-specific business rules
+    contract_rules = ContractsBusinessRules(
+        tenant_id=str(tenant.id) if tenant else None,
+        user_id=str(user.id) if user else None
+    )
+    
+    # Validate contract creation
+    contract_data = input_data.get("contract_data")
+    validation_result = contract_rules.validate_contract_creation(
+        contract_data=contract_data,
+        tenant=tenant,
+        user=user
+    )
+    
+    if not validation_result.is_valid:
+        raise ValueError(
+            f"Contract validation failed: {', '.join(validation_result.errors)}"
+        )
+    
+    # Log warnings if any
+    if validation_result.warnings:
+        logger.warning(
+            f"Contract validation warnings: {', '.join(validation_result.warnings)}"
+        )
+    
+    # Create contract
+    contract = create_contract(contract_data)
+    
+    return {
+        "contract_id": str(contract.id),
+        "contract_status": contract.status
+    }
+```
+
+#### Pattern 3: Compensation Validation
+
+Compensation validates using business rules but does not block rollback:
+
+```python
+def _compensate_step(
+    self,
+    instance: WorkflowInstance,
+    step: WorkflowStep
+) -> Dict[str, Any]:
+    """Compensate a workflow step with business rules validation"""
+    
+    business_rules = OrchestrationBusinessRules(
+        tenant_id=str(tenant.id) if tenant else None,
+        user_id=str(user.id) if user else None
+    )
+    
+    # Validate compensation step (warnings don't block)
+    compensation_result = business_rules.validate_workflow_step_execution(
+        instance, step, tenant, user
+    )
+    
+    if compensation_result.warnings:
+        logger.warning(
+            f"Compensation validation warnings: {', '.join(compensation_result.warnings)}"
+        )
+    
+    # Execute compensation logic
+    compensation_result = self._execute_compensation_task(instance, step, compensation_def)
+    
+    return {
+        "status": "compensated",
+        "result": compensation_result,
+        "validation": {
+            "is_valid": compensation_result.is_valid,
+            "warnings": compensation_result.warnings
+        }
+    }
+```
+
+### Validation Patterns
+
+#### Pattern 1: Pre-Step Validation
+
+Always validate workflow state and step input before execution:
+
+```python
+# Validate workflow state
+workflow_state_result = business_rules.validate_workflow_state(instance, tenant, user)
+if not workflow_state_result.is_valid:
+    raise WorkflowExecutionError(
+        f"Workflow state invalid: {', '.join(workflow_state_result.errors)}"
+    )
+
+# Validate step input
+step_input_result = business_rules.validate_step_input(instance, step, task_input, tenant, user)
+if not step_input_result.is_valid:
+    raise WorkflowExecutionError(
+        f"Step input invalid: {', '.join(step_input_result.errors)}"
+    )
+```
+
+#### Pattern 2: Post-Step Validation
+
+Always validate step output and workflow state after execution:
+
+```python
+# Execute step
+result = task_func(task_input, instance, step)
+
+# Validate step output
+step_output_result = business_rules.validate_step_output(instance, step, result, tenant, user)
+if not step_output_result.is_valid:
+    raise WorkflowExecutionError(
+        f"Step output invalid: {', '.join(step_output_result.errors)}"
+    )
+
+# Validate workflow state
+post_workflow_state_result = business_rules.validate_workflow_state(instance, tenant, user)
+if not post_workflow_state_result.is_valid:
+    raise WorkflowExecutionError(
+        f"Workflow state invalid: {', '.join(post_workflow_state_result.errors)}"
+    )
+```
+
+#### Pattern 3: Service-Specific Validation in Task Functions
+
+Use service-specific business rules for domain validation:
+
+```python
+def my_task_function(input_data, instance, step):
+    from hub.apps.my_service.business_rules import MyServiceBusinessRules
+    
+    my_rules = MyServiceBusinessRules(
+        tenant_id=str(instance.tenant.id),
+        user_id=str(instance.created_by.id)
+    )
+    
+    # Validate domain-specific logic
+    validation_result = my_rules.validate_my_operation(
+        resource=input_data.get("resource"),
+        tenant=instance.tenant,
+        user=instance.created_by
+    )
+    
+    if not validation_result.is_valid:
+        raise ValueError(f"Validation failed: {', '.join(validation_result.errors)}")
+    
+    # Perform operation
+    return {"result": "success"}
+```
+
+### Best Practices
+
+#### 1. Always Use Business Rules for Validation
+
+**Do**:
+```python
+# Use business rules for validation
+business_rules = OrchestrationBusinessRules(tenant_id=tenant_id, user_id=user_id)
+result = business_rules.validate_workflow_state(instance, tenant, user)
+if not result.is_valid:
+    raise WorkflowExecutionError(...)
+```
+
+**Don't**:
+```python
+# Don't skip validation or duplicate validation logic
+if instance.status != WorkflowStatus.RUNNING:
+    raise WorkflowExecutionError("Invalid status")
+```
+
+#### 2. Use Service-Specific Business Rules in Task Functions
+
+**Do**:
+```python
+# Use service-specific business rules for domain validation
+from hub.apps.contracts.business_rules import ContractsBusinessRules
+
+contract_rules = ContractsBusinessRules(tenant_id=tenant_id, user_id=user_id)
+validation_result = contract_rules.validate_contract_creation(contract_data)
+if not validation_result.is_valid:
+    raise ValueError(f"Contract validation failed: {', '.join(validation_result.errors)}")
+```
+
+**Don't**:
+```python
+# Don't duplicate validation logic in task functions
+if not contract_data.get("name"):
+    raise ValueError("Contract name is required")
+```
+
+#### 3. Handle Validation Warnings Appropriately
+
+**Do**:
+```python
+# Log warnings but don't block execution
+if validation_result.warnings:
+    logger.warning(f"Validation warnings: {', '.join(validation_result.warnings)}")
+```
+
+**Don't**:
+```python
+# Don't treat warnings as errors
+if validation_result.warnings:
+    raise WorkflowExecutionError("Validation warnings found")
+```
+
+#### 4. Include Validation Context in Error Messages
+
+**Do**:
+```python
+# Use _format_validation_error for consistent error messages
+error_message = self._format_validation_error(
+    "workflow state validation",
+    validation_result,
+    instance,
+    step
+)
+raise WorkflowExecutionError(error_message)
+```
+
+**Don't**:
+```python
+# Don't create generic error messages
+raise WorkflowExecutionError("Validation failed")
+```
+
+### Observability
+
+Workflow validation with business rules provides comprehensive observability:
+
+- **Metrics**: Validation success/failure rates, duration, cache hit rates
+- **Events**: Validation results included in workflow events
+- **Logs**: Structured logging with validation context
+- **Traces**: Validation spans in distributed traces
+
+See [Workflow Orchestration Guide](WORKFLOW_ORCHESTRATION.md#observability) for details.
 
 ---
 
@@ -1015,6 +1509,6 @@ print(cache_key)
 ---
 
 **Document Status**: ✅ Complete
-**Last Updated**: 2025-01-XX
+**Last Updated**: 2026-01-29 (REST API alignment and Serializers sections added for Phase 18.8)
 **Maintained By**: Data Interoperability Hub Team
 

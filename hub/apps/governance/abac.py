@@ -108,6 +108,9 @@ class ABACEngine:
                         field_policies, masking_required = ABACEngine._get_field_policies(
                             tenant_id, resource_id, field_name, policy, access_type
                         )
+                        # Field-level NONE or write-deny returns ([], True) — deny access
+                        if not field_policies and masking_required:
+                            return PolicyEvaluationResult(allowed=False, policy=policy)
 
                     return PolicyEvaluationResult(
                         allowed=True,

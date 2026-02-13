@@ -114,7 +114,12 @@ class DataMasker:
         mask_char = config.get('mask_char', '*') if config else '*'
         show_last = config.get('show_last', 4) if config else 4
         
-        # Detect format patterns
+        # Detect format patterns (SSN before phone so 123-45-6789 is not treated as phone)
+        # SSN: 123-45-6789 -> ***-**-6789
+        ssn_pattern = r'^\d{3}-\d{2}-\d{4}$'
+        if re.match(ssn_pattern, value_str):
+            return f"{mask_char * 3}-{mask_char * 2}-{value_str[-4:]}"
+        
         # Email: user@domain.com -> ***@domain.com
         if '@' in value_str:
             parts = value_str.split('@')
@@ -136,11 +141,6 @@ class DataMasker:
                     return f"({mask_char * 3}) {mask_char * 3}-{masked[-4:]}"
                 else:
                     return masked
-        
-        # SSN: 123-45-6789 -> ***-**-6789
-        ssn_pattern = r'^\d{3}-\d{2}-\d{4}$'
-        if re.match(ssn_pattern, value_str):
-            return f"{mask_char * 3}-{mask_char * 2}-{value_str[-4:]}"
         
         # Credit card: 1234-5678-9012-3456 -> ****-****-****-3456
         cc_pattern = r'^\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}$'

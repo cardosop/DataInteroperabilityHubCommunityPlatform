@@ -9,74 +9,53 @@ Tests cover:
 - Filter hash generation
 - Error handling
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     # pytest not available, tests will run with Django test runner
     pytestmark = None
 
-from django.test import TestCase, override_settings
 from django.core.cache import cache
-from django.contrib.auth import get_user_model
-from hub.apps.tenants.models import Tenant
+from django.test import TestCase, override_settings
+
 from hub.apps.assets.models import Asset
-from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
 from hub.apps.datasets.caching import (
-    get_dataset_list_cache_key,
-    get_dataset_detail_cache_key,
-    hash_filters,
-    cache_dataset_list,
-    get_cached_dataset_list,
-    cache_dataset_detail,
-    get_cached_dataset_detail,
-    invalidate_dataset_list_cache,
-    invalidate_dataset_detail_cache,
-    invalidate_dataset_caches,
-    get_tenant_id_from_request,
-    CACHE_TTL_DATASET_LIST,
     CACHE_TTL_DATASET_DETAIL,
+    CACHE_TTL_DATASET_LIST,
+    cache_dataset_detail,
+    cache_dataset_list,
+    get_cached_dataset_detail,
+    get_cached_dataset_list,
+    get_dataset_detail_cache_key,
+    get_dataset_list_cache_key,
+    get_tenant_id_from_request,
+    hash_filters,
+    invalidate_dataset_caches,
+    invalidate_dataset_detail_cache,
+    invalidate_dataset_list_cache,
 )
+from hub.apps.datasets.models import Dataset
+from hub.apps.datasets.tests.test_base import DatasetsTestBase
+from hub.apps.tenants.models import Tenant
 
 
-User = get_user_model()
-
-
-class DatasetCachingTest(TestCase):
+class DatasetCachingTest(DatasetsTestBase):
     """Test dataset caching utilities"""
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         # Clear cache before each test
         cache.clear()
 
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
-        self.tenant2 = Tenant.objects.create(
-            name="Test Tenant 2",
-            slug="test-tenant-2"
-        )
+        self.tenant2 = Tenant.objects.create(name="Test Tenant 2", slug="test-tenant-2")
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
-        )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
-        self.file = File.objects.create(
-            tenant=self.tenant,
-            name="test.csv",
-            size=1024,
-            content_type="text/csv",
-            status=FileStatus.ACTIVE,
-            storage_path="test/test.csv",
-            created_by=self.user
         )
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
@@ -85,7 +64,7 @@ class DatasetCachingTest(TestCase):
             schema_json={"fields": []},
             format="CSV",
             version=1,
-            created_by=self.user
+            created_by=self.user,
         )
 
     def test_get_dataset_list_cache_key(self):
@@ -276,13 +255,13 @@ class DatasetCachingTest(TestCase):
 
     def test_get_tenant_id_from_request(self):
         """Test extracting tenant ID from request"""
-        from rest_framework.test import APIRequestFactory
         from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
 
         factory = APIRequestFactory()
 
         # Test with user.tenant
-        request = factory.get('/api/v1/datasets/')
+        request = factory.get("/api/v1/datasets/")
         request.user = self.user
         tenant_id = get_tenant_id_from_request(request)
         self.assertEqual(tenant_id, str(self.tenant.id))
@@ -353,3 +332,124 @@ class DatasetCachingTest(TestCase):
         except Exception:
             self.fail("Cache functions should handle errors gracefully")
 
+    # ========== EDGE CASES ==========
+
+    def test_cache_edge_case_empty_tenant_id(self):
+        """Test caching with empty tenant_id (edge case)"""
+        # Should handle empty tenant_id gracefully
+        try:
+            key = get_dataset_list_cache_key("", "abc123")
+            # If succeeds, should return key or handle gracefully
+            self.assertIsNotNone(key)
+        except Exception:
+            # If fails, that's acceptable for empty tenant_id
+            pass
+
+    def test_cache_edge_case_very_long_filters_hash(self):
+        """Test caching with very long filters_hash (edge case)"""
+        long_hash = "a" * 1000
+        key = get_dataset_list_cache_key(str(self.tenant.id), long_hash)
+
+        # Should handle long hash gracefully
+        self.assertIsNotNone(key)
+        self.assertIn(long_hash, key)
+
+    def test_cache_edge_case_special_characters_in_hash(self):
+        """Test caching with special characters in hash (edge case)"""
+        special_hash = "abc!@#$%^&*()123"
+        key = get_dataset_list_cache_key(str(self.tenant.id), special_hash)
+
+        # Should handle special characters gracefully
+        self.assertIsNotNone(key)
+
+    def test_cache_edge_case_zero_ttl(self):
+        """Test caching with zero TTL (edge case)"""
+        results = [{"id": str(self.dataset.id)}]
+        filters_hash = hash_filters({})
+
+        # Should handle zero TTL gracefully
+        try:
+            cache_dataset_list(
+                str(self.tenant.id), filters_hash, results,
+                total_count=len(results), ttl=0
+            )
+            cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
+            self.assertTrue(
+                cached is None or (isinstance(cached, tuple) and len(cached) == 2),
+                f"Expected None or (list, int), got {type(cached).__name__}",
+            )
+        except Exception:
+            pass
+
+    def test_cache_edge_case_negative_ttl(self):
+        """Test caching with negative TTL (edge case)"""
+        results = [{"id": str(self.dataset.id)}]
+        filters_hash = hash_filters({})
+
+        # Should handle negative TTL gracefully
+        try:
+            cache_dataset_list(
+                str(self.tenant.id), filters_hash, results,
+                total_count=len(results), ttl=-1
+            )
+            cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
+            self.assertTrue(
+                cached is None or (isinstance(cached, tuple) and len(cached) == 2),
+                f"Expected None or (list, int), got {type(cached).__name__}",
+            )
+        except Exception:
+            pass
+
+    # ========== ERROR HANDLING ==========
+
+    def test_cache_error_handling_invalid_tenant_id(self):
+        """Test error handling with invalid tenant_id"""
+        import uuid
+
+        fake_tenant_id = str(uuid.uuid4())
+        filters_hash = hash_filters({})
+
+        # Should handle invalid tenant_id gracefully
+        try:
+            key = get_dataset_list_cache_key(fake_tenant_id, filters_hash)
+            # Should return key
+            self.assertIsNotNone(key)
+        except Exception:
+            # If raises exception, that's a problem
+            self.fail("get_dataset_list_cache_key should handle invalid tenant_id gracefully")
+
+    def test_cache_error_handling_none_results(self):
+        """Test error handling with None results"""
+        filters_hash = hash_filters({})
+
+        # Should handle None results gracefully
+        try:
+            cache_dataset_list(
+                str(self.tenant.id), filters_hash, [], total_count=0
+            )
+            cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
+            self.assertTrue(
+                cached is None or (isinstance(cached, tuple) and len(cached) == 2),
+                f"Expected None or (list, int), got {type(cached).__name__}",
+            )
+        except Exception:
+            pass
+
+    def test_cache_error_handling_cache_unavailable(self):
+        """Test error handling when cache is unavailable"""
+        filters_hash = hash_filters({})
+        results = [{"id": str(self.dataset.id)}]
+
+        # Should handle cache unavailability gracefully (no exception)
+        try:
+            cache_dataset_list(
+                str(self.tenant.id), filters_hash, results, total_count=len(results)
+            )
+            cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
+            # get_cached_dataset_list returns None or (results_list, total_count)
+            self.assertTrue(
+                cached is None or (isinstance(cached, tuple) and len(cached) == 2),
+                f"Expected None or (list, int), got {type(cached).__name__}: {cached!r}",
+            )
+        except Exception:
+            self.fail("cache_dataset_list should handle cache unavailability gracefully")

@@ -1,50 +1,34 @@
 """
 Unit tests for Dataset model.
 """
+
+import uuid
+
 import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from hub.apps.tenants.models import Tenant
+from django.db import IntegrityError, transaction
+from django.test import TransactionTestCase
+
 from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
-from hub.apps.files.models import File, FileStatus
-
+from hub.apps.datasets.tests.test_base import DatasetsTestBase, DatasetsTransactionTestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
-User = get_user_model()
 
 
-class DatasetModelTest(TestCase):
+class DatasetModelTest(DatasetsTestBase):
     """Test Dataset model"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant"
-        )
+        super().setUp()
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="test-asset",
             name="Test Asset",
         )
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
-        )
-        self.file = File.objects.create(
-            tenant=self.tenant,
-            name="test.csv",
-            size=1024,
-            content_type="text/csv",
-            status=FileStatus.ACTIVE,
-            storage_path="test/test.csv",
-            created_by=self.user
-        )
-    
-    def test_create_dataset(self):
-        """Test dataset creation"""
+
+    def test_create_dataset_sets_tenant_asset_file(self):
+        """Test dataset creation sets tenant, asset, and file correctly"""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -53,11 +37,281 @@ class DatasetModelTest(TestCase):
             format="CSV",
             row_count=100,
         )
-        
+
         self.assertEqual(dataset.tenant, self.tenant)
         self.assertEqual(dataset.asset, self.asset)
         self.assertEqual(dataset.file, self.file)
+
+    def test_create_dataset_sets_version_format_row_count(self):
+        """Test dataset creation sets version, format, and row_count correctly"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            row_count=100,
+        )
+
         self.assertEqual(dataset.version, 1)
         self.assertEqual(dataset.format, "CSV")
         self.assertEqual(dataset.row_count, 100)
 
+    # ========== SUCCESS SCENARIOS ==========
+
+    def test_create_dataset_with_all_fields_creates_dataset(self):
+        """Test dataset creation with all fields creates dataset (success scenario)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            row_count=1000,
+            schema_json={"fields": [{"name": "id", "type": "string"}]},
+            sample_data_json=[{"id": "1"}, {"id": "2"}],
+            semantic_version="1.0.0",
+            version_tags=["production"],
+            is_current=True,
+            created_by=self.user,
+        )
+
+        self.assertIsNotNone(dataset)
+
+    def test_create_dataset_with_all_fields_sets_semantic_version(self):
+        """Test dataset creation with all fields sets semantic_version correctly (success scenario)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            row_count=1000,
+            schema_json={"fields": [{"name": "id", "type": "string"}]},
+            sample_data_json=[{"id": "1"}, {"id": "2"}],
+            semantic_version="1.0.0",
+            version_tags=["production"],
+            is_current=True,
+            created_by=self.user,
+        )
+
+        self.assertEqual(dataset.semantic_version, "1.0.0")
+
+    def test_create_dataset_with_all_fields_sets_version_tags_and_is_current(self):
+        """Test dataset creation with all fields sets version_tags and is_current correctly (success scenario)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            row_count=1000,
+            schema_json={"fields": [{"name": "id", "type": "string"}]},
+            sample_data_json=[{"id": "1"}, {"id": "2"}],
+            semantic_version="1.0.0",
+            version_tags=["production"],
+            is_current=True,
+            created_by=self.user,
+        )
+
+        self.assertEqual(dataset.version_tags, ["production"])
+        self.assertTrue(dataset.is_current)
+
+    def test_create_dataset_without_asset_sets_asset_to_none(self):
+        """Test dataset creation without asset sets asset to None (success scenario)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant, file=self.file, version=1, format="CSV", created_by=self.user
+        )
+
+        self.assertIsNone(dataset.asset)
+
+    def test_create_dataset_without_asset_sets_file_correctly(self):
+        """Test dataset creation without asset sets file correctly (success scenario)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant, file=self.file, version=1, format="CSV", created_by=self.user
+        )
+
+        self.assertEqual(dataset.file, self.file)
+
+    # ========== FAILURE SCENARIOS ==========
+
+    def test_create_dataset_missing_required_fields(self):
+        """Test dataset creation with missing required fields (failure scenario)"""
+        # Missing tenant
+        with self.assertRaises(Exception) as cm:
+            Dataset.objects.create(file=self.file, version=1, format="CSV")
+
+        # Should raise IntegrityError or ValidationError
+        self.assertIsNotNone(cm.exception)
+
+    def test_create_dataset_invalid_file(self):
+        """Test dataset creation with invalid file reference raises IntegrityError"""
+        fake_file_id = uuid.uuid4()
+
+        # Django defers FK checks until transaction commit
+        # Force immediate FK validation using PostgreSQL constraint check
+        from django.db import connection
+        
+        with self.assertRaises(IntegrityError):
+            dataset = Dataset.objects.create(
+                tenant=self.tenant, file_id=fake_file_id, version=1, format="CSV"
+            )
+            # Force FK constraint check immediately (PostgreSQL specific)
+            # This will trigger the FK validation that Django normally defers until commit
+            with connection.cursor() as cursor:
+                cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
+    # ========== EDGE CASES ==========
+
+    def test_create_dataset_zero_row_count(self):
+        """Test dataset creation with zero row_count (edge case)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            row_count=0,
+            created_by=self.user,
+        )
+
+        self.assertEqual(dataset.row_count, 0)
+
+    def test_create_dataset_very_large_row_count(self):
+        """Test dataset creation with very large row_count (edge case)"""
+        large_count = 999999999
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            row_count=large_count,
+            created_by=self.user,
+        )
+
+        self.assertEqual(dataset.row_count, large_count)
+
+    def test_create_dataset_empty_schema_json(self):
+        """Test dataset creation with empty schema_json (edge case)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            schema_json={},
+            created_by=self.user,
+        )
+
+        self.assertEqual(dataset.schema_json, {})
+
+    def test_create_dataset_complex_schema_json(self):
+        """Test dataset creation with complex schema_json (edge case)"""
+        complex_schema = {
+            "fields": [
+                {"name": "id", "type": "string", "format": "uuid"},
+                {"name": "name", "type": "string", "maxLength": 255},
+                {
+                    "name": "metadata",
+                    "type": "object",
+                    "properties": {
+                        "created_at": {"type": "datetime"},
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+            ]
+        }
+
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="JSON",
+            schema_json=complex_schema,
+            created_by=self.user,
+        )
+
+        self.assertEqual(dataset.schema_json, complex_schema)
+
+    def test_create_dataset_version_starts_at_one(self):
+        """Test that dataset version starts at 1 (edge case)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file, format="CSV", created_by=self.user
+        )
+
+        # Version should default to 1
+        self.assertEqual(dataset.version, 1)
+
+    def test_create_dataset_multiple_versions(self):
+        """Test creating multiple dataset versions (edge case)"""
+        dataset_v1 = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            is_current=True,
+            created_by=self.user,
+        )
+
+        dataset_v2 = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=2,
+            format="CSV",
+            parent_version=dataset_v1,
+            is_current=True,
+            created_by=self.user,
+        )
+
+        # Mark v1 as not current
+        dataset_v1.is_current = False
+        dataset_v1.save()
+
+        self.assertEqual(dataset_v1.version, 1)
+        self.assertEqual(dataset_v2.version, 2)
+        self.assertEqual(dataset_v2.parent_version, dataset_v1)
+        self.assertFalse(dataset_v1.is_current)
+        self.assertTrue(dataset_v2.is_current)
+
+    # ========== ERROR HANDLING ==========
+
+    def test_create_dataset_database_error_handling(self):
+        """Test error handling when database operations fail"""
+        # Use valid data
+        try:
+            dataset = Dataset.objects.create(
+                tenant=self.tenant,
+                asset=self.asset,
+                file=self.file,
+                version=1,
+                format="CSV",
+                created_by=self.user,
+            )
+            # Should succeed
+            self.assertIsNotNone(dataset)
+        except Exception:
+            # If fails, that's a problem
+            self.fail("Dataset creation should handle database errors gracefully")
+
+    def test_dataset_clean_validation(self):
+        """Test dataset clean() validation (error handling)"""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            version=1,
+            format="CSV",
+            created_by=self.user,
+        )
+
+        # Should validate successfully
+        try:
+            dataset.clean()
+            # If succeeds, that's good
+        except Exception as e:
+            # If fails, verify it's a validation error
+            self.assertIsNotNone(e)

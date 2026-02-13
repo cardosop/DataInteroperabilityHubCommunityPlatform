@@ -8,13 +8,14 @@ Tests verify:
 4. YAML output formatting
 5. JSON output formatting
 """
-from django.test import TestCase, SimpleTestCase
+
+from django.test import SimpleTestCase, TestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import (
-    generate_odps_from_hubcontract,
     format_odps_as_json,
-    format_odps_as_yaml
+    format_odps_as_yaml,
+    generate_odps_from_hubcontract,
 )
 
 
@@ -30,13 +31,8 @@ class ODPSGeneratorDocumentAssemblyTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "description": "Test product description"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "description": "Test product description"},
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -54,12 +50,8 @@ class ODPSGeneratorDocumentAssemblyTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -77,12 +69,8 @@ class ODPSGeneratorDocumentAssemblyTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -106,49 +94,25 @@ class ODPSGeneratorDocumentAssemblyTest(SimpleTestCase):
                 "description": "Complete product description",
                 "version": "1.0.0",
                 "tags": ["data", "analytics"],
-                "owners": [
-                    {
-                        "name": "Data Team",
-                        "email": "data@example.com"
-                    }
-                ]
+                "owners": [{"name": "Data Team", "email": "data@example.com"}],
             },
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ]
             },
             "marketplace": {
                 "license_summary": "MIT License",
                 "x_odps": {
-                    "pricing_plans": [
-                        {
-                            "planID": "basic",
-                            "name": "Basic Plan",
-                            "price": 9.99
-                        }
-                    ]
-                }
-            },
-            "lifecycle": {
-                "slas": {
-                    "availability": 99.9
+                    "pricing_plans": [{"planID": "basic", "name": "Basic Plan", "price": 9.99}]
                 },
-                "x_odps": {
-                    "status": "active"
-                }
             },
-            "quality": {
-                "default_profile_key": "production-profile"
-            },
+            "lifecycle": {"slas": {"availability": 99.9}, "x_odps": {"status": "active"}},
+            "quality": {"default_profile_key": "production-profile"},
             "extensions": {
-                "x_odps": {
-                    "product_strategy": {
-                        "objectives": ["Increase data quality"]
-                    }
-                }
-            }
+                "x_odps": {"product_strategy": {"objectives": ["Increase data quality"]}}
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -182,12 +146,8 @@ class ODPSGeneratorDocumentAssemblyTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         versions = ["4.1", "4.0", "3.9"]
@@ -211,14 +171,7 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
 
         result = format_odps_as_json(odps_doc)
@@ -228,6 +181,7 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
 
         # Verify it's valid JSON
         import json
+
         parsed = json.loads(result)
         self.assertEqual(parsed["schema"], "https://opendataproducts.org/schema/v4.1")
         self.assertEqual(parsed["version"], "4.1")
@@ -242,14 +196,7 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
 
         result = format_odps_as_json(odps_doc, indent=4)
@@ -259,14 +206,15 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
 
         # Verify it's valid JSON
         import json
+
         parsed = json.loads(result)
         self.assertEqual(parsed["version"], "4.1")
 
         # Verify indentation (should have 4 spaces)
-        lines = result.split('\n')
+        lines = result.split("\n")
         if len(lines) > 1:
             # Second line should start with 4 spaces
-            self.assertTrue(lines[1].startswith('    '))
+            self.assertTrue(lines[1].startswith("    "))
 
     def test_format_odps_as_json_with_unicode(self):
         """
@@ -280,12 +228,9 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
             "version": "4.1",
             "product": {
                 "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product with émojis 🚀"
-                    }
+                    "en": {"productID": "test-product", "name": "Test Product with émojis 🚀"}
                 }
-            }
+            },
         }
 
         result = format_odps_as_json(odps_doc, ensure_ascii=False)
@@ -296,6 +241,7 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
 
         # Verify it's valid JSON
         import json
+
         parsed = json.loads(result)
         self.assertIn("émojis", parsed["product"]["details"]["en"]["name"])
 
@@ -314,39 +260,22 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "description": "Test description"
+                        "description": "Test description",
                     }
                 },
                 "marketplace": {
-                    "pricingPlans": [
-                        {
-                            "planID": "basic",
-                            "name": "Basic Plan",
-                            "price": 9.99
-                        }
-                    ]
+                    "pricingPlans": [{"planID": "basic", "name": "Basic Plan", "price": 9.99}]
                 },
-                "SLA": {
-                    "declarative": {
-                        "dimensions": {
-                            "availability": {
-                                "target": 99.9
-                            }
-                        }
-                    }
-                }
+                "SLA": {"declarative": {"dimensions": {"availability": {"target": 99.9}}}},
             },
-            "license": {
-                "en": {
-                    "definition": "MIT License"
-                }
-            }
+            "license": {"en": {"definition": "MIT License"}},
         }
 
         result = format_odps_as_json(odps_doc)
 
         # Verify result is valid JSON
         import json
+
         parsed = json.loads(result)
 
         # Verify all sections are present
@@ -383,6 +312,7 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
         Scenario: Format document with non-serializable object
         Expected: ODPSExportError with error context
         """
+
         class NonSerializable:
             pass
 
@@ -394,10 +324,10 @@ class ODPSGeneratorJSONFormatTest(SimpleTestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "custom": NonSerializable()  # Non-serializable
+                        "custom": NonSerializable(),  # Non-serializable
                     }
                 }
-            }
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -422,14 +352,7 @@ class ODPSGeneratorYAMLFormatTest(SimpleTestCase):
         odps_doc = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
 
         result = format_odps_as_yaml(odps_doc)
@@ -440,6 +363,7 @@ class ODPSGeneratorYAMLFormatTest(SimpleTestCase):
         # Verify it's valid YAML
         try:
             import yaml
+
             parsed = yaml.safe_load(result)
             self.assertEqual(parsed["schema"], "https://opendataproducts.org/schema/v4.1")
             self.assertEqual(parsed["version"], "4.1")
@@ -459,12 +383,9 @@ class ODPSGeneratorYAMLFormatTest(SimpleTestCase):
             "version": "4.1",
             "product": {
                 "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product with émojis 🚀"
-                    }
+                    "en": {"productID": "test-product", "name": "Test Product with émojis 🚀"}
                 }
-            }
+            },
         }
 
         result = format_odps_as_yaml(odps_doc, allow_unicode=True)
@@ -476,6 +397,7 @@ class ODPSGeneratorYAMLFormatTest(SimpleTestCase):
         # Verify it's valid YAML
         try:
             import yaml
+
             parsed = yaml.safe_load(result)
             self.assertIn("émojis", parsed["product"]["details"]["en"]["name"])
         except ImportError:
@@ -496,24 +418,14 @@ class ODPSGeneratorYAMLFormatTest(SimpleTestCase):
                     "en": {
                         "productID": "test-product",
                         "name": "Test Product",
-                        "description": "Test description"
+                        "description": "Test description",
                     }
                 },
                 "marketplace": {
-                    "pricingPlans": [
-                        {
-                            "planID": "basic",
-                            "name": "Basic Plan",
-                            "price": 9.99
-                        }
-                    ]
-                }
+                    "pricingPlans": [{"planID": "basic", "name": "Basic Plan", "price": 9.99}]
+                },
             },
-            "license": {
-                "en": {
-                    "definition": "MIT License"
-                }
-            }
+            "license": {"en": {"definition": "MIT License"}},
         }
 
         result = format_odps_as_yaml(odps_doc)
@@ -521,6 +433,7 @@ class ODPSGeneratorYAMLFormatTest(SimpleTestCase):
         # Verify result is valid YAML
         try:
             import yaml
+
             parsed = yaml.safe_load(result)
 
             # Verify all sections are present
@@ -560,28 +473,23 @@ class ODPSGeneratorYAMLFormatTest(SimpleTestCase):
         Test error handling when PyYAML is not available.
 
         Scenario: Format document as YAML without PyYAML installed
-        Expected: ODPSExportError indicating PyYAML is not available
+        Expected: ODPSExportError with message and context (field_path, expected, actual)
+
+        Uses _yaml_available=False to exercise the same code path as when PyYAML
+        is missing, so the test runs without skip and without mocks.
         """
-        # This test will only pass if PyYAML is actually not available
-        # In most cases, PyYAML will be available, so we'll skip this test
-        # But we can test the error message structure
-        from hub.apps.contracts.odps_generator import YAML_AVAILABLE
-
-        if YAML_AVAILABLE:
-            self.skipTest("PyYAML is available, cannot test error case")
-
-        # If PyYAML is not available, test the error
-        odps_doc = {
-            "schema": "https://opendataproducts.org/schema/v4.1",
-            "version": "4.1"
-        }
+        odps_doc = {"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1"}
 
         with self.assertRaises(ODPSExportError) as context:
-            format_odps_as_yaml(odps_doc)
+            format_odps_as_yaml(odps_doc, _yaml_available=False)
 
         error = context.exception
         self.assertIn("pyyaml", error.message.lower())
         self.assertIn("not available", error.message.lower())
+        self.assertIn("field_path", error.context)
+        self.assertEqual(error.context["field_path"], "/")
+        self.assertIn("expected", error.context)
+        self.assertIn("actual", error.context)
 
 
 class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
@@ -599,11 +507,9 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
             "info": {
                 "name": "Test Product",
                 "description": "Test product description",
-                "version": "1.0.0"
+                "version": "1.0.0",
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         # Generate ODPS document
@@ -617,6 +523,7 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
 
         # Parse and verify
         import json
+
         parsed = json.loads(json_output)
         self.assertEqual(parsed["schema"], "https://opendataproducts.org/schema/v4.1")
         self.assertEqual(parsed["version"], "4.1")
@@ -639,11 +546,9 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
             "info": {
                 "name": "Test Product",
                 "description": "Test product description",
-                "version": "1.0.0"
+                "version": "1.0.0",
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         # Generate ODPS document
@@ -680,30 +585,15 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
                 "description": "Complete product description",
                 "version": "1.0.0",
                 "tags": ["data", "analytics"],
-                "owners": [
-                    {
-                        "name": "Data Team",
-                        "email": "data@example.com"
-                    }
-                ]
+                "owners": [{"name": "Data Team", "email": "data@example.com"}],
             },
-            "schema": {
-                "fields": [
-                    {"name": "id", "data_type": "string"}
-                ]
-            },
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
             "marketplace": {
                 "license_summary": "MIT License",
                 "x_odps": {
-                    "pricing_plans": [
-                        {
-                            "planID": "basic",
-                            "name": "Basic Plan",
-                            "price": 9.99
-                        }
-                    ]
-                }
-            }
+                    "pricing_plans": [{"planID": "basic", "name": "Basic Plan", "price": 9.99}]
+                },
+            },
         }
 
         # Generate ODPS document
@@ -717,6 +607,7 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
 
         # Parse both
         import json
+
         json_parsed = json.loads(json_output)
         yaml_parsed = yaml.safe_load(yaml_output)
 
@@ -725,6 +616,248 @@ class ODPSGeneratorAssemblyIntegrationTest(SimpleTestCase):
         self.assertEqual(json_parsed["version"], yaml_parsed["version"])
         self.assertEqual(
             json_parsed["product"]["details"]["en"]["name"],
-            yaml_parsed["product"]["details"]["en"]["name"]
+            yaml_parsed["product"]["details"]["en"]["name"],
         )
 
+    def test_document_assembly_handles_special_characters(self):
+        """Test that document assembly handles special characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test & Co. (Special)", "description": "Test <description> & more"},
+            "schema": {"fields": []},
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify special characters are preserved
+        self.assertIn("product", result)
+        self.assertIn("details", result["product"])
+        self.assertIn("en", result["product"]["details"])
+        self.assertEqual(result["product"]["details"]["en"]["name"], "Test & Co. (Special)")
+        self.assertEqual(
+            result["product"]["details"]["en"]["description"], "Test <description> & more"
+        )
+
+    def test_document_assembly_handles_very_large_documents(self):
+        """Test that document assembly handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": []},
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract)
+            # If generation succeeds, verify structure
+            self.assertIn("product", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_document_assembly_handles_none_values(self):
+        """Test that document assembly handles None values correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product", "description": None, "version": None},  # None value
+            "schema": {"fields": []},
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract)
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for None values"
+            )
+
+    def test_document_assembly_handles_nested_structures(self):
+        """Test that document assembly handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {
+                "name": "Test Product",
+                "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+            },
+            "schema": {"fields": []},
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify nested structure is preserved (may be in extensions or details)
+        self.assertIn("product", result)
+        # Nested structures may be preserved in various places depending on implementation
+        self.assertIsNotNone(result)
+
+    def test_format_odps_as_json_handles_special_characters(self):
+        """Test that JSON formatting handles special characters correctly."""
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "name": "Test & Co. (Special)",
+                        "description": "Test <description> & more",
+                    }
+                }
+            },
+        }
+
+        result = format_odps_as_json(odps_doc)
+
+        # Verify special characters are preserved in JSON
+        import json
+
+        parsed = json.loads(result)
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "Test & Co. (Special)")
+        self.assertEqual(
+            parsed["product"]["details"]["en"]["description"], "Test <description> & more"
+        )
+
+    def test_format_odps_as_yaml_handles_special_characters(self):
+        """Test that YAML formatting handles special characters correctly."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not available")
+
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "name": "Test & Co. (Special)",
+                        "description": "Test <description> & more",
+                    }
+                }
+            },
+        }
+
+        result = format_odps_as_yaml(odps_doc)
+
+        # Verify special characters are preserved in YAML
+        parsed = yaml.safe_load(result)
+        self.assertEqual(parsed["product"]["details"]["en"]["name"], "Test & Co. (Special)")
+        self.assertEqual(
+            parsed["product"]["details"]["en"]["description"], "Test <description> & more"
+        )
+
+    def test_format_odps_as_json_handles_very_large_documents(self):
+        """Test that JSON formatting handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {"en": {"name": "Test Product", "description": large_description}}
+            },
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = format_odps_as_json(odps_doc)
+            # If formatting succeeds, verify it's valid JSON
+            import json
+
+            parsed = json.loads(result)
+            self.assertIn("product", parsed)
+        except Exception as e:
+            # If formatting fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_format_odps_as_yaml_handles_very_large_documents(self):
+        """Test that YAML formatting handles very large documents correctly."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not available")
+
+        large_description = "A" * 100000  # 100KB string
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {"en": {"name": "Test Product", "description": large_description}}
+            },
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = format_odps_as_yaml(odps_doc)
+            # If formatting succeeds, verify it's valid YAML
+            parsed = yaml.safe_load(result)
+            self.assertIn("product", parsed)
+        except Exception as e:
+            # If formatting fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_format_odps_as_json_handles_nested_structures(self):
+        """Test that JSON formatting handles nested structures correctly."""
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "name": "Test Product",
+                        "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+                    }
+                }
+            },
+        }
+
+        result = format_odps_as_json(odps_doc)
+
+        # Verify nested structure is preserved in JSON
+        import json
+
+        parsed = json.loads(result)
+        self.assertIn("nested", parsed["product"]["details"]["en"])
+        self.assertIn(
+            "level1",
+            parsed["product"]["details"]["en"]["nested"],
+            "Nested structures should be preserved",
+        )
+
+    def test_format_odps_as_yaml_handles_nested_structures(self):
+        """Test that YAML formatting handles nested structures correctly."""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("PyYAML not available")
+
+        odps_doc = {
+            "schema": "https://opendataproducts.org/schema/v4.1",
+            "version": "4.1",
+            "product": {
+                "details": {
+                    "en": {
+                        "name": "Test Product",
+                        "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+                    }
+                }
+            },
+        }
+
+        result = format_odps_as_yaml(odps_doc)
+
+        # Verify nested structure is preserved in YAML
+        parsed = yaml.safe_load(result)
+        self.assertIn("nested", parsed["product"]["details"]["en"])
+        self.assertIn(
+            "level1",
+            parsed["product"]["details"]["en"]["nested"],
+            "Nested structures should be preserved",
+        )

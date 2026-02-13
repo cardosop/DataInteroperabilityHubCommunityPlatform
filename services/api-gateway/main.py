@@ -35,7 +35,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from rate_limiter import RateLimiter
 from api_key_manager import APIKeyManager
 from middleware import APIGatewayMiddleware
-from routing import ROUTE_CONFIG, validate_route_config
+from routing import (
+    ROUTE_CONFIG,
+    validate_route_config,
+    get_unique_backends_with_health_urls,
+)
 
 # Configure structured logging
 structlog.configure(
@@ -124,10 +128,10 @@ async def aggregate_health_check():
     """
     Aggregate health check endpoint that checks all backend services.
 
+    Uses the same health URL per backend as defined in routing (default path /health).
     Returns health status of all backend services configured in routing.
     """
     import httpx
-    from routing import ROUTE_CONFIG
 
     health_status = {
         "status": "healthy",
@@ -136,27 +140,26 @@ async def aggregate_health_check():
         "backend_services": {}
     }
 
-    # Get unique backend service URLs from route config
-    backend_urls = set(ROUTE_CONFIG.values())
+    # Get unique backends with their health URLs (single, documented path per backend)
+    backends = get_unique_backends_with_health_urls()
 
-    # Check health of each backend service
     async with httpx.AsyncClient(timeout=5.0) as client:
-        for backend_url in backend_urls:
-            service_name = backend_url.split('//')[1].split(':')[0] if '//' in backend_url else backend_url
+        for service_name, health_url in backends:
+            base_url = health_url.rsplit("/", 1)[0] if "/" in health_url.rstrip("/") else health_url
             try:
-                # Try health check endpoint
-                health_url = f"{backend_url.rstrip('/')}/health"
                 response = await client.get(health_url)
                 health_status["backend_services"][service_name] = {
                     "status": "healthy" if response.status_code == 200 else "unhealthy",
                     "status_code": response.status_code,
-                    "url": backend_url
+                    "url": base_url,
+                    "health_url": health_url,
                 }
             except Exception as e:
                 health_status["backend_services"][service_name] = {
                     "status": "unhealthy",
                     "error": str(e),
-                    "url": backend_url
+                    "url": base_url,
+                    "health_url": health_url,
                 }
                 health_status["status"] = "degraded"
 

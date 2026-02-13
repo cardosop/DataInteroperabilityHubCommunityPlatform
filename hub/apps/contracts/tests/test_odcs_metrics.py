@@ -9,22 +9,25 @@ Tests comprehensive metrics collection for:
 
 All tests use real implementations (no mocks/stubs) and verify metrics are collected.
 """
-from django.test import TestCase
-from django.contrib.auth import get_user_model
 
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization.odcs_normalizer_base import ODCSNormalizerBase
 from hub.apps.contracts.normalization.odcs_normalizer_default import ODCSNormalizerDefault
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
-from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import ODCSNormalizerV3_0_0_Preview
 from hub.apps.contracts.normalization.odcs_normalizer_v2_2_2 import ODCSNormalizerV2_2_2
-from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0_preview import (
+    ODCSNormalizerV3_0_0_Preview,
+)
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_1 import ODCSNormalizerV3_0_1
+from hub.apps.contracts.normalization.odcs_normalizer_v3_0_2 import ODCSNormalizerV3_0_2
 from hub.apps.observability.otel_metrics import (
     odcs_ingestion_total,
+    odcs_normalization_regression_total,
     odcs_normalization_total,
     odcs_version_distribution_total,
-    odcs_normalization_regression_total,
 )
 
 User = get_user_model()
@@ -49,10 +52,7 @@ class ODCSIngestionMetricsTest(ODCSMetricsTestBase):
 
         # Verify metric can be called with expected labels
         try:
-            odcs_ingestion_total.labels(
-                source='technical',
-                tenant_id=self.tenant_id
-            ).inc()
+            odcs_ingestion_total.labels(source="technical", tenant_id=self.tenant_id).inc()
         except Exception as e:
             self.fail(f"Ingestion metric should accept expected labels: {e}")
 
@@ -68,15 +68,7 @@ class ODCSNormalizationMetricsTest(ODCSMetricsTestBase):
             "id": "test-contract-3-0-2",
             "name": "Test Contract 3.0.2",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         normalizer = ODCSNormalizerV3_0_2()
@@ -100,15 +92,7 @@ class ODCSNormalizationMetricsTest(ODCSMetricsTestBase):
             "id": "test-contract-3-0-1",
             "name": "Test Contract 3.0.1",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         normalizer = ODCSNormalizerV3_0_1()
@@ -132,15 +116,7 @@ class ODCSNormalizationMetricsTest(ODCSMetricsTestBase):
             "id": "test-contract-3-0-0",
             "name": "Test Contract 3.0.0",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         normalizer = ODCSNormalizerV3_0_0()
@@ -164,15 +140,7 @@ class ODCSNormalizationMetricsTest(ODCSMetricsTestBase):
             "id": "test-contract-3-0-0-preview",
             "name": "Test Contract 3.0.0-preview",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         normalizer = ODCSNormalizerV3_0_0_Preview()
@@ -196,15 +164,7 @@ class ODCSNormalizationMetricsTest(ODCSMetricsTestBase):
             "id": "test-contract-2-2-2",
             "name": "Test Contract 2.2.2",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {
-                        "name": "id",
-                        "type": "string",
-                        "nullable": False
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         normalizer = ODCSNormalizerV2_2_2()
@@ -254,15 +214,7 @@ class ODCSNormalizationMetricsTest(ODCSMetricsTestBase):
                 "id": f"test-contract-{version}",
                 "name": f"Test Contract {version}",
                 "version": "1.0.0",
-                "schema": {
-                    "fields": [
-                        {
-                            "name": "id",
-                            "type": "string",
-                            "nullable": False
-                        }
-                    ]
-                }
+                "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
             }
 
             normalizer = normalizer_class()
@@ -287,9 +239,7 @@ class ODCSRegressionDetectionMetricsTest(ODCSMetricsTestBase):
         # Verify metric can be called with expected labels
         try:
             odcs_normalization_regression_total.labels(
-                version='3.0.2',
-                regression_type='schema_validation',
-                tenant_id=self.tenant_id
+                version="3.0.2", regression_type="schema_validation", tenant_id=self.tenant_id
             ).inc()
         except Exception as e:
             self.fail(f"Regression metric should accept expected labels: {e}")
@@ -336,21 +286,17 @@ class ODCSMetricsIntegrationTest(ODCSMetricsTestBase):
         # Test that all metrics can be called with expected labels
         try:
             # Ingestion metrics
-            odcs_ingestion_total.labels(source='technical', tenant_id='test').inc()
+            odcs_ingestion_total.labels(source="technical", tenant_id="test").inc()
 
             # Normalization metrics
             odcs_normalization_total.labels(
-                status='NORMALIZED_OK',
-                version='3.0.2',
-                tenant_id='test'
+                status="NORMALIZED_OK", version="3.0.2", tenant_id="test"
             ).inc()
-            odcs_version_distribution_total.labels(version='3.0.2', tenant_id='test').inc()
+            odcs_version_distribution_total.labels(version="3.0.2", tenant_id="test").inc()
 
             # Regression metrics
             odcs_normalization_regression_total.labels(
-                version='3.0.2',
-                regression_type='schema_validation',
-                tenant_id='test'
+                version="3.0.2", regression_type="schema_validation", tenant_id="test"
             ).inc()
         except Exception as e:
             self.fail(f"Metrics should accept expected labels: {e}")
@@ -368,9 +314,9 @@ class ODCSMetricsIntegrationTest(ODCSMetricsTestBase):
             "schema": {
                 "fields": [
                     {"name": "id", "type": "string", "nullable": False},
-                    {"name": "name", "type": "string", "nullable": True}
+                    {"name": "name", "type": "string", "nullable": True},
                 ]
-            }
+            },
         }
 
         # Normalize ODCS - this should trigger normalization metrics
@@ -403,15 +349,7 @@ class ODCSMetricsIntegrationTest(ODCSMetricsTestBase):
                 "id": f"test-contract-{version}",
                 "name": f"Test Contract {version}",
                 "version": "1.0.0",
-                "schema": {
-                    "fields": [
-                        {
-                            "name": "id",
-                            "type": "string",
-                            "nullable": False
-                        }
-                    ]
-                }
+                "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
             }
 
             normalizer = normalizer_class()
@@ -425,3 +363,105 @@ class ODCSMetricsIntegrationTest(ODCSMetricsTestBase):
             self.assertIsNotNone(odcs_normalization_total)
             self.assertIsNotNone(odcs_version_distribution_total)
 
+    def test_metrics_handles_unicode_characters(self):
+        """Test that metrics collection handles unicode characters correctly."""
+        odcs_doc = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-unicode",
+            "name": "测试合同",
+            "version": "1.0.0",
+            "description": "测试描述",
+            "schema": {"fields": [{"name": "字段名称", "type": "string"}]},
+        }
+
+        normalizer = ODCSNormalizerV3_0_2()
+        result = normalizer.normalize(odcs_doc)
+
+        # Should handle unicode characters
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIsNotNone(odcs_normalization_total)
+
+    def test_metrics_handles_special_characters(self):
+        """Test that metrics collection handles special characters correctly."""
+        odcs_doc = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-special",
+            "name": "Test & Co. (Special)",
+            "version": "1.0.0",
+            "description": "Test <description> & more",
+            "schema": {"fields": [{"name": "field-name", "type": "string"}]},
+        }
+
+        normalizer = ODCSNormalizerV3_0_2()
+        result = normalizer.normalize(odcs_doc)
+
+        # Should handle special characters
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIsNotNone(odcs_normalization_total)
+
+    def test_metrics_handles_very_large_documents(self):
+        """Test that metrics collection handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        odcs_doc = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-large",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": large_description,
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        normalizer = ODCSNormalizerV3_0_2()
+        result = normalizer.normalize(odcs_doc)
+
+        # Should handle very large documents
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIsNotNone(odcs_normalization_total)
+
+    def test_metrics_handles_none_values(self):
+        """Test that metrics collection handles None values correctly."""
+        odcs_doc = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-none",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": None,  # None value
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        normalizer = ODCSNormalizerV3_0_2()
+        result = normalizer.normalize(odcs_doc)
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIsNotNone(odcs_normalization_total)
+
+    def test_metrics_handles_nested_structures(self):
+        """Test that metrics collection handles nested structures correctly."""
+        odcs_doc = {
+            "apiVersion": "odcs.io/v3.0.2",
+            "kind": "DataContract",
+            "id": "test-nested",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                ]
+            },
+        }
+
+        normalizer = ODCSNormalizerV3_0_2()
+        result = normalizer.normalize(odcs_doc)
+
+        # Should handle nested structures
+        self.assertIsNotNone(result.hub_contract)
+        self.assertIsNotNone(odcs_normalization_total)

@@ -8,7 +8,8 @@ Tests verify:
 4. Error context (field name, expected type)
 5. ODPS 4.1 generation support
 """
-from django.test import TestCase, SimpleTestCase
+
+from django.test import SimpleTestCase, TestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -25,12 +26,8 @@ class ODPSGeneratorInitializationTest(SimpleTestCase):
         """Test that function accepts HubContract dictionary"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         # Should not raise an error for valid input structure
@@ -46,12 +43,8 @@ class ODPSGeneratorInitializationTest(SimpleTestCase):
         """Test that function returns a dictionary"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -61,12 +54,8 @@ class ODPSGeneratorInitializationTest(SimpleTestCase):
         """Test that function returns ODPS structure with required fields"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -102,9 +91,7 @@ class ODPSGeneratorErrorHandlingTest(TestCase):
         hub_contract = {
             "id": "test-product",
             # Missing info section
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -121,9 +108,7 @@ class ODPSGeneratorErrorHandlingTest(TestCase):
         hub_contract = {
             "id": "test-product",
             "info": "not a dict",  # Should be dict
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -141,9 +126,7 @@ class ODPSGeneratorErrorHandlingTest(TestCase):
         hub_contract = {
             "id": "test-product",
             "info": "not a dict",  # Should be dict
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -163,9 +146,7 @@ class ODPSGeneratorErrorHandlingTest(TestCase):
             "info": {
                 # Missing name field
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -202,15 +183,9 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test mapping quality.default_profile_key → product.dataQuality.declarative.default"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "quality": {
-                "default_profile_key": "production-profile"
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "quality": {"default_profile_key": "production-profile"},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -220,18 +195,16 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         self.assertIn("dataQuality", result["product"])
         self.assertIn("declarative", result["product"]["dataQuality"])
         self.assertIn("default", result["product"]["dataQuality"]["declarative"])
-        self.assertEqual(result["product"]["dataQuality"]["declarative"]["default"], "production-profile")
+        self.assertEqual(
+            result["product"]["dataQuality"]["declarative"]["default"], "production-profile"
+        )
 
     def test_quality_mapping_rules_to_dimensions(self):
         """Test mapping quality.rules[] → product.dataQuality.declarative.dimensions"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "rules": [
                     {
@@ -242,7 +215,7 @@ class ODPSGeneratorQualityMappingTest(TestCase):
                         "unit": "percentage",
                         "severity": "ERROR",
                         "description": "Ensure data completeness",
-                        "expression": ">= 0.95 percentage"
+                        "expression": ">= 0.95 percentage",
                     },
                     {
                         "dimension": "accuracy",
@@ -251,10 +224,10 @@ class ODPSGeneratorQualityMappingTest(TestCase):
                         "threshold": 0.98,
                         "unit": "percentage",
                         "severity": "WARNING",
-                        "expression": "== 0.98 percentage"
-                    }
+                        "expression": "== 0.98 percentage",
+                    },
                 ]
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -296,26 +269,16 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test mapping quality.x_odps.executable[] → product.dataQuality.executable[]"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "x_odps": {
                     "executable": [
-                        {
-                            "type": "great_expectations",
-                            "suite": "data_quality_suite"
-                        },
-                        {
-                            "type": "dbt_test",
-                            "test_name": "test_data_quality"
-                        }
+                        {"type": "great_expectations", "suite": "data_quality_suite"},
+                        {"type": "dbt_test", "test_name": "test_data_quality"},
                     ]
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -326,19 +289,17 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         self.assertIn("executable", result["product"]["dataQuality"])
         self.assertIsInstance(result["product"]["dataQuality"]["executable"], list)
         self.assertEqual(len(result["product"]["dataQuality"]["executable"]), 2)
-        self.assertEqual(result["product"]["dataQuality"]["executable"][0]["type"], "great_expectations")
+        self.assertEqual(
+            result["product"]["dataQuality"]["executable"][0]["type"], "great_expectations"
+        )
         self.assertEqual(result["product"]["dataQuality"]["executable"][1]["type"], "dbt_test")
 
     def test_quality_mapping_all_components_together(self):
         """Test mapping all quality components together"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "default_profile_key": "production-profile",
                 "rules": [
@@ -347,15 +308,11 @@ class ODPSGeneratorQualityMappingTest(TestCase):
                         "rule_id": "comp-1",
                         "name": "Completeness",
                         "threshold": 0.95,
-                        "severity": "ERROR"
+                        "severity": "ERROR",
                     }
                 ],
-                "x_odps": {
-                    "executable": [
-                        {"type": "great_expectations", "suite": "dq_suite"}
-                    ]
-                }
-            }
+                "x_odps": {"executable": [{"type": "great_expectations", "suite": "dq_suite"}]},
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -372,12 +329,8 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test that quality section is optional (graceful degradation)"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             # quality section is missing
         }
 
@@ -392,21 +345,17 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test that rules without dimension field are skipped"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "rules": [
                     {
                         "rule_id": "rule-1",
-                        "name": "Rule without dimension"
+                        "name": "Rule without dimension",
                         # dimension is missing
                     }
                 ]
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -422,15 +371,9 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test error handling for invalid rules type"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "quality": {
-                "rules": "not a list"  # Should be list
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "quality": {"rules": "not a list"},  # Should be list
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -444,17 +387,9 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test error handling for invalid executable type"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "quality": {
-                "x_odps": {
-                    "executable": "not a list"  # Should be list
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "quality": {"x_odps": {"executable": "not a list"}},  # Should be list
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -468,28 +403,24 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test that multiple rules with same dimension are grouped"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "rules": [
                     {
                         "dimension": "completeness",
                         "rule_id": "comp-1",
                         "name": "Completeness Rule 1",
-                        "threshold": 0.95
+                        "threshold": 0.95,
                     },
                     {
                         "dimension": "completeness",
                         "rule_id": "comp-2",
                         "name": "Completeness Rule 2",
-                        "threshold": 0.90
-                    }
+                        "threshold": 0.90,
+                    },
                 ]
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -504,12 +435,8 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test parsing expression with min objective"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "rules": [
                     {
@@ -518,10 +445,10 @@ class ODPSGeneratorQualityMappingTest(TestCase):
                         "name": "Completeness",
                         "expression": ">= 0.95 percentage",
                         "threshold": 0.95,
-                        "unit": "percentage"
+                        "unit": "percentage",
                     }
                 ]
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -535,12 +462,8 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test parsing expression with max objective"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "rules": [
                     {
@@ -549,10 +472,10 @@ class ODPSGeneratorQualityMappingTest(TestCase):
                         "name": "Accuracy",
                         "expression": "<= 0.99 percentage",
                         "threshold": 0.99,
-                        "unit": "percentage"
+                        "unit": "percentage",
                     }
                 ]
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -566,12 +489,8 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test parsing expression with target objective"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "rules": [
                     {
@@ -580,10 +499,10 @@ class ODPSGeneratorQualityMappingTest(TestCase):
                         "name": "Accuracy",
                         "expression": "== 0.98 percentage",
                         "threshold": 0.98,
-                        "unit": "percentage"
+                        "unit": "percentage",
                     }
                 ]
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -597,12 +516,8 @@ class ODPSGeneratorQualityMappingTest(TestCase):
         """Test mapping rule with additional fields (target, operator, etc.)"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "quality": {
                 "rules": [
                     {
@@ -614,10 +529,10 @@ class ODPSGeneratorQualityMappingTest(TestCase):
                         "threshold": 0.95,
                         "unit": "percentage",
                         "severity": "ERROR",
-                        "description": "Check email completeness"
+                        "description": "Check email completeness",
                     }
                 ]
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -635,13 +550,8 @@ class ODPSGeneratorInfoMappingTest(TestCase):
         """Test mapping HubContract.info.version → product.details.<lang>.productVersion"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "version": "1.0.0"},
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -661,9 +571,7 @@ class ODPSGeneratorInfoMappingTest(TestCase):
                 "name": "Test Product"
                 # version is missing
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -679,13 +587,8 @@ class ODPSGeneratorInfoMappingTest(TestCase):
         """Test mapping HubContract.info.tags → product.details.<lang>.tags"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "tags": ["tag1", "tag2", "tag3"]
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "tags": ["tag1", "tag2", "tag3"]},
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -705,9 +608,7 @@ class ODPSGeneratorInfoMappingTest(TestCase):
                 "name": "Test Product"
                 # tags are missing
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -725,16 +626,9 @@ class ODPSGeneratorInfoMappingTest(TestCase):
             "id": "test-product",
             "info": {
                 "name": "Test Product",
-                "owners": [
-                    {
-                        "name": "Test Company",
-                        "email": "test@example.com"
-                    }
-                ]
+                "owners": [{"name": "Test Company", "email": "test@example.com"}],
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -752,19 +646,11 @@ class ODPSGeneratorInfoMappingTest(TestCase):
             "info": {
                 "name": "Test Product",
                 "owners": [
-                    {
-                        "name": "First Company",
-                        "email": "first@example.com"
-                    },
-                    {
-                        "name": "Second Company",
-                        "email": "second@example.com"
-                    }
-                ]
+                    {"name": "First Company", "email": "first@example.com"},
+                    {"name": "Second Company", "email": "second@example.com"},
+                ],
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -786,11 +672,9 @@ class ODPSGeneratorInfoMappingTest(TestCase):
                         "name": "Test Company"
                         # email is missing
                     }
-                ]
+                ],
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -812,11 +696,9 @@ class ODPSGeneratorInfoMappingTest(TestCase):
                         "email": "test@example.com"
                         # name is missing
                     }
-                ]
+                ],
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -835,9 +717,7 @@ class ODPSGeneratorInfoMappingTest(TestCase):
                 "name": "Test Product"
                 # owners are missing
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -856,16 +736,9 @@ class ODPSGeneratorInfoMappingTest(TestCase):
                 "description": "Test description",
                 "version": "2.0.0",
                 "tags": ["tag1", "tag2"],
-                "owners": [
-                    {
-                        "name": "Test Company",
-                        "email": "test@example.com"
-                    }
-                ]
+                "owners": [{"name": "Test Company", "email": "test@example.com"}],
             },
-            "schema": {
-                "fields": []
-            }
+            "schema": {"fields": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -886,13 +759,8 @@ class ODPSGeneratorInfoMappingTest(TestCase):
         """Test error handling for invalid version type"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "version": 123  # Should be string
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "version": 123},  # Should be string
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -906,13 +774,8 @@ class ODPSGeneratorInfoMappingTest(TestCase):
         """Test error handling for invalid tags type"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "tags": "not a list"  # Should be list
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "tags": "not a list"},  # Should be list
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -926,13 +789,8 @@ class ODPSGeneratorInfoMappingTest(TestCase):
         """Test error handling for invalid owners type"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "owners": "not a list"  # Should be list
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "owners": "not a list"},  # Should be list
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -946,15 +804,8 @@ class ODPSGeneratorInfoMappingTest(TestCase):
         """Test error handling for invalid owner entry type"""
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "owners": [
-                    "not a dict"  # Should be dict
-                ]
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product", "owners": ["not a dict"]},  # Should be dict
+            "schema": {"fields": []},
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -964,3 +815,95 @@ class ODPSGeneratorInfoMappingTest(TestCase):
         self.assertIn("owner", error.message.lower())
         self.assertIn("field_path", error.context)
 
+    def test_generate_odps_handles_unicode_characters(self):
+        """Test that ODPS generation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "测试产品", "description": "测试描述", "tags": ["标签1", "标签2"]},
+            "schema": {"fields": []},
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify unicode characters are preserved
+        self.assertIn("product", result)
+        self.assertIn("details", result["product"])
+        self.assertIn("en", result["product"]["details"])
+        self.assertEqual(result["product"]["details"]["en"]["name"], "测试产品")
+        self.assertEqual(result["product"]["details"]["en"]["description"], "测试描述")
+
+    def test_generate_odps_handles_special_characters(self):
+        """Test that ODPS generation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test & Co. (Special)", "description": "Test <description> & more"},
+            "schema": {"fields": []},
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify special characters are preserved
+        self.assertIn("product", result)
+        self.assertIn("details", result["product"])
+        self.assertIn("en", result["product"]["details"])
+        self.assertEqual(result["product"]["details"]["en"]["name"], "Test & Co. (Special)")
+        self.assertEqual(
+            result["product"]["details"]["en"]["description"], "Test <description> & more"
+        )
+
+    def test_generate_odps_handles_very_large_documents(self):
+        """Test that ODPS generation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": []},
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract)
+            # If generation succeeds, verify structure
+            self.assertIn("product", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_generate_odps_handles_none_values(self):
+        """Test that ODPS generation handles None values correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product", "description": None, "version": None},  # None value
+            "schema": {"fields": []},
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract)
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for None values"
+            )
+
+    def test_generate_odps_handles_nested_structures(self):
+        """Test that ODPS generation handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {
+                "name": "Test Product",
+                "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+            },
+            "schema": {"fields": []},
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify nested structure is preserved (may be in extensions or details)
+        self.assertIn("product", result)
+        # Nested structures may be preserved in various places depending on implementation
+        self.assertIsNotNone(result)

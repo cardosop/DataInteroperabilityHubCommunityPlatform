@@ -19,6 +19,7 @@ import structlog
 from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
+from hub.apps.marketplace.business_rules import MarketplaceBusinessRules
 from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
 from hub.apps.assets.models import Asset, AssetStatus, DQStatus, ComplianceStatus
 from hub.apps.tenants.models import Tenant, KYCStatus
@@ -204,7 +205,7 @@ class MarketplacePublicationWorkflow:
         
         tenant = Tenant.objects.get(id=tenant_id)
         asset = Asset.objects.get(id=asset_id, tenant=tenant)
-        
+
         validation_results = {
             "kyc_verified": False,
             "asset_active": False,
@@ -214,6 +215,11 @@ class MarketplacePublicationWorkflow:
             "eligibility_passed": False,
             "blockers": []
         }
+
+        # Note: MarketplaceBusinessRules.validate() requires a listing or order,
+        # but we're validating asset eligibility before creating the listing.
+        # We'll validate using business rules after the listing is created.
+        # For now, we do manual validation checks below.
         
         # Check KYC status
         if tenant.kyc_status != KYCStatus.VERIFIED:
@@ -356,6 +362,12 @@ class MarketplacePublicationWorkflow:
             # Use asset name as fallback
             metadata_json["title"] = asset.name
         
+        # Validate listing before creation using MarketplaceBusinessRules
+        marketplace_rules = MarketplaceBusinessRules(
+            tenant_id=str(tenant_id) if tenant_id else None,
+            user_id=str(instance.created_by_id) if instance.created_by_id else None
+        )
+
         # Create listing in DRAFT status
         listing = Listing.objects.create(
             tenant=tenant,
@@ -364,6 +376,32 @@ class MarketplacePublicationWorkflow:
             pricing_model=input_data.get("pricing_model", PricingModel.FREE),
             metadata_json=metadata_json
         )
+
+        # Validate created listing using MarketplaceBusinessRules
+        listing_validation_result = marketplace_rules.validate(
+            listing=listing,
+            asset=asset,
+            tenant=tenant,
+            user=instance.created_by,
+            validation_type="listing"
+        )
+
+        if not listing_validation_result.is_valid:
+            error_messages = listing_validation_result.errors
+            # Log errors but don't fail - listing is already created
+            logger.warning(
+                "Listing validation errors after creation",
+                workflow_instance_id=str(instance.id),
+                listing_id=str(listing.id),
+                errors=error_messages,
+            )
+        elif listing_validation_result.warnings:
+            logger.warning(
+                "Listing validation warnings",
+                workflow_instance_id=str(instance.id),
+                listing_id=str(listing.id),
+                warnings=listing_validation_result.warnings,
+            )
         
         logger.info(
             "Marketplace listing created",

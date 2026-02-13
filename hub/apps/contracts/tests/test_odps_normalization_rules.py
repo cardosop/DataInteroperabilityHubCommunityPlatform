@@ -12,77 +12,67 @@ All tests use real implementations (no mocks/stubs) and verify:
 - Data preservation during normalization
 - Error handling
 """
+
 import json
-from django.test import TestCase
 
 from hub.apps.contracts.business_rules import (
     ODPSNormalizationRules,
     ODPSRuleExecutionContext,
 )
-from hub.apps.core.business_rules.base import ValidationResult
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import User, UserStatus
+from hub.apps.contracts.tests.test_base import ContractsTestBase
+from hub.apps.core.business_rules.base import ValidationResult
 
 
-class ODPSNormalizationRulesTestBase(TestCase):
+class ODPSNormalizationRulesTestBase(ContractsTestBase):
     """Base test class for ODPSNormalizationRules tests."""
 
     def setUp(self):
         """Set up test fixtures."""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-
-        # Create user
-        self.user = User.objects.create(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        super().setUp()
 
         # Create normalization rules instance
         self.rules = ODPSNormalizationRules()
 
         # Sample ODCS contract raw data
-        self.odcs_raw = json.dumps({
-            "version": "3.0.2",
-            "info": {
-                "name": "test-contract",
-                "title": "Test Contract",
-            },
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"},
-                    {"name": "field2", "type": "integer"},
-                ]
-            }
-        })
-
-        # Sample ODPS contract raw data
-        self.odps_raw = json.dumps({
-            "version": "4.1",
-            "product": {
-                "name": "test-product",
-                "productID": "test-product-id",
-                "dataSchema": {
+        self.odcs_raw = json.dumps(
+            {
+                "version": "3.0.2",
+                "info": {
+                    "name": "test-contract",
+                    "title": "Test Contract",
+                },
+                "schema": {
                     "fields": [
                         {"name": "field1", "type": "string"},
                         {"name": "field2", "type": "integer"},
                     ]
-                }
+                },
             }
-        })
+        )
+
+        # Sample ODPS contract raw data
+        self.odps_raw = json.dumps(
+            {
+                "version": "4.1",
+                "product": {
+                    "name": "test-product",
+                    "productID": "test-product-id",
+                    "dataSchema": {
+                        "fields": [
+                            {"name": "field1", "type": "string"},
+                            {"name": "field2", "type": "integer"},
+                        ]
+                    },
+                },
+            }
+        )
 
 
 class ODPSNormalizationEligibilityTest(ODPSNormalizationRulesTestBase):
@@ -232,7 +222,7 @@ class ODPSNormalizationStatusTest(ODPSNormalizationRulesTestBase):
         """Test status validation passes for NORMALIZED_OK."""
         hub_contract = {
             "info": {"name": "test-contract"},
-            "schema": {"fields": [{"name": "field1", "type": "string"}]}
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,
@@ -257,7 +247,7 @@ class ODPSNormalizationStatusTest(ODPSNormalizationRulesTestBase):
         """Test status validation passes for NORMALIZED_WITH_WARNINGS."""
         hub_contract = {
             "info": {"name": "test-contract"},
-            "schema": {"fields": [{"name": "field1", "type": "string"}]}
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,
@@ -383,7 +373,7 @@ class ODPSNormalizationStatusTest(ODPSNormalizationRulesTestBase):
         """Test status validation warns when NORMALIZED_WITH_WARNINGS but no warnings."""
         hub_contract = {
             "info": {"name": "test-contract"},
-            "schema": {"fields": [{"name": "field1", "type": "string"}]}
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,
@@ -418,11 +408,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
                     {"name": "field2", "type": "integer"},
                 ]
             },
-            "normalization": {
-                "coverage": {
-                    "overall": 0.95
-                }
-            }
+            "normalization": {"coverage": {"overall": 0.95}},
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,
@@ -453,11 +439,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
                     {"name": "field2", "type": "integer"},
                 ]
             },
-            "normalization": {
-                "coverage": {
-                    "overall": 0.92
-                }
-            }
+            "normalization": {"coverage": {"overall": 0.92}},
         }
         contract = Contract.objects.create(
             original_raw=self.odps_raw,
@@ -482,7 +464,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
         """Test fidelity validation fails when original_raw is missing."""
         hub_contract = {
             "info": {"name": "test-contract"},
-            "schema": {"fields": [{"name": "field1", "type": "string"}]}
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
         # Create contract first (original_raw is required)
         contract = Contract.objects.create(
@@ -510,7 +492,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
         error_msg = " ".join(result.errors).lower()
         self.assertTrue(
             "original_raw" in error_msg or "skipped" in error_msg or "missing" in error_msg,
-            f"Expected error about original_raw, skipped, or missing check, got: {result.errors}"
+            f"Expected error about original_raw, skipped, or missing check, got: {result.errors}",
         )
 
     def test_fidelity_missing_hub_contract(self):
@@ -558,7 +540,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
         error_msg = " ".join(result.errors).lower()
         self.assertTrue(
             "normalization_failed" in error_msg or "hub_contract_json" in error_msg,
-            f"Expected error about normalization_failed or hub_contract_json, got: {result.errors}"
+            f"Expected error about normalization_failed or hub_contract_json, got: {result.errors}",
         )
 
     def test_fidelity_name_preserved(self):
@@ -570,7 +552,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
                     {"name": "field1", "type": "string"},
                     {"name": "field2", "type": "integer"},
                 ]
-            }
+            },
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,
@@ -600,7 +582,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
                     {"name": "field1", "type": "string"},
                     {"name": "field2", "type": "integer"},
                 ]
-            }
+            },
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,
@@ -629,7 +611,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
                     {"name": "field1", "type": "string"},
                     {"name": "field2", "type": "integer"},
                 ]
-            }
+            },
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,  # Has 2 fields
@@ -656,9 +638,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
         """Test fidelity validation detects when fields are lost."""
         hub_contract = {
             "info": {"name": "test-contract"},
-            "schema": {
-                "fields": []  # No fields - data loss
-            }
+            "schema": {"fields": []},  # No fields - data loss
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,  # Has 2 fields
@@ -689,11 +669,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
                     {"name": "field2", "type": "integer"},  # Match original field count
                 ]
             },
-            "normalization": {
-                "coverage": {
-                    "overall": 0.5  # Low coverage
-                }
-            }
+            "normalization": {"coverage": {"overall": 0.5}},  # Low coverage
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,  # Has 2 fields
@@ -713,7 +689,9 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
         self.assertGreater(len(result.warnings), 0)
         # Check all warnings for coverage mention
         warnings_text = " ".join(result.warnings).lower()
-        self.assertIn("coverage", warnings_text, f"Expected coverage warning, got: {result.warnings}")
+        self.assertIn(
+            "coverage", warnings_text, f"Expected coverage warning, got: {result.warnings}"
+        )
 
     def test_fidelity_extensions_present(self):
         """Test fidelity validation warns when extensions are present."""
@@ -726,9 +704,7 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
                     {"name": "field2", "type": "integer"},  # Match original field count
                 ]
             },
-            "extensions": {
-                "x_custom": "value"  # Unmappable field
-            }
+            "extensions": {"x_custom": "value"},  # Unmappable field
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,  # Has 2 fields
@@ -748,7 +724,9 @@ class ODPSNormalizationFidelityTest(ODPSNormalizationRulesTestBase):
         self.assertGreater(len(result.warnings), 0)
         # Check all warnings for extension mention
         warnings_text = " ".join(result.warnings).lower()
-        self.assertIn("extension", warnings_text, f"Expected extension warning, got: {result.warnings}")
+        self.assertIn(
+            "extension", warnings_text, f"Expected extension warning, got: {result.warnings}"
+        )
 
 
 class ODPSNormalizationRulesIntegrationTest(ODPSNormalizationRulesTestBase):
@@ -764,11 +742,7 @@ class ODPSNormalizationRulesIntegrationTest(ODPSNormalizationRulesTestBase):
                     {"name": "field2", "type": "integer"},
                 ]
             },
-            "normalization": {
-                "coverage": {
-                    "overall": 0.95
-                }
-            }
+            "normalization": {"coverage": {"overall": 0.95}},
         }
         contract = Contract.objects.create(
             original_raw=self.odcs_raw,
@@ -790,3 +764,146 @@ class ODPSNormalizationRulesIntegrationTest(ODPSNormalizationRulesTestBase):
         self.assertIn("status", result.details)
         self.assertIn("fidelity", result.details)
 
+    def test_normalization_rules_handle_unicode_characters(self):
+        """Test that normalization rules handle unicode characters correctly."""
+        hub_contract = {
+            "info": {"name": "测试产品"},
+            "schema": {
+                "fields": [
+                    {"name": "field1", "type": "string"},
+                    {"name": "field2", "type": "integer"},
+                ]
+            },
+        }
+        contract = Contract.objects.create(
+            original_raw=self.odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS.value,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_json=hub_contract,
+            tenant=self.tenant,
+            created_by=self.user,
+            status=ContractStatus.DRAFT,
+        )
+
+        context = ODPSRuleExecutionContext(contract=contract)
+        result = self.rules.validate(context, validation_type="fidelity")
+
+        # Should handle unicode characters
+        self.assertIsNotNone(result)
+
+    def test_normalization_rules_handle_special_characters(self):
+        """Test that normalization rules handle special characters correctly."""
+        hub_contract = {
+            "info": {"name": "Test & Co. (Special)"},
+            "schema": {
+                "fields": [
+                    {"name": "field1", "type": "string"},
+                    {"name": "field2", "type": "integer"},
+                ]
+            },
+        }
+        contract = Contract.objects.create(
+            original_raw=self.odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS.value,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_json=hub_contract,
+            tenant=self.tenant,
+            created_by=self.user,
+            status=ContractStatus.DRAFT,
+        )
+
+        context = ODPSRuleExecutionContext(contract=contract)
+        result = self.rules.validate(context, validation_type="fidelity")
+
+        # Should handle special characters
+        self.assertIsNotNone(result)
+
+    def test_normalization_rules_handle_very_large_documents(self):
+        """Test that normalization rules handle very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "info": {"name": "test-contract", "description": large_description},
+            "schema": {
+                "fields": [
+                    {"name": "field1", "type": "string"},
+                    {"name": "field2", "type": "integer"},
+                ]
+            },
+        }
+        contract = Contract.objects.create(
+            original_raw=self.odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS.value,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_json=hub_contract,
+            tenant=self.tenant,
+            created_by=self.user,
+            status=ContractStatus.DRAFT,
+        )
+
+        context = ODPSRuleExecutionContext(contract=contract)
+        result = self.rules.validate(context, validation_type="fidelity")
+
+        # Should handle very large documents
+        self.assertIsNotNone(result)
+
+    def test_normalization_rules_handle_none_values(self):
+        """Test that normalization rules handle None values correctly."""
+        hub_contract = {
+            "info": {"name": "test-contract", "description": None},  # None value
+            "schema": {
+                "fields": [
+                    {"name": "field1", "type": "string"},
+                    {"name": "field2", "type": "integer"},
+                ]
+            },
+        }
+        contract = Contract.objects.create(
+            original_raw=self.odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS.value,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_json=hub_contract,
+            tenant=self.tenant,
+            created_by=self.user,
+            status=ContractStatus.DRAFT,
+        )
+
+        context = ODPSRuleExecutionContext(contract=contract)
+        result = self.rules.validate(context, validation_type="fidelity")
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(result)
+
+    def test_normalization_rules_handle_nested_structures(self):
+        """Test that normalization rules handle nested structures correctly."""
+        hub_contract = {
+            "info": {
+                "name": "test-contract",
+                "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+            },
+            "schema": {
+                "fields": [
+                    {"name": "field1", "type": "string"},
+                    {"name": "field2", "type": "integer"},
+                ]
+            },
+        }
+        contract = Contract.objects.create(
+            original_raw=self.odcs_raw,
+            original_format=OriginalFormat.JSON,
+            original_spec_type=OriginalSpecType.ODCS.value,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            hub_contract_json=hub_contract,
+            tenant=self.tenant,
+            created_by=self.user,
+            status=ContractStatus.DRAFT,
+        )
+
+        context = ODPSRuleExecutionContext(contract=contract)
+        result = self.rules.validate(context, validation_type="fidelity")
+
+        # Should handle nested structures
+        self.assertIsNotNone(result)

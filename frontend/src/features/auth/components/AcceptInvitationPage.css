@@ -1,0 +1,105 @@
+.accept-invitation-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: var(--color-surface, #f5f5f5);
+}
+
+.accept-invitation-card {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.accept-invitation-card h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.accept-invitation-description {
+  margin: 0 0 1.5rem;
+  color: var(--color-text-secondary, #666);
+  font-size: 0.95rem;
+}
+
+.accept-invitation-missing-token {
+  padding: 1rem 0;
+}
+
+.accept-invitation-missing-token a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+.accept-invitation-missing-token a:hover {
+  text-decoration: underline;
+}
+
+.accept-invitation-validation-error {
+  color: #842029;
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.accept-invitation-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.accept-invitation-form .form-group label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.accept-invitation-form .form-group input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.accept-invitation-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.accept-invitation-actions .btn-primary {
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: #0066cc;
+  color: white;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.accept-invitation-actions .btn-primary:hover:not(:disabled) {
+  background: #0052a3;
+}
+
+.accept-invitation-actions .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.link-cancel {
+  text-align: center;
+  color: #666;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.link-cancel:hover {
+  text-decoration: underline;
+}

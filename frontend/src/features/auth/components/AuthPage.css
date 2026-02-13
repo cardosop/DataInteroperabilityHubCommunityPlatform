@@ -1,0 +1,109 @@
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-secondary-50) 100%);
+}
+
+.auth-container {
+  background: white;
+  padding: var(--spacing-2xl);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-container h1 {
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+  color: var(--color-primary-700);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.form-group label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-neutral-700);
+}
+
+.form-group input {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+}
+
+.form-group input:focus {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+.error-message {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-error-50);
+  color: var(--color-error-700);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.success-message {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-success-50);
+  color: var(--color-success-700);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+}
+
+/* WCAG 2 AA: 4.5:1 contrast for normal text; primary-700/800 meet threshold */
+.auth-button {
+  padding: var(--spacing-md);
+  background-color: var(--color-primary-700);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.auth-button:hover:not(:disabled) {
+  background-color: var(--color-primary-800);
+}
+
+.auth-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-links {
+  margin-top: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-neutral-700);
+}
+
+.auth-links a {
+  color: var(--color-primary-800);
+  text-decoration: none;
+}
+
+.auth-links a:hover {
+  text-decoration: underline;
+}
+

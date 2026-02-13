@@ -3,15 +3,31 @@ API Gateway Routing Configuration
 
 Provides routing configuration for mapping API paths to backend services.
 Uses longest prefix match algorithm for route resolution.
+
+Health check contract: backends behind the gateway MUST expose a health endpoint.
+Default path is /health. Override per host via BACKEND_HEALTH_PATHS if a service
+uses a different path (e.g. /healthz).
 """
 import os
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Tuple
 from urllib.parse import urlparse
 import structlog
 
 logger = structlog.get_logger(__name__)
 
-# Default route configuration mapping path prefixes to backend service URLs
+# Default health endpoint path for all backends. Backends MUST expose this path
+# (or the override in BACKEND_HEALTH_PATHS). See API Gateway README for contract.
+DEFAULT_HEALTH_PATH = "/health"
+
+# Optional per-host override for health path (hostname -> path). Use when a
+# backend exposes health at a different path (e.g. /healthz, /ready).
+# Key is hostname only (e.g. "api-service"), value is path (e.g. "/health").
+BACKEND_HEALTH_PATHS: Dict[str, str] = {}
+
+# Default route configuration mapping path prefixes to backend service URLs.
+# All backends must exist in the deployment (docker-compose). Lineage, governance,
+# ingestion, versioning, and normalization are served by Django (api-service);
+# no dedicated microservices for these paths in the current deployment.
 _DEFAULT_ROUTE_CONFIG: Dict[str, str] = {
     '/api/v1/contracts': 'http://api-service:8000',
     '/api/v1/assets': 'http://api-service:8000',
@@ -24,11 +40,11 @@ _DEFAULT_ROUTE_CONFIG: Dict[str, str] = {
     '/api/v1/search': 'http://search-service:8085',
     '/api/v1/observability': 'http://observability-service:8086',
     '/api/v1/webhooks': 'http://webhook-service:8087',
-    '/api/v1/lineage': 'http://lineage-service:8004',
-    '/api/v1/governance': 'http://governance-service:8005',
-    '/api/v1/ingestion': 'http://ingestion-service:8006',
-    '/api/v1/versioning': 'http://versioning-service:8007',
-    '/api/v1/normalization': 'http://normalization-service:8008',
+    '/api/v1/lineage': 'http://api-service:8000',
+    '/api/v1/governance': 'http://api-service:8000',
+    '/api/v1/ingestion': 'http://api-service:8000',
+    '/api/v1/versioning': 'http://api-service:8000',
+    '/api/v1/normalization': 'http://api-service:8000',
 }
 
 # Load route configuration from environment variables (optional override)
@@ -107,6 +123,53 @@ def get_backend_url(path: str) -> Optional[str]:
 
     # Return URL for longest matching prefix
     return matching_routes[0][1]
+
+
+def _backend_host_from_url(backend_url: str) -> str:
+    """Extract hostname from backend URL (e.g. http://api-service:8000 -> api-service)."""
+    parsed = urlparse(backend_url)
+    return (parsed.hostname or "").strip() or backend_url.split("//")[-1].split(":")[0]
+
+
+def get_backend_health_path(backend_base_url: str) -> str:
+    """
+    Return the health endpoint path for a backend. Uses BACKEND_HEALTH_PATHS
+    if the host has an override, otherwise DEFAULT_HEALTH_PATH.
+    """
+    host = _backend_host_from_url(backend_base_url)
+    return BACKEND_HEALTH_PATHS.get(host, DEFAULT_HEALTH_PATH)
+
+
+def get_backend_health_url(backend_base_url: str) -> str:
+    """
+    Build the full health URL for a backend. Same construction used by
+    aggregate health in main.py. No trailing slash on base; path starts with /.
+    """
+    base = backend_base_url.rstrip("/")
+    path = get_backend_health_path(backend_base_url)
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{base}{path}"
+
+
+def get_unique_backends_with_health_urls(
+    route_config: Optional[Dict[str, str]] = None,
+) -> List[Tuple[str, str]]:
+    """
+    Return list of (service_name, health_url) for each unique backend in
+    route_config (default ROUTE_CONFIG). Used by aggregate health endpoint.
+    """
+    config = route_config or ROUTE_CONFIG
+    seen_urls: set = set()
+    result: List[Tuple[str, str]] = []
+    for backend_url in config.values():
+        if backend_url in seen_urls:
+            continue
+        seen_urls.add(backend_url)
+        service_name = _backend_host_from_url(backend_url)
+        health_url = get_backend_health_url(backend_url)
+        result.append((service_name, health_url))
+    return result
 
 
 # Validate route configuration on module load

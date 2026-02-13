@@ -3,21 +3,23 @@ Unit tests for Virtualization Models.
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
+
 import uuid
+
 import pytest
-from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.test import TestCase
 
-from hub.apps.tenants.models import Tenant, KYCStatus
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.virtualization.models import (
-    VirtualDataset,
-    QueryType,
-    VirtualDatasetStatus,
     QueryExecution,
-    QueryExecutionStatus,
     QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -31,9 +33,7 @@ class VirtualDatasetModelTest(TestCase):
         """Set up test fixtures"""
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create user
@@ -66,6 +66,20 @@ class VirtualDatasetModelTest(TestCase):
         self.assertEqual(dataset.sources, [])
         self.assertIsNotNone(dataset.created_at)
         self.assertIsNotNone(dataset.updated_at)
+
+    def test_create_virtual_dataset_defaults_tdd(self):
+        """TDD: minimal create sets default version, status, schema, sources."""
+        dataset = VirtualDataset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            name="Defaults TDD",
+            query="SELECT 1",
+            query_type=QueryType.SQL,
+        )
+        self.assertEqual(dataset.version, "1.0.0")
+        self.assertEqual(dataset.status, VirtualDatasetStatus.DRAFT)
+        self.assertEqual(dataset.schema, {})
+        self.assertEqual(dataset.sources, [])
 
     def test_create_virtual_dataset_full(self):
         """Test creating a virtual dataset with all fields"""
@@ -151,9 +165,7 @@ class VirtualDatasetModelTest(TestCase):
 
         # Different tenant, same name, same version should succeed
         other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
         )
         dataset2 = VirtualDataset.objects.create(
             tenant=other_tenant,
@@ -194,7 +206,7 @@ class VirtualDatasetModelTest(TestCase):
         error_message = str(cm.exception.error_dict["name"][0])
         self.assertTrue(
             "cannot be empty" in error_message or "cannot be blank" in error_message,
-            f"Expected 'cannot be empty' or 'cannot be blank' in error message: {error_message}"
+            f"Expected 'cannot be empty' or 'cannot be blank' in error message: {error_message}",
         )
 
     def test_virtual_dataset_validation_empty_query(self):
@@ -215,7 +227,7 @@ class VirtualDatasetModelTest(TestCase):
         error_message = str(cm.exception.error_dict["query"][0])
         self.assertTrue(
             "cannot be empty" in error_message or "cannot be blank" in error_message,
-            f"Expected 'cannot be empty' or 'cannot be blank' in error message: {error_message}"
+            f"Expected 'cannot be empty' or 'cannot be blank' in error message: {error_message}",
         )
 
     def test_virtual_dataset_validation_invalid_schema(self):
@@ -517,34 +529,57 @@ class VirtualDatasetModelTest(TestCase):
 
         with connection.cursor() as cursor:
             # Check indexes exist
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT indexname
                 FROM pg_indexes
                 WHERE tablename = 'virtual_datasets'
                 ORDER BY indexname
-            """)
+            """
+            )
             indexes = [row[0] for row in cursor.fetchall()]
 
             # Django auto-generates index names, so we check for patterns
             # Check for tenant index (can be virtual_dat_tenant__03bd99_idx or virtual_datasets_tenant_id_*)
-            tenant_indexes = [idx for idx in indexes if "tenant" in idx.lower() and "idx" in idx.lower()]
-            self.assertGreater(len(tenant_indexes), 0, f"Should have tenant index, found: {indexes}")
+            tenant_indexes = [
+                idx for idx in indexes if "tenant" in idx.lower() and "idx" in idx.lower()
+            ]
+            self.assertGreater(
+                len(tenant_indexes), 0, f"Should have tenant index, found: {indexes}"
+            )
 
             # Check for created_by index
-            created_by_indexes = [idx for idx in indexes if "created_by" in idx.lower() or "created" in idx.lower()]
-            self.assertGreater(len(created_by_indexes), 0, f"Should have created_by index, found: {indexes}")
+            created_by_indexes = [
+                idx for idx in indexes if "created_by" in idx.lower() or "created" in idx.lower()
+            ]
+            self.assertGreater(
+                len(created_by_indexes), 0, f"Should have created_by index, found: {indexes}"
+            )
 
             # Check for query_type index
-            query_type_indexes = [idx for idx in indexes if "query_type" in idx.lower() or "query_t" in idx.lower()]
-            self.assertGreater(len(query_type_indexes), 0, f"Should have query_type index, found: {indexes}")
+            query_type_indexes = [
+                idx for idx in indexes if "query_type" in idx.lower() or "query_t" in idx.lower()
+            ]
+            self.assertGreater(
+                len(query_type_indexes), 0, f"Should have query_type index, found: {indexes}"
+            )
 
             # Check for status index
             status_indexes = [idx for idx in indexes if "status" in idx.lower()]
-            self.assertGreater(len(status_indexes), 0, f"Should have status index, found: {indexes}")
+            self.assertGreater(
+                len(status_indexes), 0, f"Should have status index, found: {indexes}"
+            )
 
             # Check for created_at index
-            created_at_indexes = [idx for idx in indexes if "created_at" in idx.lower() or ("created" in idx.lower() and "945d8c" in idx.lower())]
-            self.assertGreater(len(created_at_indexes), 0, f"Should have created_at index, found: {indexes}")
+            created_at_indexes = [
+                idx
+                for idx in indexes
+                if "created_at" in idx.lower()
+                or ("created" in idx.lower() and "945d8c" in idx.lower())
+            ]
+            self.assertGreater(
+                len(created_at_indexes), 0, f"Should have created_at index, found: {indexes}"
+            )
 
     def test_virtual_dataset_all_query_types(self):
         """Test that all query types can be used"""
@@ -595,6 +630,7 @@ class VirtualDatasetModelTest(TestCase):
         )
 
         import time
+
         time.sleep(0.1)  # Small delay to ensure different timestamps
 
         dataset2 = VirtualDataset.objects.create(
@@ -618,9 +654,7 @@ class QueryExecutionModelTest(TestCase):
         """Set up test fixtures"""
         # Create tenant
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
 
         # Create user
@@ -772,6 +806,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_validation_completed_before_started(self):
         """Test that completed_at before started_at raises ValidationError"""
         from django.utils import timezone
+
         now = timezone.now()
 
         execution = QueryExecution(
@@ -789,6 +824,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_validation_completed_without_completed_at(self):
         """Test that COMPLETED status without completed_at raises ValidationError when started_at is set"""
         from django.utils import timezone
+
         now = timezone.now()
 
         execution = QueryExecution(
@@ -807,6 +843,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_validation_failed_without_completed_at(self):
         """Test that FAILED status without completed_at raises ValidationError when started_at is set"""
         from django.utils import timezone
+
         now = timezone.now()
 
         execution = QueryExecution(
@@ -825,6 +862,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_validation_running_without_started_at(self):
         """Test that RUNNING status without started_at raises ValidationError when completed_at is set"""
         from django.utils import timezone
+
         now = timezone.now()
 
         execution = QueryExecution(
@@ -843,6 +881,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_get_duration_seconds(self):
         """Test get_duration_seconds method"""
         from django.utils import timezone
+
         now = timezone.now()
 
         # Execution with both timestamps
@@ -864,6 +903,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_get_duration_ms(self):
         """Test get_duration_ms method"""
         from django.utils import timezone
+
         now = timezone.now()
 
         execution = QueryExecution.objects.create(
@@ -975,6 +1015,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_mark_completed(self):
         """Test mark_completed method"""
         from django.utils import timezone
+
         now = timezone.now()
 
         execution = QueryExecution.objects.create(
@@ -998,6 +1039,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_mark_failed(self):
         """Test mark_failed method"""
         from django.utils import timezone
+
         now = timezone.now()
 
         execution = QueryExecution.objects.create(
@@ -1023,6 +1065,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_mark_cancelled(self):
         """Test mark_cancelled method"""
         from django.utils import timezone
+
         now = timezone.now()
 
         execution = QueryExecution.objects.create(
@@ -1070,25 +1113,35 @@ class QueryExecutionModelTest(TestCase):
 
         with connection.cursor() as cursor:
             # Check indexes exist
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT indexname
                 FROM pg_indexes
                 WHERE tablename = 'query_executions'
                 ORDER BY indexname
-            """)
+            """
+            )
             indexes = [row[0] for row in cursor.fetchall()]
 
             # Check for virtual_dataset index
             virtual_dataset_indexes = [idx for idx in indexes if "virtual" in idx.lower()]
-            self.assertGreater(len(virtual_dataset_indexes), 0, f"Should have virtual_dataset index, found: {indexes}")
+            self.assertGreater(
+                len(virtual_dataset_indexes),
+                0,
+                f"Should have virtual_dataset index, found: {indexes}",
+            )
 
             # Check for status index
             status_indexes = [idx for idx in indexes if "status" in idx.lower()]
-            self.assertGreater(len(status_indexes), 0, f"Should have status index, found: {indexes}")
+            self.assertGreater(
+                len(status_indexes), 0, f"Should have status index, found: {indexes}"
+            )
 
             # Check for started_at index
             started_at_indexes = [idx for idx in indexes if "started" in idx.lower()]
-            self.assertGreater(len(started_at_indexes), 0, f"Should have started_at index, found: {indexes}")
+            self.assertGreater(
+                len(started_at_indexes), 0, f"Should have started_at index, found: {indexes}"
+            )
 
     def test_query_execution_ordering(self):
         """Test that default ordering is by started_at descending, then created_at descending"""
@@ -1099,6 +1152,7 @@ class QueryExecutionModelTest(TestCase):
         )
 
         import time
+
         time.sleep(0.1)  # Small delay to ensure different timestamps
 
         execution2 = QueryExecution.objects.create(
@@ -1114,6 +1168,7 @@ class QueryExecutionModelTest(TestCase):
     def test_query_execution_ordering_with_started_at(self):
         """Test ordering when started_at is set"""
         from django.utils import timezone
+
         now = timezone.now()
 
         # Create execution with earlier started_at
@@ -1137,7 +1192,7 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_with_job(self):
         """Test creating a query execution with job reference"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
         from hub.apps.jobs.utils import create_job
 
         # Create job
@@ -1161,7 +1216,7 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_sync_status_from_job_pending(self):
         """Test syncing execution status from job when job is PENDING"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
         from hub.apps.jobs.utils import create_job
 
         job = create_job(
@@ -1187,7 +1242,7 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_sync_status_from_job_running(self):
         """Test syncing execution status from job when job is RUNNING"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
 
         job = Job.objects.create(
             tenant=self.tenant,
@@ -1215,7 +1270,7 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_sync_status_from_job_completed(self):
         """Test syncing execution status from job when job is COMPLETED"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
 
         job = Job.objects.create(
             tenant=self.tenant,
@@ -1244,7 +1299,7 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_sync_status_from_job_failed(self):
         """Test syncing execution status from job when job is FAILED"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
 
         job = Job.objects.create(
             tenant=self.tenant,
@@ -1276,7 +1331,7 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_sync_status_from_job_cancelled(self):
         """Test syncing execution status from job when job is CANCELLED"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
 
         job = Job.objects.create(
             tenant=self.tenant,
@@ -1319,7 +1374,7 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_sync_status_from_job_already_synced(self):
         """Test syncing execution status when already in sync"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
 
         job = Job.objects.create(
             tenant=self.tenant,
@@ -1345,7 +1400,7 @@ class QueryExecutionModelTest(TestCase):
 
     def test_query_execution_sync_status_from_job_terminal_state_protection(self):
         """Test that terminal execution states are not overwritten by non-terminal job states"""
-        from hub.apps.jobs.models import Job, JobType, JobStatus
+        from hub.apps.jobs.models import Job, JobStatus, JobType
 
         # Execution is already COMPLETED
         execution = QueryExecution.objects.create(
@@ -1371,4 +1426,3 @@ class QueryExecutionModelTest(TestCase):
         self.assertFalse(updated)
         execution.refresh_from_db()
         self.assertEqual(execution.status, QueryExecutionStatus.COMPLETED)
-

@@ -4,12 +4,13 @@ Unit tests for ODCS Generator V3.0.0.
 Tests the ODCSGeneratorV3_0_0 class following TDD approach
 and engineering best practices without mocks/stubs.
 """
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.contracts.odcs_generator import ODCSGeneratorV3_0_0
-from hub.apps.contracts.odcs_errors import ODCSGenerationError
 from hub.apps.contracts.normalization.odcs_normalizer_v3_0_0 import ODCSNormalizerV3_0_0
+from hub.apps.contracts.odcs_errors import ODCSGenerationError
+from hub.apps.contracts.odcs_generator import ODCSGeneratorV3_0_0
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -19,8 +20,8 @@ class ODCSGeneratorV3_0_0StructureTest(TestCase):
 
     def test_class_exists(self):
         """Test that ODCSGeneratorV3_0_0 class exists"""
-        self.assertTrue(hasattr(ODCSGeneratorV3_0_0, '__name__'))
-        self.assertEqual(ODCSGeneratorV3_0_0.__name__, 'ODCSGeneratorV3_0_0')
+        self.assertTrue(hasattr(ODCSGeneratorV3_0_0, "__name__"))
+        self.assertEqual(ODCSGeneratorV3_0_0.__name__, "ODCSGeneratorV3_0_0")
 
     def test_can_instantiate(self):
         """Test that ODCSGeneratorV3_0_0 can be instantiated"""
@@ -31,7 +32,7 @@ class ODCSGeneratorV3_0_0StructureTest(TestCase):
     def test_has_generate_method(self):
         """Test that ODCSGeneratorV3_0_0 has generate_odcs_from_hubcontract method"""
         generator = ODCSGeneratorV3_0_0()
-        self.assertTrue(hasattr(generator, 'generate_odcs_from_hubcontract'))
+        self.assertTrue(hasattr(generator, "generate_odcs_from_hubcontract"))
         self.assertTrue(callable(generator.generate_odcs_from_hubcontract))
 
 
@@ -41,18 +42,11 @@ class ODCSGeneratorV3_0_0BasicMappingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.generator = ODCSGeneratorV3_0_0()
-        self.minimal_hub_contract = {
-            "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            }
-        }
+        self.minimal_hub_contract = {"id": "test-contract-1", "info": {"name": "Test Contract"}}
 
     def test_generate_minimal_contract(self):
         """Test generation of minimal HubContract to ODCS 3.0.0"""
-        odcs_doc = self.generator.generate_odcs_from_hubcontract(
-            self.minimal_hub_contract
-        )
+        odcs_doc = self.generator.generate_odcs_from_hubcontract(self.minimal_hub_contract)
 
         self.assertIsInstance(odcs_doc, dict)
         self.assertEqual(odcs_doc["apiVersion"], "odcs.io/v3.0.0")
@@ -64,10 +58,7 @@ class ODCSGeneratorV3_0_0BasicMappingTest(TestCase):
         """Test generation includes version when present"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "version": "1.0.0"
-            }
+            "info": {"name": "Test Contract", "version": "1.0.0"},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -78,10 +69,7 @@ class ODCSGeneratorV3_0_0BasicMappingTest(TestCase):
         """Test generation includes description when present"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "description": "A test contract description"
-            }
+            "info": {"name": "Test Contract", "description": "A test contract description"},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -92,11 +80,7 @@ class ODCSGeneratorV3_0_0BasicMappingTest(TestCase):
         """Test generation with all basic fields"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "description": "A test contract",
-                "version": "1.0.0"
-            }
+            "info": {"name": "Test Contract", "description": "A test contract", "version": "1.0.0"},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -120,22 +104,13 @@ class ODCSGeneratorV3_0_0SchemaMappingTest(TestCase):
         """Test generation includes schema with fields"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
+            "info": {"name": "Test Contract"},
             "schema": {
                 "fields": [
-                    {
-                        "name": "id",
-                        "type": "string"
-                    },
-                    {
-                        "name": "name",
-                        "type": "string",
-                        "nullable": False
-                    }
+                    {"name": "id", "type": "string"},
+                    {"name": "name", "type": "string", "nullable": False},
                 ]
-            }
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -153,15 +128,8 @@ class ODCSGeneratorV3_0_0SchemaMappingTest(TestCase):
         """Test generation includes primary key when present"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ],
-                "primary_key": ["id"]
-            }
+            "info": {"name": "Test Contract"},
+            "schema": {"fields": [{"name": "id", "type": "string"}], "primary_key": ["id"]},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -173,17 +141,8 @@ class ODCSGeneratorV3_0_0SchemaMappingTest(TestCase):
         """Test generation handles models[] array structure"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "models": [
-                {
-                    "name": "User",
-                    "fields": [
-                        {"name": "id", "type": "string"}
-                    ]
-                }
-            ]
+            "info": {"name": "Test Contract"},
+            "models": [{"name": "User", "fields": [{"name": "id", "type": "string"}]}],
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -207,18 +166,8 @@ class ODCSGeneratorV3_0_0QualityMappingTest(TestCase):
         """Test generation includes quality rules when present"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "quality": {
-                "rules": [
-                    {
-                        "name": "completeness",
-                        "type": "metric",
-                        "threshold": 0.95
-                    }
-                ]
-            }
+            "info": {"name": "Test Contract"},
+            "quality": {"rules": [{"name": "completeness", "type": "metric", "threshold": 0.95}]},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -240,13 +189,8 @@ class ODCSGeneratorV3_0_0LifecycleMappingTest(TestCase):
         """Test generation includes lifecycle when present"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "lifecycle": {
-                "data_source": "database",
-                "refresh_cadence": "daily"
-            }
+            "info": {"name": "Test Contract"},
+            "lifecycle": {"data_source": "database", "refresh_cadence": "daily"},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -267,16 +211,8 @@ class ODCSGeneratorV3_0_0ServicelevelsMappingTest(TestCase):
         """Test generation includes servicelevels when present"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
-            "servicelevels": [
-                {
-                    "name": "availability",
-                    "target": "99.9%",
-                    "unit": "percentage"
-                }
-            ]
+            "info": {"name": "Test Contract"},
+            "servicelevels": [{"name": "availability", "target": "99.9%", "unit": "percentage"}],
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -298,18 +234,11 @@ class ODCSGeneratorV3_0_0LineageMappingTest(TestCase):
         """Test generation includes lineage when present"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract"
-            },
+            "info": {"name": "Test Contract"},
             "lineage": {
-                "entries": [
-                    {
-                        "contract_id": "source-contract",
-                        "contract_version": "1.0.0"
-                    }
-                ],
-                "transform_logic": "SELECT * FROM source"
-            }
+                "entries": [{"contract_id": "source-contract", "contract_version": "1.0.0"}],
+                "transform_logic": "SELECT * FROM source",
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -334,13 +263,8 @@ class ODCSGeneratorV3_0_0InfoSectionMappingTest(TestCase):
             "id": "test-contract-1",
             "info": {
                 "name": "Test Contract",
-                "owners": [
-                    {
-                        "name": "John Doe",
-                        "email": "john@example.com"
-                    }
-                ]
-            }
+                "owners": [{"name": "John Doe", "email": "john@example.com"}],
+            },
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -355,10 +279,7 @@ class ODCSGeneratorV3_0_0InfoSectionMappingTest(TestCase):
         """Test generation includes tags when present"""
         hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "tags": ["production", "critical"]
-            }
+            "info": {"name": "Test Contract", "tags": ["production", "critical"]},
         }
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(hub_contract)
@@ -377,9 +298,7 @@ class ODCSGeneratorV3_0_0ErrorHandlingTest(TestCase):
 
     def test_generate_with_missing_info(self):
         """Test generation fails when info section is missing"""
-        invalid_contract = {
-            "id": "test-contract-1"
-        }
+        invalid_contract = {"id": "test-contract-1"}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.generate_odcs_from_hubcontract(invalid_contract)
@@ -390,10 +309,7 @@ class ODCSGeneratorV3_0_0ErrorHandlingTest(TestCase):
 
     def test_generate_with_missing_name(self):
         """Test generation fails when info.name is missing"""
-        invalid_contract = {
-            "id": "test-contract-1",
-            "info": {}
-        }
+        invalid_contract = {"id": "test-contract-1", "info": {}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.generate_odcs_from_hubcontract(invalid_contract)
@@ -404,11 +320,7 @@ class ODCSGeneratorV3_0_0ErrorHandlingTest(TestCase):
 
     def test_generate_with_missing_id(self):
         """Test generation fails when id is missing"""
-        invalid_contract = {
-            "info": {
-                "name": "Test Contract"
-            }
-        }
+        invalid_contract = {"info": {"name": "Test Contract"}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.generate_odcs_from_hubcontract(invalid_contract)
@@ -437,18 +349,17 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
             "version": "1.0.0",
             "description": "A test contract",
             "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"},
-                    {"name": "name", "type": "string"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "string"}, {"name": "name", "type": "string"}]
+            },
         }
 
         # Normalize to HubContract
         norm_result = self.normalizer.normalize(original_odcs, spec_version="3.0.0")
         # Status can be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS
         self.assertIn(norm_result.status.value, ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"])
-        self.assertIsNotNone(norm_result.hub_contract, f"Normalization failed with errors: {norm_result.errors}")
+        self.assertIsNotNone(
+            norm_result.hub_contract, f"Normalization failed with errors: {norm_result.errors}"
+        )
         hub_contract = norm_result.hub_contract
 
         # Generate back to ODCS 3.0.0
@@ -474,27 +385,17 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
             "kind": "DataContract",
             "id": "test-contract-1",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string"}
-                ]
-            },
-            "quality": {
-                "rules": [
-                    {
-                        "name": "completeness",
-                        "type": "metric",
-                        "threshold": 0.95
-                    }
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+            "quality": {"rules": [{"name": "completeness", "type": "metric", "threshold": 0.95}]},
         }
 
         # Normalize to HubContract
         norm_result = self.normalizer.normalize(original_odcs, spec_version="3.0.0")
         # Status can be NORMALIZED_OK or NORMALIZED_WITH_WARNINGS
         self.assertIn(norm_result.status.value, ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"])
-        self.assertIsNotNone(norm_result.hub_contract, f"Normalization failed with errors: {norm_result.errors}")
+        self.assertIsNotNone(
+            norm_result.hub_contract, f"Normalization failed with errors: {norm_result.errors}"
+        )
         hub_contract = norm_result.hub_contract
 
         # Generate back to ODCS 3.0.0
@@ -504,3 +405,86 @@ class ODCSGeneratorV3_0_0RoundTripTest(TestCase):
         self.assertIn("quality", generated_odcs)
         self.assertIn("rules", generated_odcs["quality"])
 
+    def test_generation_handles_unicode_characters(self):
+        """Test that generation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-unicode",
+            "info": {"name": "测试合同", "description": "测试描述"},
+            "schema": {"fields": [{"name": "字段名称", "data_type": "string"}]},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify unicode characters are preserved
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "测试合同")
+
+    def test_generation_handles_special_characters(self):
+        """Test that generation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-special",
+            "info": {"name": "Test & Co. (Special)", "description": "Test <description> & more"},
+            "schema": {"fields": [{"name": "field-name", "data_type": "string"}]},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify special characters are preserved
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test & Co. (Special)")
+
+    def test_generation_handles_very_large_documents(self):
+        """Test that generation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-large",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+            # If generation succeeds, verify structure
+            self.assertIn("name", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSGenerationError, "Should raise ODCSGenerationError for very large documents"
+            )
+
+    def test_generation_handles_none_values(self):
+        """Test that generation handles None values correctly."""
+        hub_contract = {
+            "id": "test-none",
+            "info": {"name": "Test Product", "description": None},  # None value
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSGenerationError, "Should raise ODCSGenerationError for None values"
+            )
+
+    def test_generation_handles_nested_structures(self):
+        """Test that generation handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-nested",
+            "info": {
+                "name": "Test Product",
+                "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+            },
+            "schema": {"fields": [{"name": "id", "data_type": "string"}]},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify nested structure is preserved
+        self.assertIn("name", result)
+        self.assertIsNotNone(result)

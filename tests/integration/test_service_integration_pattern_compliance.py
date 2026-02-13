@@ -11,35 +11,40 @@ These tests verify:
 
 All tests run against real Docker Compose services - no mocks or stubs.
 """
+
 import ast
 import inspect
 import re
 from pathlib import Path
-from typing import List, Dict, Set, Optional
+from typing import Dict, List, Optional, Set
+
 import django
-from django.test import TestCase
 from django.conf import settings
+from django.test import TestCase
 
 # Import service clients
 from hub.apps.compliance.service_client import ComplianceServiceClient
-from hub.apps.dq.service_client import DQServiceClient
-from hub.apps.semantic.service_client import SemanticServiceClient
 from hub.apps.contracts.cli_client import DataContractCLIClient
 
 # Import services to check BaseService pattern
 from hub.apps.contracts.services import ContractService
-from hub.apps.transformation.services import TransformationService
-from hub.apps.marketplace.services import MarketplaceService
-from hub.apps.mesh.services import DataMeshService
-from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.scheduled_ingestion.services import IngestionService
-from hub.apps.governance.services import GovernanceService
-from hub.apps.search.services import SearchService
+from hub.apps.dq.service_client import DQServiceClient
+from hub.apps.semantic.service_client import SemanticServiceClient
+
+try:
+    from hub.apps.transformation.services import TransformationService
+except ModuleNotFoundError:
+    TransformationService = None  # transformation app removed or not installed
+import structlog
 
 # Import BaseService
 from hub.apps.core.services.base import BaseService
-
-import structlog
+from hub.apps.governance.services import GovernanceService
+from hub.apps.marketplace.services import MarketplaceService
+from hub.apps.mesh.services import DataMeshService
+from hub.apps.scheduled_ingestion.services import IngestionService
+from hub.apps.search.services import SearchService
+from hub.apps.virtualization.services import VirtualizationService
 
 logger = structlog.get_logger(__name__)
 
@@ -69,15 +74,15 @@ class ServiceClientPatternComplianceTest(TestCase):
         self.assertIsNotNone(self.dq_client.client)
         self.assertIsInstance(self.dq_client.client, type(self.dq_client.client))
         # Verify it's an httpx.Client (check by attribute)
-        self.assertTrue(hasattr(self.dq_client.client, 'request'))
+        self.assertTrue(hasattr(self.dq_client.client, "request"))
 
         # Check Compliance client
         self.assertIsNotNone(self.compliance_client.client)
-        self.assertTrue(hasattr(self.compliance_client.client, 'request'))
+        self.assertTrue(hasattr(self.compliance_client.client, "request"))
 
         # Check Semantic client
         self.assertIsNotNone(self.semantic_client.client)
-        self.assertTrue(hasattr(self.semantic_client.client, 'request'))
+        self.assertTrue(hasattr(self.semantic_client.client, "request"))
 
     def test_service_clients_have_retry_logic(self):
         """Test that service clients have retry logic configured"""
@@ -104,16 +109,16 @@ class ServiceClientPatternComplianceTest(TestCase):
         self.assertIsNotNone(self.datacontract_client._circuit_breaker)
 
         # Verify circuit breaker has required methods
-        self.assertTrue(hasattr(self.dq_client._circuit_breaker, 'call'))
-        self.assertTrue(hasattr(self.compliance_client._circuit_breaker, 'call'))
-        self.assertTrue(hasattr(self.semantic_client._circuit_breaker, 'call'))
+        self.assertTrue(hasattr(self.dq_client._circuit_breaker, "call"))
+        self.assertTrue(hasattr(self.compliance_client._circuit_breaker, "call"))
+        self.assertTrue(hasattr(self.semantic_client._circuit_breaker, "call"))
 
     def test_service_clients_have_health_check(self):
         """Test that service clients have health check methods"""
-        self.assertTrue(hasattr(self.dq_client, 'health_check'))
-        self.assertTrue(hasattr(self.compliance_client, 'health_check'))
-        self.assertTrue(hasattr(self.semantic_client, 'health_check'))
-        self.assertTrue(hasattr(self.datacontract_client, 'health_check'))
+        self.assertTrue(hasattr(self.dq_client, "health_check"))
+        self.assertTrue(hasattr(self.compliance_client, "health_check"))
+        self.assertTrue(hasattr(self.semantic_client, "health_check"))
+        self.assertTrue(hasattr(self.datacontract_client, "health_check"))
 
         # Verify health_check is callable
         self.assertTrue(callable(self.dq_client.health_check))
@@ -122,9 +127,9 @@ class ServiceClientPatternComplianceTest(TestCase):
 
     def test_service_clients_have_request_with_retry(self):
         """Test that service clients have _request_with_retry method"""
-        self.assertTrue(hasattr(self.dq_client, '_request_with_retry'))
-        self.assertTrue(hasattr(self.compliance_client, '_request_with_retry'))
-        self.assertTrue(hasattr(self.semantic_client, '_request_with_retry'))
+        self.assertTrue(hasattr(self.dq_client, "_request_with_retry"))
+        self.assertTrue(hasattr(self.compliance_client, "_request_with_retry"))
+        self.assertTrue(hasattr(self.semantic_client, "_request_with_retry"))
 
         # Verify it's callable
         self.assertTrue(callable(self.dq_client._request_with_retry))
@@ -135,13 +140,13 @@ class ServiceClientPatternComplianceTest(TestCase):
         """Test that service clients propagate distributed tracing headers"""
         # Check _request_with_retry method includes trace header logic
         dq_source = inspect.getsource(self.dq_client._request_with_retry)
-        self.assertIn('trace', dq_source.lower())
+        self.assertIn("trace", dq_source.lower())
 
         compliance_source = inspect.getsource(self.compliance_client._request_with_retry)
-        self.assertIn('trace', compliance_source.lower())
+        self.assertIn("trace", compliance_source.lower())
 
         semantic_source = inspect.getsource(self.semantic_client._request_with_retry)
-        self.assertIn('trace', semantic_source.lower())
+        self.assertIn("trace", semantic_source.lower())
 
 
 class BaseServicePatternComplianceTest(TestCase):
@@ -161,6 +166,8 @@ class BaseServicePatternComplianceTest(TestCase):
 
     def test_transformation_service_extends_base_service(self):
         """Test that TransformationService extends BaseService"""
+        if TransformationService is None:
+            self.skipTest("hub.apps.transformation not available")
         self.assertTrue(issubclass(TransformationService, BaseService))
         self.assertEqual(TransformationService.service_name, "transformation_service")
 
@@ -198,7 +205,6 @@ class BaseServicePatternComplianceTest(TestCase):
         """Test that all services define service_name attribute"""
         services = [
             ContractService,
-            TransformationService,
             MarketplaceService,
             DataMeshService,
             VirtualizationService,
@@ -206,22 +212,24 @@ class BaseServicePatternComplianceTest(TestCase):
             GovernanceService,
             SearchService,
         ]
+        if TransformationService is not None:
+            services.append(TransformationService)
 
         for service_class in services:
-            self.assertTrue(hasattr(service_class, 'service_name'))
+            self.assertTrue(hasattr(service_class, "service_name"))
             self.assertIsNotNone(service_class.service_name)
             self.assertIsInstance(service_class.service_name, str)
 
     def test_services_have_get_resource_or_raise(self):
         """Test that services inherit get_resource_or_raise from BaseService"""
         service = ContractService()
-        self.assertTrue(hasattr(service, 'get_resource_or_raise'))
+        self.assertTrue(hasattr(service, "get_resource_or_raise"))
         self.assertTrue(callable(service.get_resource_or_raise))
 
     def test_services_have_execute_with_metrics(self):
         """Test that services inherit execute_with_metrics from BaseService"""
         service = ContractService()
-        self.assertTrue(hasattr(service, 'execute_with_metrics'))
+        self.assertTrue(hasattr(service, "execute_with_metrics"))
         self.assertTrue(callable(service.execute_with_metrics))
 
 
@@ -238,25 +246,29 @@ class DirectHttpCallComplianceTest(TestCase):
     def setUp(self):
         """Set up paths for scanning"""
         # Get project root (go up from hub directory)
-        self.project_root = Path(settings.BASE_DIR).parent.parent if hasattr(settings, 'BASE_DIR') else Path(__file__).parent.parent.parent
+        self.project_root = (
+            Path(settings.BASE_DIR).parent.parent
+            if hasattr(settings, "BASE_DIR")
+            else Path(__file__).parent.parent.parent
+        )
         self.hub_apps_path = self.project_root / "hub" / "apps"
 
         # Files that are allowed to have HTTP calls (service clients)
         self.allowed_files = {
-            'hub/apps/compliance/service_client.py',
-            'hub/apps/dq/service_client.py',
-            'hub/apps/semantic/service_client.py',
-            'hub/apps/contracts/cli_client.py',
+            "hub/apps/compliance/service_client.py",
+            "hub/apps/dq/service_client.py",
+            "hub/apps/semantic/service_client.py",
+            "hub/apps/contracts/cli_client.py",
         }
 
         # Patterns that are acceptable (URL parsing)
         self.acceptable_patterns = [
-            r'from urllib\.parse import',
-            r'import urllib\.parse',
-            r'urllib\.parse\.urlparse',
-            r'urllib\.parse\.urlencode',
-            r'urllib\.parse\.urljoin',
-            r'urllib\.parse\.unquote',
+            r"from urllib\.parse import",
+            r"import urllib\.parse",
+            r"urllib\.parse\.urlparse",
+            r"urllib\.parse\.urlencode",
+            r"urllib\.parse\.urljoin",
+            r"urllib\.parse\.unquote",
         ]
 
     def test_no_direct_httpx_calls_outside_clients(self):
@@ -265,7 +277,7 @@ class DirectHttpCallComplianceTest(TestCase):
 
         for py_file in self.hub_apps_path.rglob("*.py"):
             # Skip test files
-            if 'test' in str(py_file) or '__pycache__' in str(py_file):
+            if "test" in str(py_file) or "__pycache__" in str(py_file):
                 continue
 
             relative_path = str(py_file.relative_to(self.project_root))
@@ -275,34 +287,40 @@ class DirectHttpCallComplianceTest(TestCase):
                 continue
 
             try:
-                content = py_file.read_text(encoding='utf-8')
-                lines = content.split('\n')
+                content = py_file.read_text(encoding="utf-8")
+                lines = content.split("\n")
 
                 for line_num, line in enumerate(lines, 1):
                     # Skip comments and docstrings
                     stripped = line.strip()
-                    if stripped.startswith('#') or '"""' in stripped or "'''" in stripped:
+                    if stripped.startswith("#") or '"""' in stripped or "'''" in stripped:
                         continue
 
                     # Check for direct httpx calls
-                    if re.search(r'httpx\.(get|post|put|delete|patch|request)\s*\(', line):
+                    if re.search(r"httpx\.(get|post|put|delete|patch|request)\s*\(", line):
                         # Check if it's an acceptable pattern
-                        is_acceptable = any(re.search(pattern, line) for pattern in self.acceptable_patterns)
+                        is_acceptable = any(
+                            re.search(pattern, line) for pattern in self.acceptable_patterns
+                        )
                         if not is_acceptable:
-                            violations.append({
-                                'file': relative_path,
-                                'line': line_num,
-                                'code': line.strip()[:100]
-                            })
+                            violations.append(
+                                {
+                                    "file": relative_path,
+                                    "line": line_num,
+                                    "code": line.strip()[:100],
+                                }
+                            )
             except Exception as e:
                 logger.warning(f"Error scanning {py_file}: {e}")
                 continue
 
         if violations:
-            violation_msg = "\n".join([
-                f"  {v['file']}:{v['line']} - {v['code']}"
-                for v in violations[:10]  # Show first 10
-            ])
+            violation_msg = "\n".join(
+                [
+                    f"  {v['file']}:{v['line']} - {v['code']}"
+                    for v in violations[:10]  # Show first 10
+                ]
+            )
             self.fail(
                 f"Found {len(violations)} direct httpx calls outside service clients:\n{violation_msg}"
             )
@@ -312,7 +330,7 @@ class DirectHttpCallComplianceTest(TestCase):
         violations = []
 
         for py_file in self.hub_apps_path.rglob("*.py"):
-            if 'test' in str(py_file) or '__pycache__' in str(py_file):
+            if "test" in str(py_file) or "__pycache__" in str(py_file):
                 continue
 
             relative_path = str(py_file.relative_to(self.project_root))
@@ -321,32 +339,35 @@ class DirectHttpCallComplianceTest(TestCase):
                 continue
 
             try:
-                content = py_file.read_text(encoding='utf-8')
-                lines = content.split('\n')
+                content = py_file.read_text(encoding="utf-8")
+                lines = content.split("\n")
 
                 for line_num, line in enumerate(lines, 1):
                     stripped = line.strip()
-                    if stripped.startswith('#') or '"""' in stripped or "'''" in stripped:
+                    if stripped.startswith("#") or '"""' in stripped or "'''" in stripped:
                         continue
 
                     # Check for direct requests calls
-                    if re.search(r'requests\.(get|post|put|delete|patch|request)\s*\(', line):
-                        is_acceptable = any(re.search(pattern, line) for pattern in self.acceptable_patterns)
+                    if re.search(r"requests\.(get|post|put|delete|patch|request)\s*\(", line):
+                        is_acceptable = any(
+                            re.search(pattern, line) for pattern in self.acceptable_patterns
+                        )
                         if not is_acceptable:
-                            violations.append({
-                                'file': relative_path,
-                                'line': line_num,
-                                'code': line.strip()[:100]
-                            })
+                            violations.append(
+                                {
+                                    "file": relative_path,
+                                    "line": line_num,
+                                    "code": line.strip()[:100],
+                                }
+                            )
             except Exception as e:
                 logger.warning(f"Error scanning {py_file}: {e}")
                 continue
 
         if violations:
-            violation_msg = "\n".join([
-                f"  {v['file']}:{v['line']} - {v['code']}"
-                for v in violations[:10]
-            ])
+            violation_msg = "\n".join(
+                [f"  {v['file']}:{v['line']} - {v['code']}" for v in violations[:10]]
+            )
             self.fail(
                 f"Found {len(violations)} direct requests calls outside service clients:\n{violation_msg}"
             )
@@ -375,8 +396,8 @@ class AuditScriptValidationTest(TestCase):
 
     def test_audit_script_can_be_imported(self):
         """Test that audit script can be imported"""
-        import sys
         import importlib.util
+        import sys
 
         script_path = self.project_root / "scripts" / "audit_service_integrations.py"
         spec = importlib.util.spec_from_file_location("audit_service_integrations", script_path)
@@ -397,23 +418,27 @@ class AuditScriptValidationTest(TestCase):
 
         report_path = self.project_root / "docs" / "api-audit" / "service-integration-audit.json"
         if report_path.exists():
-            with open(report_path, 'r') as f:
+            with open(report_path, "r") as f:
                 try:
                     data = json.load(f)
                     self.assertIsInstance(data, dict)
-                    self.assertIn('summary', data)
-                    self.assertIn('issues', data)
+                    self.assertIn("summary", data)
+                    self.assertIn("issues", data)
                 except json.JSONDecodeError as e:
                     self.fail(f"Audit report is not valid JSON: {e}")
 
     def test_remediation_plan_exists(self):
         """Test that remediation plan exists"""
-        plan_path = self.project_root / "docs" / "api-audit" / "service-integration-remediation-plan.json"
+        plan_path = (
+            self.project_root / "docs" / "api-audit" / "service-integration-remediation-plan.json"
+        )
         self.assertTrue(plan_path.exists(), "Remediation plan not found")
 
     def test_comprehensive_report_exists(self):
         """Test that comprehensive report exists"""
-        report_path = self.project_root / "docs" / "api-audit" / "SERVICE_INTEGRATION_AUDIT_REPORT.md"
+        report_path = (
+            self.project_root / "docs" / "api-audit" / "SERVICE_INTEGRATION_AUDIT_REPORT.md"
+        )
         self.assertTrue(report_path.exists(), "Comprehensive audit report not found")
 
 
@@ -470,6 +495,5 @@ class ServiceIntegrationRealServiceTest(TestCase):
         self.assertIsNotNone(self.semantic_client._circuit_breaker)
 
         # Verify circuit breaker has call method
-        self.assertTrue(hasattr(self.dq_client._circuit_breaker, 'call'))
+        self.assertTrue(hasattr(self.dq_client._circuit_breaker, "call"))
         self.assertTrue(callable(self.dq_client._circuit_breaker.call))
-

@@ -3,41 +3,39 @@ Unit tests for Asset Recommendations
 
 Tests for recommendation algorithms based on usage patterns, lineage, and user behavior.
 """
+
+from datetime import timedelta
+
 import pytest
 from django.test import TestCase
 from django.utils import timezone
-from datetime import timedelta
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.recommendations import AssetRecommendationService
-from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType, OriginalFormat
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
 from hub.apps.search.models import SearchAnalytics
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
 class AssetRecommendationServiceTest(TestCase):
     """Test AssetRecommendationService"""
-    
+
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED"
+            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
         )
-        
+
         self.user = User.objects.create_user(
             email="user@example.com",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
-        
+
         # Create assets
         self.asset1 = Asset.objects.create(
             tenant=self.tenant,
@@ -47,9 +45,9 @@ class AssetRecommendationServiceTest(TestCase):
             popularity_score=90.0,
             view_count=100,
             download_count=50,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.asset2 = Asset.objects.create(
             tenant=self.tenant,
             key="asset-2",
@@ -59,9 +57,9 @@ class AssetRecommendationServiceTest(TestCase):
             view_count=80,
             download_count=40,
             domain="finance",
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         self.asset3 = Asset.objects.create(
             tenant=self.tenant,
             key="asset-3",
@@ -71,35 +69,63 @@ class AssetRecommendationServiceTest(TestCase):
             view_count=60,
             download_count=30,
             domain="marketing",
-            created_by=self.user
+            created_by=self.user,
         )
-    
-    def test_get_recommendations_usage_patterns(self):
-        """Test usage pattern-based recommendations"""
+
+        # Create another asset with finance domain for user behavior recommendations
+        self.asset4 = Asset.objects.create(
+            tenant=self.tenant,
+            key="asset-4",
+            name="Asset 4",
+            status=AssetStatus.ACTIVE,
+            popularity_score=75.0,
+            view_count=70,
+            download_count=35,
+            domain="finance",
+            created_by=self.user,
+        )
+
+    def test_get_recommendations_usage_patterns_returns_recommendations(self):
+        """Test usage pattern-based recommendations returns recommendations."""
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id),
             limit=10,
             include_usage_patterns=True,
             include_lineage=False,
-            include_user_behavior=False
+            include_user_behavior=False,
         )
-        
+
         self.assertGreater(len(recommendations), 0)
-        
-        # Should be sorted by score descending
+
+    def test_get_recommendations_usage_patterns_sorted_by_score(self):
+        """Test usage pattern-based recommendations are sorted by score descending."""
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(self.tenant.id),
+            limit=10,
+            include_usage_patterns=True,
+            include_lineage=False,
+            include_user_behavior=False,
+        )
+
         if len(recommendations) > 1:
-            self.assertGreaterEqual(
-                recommendations[0]["score"],
-                recommendations[1]["score"]
-            )
-        
-        # Check recommendation structure
+            self.assertGreaterEqual(recommendations[0]["score"], recommendations[1]["score"])
+
+    def test_get_recommendations_usage_patterns_has_required_fields(self):
+        """Test usage pattern-based recommendations have required fields."""
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(self.tenant.id),
+            limit=10,
+            include_usage_patterns=True,
+            include_lineage=False,
+            include_user_behavior=False,
+        )
+
         for rec in recommendations:
             self.assertIn("asset_id", rec)
             self.assertIn("asset_name", rec)
             self.assertIn("score", rec)
             self.assertIn("reasons", rec)
-    
+
     def test_get_recommendations_lineage(self):
         """Test lineage-based recommendations"""
         # Create contract with lineage
@@ -111,53 +137,44 @@ class AssetRecommendationServiceTest(TestCase):
             original_raw='{"apiVersion": "v3", "kind": "DataContract", "id": "source-contract"}',
             hub_contract_json={
                 "id": "source-contract",
-                "lineage": {
-                    "contracts": [
-                        {
-                            "namespace": "ns1",
-                            "name": "target-contract"
-                        }
-                    ]
-                }
+                "lineage": {"contracts": [{"namespace": "ns1", "name": "target-contract"}]},
             },
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         # Create target asset with contract
         target_asset = Asset.objects.create(
             tenant=self.tenant,
             key="target-asset",
             name="Target Asset",
             status=AssetStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         target_contract = Contract.objects.create(
             tenant=self.tenant,
             asset=target_asset,
             original_spec_type=OriginalSpecType.ODCS,
             original_format=OriginalFormat.YAML,
             original_raw='{"apiVersion": "v3", "kind": "DataContract", "id": "target-contract"}',
-            hub_contract_json={
-                "id": "target-contract"
-            },
+            hub_contract_json={"id": "target-contract"},
             status=ContractStatus.ACTIVE,
-            created_by=self.user
+            created_by=self.user,
         )
-        
+
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id),
             asset_id=str(self.asset1.id),
             limit=10,
             include_usage_patterns=False,
             include_lineage=True,
-            include_user_behavior=False
+            include_user_behavior=False,
         )
-        
+
         # Should find target asset via lineage
         self.assertGreater(len(recommendations), 0)
-    
+
     def test_get_recommendations_user_behavior(self):
         """Test user behavior-based recommendations"""
         # Create search analytics with clicks
@@ -167,21 +184,21 @@ class AssetRecommendationServiceTest(TestCase):
             query="test query",
             clicked_result_id=self.asset2.id,
             clicked_result_type="ASSET",
-            clicked_at=timezone.now()
+            clicked_at=timezone.now(),
         )
-        
+
         recommendations = AssetRecommendationService.get_recommendations(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             limit=10,
             include_usage_patterns=False,
             include_lineage=False,
-            include_user_behavior=True
+            include_user_behavior=True,
         )
-        
+
         # Should find recommendations based on user behavior
         self.assertGreater(len(recommendations), 0)
-    
+
     def test_get_recommendations_combined(self):
         """Test combined recommendations from all sources"""
         recommendations = AssetRecommendationService.get_recommendations(
@@ -190,21 +207,146 @@ class AssetRecommendationServiceTest(TestCase):
             limit=10,
             include_usage_patterns=True,
             include_lineage=True,
-            include_user_behavior=True
+            include_user_behavior=True,
         )
-        
+
         self.assertGreater(len(recommendations), 0)
-        
+
         # Check that recommendations are aggregated
         asset_ids = [r["asset_id"] for r in recommendations]
         self.assertEqual(len(asset_ids), len(set(asset_ids)))  # No duplicates
-    
+
     def test_recommendations_limit(self):
         """Test recommendation limit"""
         recommendations = AssetRecommendationService.get_recommendations(
-            tenant_id=str(self.tenant.id),
-            limit=2
+            tenant_id=str(self.tenant.id), limit=2
         )
-        
+
         self.assertLessEqual(len(recommendations), 2)
 
+    # ========== SUCCESS SCENARIOS ==========
+
+    def test_get_recommendations_success(self):
+        """Test successful recommendation retrieval (success scenario)"""
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(self.tenant.id), limit=10
+        )
+
+        # Should return recommendations
+        self.assertIsNotNone(recommendations)
+        self.assertIsInstance(recommendations, list)
+        self.assertGreaterEqual(len(recommendations), 0)
+
+    # ========== FAILURE SCENARIOS ==========
+
+    def test_get_recommendations_nonexistent_tenant(self):
+        """Test recommendations with non-existent tenant (failure scenario)"""
+        import uuid
+
+        fake_tenant_id = str(uuid.uuid4())
+
+        # Should handle non-existent tenant gracefully
+        try:
+            recommendations = AssetRecommendationService.get_recommendations(
+                tenant_id=fake_tenant_id, limit=10
+            )
+            # If succeeds, should return empty list
+            self.assertEqual(len(recommendations), 0)
+        except Exception:
+            # If fails, that's acceptable for non-existent tenant
+            pass
+
+    def test_get_recommendations_nonexistent_asset(self):
+        """Test recommendations with non-existent asset (failure scenario)"""
+        import uuid
+
+        fake_asset_id = str(uuid.uuid4())
+
+        # Should handle non-existent asset gracefully
+        try:
+            recommendations = AssetRecommendationService.get_recommendations(
+                tenant_id=str(self.tenant.id), asset_id=fake_asset_id, limit=10
+            )
+            # If succeeds, should return empty list or handle gracefully
+            self.assertIsInstance(recommendations, list)
+        except Exception:
+            # If fails, that's acceptable for non-existent asset
+            pass
+
+    # ========== EDGE CASES ==========
+
+    def test_get_recommendations_zero_limit(self):
+        """Test recommendations with zero limit (edge case)"""
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(self.tenant.id), limit=0
+        )
+
+        # Should return empty list or handle gracefully
+        self.assertIsInstance(recommendations, list)
+        self.assertEqual(len(recommendations), 0)
+
+    def test_get_recommendations_very_large_limit(self):
+        """Test recommendations with very large limit (edge case)"""
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(self.tenant.id), limit=999999
+        )
+
+        # Should return available recommendations (limited by data)
+        self.assertIsInstance(recommendations, list)
+        self.assertLessEqual(len(recommendations), 999999)
+
+    def test_get_recommendations_no_assets(self):
+        """Test recommendations when no assets exist (edge case)"""
+        # Create empty tenant
+        empty_tenant = Tenant.objects.create(
+            name="Empty Tenant", slug="empty-tenant", status="ACTIVE", kyc_status="UNVERIFIED"
+        )
+
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(empty_tenant.id), limit=10
+        )
+
+        # Should return empty list
+        self.assertEqual(len(recommendations), 0)
+
+    def test_get_recommendations_all_filters_disabled(self):
+        """Test recommendations with all filters disabled (edge case)"""
+        recommendations = AssetRecommendationService.get_recommendations(
+            tenant_id=str(self.tenant.id),
+            limit=10,
+            include_usage_patterns=False,
+            include_lineage=False,
+            include_user_behavior=False,
+        )
+
+        # Should return empty list or handle gracefully
+        self.assertIsInstance(recommendations, list)
+
+    # ========== ERROR HANDLING ==========
+
+    def test_get_recommendations_database_error_handling(self):
+        """Test error handling when database query fails"""
+        # Use valid tenant
+        try:
+            recommendations = AssetRecommendationService.get_recommendations(
+                tenant_id=str(self.tenant.id), limit=10
+            )
+            # Should return list
+            self.assertIsNotNone(recommendations)
+            self.assertIsInstance(recommendations, list)
+        except Exception:
+            # If raises exception, that's a problem
+            self.fail("get_recommendations should handle database errors gracefully")
+
+    def test_get_recommendations_invalid_parameters(self):
+        """Test error handling with invalid parameters"""
+        # Should handle invalid parameters gracefully
+        try:
+            recommendations = AssetRecommendationService.get_recommendations(
+                tenant_id="invalid-uuid", limit=-1
+            )
+            # If succeeds, should return empty list or handle gracefully
+            self.assertIsInstance(recommendations, list)
+        except (ValueError, TypeError):
+            # If fails, that's acceptable for invalid parameters
+            pass

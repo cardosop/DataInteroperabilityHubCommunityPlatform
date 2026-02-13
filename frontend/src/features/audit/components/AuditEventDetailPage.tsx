@@ -1,0 +1,97 @@
+/**
+ * Audit Event Detail Page
+ * Shows detailed information about a single audit event
+ */
+
+import { useNavigate, useParams } from 'react-router-dom';
+import { EmptyState } from '../../../shared/components/EmptyState';
+import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { LoadingSpinner } from '../../../shared/components/LoadingSpinner';
+import { useAuditEvent } from '../hooks/useAudit';
+import './AuditEventDetailPage.css';
+
+export function AuditEventDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { data: event, isLoading, error, refetch } = useAuditEvent(id || null);
+
+  if (isLoading) {
+    return <LoadingSpinner message="Loading audit event..." />;
+  }
+
+  if (error) {
+    return (
+      <ErrorDisplay error={error} title="Failed to load audit event" onRetry={() => refetch()} />
+    );
+  }
+
+  if (!event) {
+    return (
+      <EmptyState
+        title="Audit event not found"
+        message="The requested audit event could not be found."
+        action={{
+          label: 'Back to Audit Events',
+          onClick: () => navigate('/audit'),
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="audit-event-detail-page" data-testid="audit-event-detail-page">
+      <div className="audit-detail-header">
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => navigate('/audit')}
+          aria-label="Back to audit events"
+        >
+          ← Back to Audit Events
+        </button>
+        <h1>Audit Event Details</h1>
+      </div>
+
+      <div className="audit-detail-content">
+        <div className="audit-detail-section">
+          <h2>Basic Information</h2>
+          <dl className="audit-detail-list">
+            <dt>ID</dt>
+            <dd>{event.id}</dd>
+            <dt>Timestamp</dt>
+            <dd>{new Date(event.timestamp).toLocaleString()}</dd>
+            <dt>Tenant</dt>
+            <dd>{event.tenant_name || event.tenant || '—'}</dd>
+            <dt>Actor</dt>
+            <dd>{event.actor_user_email || event.actor_user || 'SYSTEM'}</dd>
+          </dl>
+        </div>
+
+        <div className="audit-detail-section">
+          <h2>Action Details</h2>
+          <dl className="audit-detail-list">
+            <dt>Resource Type</dt>
+            <dd>{event.resource_type}</dd>
+            <dt>Resource ID</dt>
+            <dd>{event.resource_id || '—'}</dd>
+            <dt>Action</dt>
+            <dd>{event.action}</dd>
+            <dt>Result</dt>
+            <dd>
+              <span className={`audit-result-badge ${event.result.toLowerCase()}`}>
+                {event.result}
+              </span>
+            </dd>
+          </dl>
+        </div>
+
+        {event.details_json && Object.keys(event.details_json).length > 0 && (
+          <div className="audit-detail-section">
+            <h2>Additional Details</h2>
+            <pre className="audit-details-json">{JSON.stringify(event.details_json, null, 2)}</pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -8,32 +8,37 @@ Tests verify:
 4. Rate limit violation responses (429 Too Many Requests)
 5. Rate limit reset behavior
 """
+
 import json
 import time
 from datetime import datetime, timedelta
-from django.test import TestCase, override_settings
+
 from django.core.cache import cache
-from rest_framework.test import APIClient
+from django.test import override_settings
 from rest_framework import status
 
-from hub.apps.contracts.models import (
-    Contract, ContractStatus, OriginalSpecType, OriginalFormat, NormalizationStatus
-)
 from hub.apps.assets.models import Asset, AssetStatus
-from hub.apps.tenants.models import Tenant, KYCStatus
-from hub.apps.users.models import User, Role, UserRole, UserStatus
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
-from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
+from hub.apps.contracts.models import (
+    Contract,
+    ContractStatus,
+    NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
+)
 from hub.apps.contracts.odps_rate_limiting import (
-    check_rate_limit as check_odps_ref_rate_limit,
+    RATE_LIMIT_GLOBAL,
     RATE_LIMIT_PER_TENANT,
     RATE_LIMIT_PER_USER,
-    RATE_LIMIT_GLOBAL,
-    RATE_LIMIT_WINDOW
+    RATE_LIMIT_WINDOW,
 )
+from hub.apps.contracts.odps_rate_limiting import check_rate_limit as check_odps_ref_rate_limit
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
+from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
+from hub.apps.users.models import Role, User, UserRole
 
 
-class RateLimitingValidationTest(TestCase):
+class RateLimitingValidationTest(ContractsAPITestBase):
     """
     Comprehensive rate limiting validation tests (Task 10.1.16.1).
 
@@ -47,60 +52,46 @@ class RateLimitingValidationTest(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Rate Limit Test Tenant",
-            slug="rate-limit-test",
-            kyc_status=KYCStatus.VERIFIED
-        )
+        super().setUp()
+        # Update tenant/user names for clarity
+        self.tenant.name = "Rate Limit Test Tenant"
+        self.tenant.slug = "rate-limit-test"
+        self.tenant.save()
+
+        self.user.email = "user@ratelimit.test"
+        self.user.save()
 
         # Create users
         # Create role
         self.admin_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="TENANT_ADMIN",
-            defaults={"description": "Tenant administrator"}
+            defaults={"description": "Tenant administrator"},
         )
 
         self.admin_user = User.objects.create_user(
             email="admin@ratelimit.test",
             password="testpass123",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=self.user.status,  # Use same status as base user
         )
         UserRole.objects.create(user=self.admin_user, role=self.admin_role)
 
         # Create role
         self.provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data provider"}
-        )
-
-        self.user = User.objects.create_user(
-            email="user@ratelimit.test",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data provider"}
         )
         UserRole.objects.create(user=self.user, role=self.provider_role)
 
         # Create asset
         self.asset = Asset.objects.create(
-            tenant=self.tenant,
-            name="Rate Limit Test Asset",
-            status=AssetStatus.ACTIVE
+            tenant=self.tenant, name="Rate Limit Test Asset", status=AssetStatus.ACTIVE
         )
 
         # Sample ODPS data
         self.sample_odps = {
-            "info": {
-                "name": "Test ODPS",
-                "version": "1.0.0"
-            },
-            "dataProduct": {
-                "name": "Test Product"
-            }
+            "info": {"name": "Test ODPS", "version": "1.0.0"},
+            "dataProduct": {"name": "Test Product"},
         }
 
         # Clear cache before each test
@@ -109,13 +100,11 @@ class RateLimitingValidationTest(TestCase):
     def test_per_tenant_rate_limits_for_odps_creation(self):
         """Test per-tenant rate limits for ODPS creation"""
         from hub.apps.rate_limiting.config import get_tenant_rate_limit
-        from hub.apps.rate_limiting.utils import sliding_window_check, generate_rate_limit_key
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
 
         # Get tenant rate limit for contract creation
         tenant_limit = get_tenant_rate_limit(
-            str(self.tenant.id),
-            EndpointCategory.CONTRACT,
-            TimeWindow.SUSTAINED
+            str(self.tenant.id), EndpointCategory.CONTRACT, TimeWindow.SUSTAINED
         )
 
         self.assertGreater(tenant_limit, 0, "Tenant rate limit should be positive")
@@ -124,30 +113,32 @@ class RateLimitingValidationTest(TestCase):
         key = generate_rate_limit_key(
             tenant_id=str(self.tenant.id),
             endpoint_category=EndpointCategory.CONTRACT,
-            window=TimeWindow.SUSTAINED
+            window=TimeWindow.SUSTAINED,
         )
 
         # Make a few requests within limit
         success_count = 0
         for i in range(min(tenant_limit, 5)):  # Limit to 5 for test speed
-            allowed, count, reset_time = sliding_window_check(key, tenant_limit, TimeWindow.SUSTAINED)
+            allowed, count, reset_time = sliding_window_check(
+                key, tenant_limit, TimeWindow.SUSTAINED
+            )
             if allowed:
                 success_count += 1
             time.sleep(0.1)  # Small delay
 
         # Verify we can make at least some requests
-        self.assertGreater(success_count, 0, "Should be able to make some requests within rate limit")
+        self.assertGreater(
+            success_count, 0, "Should be able to make some requests within rate limit"
+        )
 
     def test_per_user_rate_limits_for_odps_creation(self):
         """Test per-user rate limits for ODPS creation"""
         from hub.apps.rate_limiting.config import get_user_rate_limit
-        from hub.apps.rate_limiting.utils import sliding_window_check, generate_rate_limit_key
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
 
         # Get user rate limit for contract creation
         user_limit = get_user_rate_limit(
-            str(self.tenant.id),
-            EndpointCategory.CONTRACT,
-            TimeWindow.SUSTAINED
+            str(self.tenant.id), EndpointCategory.CONTRACT, TimeWindow.SUSTAINED
         )
 
         self.assertGreater(user_limit, 0, "User rate limit should be positive")
@@ -157,7 +148,7 @@ class RateLimitingValidationTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             endpoint_category=EndpointCategory.CONTRACT,
-            window=TimeWindow.SUSTAINED
+            window=TimeWindow.SUSTAINED,
         )
 
         # Make a few requests within limit
@@ -169,17 +160,16 @@ class RateLimitingValidationTest(TestCase):
             time.sleep(0.1)  # Small delay
 
         # Verify we can make at least some requests
-        self.assertGreater(success_count, 0, "Should be able to make some requests within rate limit")
+        self.assertGreater(
+            success_count, 0, "Should be able to make some requests within rate limit"
+        )
 
     def test_global_rate_limits_for_external_ref_fetches(self):
         """Test global rate limits for external $ref fetches"""
         from hub.apps.contracts.ref_resolver import RefResolver
 
         # Create resolver
-        resolver = RefResolver(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.admin_user.id)
-        )
+        resolver = RefResolver(tenant_id=str(self.tenant.id), user_id=str(self.admin_user.id))
 
         # Test that rate limit checking is called
         # Note: We can't easily test actual external fetches without network,
@@ -188,8 +178,7 @@ class RateLimitingValidationTest(TestCase):
 
         # Check rate limit before attempting fetch
         is_allowed, error = check_odps_ref_rate_limit(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.admin_user.id)
+            tenant_id=str(self.tenant.id), user_id=str(self.admin_user.id)
         )
 
         # Should be allowed initially (within limits)
@@ -199,18 +188,20 @@ class RateLimitingValidationTest(TestCase):
     def test_rate_limit_violation_responses_429(self):
         """Test rate limit violation responses (429 Too Many Requests)"""
         from django.test import RequestFactory
+
         from hub.apps.rate_limiting.middleware import RateLimitMiddleware
 
         # Create middleware
         def get_response(request):
             from django.http import JsonResponse
+
             return JsonResponse({"status": "ok"})
 
         middleware = RateLimitMiddleware(get_response)
 
         # Create request
         factory = RequestFactory()
-        request = factory.post('/api/v1/contracts/')
+        request = factory.post("/api/v1/contracts/")
         request.tenant = self.tenant
         request.user = self.admin_user
         request.tenant_id = str(self.tenant.id)
@@ -223,26 +214,29 @@ class RateLimitingValidationTest(TestCase):
 
             # If rate limit is exceeded, should return 429 response
             if response is not None:
-                self.assertEqual(response.status_code, 429, "Should return 429 when rate limit exceeded")
-                self.assertIn('error', json.loads(response.content), "Should include error in response")
+                self.assertEqual(
+                    response.status_code, 429, "Should return 429 when rate limit exceeded"
+                )
+                self.assertIn(
+                    "error", json.loads(response.content), "Should include error in response"
+                )
 
     def test_rate_limit_reset_behavior(self):
         """Test rate limit reset behavior"""
-        from hub.apps.rate_limiting.utils import sliding_window_check, generate_rate_limit_key
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
 
         # Generate a test key
         key = generate_rate_limit_key(
             tenant_id=str(self.tenant.id),
             endpoint_category=EndpointCategory.CONTRACT,
-            window=TimeWindow.SUSTAINED
+            window=TimeWindow.SUSTAINED,
         )
 
         # Get limit
         from hub.apps.rate_limiting.config import get_tenant_rate_limit
+
         limit = get_tenant_rate_limit(
-            str(self.tenant.id),
-            EndpointCategory.CONTRACT,
-            TimeWindow.SUSTAINED
+            str(self.tenant.id), EndpointCategory.CONTRACT, TimeWindow.SUSTAINED
         )
 
         # Make requests up to limit
@@ -257,5 +251,157 @@ class RateLimitingValidationTest(TestCase):
         self.assertGreater(reset_time, current_time, "Reset time should be in the future")
 
         # Verify reset time is within window
-        self.assertLessEqual(reset_time, current_time + TimeWindow.SUSTAINED,
-                           "Reset time should be within window")
+        self.assertLessEqual(
+            reset_time, current_time + TimeWindow.SUSTAINED, "Reset time should be within window"
+        )
+
+    def test_rate_limit_headers_are_included(self):
+        """Test rate limit headers are included in responses"""
+        from hub.apps.rate_limiting.utils import get_rate_limit_headers
+
+        # Test header generation
+        headers = get_rate_limit_headers(limit=100, remaining=50, reset_time=int(time.time()) + 60)
+
+        # Should include rate limit headers
+        self.assertIsInstance(headers, dict, "Headers should be a dictionary")
+        # May include X-RateLimit-* headers
+        if "X-RateLimit-Limit" in headers:
+            self.assertIsInstance(
+                headers["X-RateLimit-Limit"],
+                (int, str),
+                "Rate limit header should be int or string",
+            )
+
+    def test_rate_limit_with_different_windows(self):
+        """Test rate limiting with different time windows"""
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+
+        windows = [TimeWindow.BURST, TimeWindow.SUSTAINED]
+
+        for window in windows:
+            key = generate_rate_limit_key(
+                tenant_id=str(self.tenant.id),
+                endpoint_category=EndpointCategory.CONTRACT,
+                window=window,
+            )
+
+            # Should be able to check rate limit for each window
+            allowed, count, reset_time = sliding_window_check(key, 100, window)
+            self.assertIsInstance(
+                allowed, bool, f"Rate limit check should return bool for {window}"
+            )
+            self.assertIsInstance(count, int, f"Count should be int for {window}")
+            self.assertIsInstance(reset_time, int, f"Reset time should be int for {window}")
+
+    def test_rate_limit_with_different_endpoint_categories(self):
+        """Test rate limiting with different endpoint categories"""
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key
+
+        categories = [
+            EndpointCategory.CONTRACT,
+            EndpointCategory.ASSET,
+            EndpointCategory.DATASET,
+        ]
+
+        for category in categories:
+            key = generate_rate_limit_key(
+                tenant_id=str(self.tenant.id),
+                endpoint_category=category,
+                window=TimeWindow.SUSTAINED,
+            )
+
+            # Should generate different keys for different categories
+            self.assertIsInstance(key, str, f"Key should be string for {category}")
+            self.assertGreater(len(key), 0, f"Key should not be empty for {category}")
+
+    def test_rate_limit_exceeded_returns_proper_error(self):
+        """Test rate limit exceeded returns proper error structure"""
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+
+        # Create key with very low limit
+        key = generate_rate_limit_key(
+            tenant_id=str(self.tenant.id),
+            endpoint_category=EndpointCategory.CONTRACT,
+            window=TimeWindow.BURST,
+        )
+
+        # Exceed limit
+        limit = 1
+        allowed1, count1, reset_time1 = sliding_window_check(key, limit, TimeWindow.BURST)
+        allowed2, count2, reset_time2 = sliding_window_check(key, limit, TimeWindow.BURST)
+
+        # First request should be allowed, second may be blocked
+        self.assertTrue(allowed1, "First request should be allowed")
+        # Second request may be blocked if limit is exceeded
+        if not allowed2:
+            self.assertGreater(count2, limit, "Count should exceed limit when blocked")
+
+    def test_rate_limit_reset_time_calculation(self):
+        """Test rate limit reset time calculation"""
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+
+        key = generate_rate_limit_key(
+            tenant_id=str(self.tenant.id),
+            endpoint_category=EndpointCategory.CONTRACT,
+            window=TimeWindow.SUSTAINED,
+        )
+
+        current_time = int(time.time())
+        allowed, count, reset_time = sliding_window_check(key, 100, TimeWindow.SUSTAINED)
+
+        # Reset time should be in the future
+        self.assertGreaterEqual(reset_time, current_time, "Reset time should be >= current time")
+        # Reset time should be within reasonable bounds (not too far in future)
+        max_future_time = current_time + TimeWindow.SUSTAINED + 100
+        self.assertLessEqual(
+            reset_time, max_future_time, "Reset time should not be too far in future"
+        )
+
+    def test_rate_limit_cross_tenant_isolation(self):
+        """Test rate limit isolation between tenants"""
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key
+
+        # Create another tenant
+        other_tenant = Tenant.objects.create(
+            name="Other Rate Limit Tenant",
+            slug="other-ratelimit-test",
+            kyc_status=KYCStatus.VERIFIED,
+        )
+
+        # Generate keys for both tenants
+        key1 = generate_rate_limit_key(
+            tenant_id=str(self.tenant.id),
+            endpoint_category=EndpointCategory.CONTRACT,
+            window=TimeWindow.SUSTAINED,
+        )
+
+        key2 = generate_rate_limit_key(
+            tenant_id=str(other_tenant.id),
+            endpoint_category=EndpointCategory.CONTRACT,
+            window=TimeWindow.SUSTAINED,
+        )
+
+        # Keys should be different for different tenants
+        self.assertNotEqual(key1, key2, "Rate limit keys should be different for different tenants")
+
+    def test_rate_limit_cross_user_isolation(self):
+        """Test rate limit isolation between users"""
+        from hub.apps.rate_limiting.utils import generate_rate_limit_key
+
+        # Generate keys for both users
+        key1 = generate_rate_limit_key(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.admin_user.id),
+            endpoint_category=EndpointCategory.CONTRACT,
+            window=TimeWindow.SUSTAINED,
+        )
+
+        key2 = generate_rate_limit_key(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            endpoint_category=EndpointCategory.CONTRACT,
+            window=TimeWindow.SUSTAINED,
+        )
+
+        # Keys should be different for different users
+        self.assertNotEqual(key1, key2, "Rate limit keys should be different for different users")

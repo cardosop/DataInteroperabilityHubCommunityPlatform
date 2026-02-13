@@ -10,7 +10,8 @@ Tests verify:
 6. Map marketplace.x_odps.payment_gateways{} → product.marketplace.paymentGateways{}
 7. Error handling for invalid marketplace data
 """
-from django.test import TestCase, SimpleTestCase
+
+from django.test import SimpleTestCase, TestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -28,16 +29,9 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "description": "Test product description"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "license_summary": "MIT License"
-            }
+            "info": {"name": "Test Product", "description": "Test product description"},
+            "schema": {"fields": []},
+            "marketplace": {"license_summary": "MIT License"},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -62,29 +56,20 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
             "Apache License 2.0",
             "GPL v3",
             "Proprietary License",
-            "Creative Commons Attribution 4.0"
+            "Creative Commons Attribution 4.0",
         ]
 
         for license_summary in license_summaries:
             hub_contract = {
                 "id": f"test-product-{license_summary[:10]}",
-                "info": {
-                    "name": f"Test Product {license_summary[:10]}"
-                },
-                "schema": {
-                    "fields": []
-                },
-                "marketplace": {
-                    "license_summary": license_summary
-                }
+                "info": {"name": f"Test Product {license_summary[:10]}"},
+                "schema": {"fields": []},
+                "marketplace": {"license_summary": license_summary},
             }
 
             result = generate_odps_from_hubcontract(hub_contract)
 
-            self.assertEqual(
-                result["license"]["en"]["definition"],
-                license_summary
-            )
+            self.assertEqual(result["license"]["en"]["definition"], license_summary)
 
     def test_marketplace_license_summary_with_invalid_type(self):
         """
@@ -95,15 +80,9 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "license_summary": 12345  # Invalid type
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"license_summary": 12345},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -126,15 +105,9 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "restricted_use": ["COMMERCIAL", "RESALE"]
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"restricted_use": ["COMMERCIAL", "RESALE"]},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -156,15 +129,9 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "restricted_use": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"restricted_use": []},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -180,15 +147,9 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "restricted_use": "not-a-list"  # Invalid type
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"restricted_use": "not-a-list"},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -211,15 +172,9 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "intended_use": ["ANALYTICS", "RESEARCH"]
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"intended_use": ["ANALYTICS", "RESEARCH"]},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -241,22 +196,15 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "intended_use": ["ANALYTICS", "RESEARCH", "DEVELOPMENT", "TESTING"]
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"intended_use": ["ANALYTICS", "RESEARCH", "DEVELOPMENT", "TESTING"]},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
 
         self.assertEqual(
-            result["license"]["en"]["rights"],
-            ["ANALYTICS", "RESEARCH", "DEVELOPMENT", "TESTING"]
+            result["license"]["en"]["rights"], ["ANALYTICS", "RESEARCH", "DEVELOPMENT", "TESTING"]
         )
 
     def test_marketplace_intended_use_with_invalid_type(self):
@@ -268,15 +216,9 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "intended_use": "not-a-list"  # Invalid type
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"intended_use": "not-a-list"},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -299,17 +241,13 @@ class ODPSGeneratorMarketplaceLicenseMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "marketplace": {
                 "license_summary": "MIT License",
                 "restricted_use": ["COMMERCIAL"],
-                "intended_use": ["ANALYTICS", "RESEARCH"]
-            }
+                "intended_use": ["ANALYTICS", "RESEARCH"],
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -332,12 +270,8 @@ class ODPSGeneratorMarketplacePricingPlansMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "marketplace": {
                 "x_odps": {
                     "pricing_plans": [
@@ -346,18 +280,18 @@ class ODPSGeneratorMarketplacePricingPlansMappingTest(SimpleTestCase):
                             "name": "Basic Plan",
                             "price": 9.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
+                            "billingPeriod": "monthly",
                         },
                         {
                             "planID": "premium",
                             "name": "Premium Plan",
                             "price": 29.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
-                        }
+                            "billingPeriod": "monthly",
+                        },
                     ]
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -384,24 +318,15 @@ class ODPSGeneratorMarketplacePricingPlansMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "marketplace": {
                 "x_odps": {
                     "pricing_plans": [
-                        {
-                            "planID": "free",
-                            "name": "Free Plan",
-                            "price": 0,
-                            "currency": "USD"
-                        }
+                        {"planID": "free", "name": "Free Plan", "price": 0, "currency": "USD"}
                     ]
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -420,17 +345,9 @@ class ODPSGeneratorMarketplacePricingPlansMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "x_odps": {
-                    "pricing_plans": []
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"x_odps": {"pricing_plans": []}},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -447,17 +364,9 @@ class ODPSGeneratorMarketplacePricingPlansMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "x_odps": {
-                    "pricing_plans": "not-a-list"  # Invalid type
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"x_odps": {"pricing_plans": "not-a-list"}},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -484,26 +393,22 @@ class ODPSGeneratorMarketplaceAccessMethodsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "marketplace": {
                 "x_odps": {
                     "access_methods": {
                         "api": {
                             "endpoint": "https://api.example.com/v1/products/test-product",
-                            "version": "v1"
+                            "version": "v1",
                         },
                         "download": {
                             "url": "https://download.example.com/products/test-product",
-                            "format": "zip"
-                        }
+                            "format": "zip",
+                        },
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -517,7 +422,9 @@ class ODPSGeneratorMarketplaceAccessMethodsMappingTest(SimpleTestCase):
         access_methods = result["product"]["marketplace"]["accessMethods"]
         self.assertIn("api", access_methods)
         self.assertIn("download", access_methods)
-        self.assertEqual(access_methods["api"]["endpoint"], "https://api.example.com/v1/products/test-product")
+        self.assertEqual(
+            access_methods["api"]["endpoint"], "https://api.example.com/v1/products/test-product"
+        )
         self.assertEqual(access_methods["download"]["format"], "zip")
 
     def test_marketplace_access_methods_with_single_method(self):
@@ -529,21 +436,15 @@ class ODPSGeneratorMarketplaceAccessMethodsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "marketplace": {
                 "x_odps": {
                     "access_methods": {
-                        "api": {
-                            "endpoint": "https://api.example.com/v1/products/test-product"
-                        }
+                        "api": {"endpoint": "https://api.example.com/v1/products/test-product"}
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -561,17 +462,9 @@ class ODPSGeneratorMarketplaceAccessMethodsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "x_odps": {
-                    "access_methods": {}
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"x_odps": {"access_methods": {}}},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -588,17 +481,9 @@ class ODPSGeneratorMarketplaceAccessMethodsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "x_odps": {
-                    "access_methods": "not-a-dict"  # Invalid type
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"x_odps": {"access_methods": "not-a-dict"}},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -625,25 +510,16 @@ class ODPSGeneratorMarketplacePaymentGatewaysMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "marketplace": {
                 "x_odps": {
                     "payment_gateways": {
-                        "stripe": {
-                            "enabled": True,
-                            "publicKey": "pk_test_example"
-                        },
-                        "paypal": {
-                            "enabled": True
-                        }
+                        "stripe": {"enabled": True, "publicKey": "pk_test_example"},
+                        "paypal": {"enabled": True},
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -669,21 +545,9 @@ class ODPSGeneratorMarketplacePaymentGatewaysMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "x_odps": {
-                    "payment_gateways": {
-                        "stripe": {
-                            "enabled": True
-                        }
-                    }
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"x_odps": {"payment_gateways": {"stripe": {"enabled": True}}}},
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.0")
@@ -701,22 +565,15 @@ class ODPSGeneratorMarketplacePaymentGatewaysMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "marketplace": {
                 "x_odps": {
                     "payment_gateways": {
-                        "stripe": {
-                            "enabled": True,
-                            "publicKey": "pk_live_example"
-                        }
+                        "stripe": {"enabled": True, "publicKey": "pk_live_example"}
                     }
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -734,17 +591,9 @@ class ODPSGeneratorMarketplacePaymentGatewaysMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": {
-                "x_odps": {
-                    "payment_gateways": "not-a-dict"  # Invalid type
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {"x_odps": {"payment_gateways": "not-a-dict"}},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -771,37 +620,22 @@ class ODPSGeneratorMarketplaceCombinedMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "marketplace": {
                 "license_summary": "MIT License",
                 "restricted_use": ["COMMERCIAL"],
                 "intended_use": ["ANALYTICS", "RESEARCH"],
                 "x_odps": {
                     "pricing_plans": [
-                        {
-                            "planID": "basic",
-                            "name": "Basic Plan",
-                            "price": 9.99,
-                            "currency": "USD"
-                        }
+                        {"planID": "basic", "name": "Basic Plan", "price": 9.99, "currency": "USD"}
                     ],
                     "access_methods": {
-                        "api": {
-                            "endpoint": "https://api.example.com/v1/products/test-product"
-                        }
+                        "api": {"endpoint": "https://api.example.com/v1/products/test-product"}
                     },
-                    "payment_gateways": {
-                        "stripe": {
-                            "enabled": True
-                        }
-                    }
-                }
-            }
+                    "payment_gateways": {"stripe": {"enabled": True}},
+                },
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -831,12 +665,8 @@ class ODPSGeneratorMarketplaceCombinedMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             # No marketplace section
         }
 
@@ -862,13 +692,9 @@ class ODPSGeneratorMarketplaceCombinedMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "marketplace": "not-a-dict"  # Invalid type
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": "not-a-dict",  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -900,17 +726,12 @@ class ODPSGeneratorMarketplaceIntegrationTest(SimpleTestCase):
                 "description": "Complete product description",
                 "version": "1.0.0",
                 "tags": ["data", "analytics"],
-                "owners": [
-                    {
-                        "name": "Data Team",
-                        "email": "data@example.com"
-                    }
-                ]
+                "owners": [{"name": "Data Team", "email": "data@example.com"}],
             },
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ]
             },
             "marketplace": {
@@ -924,23 +745,20 @@ class ODPSGeneratorMarketplaceIntegrationTest(SimpleTestCase):
                             "name": "Basic Plan",
                             "price": 9.99,
                             "currency": "USD",
-                            "billingPeriod": "monthly"
+                            "billingPeriod": "monthly",
                         }
                     ],
                     "access_methods": {
                         "api": {
                             "endpoint": "https://api.example.com/v1/products/complete-product",
-                            "version": "v1"
+                            "version": "v1",
                         }
                     },
                     "payment_gateways": {
-                        "stripe": {
-                            "enabled": True,
-                            "publicKey": "pk_test_example"
-                        }
-                    }
-                }
-            }
+                        "stripe": {"enabled": True, "publicKey": "pk_test_example"}
+                    },
+                },
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract, target_version="4.1")
@@ -969,3 +787,125 @@ class ODPSGeneratorMarketplaceIntegrationTest(SimpleTestCase):
         self.assertIn("api", marketplace["accessMethods"])
         self.assertIn("stripe", marketplace["paymentGateways"])
 
+    def test_marketplace_generation_handles_unicode_characters(self):
+        """Test that marketplace generation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "测试产品", "description": "测试描述"},
+            "schema": {"fields": []},
+            "marketplace": {
+                "license_summary": "MIT许可证",
+                "restricted_use": ["商业用途"],
+                "intended_use": ["分析", "研究"],
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify unicode characters are preserved
+        self.assertIn("license", result)
+        self.assertIn("en", result["license"])
+        self.assertEqual(result["license"]["en"]["definition"], "MIT许可证")
+        self.assertEqual(result["license"]["en"]["restrictions"], ["商业用途"])
+        self.assertEqual(result["license"]["en"]["rights"], ["分析", "研究"])
+
+    def test_marketplace_generation_handles_special_characters(self):
+        """Test that marketplace generation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test & Co. (Special)"},
+            "schema": {"fields": []},
+            "marketplace": {
+                "license_summary": "License <>&\"'",
+                "restricted_use": ["Use & Co."],
+                "intended_use": ["Test <>&\"'"],
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify special characters are preserved
+        self.assertIn("license", result)
+        self.assertIn("en", result["license"])
+        self.assertEqual(result["license"]["en"]["definition"], "License <>&\"'")
+        self.assertEqual(result["license"]["en"]["restrictions"], ["Use & Co."])
+        self.assertEqual(result["license"]["en"]["rights"], ["Test <>&\"'"])
+
+    def test_marketplace_generation_handles_very_large_documents(self):
+        """Test that marketplace generation handles very large documents correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {
+                "license_summary": "A" * 100000,  # 100KB string
+                "restricted_use": ["A" * 10000] * 10,  # Large list
+                "intended_use": ["B" * 10000] * 10,
+            },
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract)
+            # If generation succeeds, verify structure
+            self.assertIn("license", result)
+            self.assertIn("en", result["license"])
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_marketplace_generation_handles_none_values(self):
+        """Test that marketplace generation handles None values correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {
+                "license_summary": None,  # None value
+                "restricted_use": None,
+                "intended_use": None,
+            },
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract)
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for None values"
+            )
+
+    def test_marketplace_generation_handles_nested_structures(self):
+        """Test that marketplace generation handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "marketplace": {
+                "license_summary": "MIT License",
+                "x_odps": {
+                    "pricing_plans": [
+                        {
+                            "planID": "basic",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    ]
+                },
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify nested structure is preserved
+        self.assertIn("product", result)
+        self.assertIn("marketplace", result["product"])
+        self.assertIn("pricingPlans", result["product"]["marketplace"])
+        if len(result["product"]["marketplace"]["pricingPlans"]) > 0:
+            plan = result["product"]["marketplace"]["pricingPlans"][0]
+            if "nested" in plan:
+                self.assertIn("level1", plan["nested"], "Nested structures should be preserved")

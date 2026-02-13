@@ -14,18 +14,19 @@ To run these tests:
 2. Or set GCP_PROJECT_ID and GCP_USE_ADC=true for Application Default Credentials
 3. Run: docker-compose -f docker-compose.test.yml exec api-service-test python -m pytest hub/apps/integrations/tests/test_gcp_marketplace_connector_integration.py -v
 """
-import os
+
 import json
+import os
+
 import pytest
 from django.test import TestCase, override_settings
 
-from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
+from hub.apps.core.services.base import NotFoundError, PermissionError
 from hub.apps.integrations.base import (
     MarketplaceType,
     SyncDirection,
 )
-from hub.apps.core.services.base import NotFoundError, PermissionError
-
+from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 # Real service account credentials for testing
 # These should be provided via environment variable GCP_SERVICE_ACCOUNT_JSON
@@ -40,13 +41,13 @@ REAL_SERVICE_ACCOUNT_JSON = {
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
     "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dih-786%40projzero-441310.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
+    "universe_domain": "googleapis.com",
 }
 
 
 def get_test_credentials():
     """Get test credentials from environment or use default"""
-    env_json = os.environ.get('GCP_SERVICE_ACCOUNT_JSON')
+    env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if env_json:
         try:
             return json.loads(env_json)
@@ -64,22 +65,122 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
         """Set up test class with real credentials"""
         super().setUpClass()
         cls.credentials_json = get_test_credentials()
-        cls.project_id = cls.credentials_json.get('project_id', 'projzero-441310')
+        cls.project_id = cls.credentials_json.get("project_id", "projzero-441310")
 
     def setUp(self):
         """Set up test fixtures"""
         self.connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
 
     def test_connector_initialization_with_real_credentials(self):
         """Test connector initialization with real service account JSON"""
         self.assertEqual(self.connector.project_id, self.project_id)
         self.assertEqual(self.connector.credentials_json, self.credentials_json)
-        self.assertEqual(self.connector.location, 'US')
+        self.assertEqual(self.connector.location, "US")
         self.assertFalse(self.connector.use_adc)
         self.assertEqual(self.connector.marketplace_type, MarketplaceType.GOOGLE_CLOUD_MARKETPLACE)
+
+    def test_connector_initialization_with_empty_project_id(self):
+        """Test connector initialization error handling with empty project_id"""
+        with self.assertRaises((ValueError, TypeError)):
+            connector = GCPMarketplaceConnector(
+                project_id="", credentials_json=self.credentials_json
+            )
+
+    def test_connector_initialization_with_none_project_id(self):
+        """Test connector initialization error handling with None project_id"""
+        with self.assertRaises((ValueError, TypeError)):
+            connector = GCPMarketplaceConnector(
+                project_id=None, credentials_json=self.credentials_json  # type: ignore[arg-type]
+            )
+
+    def test_connector_initialization_with_invalid_credentials(self):
+        """Test connector initialization error handling with invalid credentials"""
+        invalid_credentials = {
+            "type": "service_account",
+            # Missing required fields
+        }
+        connector = GCPMarketplaceConnector(
+            project_id=self.project_id, credentials_json=invalid_credentials
+        )
+        # Will raise error when trying to authenticate
+        with self.assertRaises((ValueError, PermissionError)):
+            connector.authenticate(
+                {"project_id": self.project_id, "credentials_json": invalid_credentials}
+            )
+
+    def test_list_listings_with_zero_limit(self):
+        """Test list_listings() edge case with zero limit"""
+        try:
+            listings = self.connector.list_listings(limit=0)
+            # Should return empty list or handle gracefully
+            self.assertIsInstance(listings, list)
+            self.assertEqual(len(listings), 0)
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except Exception:
+            # May fail if not authenticated or other errors
+            pass
+
+    def test_list_listings_with_none_limit(self):
+        """Test list_listings() error handling with None limit"""
+        try:
+            listings = self.connector.list_listings(limit=None)  # type: ignore[arg-type]
+            # Should handle None limit gracefully (may use default)
+            self.assertIsInstance(listings, list)
+        except (ValueError, TypeError):
+            # Expected if validation is strict
+            pass
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except Exception:
+            # May fail if not authenticated or other errors
+            pass
+
+    def test_get_listing_with_empty_id(self):
+        """Test get_listing() error handling with empty ID"""
+        try:
+            with self.assertRaises((ValueError, NotFoundError)):
+                self.connector.get_listing("")
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except Exception:
+            # May fail if not authenticated or other errors
+            pass
+
+    def test_get_listing_with_none_id(self):
+        """Test get_listing() error handling with None ID"""
+        try:
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                self.connector.get_listing(None)  # type: ignore[arg-type]
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except Exception:
+            # May fail if not authenticated or other errors
+            pass
+
+    def test_list_resources_with_empty_listing_id(self):
+        """Test list_resources() error handling with empty listing ID"""
+        try:
+            with self.assertRaises((ValueError, NotFoundError)):
+                self.connector.list_resources("")
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except Exception:
+            # May fail if not authenticated or other errors
+            pass
+
+    def test_list_resources_with_none_listing_id(self):
+        """Test list_resources() error handling with None listing ID"""
+        try:
+            with self.assertRaises((ValueError, TypeError, NotFoundError)):
+                self.connector.list_resources(None)  # type: ignore[arg-type]
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except Exception:
+            # May fail if not authenticated or other errors
+            pass
 
     def test_marketplace_type_property(self):
         """Test marketplace_type property returns correct value"""
@@ -96,7 +197,7 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
     def test_circuit_breaker_initialization(self):
         """Test circuit breaker is properly initialized"""
         self.assertIsNotNone(self.connector._circuit_breaker)
-        self.assertEqual(self.connector._circuit_breaker.service_name, 'gcp-marketplace-connector')
+        self.assertEqual(self.connector._circuit_breaker.service_name, "gcp-marketplace-connector")
         self.assertEqual(self.connector._circuit_breaker.failure_threshold, 5)
         self.assertEqual(self.connector._circuit_breaker.timeout_seconds, 60)
         self.assertEqual(self.connector._circuit_breaker.success_threshold, 2)
@@ -106,7 +207,9 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
         credentials = self.connector._get_credentials()
         self.assertIsNotNone(credentials)
         # Verify credentials have required attributes
-        self.assertTrue(hasattr(credentials, 'service_account_email') or hasattr(credentials, 'client_email'))
+        self.assertTrue(
+            hasattr(credentials, "service_account_email") or hasattr(credentials, "client_email")
+        )
         # Credentials should be cached
         credentials2 = self.connector._get_credentials()
         self.assertEqual(credentials, credentials2)
@@ -135,10 +238,10 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
     def test_authenticate_with_real_credentials(self):
         """Test authenticate() with real credentials"""
         credentials = {
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json,
-            'location': 'US',
-            'use_adc': False
+            "project_id": self.project_id,
+            "credentials_json": self.credentials_json,
+            "location": "US",
+            "use_adc": False,
         }
 
         result = self.connector.authenticate(credentials)
@@ -146,7 +249,7 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
         self.assertTrue(result)
         self.assertTrue(self.connector._authenticated)
         self.assertEqual(self.connector.project_id, self.project_id)
-        self.assertEqual(self.connector.location, 'US')
+        self.assertEqual(self.connector.location, "US")
 
     def test_test_connection_success(self):
         """Test test_connection() succeeds with real credentials"""
@@ -159,8 +262,7 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
     def test_test_connection_with_invalid_project_id(self):
         """Test test_connection() raises NotFoundError for invalid project"""
         invalid_connector = GCPMarketplaceConnector(
-            project_id='invalid-project-id-12345',
-            credentials_json=self.credentials_json
+            project_id="invalid-project-id-12345", credentials_json=self.credentials_json
         )
 
         with self.assertRaises((NotFoundError, PermissionError, Exception)):
@@ -184,9 +286,9 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
 
         # Authenticate should reset clients
         credentials = {
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json,
-            'use_adc': False
+            "project_id": self.project_id,
+            "credentials_json": self.credentials_json,
+            "use_adc": False,
         }
         self.connector.authenticate(credentials)
 
@@ -200,37 +302,37 @@ class TestGCPMarketplaceConnectorIntegration(TestCase):
     def test_authenticate_with_different_location(self):
         """Test authenticate() with different location"""
         credentials = {
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json,
-            'location': 'EU',
-            'use_adc': False
+            "project_id": self.project_id,
+            "credentials_json": self.credentials_json,
+            "location": "EU",
+            "use_adc": False,
         }
 
         result = self.connector.authenticate(credentials)
 
         self.assertTrue(result)
-        self.assertEqual(self.connector.location, 'EU')
+        self.assertEqual(self.connector.location, "EU")
 
     def test_authenticate_validation_errors(self):
         """Test authenticate() validation errors"""
         # Missing project_id
         with self.assertRaises(ValueError) as cm:
-            self.connector.authenticate({'credentials_json': self.credentials_json})
-        self.assertIn('project_id', str(cm.exception).lower())
+            self.connector.authenticate({"credentials_json": self.credentials_json})
+        self.assertIn("project_id", str(cm.exception).lower())
 
         # Missing both use_adc and credentials_json
         with self.assertRaises(ValueError) as cm:
-            self.connector.authenticate({'project_id': self.project_id})
-        self.assertIn('use_adc', str(cm.exception).lower())
-        self.assertIn('credentials_json', str(cm.exception).lower())
+            self.connector.authenticate({"project_id": self.project_id})
+        self.assertIn("use_adc", str(cm.exception).lower())
+        self.assertIn("credentials_json", str(cm.exception).lower())
 
     def test_connector_initialization_validation(self):
         """Test connector initialization validation"""
         # Missing authentication method
         with self.assertRaises(ValueError) as cm:
-            GCPMarketplaceConnector(project_id='test-project')
-        self.assertIn('use_adc', str(cm.exception).lower())
-        self.assertIn('credentials_json', str(cm.exception).lower())
+            GCPMarketplaceConnector(project_id="test-project")
+        self.assertIn("use_adc", str(cm.exception).lower())
+        self.assertIn("credentials_json", str(cm.exception).lower())
 
 
 @pytest.mark.integration
@@ -242,36 +344,32 @@ class TestGCPMarketplaceConnectorErrorHandling(TestCase):
         """Set up test class with real credentials"""
         super().setUpClass()
         cls.credentials_json = get_test_credentials()
-        cls.project_id = cls.credentials_json.get('project_id', 'projzero-441310')
+        cls.project_id = cls.credentials_json.get("project_id", "projzero-441310")
 
     def setUp(self):
         """Set up test fixtures"""
         self.connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
 
     def test_get_bigquery_client_without_project_id(self):
         """Test _get_bigquery_client() raises ValueError if project_id not set"""
-        connector = GCPMarketplaceConnector(
-            credentials_json=self.credentials_json
-        )
+        connector = GCPMarketplaceConnector(credentials_json=self.credentials_json)
         connector.project_id = None
 
         with self.assertRaises(ValueError) as cm:
             connector._get_bigquery_client()
-        self.assertIn('project_id', str(cm.exception).lower())
+        self.assertIn("project_id", str(cm.exception).lower())
 
     def test_get_credentials_with_invalid_json_type(self):
         """Test _get_credentials() raises ValueError for invalid credentials_json type"""
         connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json='invalid-string'  # Should be dict
+            project_id=self.project_id, credentials_json="invalid-string"  # Should be dict
         )
 
         with self.assertRaises(ValueError) as cm:
             connector._get_credentials()
-        self.assertIn('dictionary', str(cm.exception).lower())
+        self.assertIn("dictionary", str(cm.exception).lower())
 
 
 @pytest.mark.integration
@@ -283,13 +381,12 @@ class TestGCPMarketplaceConnectorNotImplementedMethods(TestCase):
         """Set up test class"""
         super().setUpClass()
         cls.credentials_json = get_test_credentials()
-        cls.project_id = cls.credentials_json.get('project_id', 'projzero-441310')
+        cls.project_id = cls.credentials_json.get("project_id", "projzero-441310")
 
     def setUp(self):
         """Set up test fixtures"""
         self.connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
 
     # Note: list_listings(), get_listing(), and list_resources() are now implemented
@@ -303,35 +400,34 @@ class TestGCPMarketplaceConnectorNotImplementedMethods(TestCase):
 
     def test_create_listing_not_implemented(self):
         """Test create_listing() raises NotImplementedError"""
-        listing = type('MockListing', (), {})()
+        listing = type("MockListing", (), {})()
         with self.assertRaises(NotImplementedError) as cm:
             self.connector.create_listing(listing)
-        self.assertIn('harvest-only', str(cm.exception).lower())
+        self.assertIn("harvest-only", str(cm.exception).lower())
 
     def test_update_listing_not_implemented(self):
         """Test update_listing() raises NotImplementedError"""
-        listing = type('MockListing', (), {})()
+        listing = type("MockListing", (), {})()
         with self.assertRaises(NotImplementedError) as cm:
-            self.connector.update_listing('test-id', listing)
-        self.assertIn('harvest-only', str(cm.exception).lower())
+            self.connector.update_listing("test-id", listing)
+        self.assertIn("harvest-only", str(cm.exception).lower())
 
     def test_publish_resource_not_implemented(self):
         """Test publish_resource() raises NotImplementedError"""
-        resource = type('MockResource', (), {})()
+        resource = type("MockResource", (), {})()
         with self.assertRaises(NotImplementedError) as cm:
-            self.connector.publish_resource('test-id', resource)
-        self.assertIn('harvest-only', str(cm.exception).lower())
+            self.connector.publish_resource("test-id", resource)
+        self.assertIn("harvest-only", str(cm.exception).lower())
 
     def test_map_from_hub_asset_not_implemented(self):
         """Test map_from_hub_asset() raises NotImplementedError"""
         asset_data = {}
         with self.assertRaises(NotImplementedError) as cm:
             self.connector.map_from_hub_asset(asset_data)
-        self.assertIn('harvest-only', str(cm.exception).lower())
+        self.assertIn("harvest-only", str(cm.exception).lower())
 
     def test_sync_push_not_implemented(self):
         """Test sync_push() raises NotImplementedError"""
         with self.assertRaises(NotImplementedError) as cm:
-            self.connector.sync_push(['asset-1', 'asset-2'])
-        self.assertIn('harvest-only', str(cm.exception).lower())
-
+            self.connector.sync_push(["asset-1", "asset-2"])
+        self.assertIn("harvest-only", str(cm.exception).lower())

@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0047931671142578125
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-013-9f178220",
+      "journey_name": "Configure Data Mesh Domain",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1769430890.7577212,
+      "end_time": 1769430890.7625144,
+      "duration": 0.0047931671142578125,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create/Select Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769430890.7577322,
+          "end_time": 1769430890.7625117,
+          "duration": 0.0047795772552490234,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-26T12:34:50.762570"
+}

@@ -11,49 +11,28 @@ Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
 
 import json
+
 import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
 )
-from hub.apps.users.models import UserStatus
-from hub.apps.tenants.models import Tenant
-
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
-User = get_user_model()
 
 
-class ContractExportEndpointTest(TestCase):
+class ContractExportEndpointTest(ContractsAPITestBase):
     """Integration tests for contract export endpoint"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED",
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        super().setUp()
 
         # Create ODCS contract
         self.odcs_contract_data = {
@@ -371,28 +350,12 @@ class ContractExportEndpointTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
-class ODCSExportVersionSupportTest(TestCase):
+class ODCSExportVersionSupportTest(ContractsAPITestBase):
     """Comprehensive tests for ODCS export with version support (Task 9.5.4.1.4.1)"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED",
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        super().setUp()
 
         # Create HubContract for generation tests
         self.hub_contract = {
@@ -590,6 +553,7 @@ class ODCSExportVersionSupportTest(TestCase):
 
         # Verify YAML is valid and contains expected data
         import yaml
+
         data = yaml.safe_load(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.2")
         self.assertEqual(data["id"], "test-contract-v302")
@@ -599,7 +563,9 @@ class ODCSExportVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create contract with YAML original
-        yaml_original = "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-yaml\nname: Test YAML"
+        yaml_original = (
+            "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-yaml\nname: Test YAML"
+        )
         contract_yaml = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type=OriginalSpecType.ODCS,
@@ -678,6 +644,7 @@ class ODCSExportVersionSupportTest(TestCase):
     def test_export_odcs_performance_under_2s(self):
         """Test performance: export should complete in under 2 seconds (p95)"""
         import time
+
         self.client.force_authenticate(user=self.user)
 
         start_time = time.time()
@@ -724,6 +691,7 @@ class ODCSExportVersionSupportTest(TestCase):
 
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 import yaml
+
                 data = yaml.safe_load(response.content)
                 self.assertEqual(data["apiVersion"], f"odcs.io/v{version}")
                 self.assertEqual(data["id"], "test-contract-version")
@@ -753,4 +721,3 @@ class ODCSExportVersionSupportTest(TestCase):
         data2 = json.loads(response2.content)
         # Should default to latest version (3.0.2)
         self.assertEqual(data2["apiVersion"], "odcs.io/v3.0.2")
-

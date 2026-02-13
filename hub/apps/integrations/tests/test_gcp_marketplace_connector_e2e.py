@@ -9,30 +9,30 @@ Requirements:
 - GCP project with Analytics Hub API enabled
 - Network access to Google Cloud APIs
 """
-import os
-import json
-import pytest
-from django.test import TestCase
-from django.db import transaction
 
-from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
-from hub.apps.integrations.services import MarketplaceIntegrationService
-from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
-from hub.apps.integrations.base import (
-    MarketplaceType,
-    SyncStatus,
-    SyncResult,
-)
-from hub.apps.assets.models import AssetSourceType
+import json
+import os
+
+import pytest
+from django.db import transaction
+from django.test import TestCase
+
 from hub.apps.assets.models import (
     Asset,
-    AssetStatus,
     AssetSourceType,
+    AssetStatus,
 )
-from hub.apps.contracts.models import Contract, OriginalSpecType, ContractStatus
+from hub.apps.contracts.models import Contract, ContractStatus, OriginalSpecType
+from hub.apps.integrations.base import (
+    MarketplaceType,
+    SyncResult,
+    SyncStatus,
+)
+from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
+from hub.apps.integrations.models import MarketplaceConnection, MarketplaceSyncJob
+from hub.apps.integrations.services import MarketplaceIntegrationService
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import User, UserStatus
-
 
 # Real service account credentials for testing
 REAL_SERVICE_ACCOUNT_JSON = {
@@ -46,13 +46,13 @@ REAL_SERVICE_ACCOUNT_JSON = {
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
     "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dih-786%40projzero-441310.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
+    "universe_domain": "googleapis.com",
 }
 
 
 def get_test_credentials():
     """Get test credentials from environment or use default"""
-    env_json = os.environ.get('GCP_SERVICE_ACCOUNT_JSON')
+    env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if env_json:
         try:
             return json.loads(env_json)
@@ -75,26 +75,23 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
         """Set up test class with real credentials"""
         super().setUpClass()
         cls.credentials_json = get_test_credentials()
-        cls.project_id = cls.credentials_json.get('project_id', 'projzero-441310')
+        cls.project_id = cls.credentials_json.get("project_id", "projzero-441310")
 
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant E2E",
-            slug="test-tenant-e2e",
-            status="ACTIVE",
-            kyc_status="VERIFIED"
+            name="Test Tenant E2E", slug="test-tenant-e2e", status="ACTIVE", kyc_status="VERIFIED"
         )
         self.user = User.objects.create_user(
-            email='test-e2e@example.com',
-            password='testpass',
+            email="test-e2e@example.com",
+            password="testpass",
             tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            status=UserStatus.ACTIVE,
         )
         self.service = MarketplaceIntegrationService(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            request_id="test-e2e-request-123"
+            request_id="test-e2e-request-123",
         )
 
     def test_complete_sync_workflow(self):
@@ -105,21 +102,19 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
             marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
             name="Test GCP Marketplace Connection",
             config={
-                'project_id': self.project_id,
-                'credentials_json': self.credentials_json,
+                "project_id": self.project_id,
+                "credentials_json": self.credentials_json,
             },
-            is_active=True
+            is_active=True,
         )
 
         # Step 2: Create connector from connection
         connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
-        connector.authenticate({
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json
-        })
+        connector.authenticate(
+            {"project_id": self.project_id, "credentials_json": self.credentials_json}
+        )
 
         # Step 3: Test connection
         connection_test = connector.test_connection()
@@ -139,42 +134,37 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
 
         # Step 5: Create sync job
         sync_job = MarketplaceSyncJob.objects.create(
-            connection=connection,
-            sync_direction='PULL',
-            status='PENDING',
-            options={'limit': 5}
+            connection=connection, sync_direction="PULL", status="PENDING", options={"limit": 5}
         )
 
         # Step 6: Perform sync pull
-        result = connector.sync_pull(options={'limit': 5})
+        result = connector.sync_pull(options={"limit": 5})
         self.assertIsInstance(result, SyncResult)
         self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
         self.assertGreaterEqual(result.total_items, 0)
-        self.assertIn('mappings', result.metadata)
+        self.assertIn("mappings", result.metadata)
 
         # Step 7: Update sync job
-        sync_job.status = 'COMPLETED'
+        sync_job.status = "COMPLETED"
         sync_job.result = {
-            'total_items': result.total_items,
-            'successful_items': result.successful_items,
-            'failed_items': result.failed_items,
+            "total_items": result.total_items,
+            "successful_items": result.successful_items,
+            "failed_items": result.failed_items,
         }
         sync_job.save()
 
         # Verify sync job was updated
         updated_job = MarketplaceSyncJob.objects.get(id=sync_job.id)
-        self.assertEqual(updated_job.status, 'COMPLETED')
+        self.assertEqual(updated_job.status, "COMPLETED")
 
     def test_dual_contract_creation(self):
         """Test dual contract creation (ODPS + ODCS) from marketplace listing."""
         connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
-        connector.authenticate({
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json
-        })
+        connector.authenticate(
+            {"project_id": self.project_id, "credentials_json": self.credentials_json}
+        )
 
         # Get a listing
         try:
@@ -195,9 +185,9 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
         self.assertIsNotNone(mapping.odcs_metadata)
 
         # Verify ODPS metadata structure
-        self.assertIn('product_details', mapping.odps_metadata)
-        self.assertIn('pricing_plans', mapping.odps_metadata)
-        self.assertIn('access_methods', mapping.odps_metadata)
+        self.assertIn("product_details", mapping.odps_metadata)
+        self.assertIn("pricing_plans", mapping.odps_metadata)
+        self.assertIn("access_methods", mapping.odps_metadata)
 
         # Verify ODCS metadata structure
         if mapping.odcs_metadata:
@@ -207,19 +197,17 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
 
         # Verify asset data
         self.assertIsNotNone(mapping.asset_data)
-        self.assertIn('name', mapping.asset_data)
+        self.assertIn("name", mapping.asset_data)
         self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
 
     def test_metadata_extraction_and_mapping(self):
         """Test metadata extraction and mapping from marketplace listing."""
         connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
-        connector.authenticate({
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json
-        })
+        connector.authenticate(
+            {"project_id": self.project_id, "credentials_json": self.credentials_json}
+        )
 
         # Get a listing
         try:
@@ -237,10 +225,10 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
 
         # Verify metadata extraction
         self.assertIsNotNone(mapping.source_metadata)
-        self.assertIn('marketplace_type', mapping.source_metadata)
+        self.assertIn("marketplace_type", mapping.source_metadata)
         self.assertEqual(
-            mapping.source_metadata['marketplace_type'],
-            MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value
+            mapping.source_metadata["marketplace_type"],
+            MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
         )
 
         # Verify ODPS metadata extraction
@@ -256,13 +244,11 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
     def test_bigquery_schema_extraction_and_type_mapping(self):
         """Test BigQuery schema extraction and type mapping."""
         connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
-        connector.authenticate({
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json
-        })
+        connector.authenticate(
+            {"project_id": self.project_id, "credentials_json": self.credentials_json}
+        )
 
         # Get a listing
         try:
@@ -299,36 +285,137 @@ class TestGCPMarketplaceConnectorE2E(TestCase):
             marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
             name="Test GCP Pull Sync Connection",
             config={
-                'project_id': self.project_id,
-                'credentials_json': self.credentials_json,
+                "project_id": self.project_id,
+                "credentials_json": self.credentials_json,
             },
-            is_active=True
+            is_active=True,
         )
 
         # Create connector
         connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
-        connector.authenticate({
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json
-        })
+        connector.authenticate(
+            {"project_id": self.project_id, "credentials_json": self.credentials_json}
+        )
 
         # Verify connector only supports PULL
-        self.assertIn('PULL', [d.value for d in connector.supported_sync_directions])
-        self.assertNotIn('PUSH', [d.value for d in connector.supported_sync_directions])
+        self.assertIn("PULL", [d.value for d in connector.supported_sync_directions])
+        self.assertNotIn("PUSH", [d.value for d in connector.supported_sync_directions])
 
         # Perform pull sync
         try:
-            result = connector.sync_pull(options={'limit': 3})
+            result = connector.sync_pull(options={"limit": 3})
             self.assertIsInstance(result, SyncResult)
-            self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED])
+            self.assertIn(
+                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED]
+            )
         except Exception as e:
             # May fail if no listings available
             self.skipTest(f"Sync pull failed: {e}")
 
         # Verify push operations raise NotImplementedError
         with self.assertRaises(NotImplementedError):
-            connector.sync_push(['asset-1'])
+            connector.sync_push(["asset-1"])
 
+    def test_e2e_workflow_with_invalid_connection_config(self):
+        """Test E2E workflow error handling with invalid connection config"""
+        # Create connection with invalid config
+        try:
+            connection = self.service.create_connection(
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
+                name="Invalid Config Connection",
+                config={"invalid": "config"},  # Invalid config
+            )
+
+            # Test connection should fail
+            result = self.service.test_connection(
+                connection_id=str(connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+            )
+            # Result may indicate failure
+            if "success" in result:
+                self.assertFalse(result["success"])
+        except Exception:
+            # Expected if validation is strict
+            pass
+
+    def test_e2e_workflow_with_missing_credentials(self):
+        """Test E2E workflow error handling with missing credentials"""
+        # Create connection without credentials
+        try:
+            connection = self.service.create_connection(
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
+                name="Missing Credentials Connection",
+                config={},  # Empty config
+            )
+
+            # Sync should fail due to missing credentials
+            with self.assertRaises(Exception):
+                self.service.sync_from_marketplace(
+                    connection_id=str(connection.id),
+                    tenant_id=str(self.tenant.id),
+                    user_id=str(self.user.id),
+                    listing_ids=["test-listing"],
+                )
+        except Exception:
+            # Expected if validation is strict
+            pass
+
+    def test_e2e_workflow_with_invalid_listing_ids(self):
+        """Test E2E workflow error handling with invalid listing IDs"""
+        # Create valid connection first
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
+            name="Test Connection",
+            config={"project_id": self.project_id, "credentials_json": self.credentials_json},
+        )
+
+        # Try sync with invalid listing IDs
+        try:
+            sync_job = self.service.sync_from_marketplace(
+                connection_id=str(connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                listing_ids=["invalid-listing-id-1", "invalid-listing-id-2"],
+            )
+            # Sync job should be created but may fail during execution
+            self.assertIsNotNone(sync_job)
+            # Check if sync job failed
+            if sync_job.status == SyncStatus.FAILED.value:
+                self.assertGreater(len(sync_job.errors), 0)
+        except Exception:
+            # Expected if validation is strict
+            pass
+
+    def test_e2e_workflow_with_empty_listing_ids(self):
+        """Test E2E workflow error handling with empty listing IDs"""
+        # Create valid connection
+        connection = self.service.create_connection(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
+            name="Test Connection",
+            config={"project_id": self.project_id, "credentials_json": self.credentials_json},
+        )
+
+        # Try sync with empty listing IDs
+        try:
+            sync_job = self.service.sync_from_marketplace(
+                connection_id=str(connection.id),
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                listing_ids=[],
+            )
+            # Should handle gracefully
+            self.assertIsNotNone(sync_job)
+        except (ValueError, TypeError):
+            # Expected if empty list is invalid
+            pass

@@ -103,27 +103,41 @@ Comprehensive investigation of test timeout issues revealed multiple root causes
 
 **Impact**: Better test mode detection across all scenarios.
 
-## Remaining Issue: Test Database Setup
+## Remaining Issue: Test Database Setup (Root Cause)
 
 ### Problem
-Tests are timing out during test database setup/migration phase, not during test execution.
+Tests time out during **test database setup/migration**, not during test execution. This is the main bottleneck.
 
 **Evidence**:
-- Test collection works fine (0.03s)
-- Test hangs during `setup_databases` / migration phase
-- Output shows: "✓ call_command: CALLED with command='migrate'"
+- Test collection works fine (~0.03s)
+- Hang occurs during `setup_databases` → `create_test_db` → `call_command("migrate")`
+- Project has **101 migration files** across 33 apps; running all migrations on a fresh test DB in Docker can take **10–45+ minutes**
 
-**Possible Causes**:
-1. **Database Migration Performance**: Large number of migrations taking time to apply
-2. **Database Connection Issues**: Slow connection to PostgreSQL
-3. **Test Database Creation**: Creating test database is slow
-4. **Transaction Rollback**: Test database cleanup between tests
+**Root cause**: Django's test runner creates a test database and runs **all migrations** once per pytest session (or per run if the test DB does not exist). With many migrations and Docker I/O, this dominates runtime.
 
-**Investigation Needed**:
-- Check if using `--reuse-db` flag helps
-- Profile database operations during test setup
-- Check PostgreSQL connection pool settings
-- Verify test database isolation isn't causing issues
+### Do not use long timeouts as a “fix”
+- **45-minute or 7-minute per-test timeouts are not reasonable.** They hide the problem and make CI/local runs unusable.
+- **Correct approach**: Fix the bottleneck (reuse DB, pre-create test DB, reduce migration time) and keep test timeouts short (e.g. 60–120s per test body).
+
+### Fixes applied (root cause)
+
+1. **Use `--reuse-db`**
+   Reuse the test database between runs so migrations run only when the DB is created or when schema changes.
+   ```bash
+   pytest --reuse-db tests/...
+   ```
+   First run: slow (create DB + migrate). Subsequent runs: fast (reuse, migrate often no-op).
+
+2. **Pre-create test database in CI**
+   Create and migrate the test DB once (e.g. in a setup job or container entrypoint), then run pytest with `--reuse-db`. See `scripts/README_TEST_DB.md` for CI and usage.
+
+3. **Reduced conftest logging during setup**
+   The `django_patches` logger is set to **WARNING** by default so that the many INFO/DEBUG logs in `create_test_db` and `setup_databases` do not add I/O during the slow phase. Set `DJANGO_PATCH_DEBUG=1` only when diagnosing patch issues.
+
+### Optional further improvements
+- **Profile migrations**: Run `manage.py migrate` with timing to find slow migrations (e.g. RunPython, AddIndex); optimize or squash them.
+- **Squash migrations**: Use Django’s `squashmigrations` to reduce the number of migration files applied on a fresh DB.
+- **pytest-timeout**: Use `--timeout-func-only` (or `-o timeout_func_only=true`) so the per-test timeout applies only to the test body, not to session-scoped fixtures like `django_db_setup`; then use a short timeout (e.g. 120s) per test.
 
 ## Files Modified
 

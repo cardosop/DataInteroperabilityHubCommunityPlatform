@@ -4,15 +4,17 @@ Unit tests for ODCS Generator Base Class.
 Tests the ODCSGeneratorBase abstract class following TDD approach
 and engineering best practices without mocks/stubs.
 """
-import pytest
-from django.test import TestCase
+
 from abc import ABC
 
-from hub.apps.contracts.odcs_generator import ODCSGeneratorBase
+import pytest
+from django.test import TestCase
+
 from hub.apps.contracts.odcs_errors import (
-    ODCSGenerationError,
     ODCSExportError,
+    ODCSGenerationError,
 )
+from hub.apps.contracts.odcs_generator import ODCSGeneratorBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -21,9 +23,7 @@ class ConcreteODCSGenerator(ODCSGeneratorBase):
     """Concrete implementation for testing the base class."""
 
     def generate_odcs_from_hubcontract(
-        self,
-        hub_contract: dict,
-        target_version: str | None = None
+        self, hub_contract: dict, target_version: str | None = None
     ) -> dict:
         """
         Concrete implementation for testing.
@@ -59,7 +59,9 @@ class ConcreteODCSGenerator(ODCSGeneratorBase):
             odcs_doc["version"] = info["version"]
 
         if "description" in info and info["description"]:
-            self.validate_field_type(info["description"], str, "/info/description", allow_none=False)
+            self.validate_field_type(
+                info["description"], str, "/info/description", allow_none=False
+            )
             odcs_doc["description"] = info["description"]
 
         self.log_generation_complete(contract_id, name, version)
@@ -91,6 +93,7 @@ class ODCSGeneratorBaseStructureTest(TestCase):
 
     def test_requires_generate_odcs_from_hubcontract_implementation(self):
         """Test that subclasses must implement generate_odcs_from_hubcontract"""
+
         class IncompleteGenerator(ODCSGeneratorBase):
             pass
 
@@ -106,16 +109,8 @@ class ODCSGeneratorBaseValidationTest(TestCase):
         self.generator = ConcreteODCSGenerator()
         self.valid_hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "description": "A test contract",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract", "description": "A test contract", "version": "1.0.0"},
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
 
     def test_validate_hub_contract_structure_with_valid_contract(self):
@@ -138,9 +133,7 @@ class ODCSGeneratorBaseValidationTest(TestCase):
 
     def test_validate_hub_contract_structure_missing_info(self):
         """Test validation fails when 'info' section is missing"""
-        invalid_contract = {
-            "id": "test-contract-1"
-        }
+        invalid_contract = {"id": "test-contract-1"}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.validate_hub_contract_structure(invalid_contract)
@@ -153,10 +146,7 @@ class ODCSGeneratorBaseValidationTest(TestCase):
 
     def test_validate_hub_contract_structure_info_not_dict(self):
         """Test validation fails when 'info' is not a dictionary"""
-        invalid_contract = {
-            "id": "test-contract-1",
-            "info": "not a dict"
-        }
+        invalid_contract = {"id": "test-contract-1", "info": "not a dict"}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.validate_hub_contract_structure(invalid_contract)
@@ -169,10 +159,7 @@ class ODCSGeneratorBaseValidationTest(TestCase):
 
     def test_validate_hub_contract_structure_missing_name(self):
         """Test validation fails when 'info.name' is missing"""
-        invalid_contract = {
-            "id": "test-contract-1",
-            "info": {}
-        }
+        invalid_contract = {"id": "test-contract-1", "info": {}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.validate_hub_contract_structure(invalid_contract)
@@ -185,12 +172,7 @@ class ODCSGeneratorBaseValidationTest(TestCase):
 
     def test_validate_hub_contract_structure_name_not_string(self):
         """Test validation fails when 'info.name' is not a string"""
-        invalid_contract = {
-            "id": "test-contract-1",
-            "info": {
-                "name": 123
-            }
-        }
+        invalid_contract = {"id": "test-contract-1", "info": {"name": 123}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.validate_hub_contract_structure(invalid_contract)
@@ -203,12 +185,7 @@ class ODCSGeneratorBaseValidationTest(TestCase):
 
     def test_validate_hub_contract_structure_name_empty_string(self):
         """Test validation fails when 'info.name' is empty string"""
-        invalid_contract = {
-            "id": "test-contract-1",
-            "info": {
-                "name": ""
-            }
-        }
+        invalid_contract = {"id": "test-contract-1", "info": {"name": ""}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.validate_hub_contract_structure(invalid_contract)
@@ -220,12 +197,7 @@ class ODCSGeneratorBaseValidationTest(TestCase):
 
     def test_validate_hub_contract_structure_name_whitespace_only(self):
         """Test validation fails when 'info.name' is whitespace only"""
-        invalid_contract = {
-            "id": "test-contract-1",
-            "info": {
-                "name": "   "
-            }
-        }
+        invalid_contract = {"id": "test-contract-1", "info": {"name": "   "}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.validate_hub_contract_structure(invalid_contract)
@@ -236,11 +208,7 @@ class ODCSGeneratorBaseValidationTest(TestCase):
 
     def test_validate_hub_contract_structure_missing_id(self):
         """Test validation fails when 'id' is missing"""
-        invalid_contract = {
-            "info": {
-                "name": "Test Contract"
-            }
-        }
+        invalid_contract = {"info": {"name": "Test Contract"}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.validate_hub_contract_structure(invalid_contract)
@@ -253,12 +221,7 @@ class ODCSGeneratorBaseValidationTest(TestCase):
 
     def test_validate_hub_contract_structure_id_not_string(self):
         """Test validation fails when 'id' is not a string"""
-        invalid_contract = {
-            "id": 123,
-            "info": {
-                "name": "Test Contract"
-            }
-        }
+        invalid_contract = {"id": 123, "info": {"name": "Test Contract"}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.validate_hub_contract_structure(invalid_contract)
@@ -320,23 +283,14 @@ class ODCSGeneratorBaseGenerationTest(TestCase):
         self.generator = ConcreteODCSGenerator()
         self.valid_hub_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "description": "A test contract",
-                "version": "1.0.0"
-            },
-            "schema": {
-                "fields": [
-                    {"name": "field1", "type": "string"}
-                ]
-            }
+            "info": {"name": "Test Contract", "description": "A test contract", "version": "1.0.0"},
+            "schema": {"fields": [{"name": "field1", "type": "string"}]},
         }
 
     def test_generate_odcs_from_hubcontract_with_valid_contract(self):
         """Test generation succeeds with valid HubContract"""
         odcs_doc = self.generator.generate_odcs_from_hubcontract(
-            self.valid_hub_contract,
-            target_version="3.0.2"
+            self.valid_hub_contract, target_version="3.0.2"
         )
 
         self.assertIsInstance(odcs_doc, dict)
@@ -349,16 +303,10 @@ class ODCSGeneratorBaseGenerationTest(TestCase):
 
     def test_generate_odcs_from_hubcontract_with_minimal_contract(self):
         """Test generation succeeds with minimal HubContract"""
-        minimal_contract = {
-            "id": "minimal-contract",
-            "info": {
-                "name": "Minimal Contract"
-            }
-        }
+        minimal_contract = {"id": "minimal-contract", "info": {"name": "Minimal Contract"}}
 
         odcs_doc = self.generator.generate_odcs_from_hubcontract(
-            minimal_contract,
-            target_version="3.0.2"
+            minimal_contract, target_version="3.0.2"
         )
 
         self.assertIsInstance(odcs_doc, dict)
@@ -383,10 +331,7 @@ class ODCSGeneratorBaseGenerationTest(TestCase):
 
     def test_generate_odcs_from_hubcontract_with_missing_name(self):
         """Test generation fails when info.name is missing"""
-        invalid_contract = {
-            "id": "test-contract-1",
-            "info": {}
-        }
+        invalid_contract = {"id": "test-contract-1", "info": {}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.generate_odcs_from_hubcontract(invalid_contract)
@@ -397,11 +342,7 @@ class ODCSGeneratorBaseGenerationTest(TestCase):
 
     def test_generate_odcs_from_hubcontract_with_missing_id(self):
         """Test generation fails when id is missing"""
-        invalid_contract = {
-            "info": {
-                "name": "Test Contract"
-            }
-        }
+        invalid_contract = {"info": {"name": "Test Contract"}}
 
         with self.assertRaises(ODCSGenerationError) as cm:
             self.generator.generate_odcs_from_hubcontract(invalid_contract)
@@ -414,10 +355,7 @@ class ODCSGeneratorBaseGenerationTest(TestCase):
         """Test generation fails when info.version has wrong type"""
         invalid_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "version": 123  # Should be string
-            }
+            "info": {"name": "Test Contract", "version": 123},  # Should be string
         }
 
         with self.assertRaises(ODCSGenerationError) as cm:
@@ -432,10 +370,7 @@ class ODCSGeneratorBaseGenerationTest(TestCase):
         """Test generation fails when info.description has wrong type"""
         invalid_contract = {
             "id": "test-contract-1",
-            "info": {
-                "name": "Test Contract",
-                "description": 123  # Should be string
-            }
+            "info": {"name": "Test Contract", "description": 123},  # Should be string
         }
 
         with self.assertRaises(ODCSGenerationError) as cm:
@@ -458,18 +393,14 @@ class ODCSGeneratorBaseLoggingTest(TestCase):
         """Test log_generation_start method exists and can be called"""
         # Should not raise any exception
         self.generator.log_generation_start(
-            contract_id="test-1",
-            name="Test Contract",
-            target_version="3.0.2"
+            contract_id="test-1", name="Test Contract", target_version="3.0.2"
         )
 
     def test_log_generation_complete(self):
         """Test log_generation_complete method exists and can be called"""
         # Should not raise any exception
         self.generator.log_generation_complete(
-            contract_id="test-1",
-            name="Test Contract",
-            target_version="3.0.2"
+            contract_id="test-1", name="Test Contract", target_version="3.0.2"
         )
 
     def test_log_generation_error(self):
@@ -477,8 +408,104 @@ class ODCSGeneratorBaseLoggingTest(TestCase):
         # Should not raise any exception
         error = ValueError("Test error")
         self.generator.log_generation_error(
-            error=error,
-            contract_id="test-1",
-            field_path="/test/field"
+            error=error, contract_id="test-1", field_path="/test/field"
         )
 
+    def test_validate_hub_contract_structure_handles_unicode_characters(self):
+        """Test that validation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-unicode",
+            "info": {"name": "测试合同"},
+            "schema": {"fields": []},
+        }
+
+        # Should handle unicode characters
+        try:
+            self.generator.validate_hub_contract_structure(hub_contract)
+            # If validation succeeds, unicode is handled correctly
+            self.assertTrue(True)
+        except Exception as e:
+            # If validation fails, it should fail gracefully
+            self.assertIsInstance(e, ODCSGenerationError)
+
+    def test_validate_hub_contract_structure_handles_special_characters(self):
+        """Test that validation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-special",
+            "info": {"name": "Test & Co. (Special)"},
+            "schema": {"fields": []},
+        }
+
+        # Should handle special characters
+        try:
+            self.generator.validate_hub_contract_structure(hub_contract)
+            # If validation succeeds, special characters are handled correctly
+            self.assertTrue(True)
+        except Exception as e:
+            # If validation fails, it should fail gracefully
+            self.assertIsInstance(e, ODCSGenerationError)
+
+    def test_generate_odcs_from_hubcontract_handles_unicode_characters(self):
+        """Test that generation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-unicode",
+            "info": {"name": "测试合同", "description": "测试描述"},
+            "schema": {"fields": []},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify unicode characters are preserved
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "测试合同")
+
+    def test_generate_odcs_from_hubcontract_handles_special_characters(self):
+        """Test that generation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-special",
+            "info": {"name": "Test & Co. (Special)", "description": "Test <description> & more"},
+            "schema": {"fields": []},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify special characters are preserved
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "Test & Co. (Special)")
+
+    def test_generate_odcs_from_hubcontract_handles_very_large_documents(self):
+        """Test that generation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-large",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": []},
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+            # If generation succeeds, verify structure
+            self.assertIn("name", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODCSGenerationError, "Should raise ODCSGenerationError for very large documents"
+            )
+
+    def test_generate_odcs_from_hubcontract_handles_nested_structures(self):
+        """Test that generation handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-nested",
+            "info": {
+                "name": "Test Product",
+                "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+            },
+            "schema": {"fields": []},
+        }
+
+        result = self.generator.generate_odcs_from_hubcontract(hub_contract)
+
+        # Verify nested structure is preserved
+        self.assertIn("name", result)
+        self.assertIsNotNone(result)

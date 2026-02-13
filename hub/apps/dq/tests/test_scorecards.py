@@ -73,8 +73,10 @@ class DQScorecardServiceTest(TestCase):
         """Helper to create DQ run"""
         job = Job.objects.create(
             tenant=self.tenant,
-            job_type=JobType.DQ_CHECK,
+            type=JobType.DQ_RUN,
             status=JobStatus.COMPLETED,
+            resource_type="DQ_RUN",
+            resource_id=self.dataset.id,
             created_by=self.user
         )
         

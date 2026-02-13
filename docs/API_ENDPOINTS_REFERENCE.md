@@ -2,6 +2,59 @@
 
 Complete reference for all API endpoints in the Data Interoperability Hub API v1.
 
+## Standard Error Response Format
+
+All API endpoints return errors in a consistent format:
+
+```json
+{
+  "error": "Human-readable error message",
+  "code": "ERROR_CODE",
+  "details": {}
+}
+```
+
+**Status Codes:**
+- `400 Bad Request`: Validation errors (code: `VALIDATION_ERROR` or `VALIDATION_FAILED`)
+- `403 Forbidden`: Permission denied (code: `PERMISSION_DENIED` or `AUTH_FORBIDDEN`)
+- `404 Not Found`: Resource not found (code: `NOT_FOUND`)
+- `409 Conflict`: Resource conflict (code: `CONFLICT_ERROR` or `CONFLICT`)
+- `429 Too Many Requests`: Rate limit exceeded (code: `RATE_LIMIT_EXCEEDED`)
+- `500 Internal Server Error`: Server error (code: `INTERNAL_ERROR`)
+
+**Error Response Fields:**
+- `error` (string): Human-readable error message
+- `code` (string): Machine-readable error code (e.g., `VALIDATION_ERROR`, `NOT_FOUND`)
+- `details` (object): Optional dictionary with additional error context (field-level errors, validation details, etc.)
+
+**Example Error Responses:**
+
+```json
+{
+  "error": "Invalid request data",
+  "code": "VALIDATION_ERROR",
+  "details": {
+    "field_errors": [
+      {
+        "field": "name",
+        "message": "This field is required.",
+        "code": "VALIDATION_ERROR"
+      }
+    ]
+  }
+}
+```
+
+```json
+{
+  "error": "Resource not found",
+  "code": "NOT_FOUND",
+  "details": {}
+}
+```
+
+---
+
 ## Table of Contents
 
 1. [Contracts](#contracts)
@@ -11,7 +64,16 @@ Complete reference for all API endpoints in the Data Interoperability Hub API v1
 5. [Compliance](#compliance)
 6. [Search](#search)
 7. [Observability](#observability)
-8. [Authentication](#authentication)
+8. [Versioning](#versioning)
+9. [Workflows](#workflows)
+10. [Marketplace (listings and data preview)](#marketplace-listings-and-data-preview)
+11. [Authentication](#authentication)
+12. [BaaS Platform Endpoints](#baas-platform-endpoints)
+13. [ODH Integration Endpoints](#odh-integration-endpoints)
+14. [Scheduled Ingestion](#scheduled-ingestion)
+15. [Scheduled Ingestion Internal Worker API](#scheduled-ingestion-internal-worker-api)
+16. [Scheduled Export](#scheduled-export)
+17. [Scheduled Export Internal Worker API](#scheduled-export-internal-worker-api)
 
 ---
 
@@ -1125,6 +1187,47 @@ Get data volume monitoring metrics.
 }
 ```
 
+### Get Lineage
+
+**GET** `/api/v1/observability/lineage/`
+
+Get contract-level lineage (delegates to contract lineage service; tenant isolation enforced).
+
+**Query Parameters:**
+- `contract_id` (UUID, required): Contract UUID to retrieve lineage for.
+
+**Response (200 OK):**
+```json
+{
+  "contracts": [
+    { "namespace": "ns1", "name": "upstream-contract", "id": "up-1" }
+  ],
+  "entries": [
+    { "type": "derived", "source": "up-1", "target": "self" }
+  ]
+}
+```
+
+**Response (400 Bad Request)** — missing `contract_id`, invalid UUID format, or user has no tenant:
+```json
+{ "error": "contract_id query parameter is required" }
+```
+or (invalid UUID format for `contract_id`):
+```json
+{ "error": "Invalid UUID format for contract_id", "code": "INVALID_UUID" }
+```
+or (user has no tenant):
+```json
+{ "error": "User must belong to a tenant to view observability data" }
+```
+
+**Response (404 Not Found)** — contract not found or not accessible (e.g. different tenant):
+```json
+{ "error": "Contract not found", "code": "NOT_FOUND" }
+```
+
+---
+
 ### Get Schema Drift
 
 **GET** `/api/v1/observability/schema-drift/`
@@ -1149,6 +1252,323 @@ Get schema drift detection results.
   ]
 }
 ```
+
+---
+
+## Versioning
+
+Minimal Versioning API for listing and comparing contract and dataset versions (Phase 2 Gap Remediation). All endpoints require authentication and are tenant-scoped.
+
+### List Versions
+
+**GET** `/api/v1/versioning/versions/`
+
+List versions for a resource (contract or dataset) by asset id.
+
+**Query Parameters:**
+- `resource_type` (string, required): `contract` or `dataset`
+- `resource_id` (UUID, required): Asset UUID
+
+**Response (200 OK):**
+```json
+{
+  "results": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "resource_type": "contract",
+      "version": 2,
+      "semantic_version": "3.0.2",
+      "created_at": "2025-01-15T10:00:00Z",
+      "is_current": null
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `400`: Missing or invalid `resource_type` / `resource_id`; user without tenant
+- `401`: Unauthenticated
+
+### Get Version
+
+**GET** `/api/v1/versioning/versions/{id}/`
+
+Retrieve a single version (contract or dataset) by id.
+
+**Response (200 OK):** Object with `id`, `resource_type`, `version`, `semantic_version`, `created_at`, `updated_at`, `is_current`, and optionally `status`, `original_spec_version`.
+
+**Error Responses:**
+- `404`: Version not found or not in tenant
+- `401`: Unauthenticated
+
+### Compare Versions
+
+**GET** `/api/v1/versioning/compare/`
+
+Compare two versions (same resource type).
+
+**Query Parameters:**
+- `resource_type` (string, required): `contract` or `dataset`
+- `id_a` (UUID, required): First version id
+- `id_b` (UUID, required): Second version id
+
+**Response (200 OK):**
+```json
+{
+  "id_a": "550e8400-e29b-41d4-a716-446655440001",
+  "id_b": "550e8400-e29b-41d4-a716-446655440002",
+  "resource_type": "contract",
+  "version_a": 1,
+  "version_b": 2,
+  "created_at_a": "2025-01-15T10:00:00Z",
+  "created_at_b": "2025-01-16T11:00:00Z"
+}
+```
+
+**Error Responses:**
+- `400`: Missing `id_a` / `id_b` or invalid `resource_type`
+- `404`: One or both versions not found or not in tenant
+- `401`: Unauthenticated
+
+---
+
+## Workflows
+
+Workflow definitions and trigger (create/start instance). Tenant required; tenant isolation enforced on trigger.
+
+### List Workflows
+
+**GET** `/api/v1/workflows/`
+
+List workflow definitions with optional filters and pagination.
+
+**Query Parameters:**
+- `name` (string, optional): Filter by workflow name
+- `is_active` (boolean, optional): Filter by active status (`true`/`false`)
+- `page` (integer, optional): Page number (default: 1)
+- `page_size` (integer, optional): Page size (default: 50, max: 100)
+
+**Response (200 OK):**
+```json
+{
+  "count": 11,
+  "page": 1,
+  "page_size": 50,
+  "total_pages": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "version_creation",
+      "version": "1.0.0",
+      "description": null,
+      "is_active": true,
+      "dependencies": [],
+      "metadata": {},
+      "created_at": "2025-01-15T10:00:00Z"
+    }
+  ]
+}
+```
+
+**Response (400 Bad Request)** — user has no tenant:
+```json
+{ "error": "User must belong to a tenant to access the Workflows API" }
+```
+
+**Response (401 Unauthorized)** — not authenticated.
+
+---
+
+### Get Workflow
+
+**GET** `/api/v1/workflows/{name}/`
+
+Get a workflow definition by name. Optional query `version` for a specific version.
+
+**Query Parameters:**
+- `version` (string, optional): Workflow version (e.g. `1.0.0`). If omitted, returns the active version.
+
+**Response (200 OK):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "version_creation",
+  "version": "1.0.0",
+  "description": null,
+  "dsl_json": { "version": "1.0.0", "steps": [...] },
+  "is_active": true,
+  "dependencies": [],
+  "metadata": {},
+  "created_at": "2025-01-15T10:00:00Z",
+  "updated_at": "2025-01-15T10:00:00Z"
+}
+```
+
+**Response (404 Not Found)** — workflow not found:
+```json
+{ "error": "Workflow not found: {name}", "code": "NOT_FOUND" }
+```
+
+---
+
+### Trigger Workflow
+
+**POST** `/api/v1/workflows/{name}/trigger/`
+
+Create a new workflow instance (and optionally start it immediately). Instance is created for the authenticated user's tenant.
+
+**Request Body:**
+```json
+{
+  "input_data": {},
+  "start_immediately": false
+}
+```
+- `input_data` (object, optional): Workflow input data; must be a JSON object (default: `{}`)
+- `start_immediately` (boolean, optional): If `true`, start the instance after creation (default: `false`)
+
+**Response (201 Created):**
+```json
+{
+  "id": "660e8400-e29b-41d4-a716-446655440001",
+  "status": "DRAFT",
+  "workflow_name": "version_creation",
+  "workflow_version": "1.0.0",
+  "created_at": "2025-01-15T11:00:00Z"
+}
+```
+When `start_immediately` was `true`, the response may include:
+- `started` (boolean): `true` if start succeeded, `false` if start failed
+- `start_error` (string, optional): Error message if start was requested but failed (instance remains in DRAFT)
+
+**Response (404 Not Found)** — workflow definition not found:
+```json
+{ "error": "Workflow definition not found: {name}", "code": "WORKFLOW_NOT_FOUND" }
+```
+
+**Response (400 Bad Request)** — user has no tenant, invalid body (e.g. `input_data` not a JSON object), or validation errors.
+
+---
+
+## Marketplace (listings and data preview)
+
+Listings and orders are under `/api/v1/marketplace/`. Data preview is available for published listings (Phase 4 Gap Remediation).
+
+### Data preview (listing)
+
+**GET** `/api/v1/marketplace/listings/{id}/preview/`
+
+Preview sample data, schema, and quality metrics for a **published** listing before purchase. Requires authentication.
+
+**Path Parameters:**
+- `id` (UUID): Listing ID.
+
+**Response (200 OK):**
+```json
+{
+  "listing_id": "550e8400-e29b-41d4-a716-446655440000",
+  "asset_id": "660e8400-e29b-41d4-a716-446655440001",
+  "sample_data": {
+    "rows": [ { "id": "1", "name": "test1", "value": 100 } ],
+    "total_rows": 1000,
+    "sample_size": 10
+  },
+  "quality_metrics": {
+    "completeness": 0.95,
+    "accuracy": 1.0,
+    "freshness": "current",
+    "overall_score": 0.95
+  },
+  "schema": {
+    "fields": [
+      { "name": "id", "type": "string", "nullable": false },
+      { "name": "name", "type": "string", "nullable": false }
+    ]
+  },
+  "trust_signals": { "badges": ["quality_verified"], "quality_sla": "99.5%" },
+  "preview_expires_at": "2025-01-15T12:00:00Z"
+}
+```
+- `quality_metrics`: From latest successful DQ run for the asset (null if none).
+- `trust_signals`: Optional; from listing `metadata_json.trust_signals` when set.
+- `preview_expires_at`: Preview validity (e.g. 1 hour).
+
+**Response (403 Forbidden)** — listing not published:
+```json
+{ "error": "Preview is only available for published listings" }
+```
+
+**Response (400 Bad Request)** — listing has no associated asset (defensive; normal listings always have an asset):
+```json
+{ "error": "Listing has no associated asset" }
+```
+
+**Response (404 Not Found)** — no dataset for the listing's asset:
+```json
+{ "error": "No dataset found for this asset" }
+```
+
+**Response (401 Unauthorized)** — not authenticated.
+
+### Trust signals configuration API
+
+Tenant-scoped CRUD for trust signal definitions (badges, quality SLAs). Supports UC-MKT-ADV-003 (Manage Trust Signals) and UC-MKT-ADV-005 (Configure Data Quality SLAs). Requires authentication; list/retrieve/update/delete are filtered by the request tenant.
+
+**Base path:** `/api/v1/marketplace/config/trust-signals/`
+
+#### List trust signal configs
+
+**GET** `/api/v1/marketplace/config/trust-signals/`
+
+Returns trust signal configs for the current tenant (paginated). Platform admins see all.
+
+**Response (200 OK):** Paginated list of objects: `id`, `tenant_id`, `name`, `kind` (`badge` | `quality_sla`), `config` (JSON), `is_active`, `created_at`, `updated_at`.
+
+#### Create trust signal config
+
+**POST** `/api/v1/marketplace/config/trust-signals/`
+
+**Request Body:**
+```json
+{
+  "name": "quality_verified",
+  "kind": "badge",
+  "config": { "description": "Quality verified by DQ run" }
+}
+```
+- `name`: string, unique per tenant
+- `kind`: `badge` or `quality_sla`
+- `config`: JSON object (e.g. `description` for badge; `availability`, `freshness_hours` for quality_sla)
+- `is_active`: optional boolean, default true
+
+**Response (201 Created):** Created object with `id`, `tenant_id`, `name`, `kind`, `config`, `is_active`, `created_at`, `updated_at`.
+
+**Response (400 Bad Request):** Validation error (e.g. missing name/kind). Duplicate name per tenant returns `{"error": "A trust signal config with this name already exists for your tenant.", "code": "DUPLICATE_NAME"}`.
+
+#### Retrieve trust signal config
+
+**GET** `/api/v1/marketplace/config/trust-signals/{id}/`
+
+**Response (200 OK):** Single config object. **Response (404 Not Found):** Config not found or belongs to another tenant.
+
+#### Update trust signal config
+
+**PUT** `/api/v1/marketplace/config/trust-signals/{id}/`  
+**PATCH** `/api/v1/marketplace/config/trust-signals/{id}/`
+
+**Response (200 OK):** Updated object. **Response (400 Bad Request):** Duplicate name (same as create; `code`: `DUPLICATE_NAME`). **Response (404 Not Found):** Config not found or belongs to another tenant.
+
+#### Delete trust signal config
+
+**DELETE** `/api/v1/marketplace/config/trust-signals/{id}/`
+
+**Response (204 No Content):** Deleted. **Response (404 Not Found):** Config not found or belongs to another tenant.
+
+**Response (401 Unauthorized):** Not authenticated.
+
+See [FEATURES.md – Trust signals](FEATURES.md#trust-signals).
 
 ---
 
@@ -1202,6 +1622,535 @@ Refresh access token using refresh token.
 
 ---
 
+## Marketplace Integration Endpoints
+
+### List Marketplace Connections
+
+**GET** `/api/v1/integrations/marketplace/connections/`
+
+List all marketplace connections for the authenticated user's tenant with filtering, pagination, and search.
+
+**Query Parameters:**
+- `marketplace_type` (string, optional): Filter by marketplace type (e.g., `SNOWFLAKE_DATA_MARKETPLACE`, `AWS_DATA_EXCHANGE`)
+- `is_active` (boolean, optional): Filter by active status (`true`/`false`)
+- `search` (string, optional): Search in connection name
+- `ordering` (string, optional): Order by field (e.g., `name`, `-created_at`). Prefix with `-` for descending
+- `page` (integer, optional): Page number (default: 1)
+- `page_size` (integer, optional): Items per page (default: 50, max: 100)
+
+**Authentication**: Required (JWT token or API key)
+
+**Authorization**: Authenticated user (tenant-scoped)
+
+**Response (200 OK):**
+```json
+{
+  "count": 10,
+  "page": 1,
+  "page_size": 50,
+  "total_pages": 1,
+  "has_next": false,
+  "has_previous": false,
+  "results": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Snowflake Production",
+      "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+      "is_active": true,
+      "created_at": "2025-01-15T10:30:00Z",
+      "updated_at": "2025-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+**Rate Limiting**: 100 requests per hour per user
+
+### Get Marketplace Connection
+
+**GET** `/api/v1/integrations/marketplace/connections/{id}/`
+
+Get detailed information about a specific marketplace connection.
+
+**Path Parameters:**
+- `id` (UUID): Connection UUID
+
+**Authentication**: Required
+
+**Authorization**: Authenticated user (tenant-scoped)
+
+**Response (200 OK):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Snowflake Production",
+  "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+  "is_active": true,
+  "created_at": "2025-01-15T10:30:00Z",
+  "updated_at": "2025-01-15T10:30:00Z"
+}
+```
+
+**Error Responses:**
+- `404 Not Found`: Connection not found
+- `403 Forbidden`: Insufficient permissions
+
+### Create Marketplace Connection
+
+**POST** `/api/v1/integrations/marketplace/connections/`
+
+Create a new marketplace connection.
+
+**Authentication**: Required
+
+**Authorization**: `DATA_PROVIDER` or `TENANT_ADMIN` role + `integrations:write` scope
+
+**Request Body:**
+```json
+{
+  "name": "Snowflake Production",
+  "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+  "config": {
+    "account": "myaccount",
+    "username": "user",
+    "password": "password",
+    "warehouse": "COMPUTE_WH",
+    "database": "MARKETPLACE_DB"
+  }
+}
+```
+
+**Request Body Fields:**
+- `name` (string, required): Connection name
+- `marketplace_type` (string, required): Marketplace type (e.g., `SNOWFLAKE_DATA_MARKETPLACE`, `AWS_DATA_EXCHANGE`)
+- `config` (object, required): Marketplace-specific configuration (credentials, endpoints, etc.)
+
+**Response (201 Created):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Snowflake Production",
+  "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+  "is_active": true,
+  "created_at": "2025-01-15T10:30:00Z",
+  "updated_at": "2025-01-15T10:30:00Z"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid request body or validation error
+- `403 Forbidden`: Insufficient permissions
+- `429 Too Many Requests`: Rate limit exceeded
+
+**Rate Limiting**: 10 requests per hour per user
+
+### Update Marketplace Connection
+
+**PATCH** `/api/v1/integrations/marketplace/connections/{id}/`
+
+Update a marketplace connection (partial update supported).
+
+**Path Parameters:**
+- `id` (UUID): Connection UUID
+
+**Authentication**: Required
+
+**Authorization**: `DATA_PROVIDER` or `TENANT_ADMIN` role + `integrations:write` scope
+
+**Request Body:**
+```json
+{
+  "name": "Snowflake Production Updated",
+  "config": {
+    "warehouse": "NEW_COMPUTE_WH"
+  }
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Snowflake Production Updated",
+  "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+  "is_active": true,
+  "updated_at": "2025-01-15T11:00:00Z"
+}
+```
+
+**Rate Limiting**: 20 requests per hour per user
+
+### Delete Marketplace Connection
+
+**DELETE** `/api/v1/integrations/marketplace/connections/{id}/`
+
+Delete a marketplace connection.
+
+**Path Parameters:**
+- `id` (UUID): Connection UUID
+
+**Authentication**: Required
+
+**Authorization**: `DATA_PROVIDER` or `TENANT_ADMIN` role + `integrations:write` scope
+
+**Response (204 No Content)**
+
+**Rate Limiting**: 10 requests per hour per user
+
+### Test Marketplace Connection
+
+**POST** `/api/v1/integrations/marketplace/connections/{id}/test/`
+
+Test a marketplace connection to verify credentials and connectivity.
+
+**Path Parameters:**
+- `id` (UUID): Connection UUID
+
+**Authentication**: Required
+
+**Authorization**: `DATA_PROVIDER` or `TENANT_ADMIN` role + `integrations:write` scope
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Connection test successful",
+  "tested_at": "2025-01-15T10:35:00Z",
+  "details": {
+    "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE",
+    "response_time_ms": 245
+  }
+}
+```
+
+**Error Response (400 Bad Request):**
+```json
+{
+  "success": false,
+  "message": "Connection test failed: Invalid credentials",
+  "tested_at": "2025-01-15T10:35:00Z",
+  "error": "Authentication failed"
+}
+```
+
+**Rate Limiting**: 20 requests per hour per user
+
+---
+
+### List Marketplace Sync Jobs
+
+**GET** `/api/v1/integrations/marketplace/sync/`
+
+List all marketplace sync jobs for the authenticated user's tenant.
+
+**Query Parameters:**
+- `connection_id` (UUID, optional): Filter by connection ID
+- `direction` (string, optional): Filter by sync direction (`PUSH`, `PULL`, `BIDIRECTIONAL`)
+- `status` (string, optional): Filter by status (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `PARTIAL`, `CANCELLED`)
+- `ordering` (string, optional): Order by field (e.g., `-created_at`)
+- `page` (integer, optional): Page number (default: 1)
+- `page_size` (integer, optional): Items per page (default: 50, max: 100)
+
+**Authentication**: Required
+
+**Authorization**: Authenticated user (tenant-scoped)
+
+**Response (200 OK):**
+```json
+{
+  "count": 25,
+  "page": 1,
+  "page_size": 50,
+  "results": [
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440000",
+      "connection": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "name": "Snowflake Production",
+        "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE"
+      },
+      "direction": "PULL",
+      "status": "COMPLETED",
+      "items_synced": 100,
+      "items_failed": 0,
+      "created_at": "2025-01-15T10:00:00Z",
+      "completed_at": "2025-01-15T10:05:00Z"
+    }
+  ]
+}
+```
+
+**Rate Limiting**: 100 requests per hour per user
+
+### Get Marketplace Sync Job
+
+**GET** `/api/v1/integrations/marketplace/sync/{id}/`
+
+Get detailed information about a specific marketplace sync job.
+
+**Path Parameters:**
+- `id` (UUID): Sync job UUID
+
+**Authentication**: Required
+
+**Authorization**: Authenticated user (tenant-scoped)
+
+**Response (200 OK):**
+```json
+{
+  "id": "660e8400-e29b-41d4-a716-446655440000",
+  "connection": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Snowflake Production",
+    "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE"
+  },
+  "direction": "PULL",
+  "status": "COMPLETED",
+  "items_synced": 100,
+  "items_failed": 0,
+  "errors": [],
+  "metadata": {
+    "data_strategy": "METADATA_ONLY",
+    "filters": {},
+    "options": {}
+  },
+  "created_at": "2025-01-15T10:00:00Z",
+  "updated_at": "2025-01-15T10:05:00Z",
+  "completed_at": "2025-01-15T10:05:00Z"
+}
+```
+
+### Create Marketplace Sync Job
+
+**POST** `/api/v1/integrations/marketplace/sync/`
+
+Create a new marketplace sync job.
+
+**Authentication**: Required
+
+**Authorization**: `DATA_PROVIDER` or `TENANT_ADMIN` role + `integrations:write` scope
+
+**Request Body (PULL sync):**
+```json
+{
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "direction": "PULL",
+  "listing_ids": null,
+  "filters": {
+    "category": "health"
+  },
+  "options": {
+    "dry_run": false,
+    "data_strategy": "METADATA_ONLY"
+  }
+}
+```
+
+**Request Body (PUSH sync):**
+```json
+{
+  "connection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "direction": "PUSH",
+  "asset_ids": [
+    "770e8400-e29b-41d4-a716-446655440000",
+    "880e8400-e29b-41d4-a716-446655440000"
+  ],
+  "options": {
+    "dry_run": false
+  }
+}
+```
+
+**Request Body Fields:**
+- `connection_id` (UUID, required): Connection UUID
+- `direction` (string, required): Sync direction (`PUSH`, `PULL`, or `BIDIRECTIONAL`)
+- `asset_ids` (array of UUIDs, optional): Hub asset IDs for PUSH sync
+- `listing_ids` (array of strings, optional): External listing IDs for PULL sync
+- `filters` (object, optional): Filters for PULL sync
+- `options` (object, optional): Sync options (dry_run, data_strategy, etc.)
+
+**Response (201 Created):**
+```json
+{
+  "id": "660e8400-e29b-41d4-a716-446655440000",
+  "connection": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Snowflake Production",
+    "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE"
+  },
+  "direction": "PULL",
+  "status": "PENDING",
+  "items_synced": 0,
+  "items_failed": 0,
+  "errors": [],
+  "metadata": {
+    "data_strategy": "METADATA_ONLY",
+    "filters": {
+      "category": "health"
+    },
+    "options": {
+      "dry_run": false
+    }
+  },
+  "created_at": "2025-01-15T10:00:00Z",
+  "updated_at": "2025-01-15T10:00:00Z",
+  "completed_at": null
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid request body or validation error
+- `404 Not Found`: Connection not found
+- `429 Too Many Requests`: Rate limit exceeded
+
+**Rate Limiting**: 10 requests per hour per user
+
+**Note**: Sync jobs are executed asynchronously. Use the GET endpoint to monitor progress.
+
+### Cancel Marketplace Sync Job
+
+**POST** `/api/v1/integrations/marketplace/sync/{id}/cancel/`
+
+Cancel a running marketplace sync job.
+
+**Path Parameters:**
+- `id` (UUID): Sync job UUID
+
+**Authentication**: Required
+
+**Authorization**: `DATA_PROVIDER` or `TENANT_ADMIN` role + `integrations:write` scope
+
+**Request Body:**
+```json
+{
+  "reason": "User requested cancellation"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "660e8400-e29b-41d4-a716-446655440000",
+  "status": "CANCELLED",
+  "metadata": {
+    "cancellation_reason": "User requested cancellation"
+  },
+  "updated_at": "2025-01-15T10:03:00Z",
+  "completed_at": "2025-01-15T10:03:00Z"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Job cannot be cancelled (already completed/failed/cancelled)
+- `404 Not Found`: Sync job not found
+
+**Rate Limiting**: 20 requests per hour per user
+
+---
+
+### List Marketplace Mappings
+
+**GET** `/api/v1/integrations/marketplace/mappings/`
+
+List all marketplace mappings for the authenticated user's tenant.
+
+**Query Parameters:**
+- `connection_id` (UUID, optional): Filter by connection ID
+- `hub_asset_id` (UUID, optional): Filter by hub asset ID
+- `external_listing_id` (string, optional): Filter by external listing ID
+- `ordering` (string, optional): Order by field (e.g., `-created_at`)
+- `page` (integer, optional): Page number (default: 1)
+- `page_size` (integer, optional): Items per page (default: 50, max: 100)
+
+**Authentication**: Required
+
+**Authorization**: Authenticated user (tenant-scoped)
+
+**Response (200 OK):**
+```json
+{
+  "count": 50,
+  "page": 1,
+  "page_size": 50,
+  "results": [
+    {
+      "id": "770e8400-e29b-41d4-a716-446655440000",
+      "connection": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "name": "Snowflake Production",
+        "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE"
+      },
+      "hub_asset": {
+        "id": "880e8400-e29b-41d4-a716-446655440000",
+        "name": "Customer Analytics Dataset"
+      },
+      "external_listing_id": "SNOWFLAKE_LISTING_123",
+      "created_at": "2025-01-15T10:00:00Z",
+      "last_synced_at": "2025-01-15T10:05:00Z"
+    }
+  ]
+}
+```
+
+**Rate Limiting**: 100 requests per hour per user
+
+### Get Marketplace Mapping
+
+**GET** `/api/v1/integrations/marketplace/mappings/{id}/`
+
+Get detailed information about a specific marketplace mapping.
+
+**Path Parameters:**
+- `id` (UUID): Mapping UUID
+
+**Authentication**: Required
+
+**Authorization**: Authenticated user (tenant-scoped)
+
+**Response (200 OK):**
+```json
+{
+  "id": "770e8400-e29b-41d4-a716-446655440000",
+  "connection": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Snowflake Production",
+    "marketplace_type": "SNOWFLAKE_DATA_MARKETPLACE"
+  },
+  "hub_asset": {
+    "id": "880e8400-e29b-41d4-a716-446655440000",
+    "name": "Customer Analytics Dataset"
+  },
+  "external_listing_id": "SNOWFLAKE_LISTING_123",
+  "external_resource_ids": ["resource1", "resource2"],
+  "sync_metadata": {
+    "last_sync_status": "SUCCESS",
+    "last_sync_errors": []
+  },
+  "created_at": "2025-01-15T10:00:00Z",
+  "updated_at": "2025-01-15T10:05:00Z",
+  "last_synced_at": "2025-01-15T10:05:00Z"
+}
+```
+
+### Delete Marketplace Mapping
+
+**DELETE** `/api/v1/integrations/marketplace/mappings/{id}/`
+
+Delete a marketplace mapping.
+
+**Path Parameters:**
+- `id` (UUID): Mapping UUID
+
+**Authentication**: Required
+
+**Authorization**: `DATA_PROVIDER` or `TENANT_ADMIN` role + `integrations:write` scope
+
+**Response (204 No Content)**
+
+**Rate Limiting**: 20 requests per hour per user
+
+---
+
 ## Error Responses
 
 All endpoints return standardized error responses:
@@ -1235,6 +2184,9 @@ See [API Error Codes](./API_ERROR_CODES.md) for complete error code reference.
 
 - [API Best Practices](./API_BEST_PRACTICES.md)
 - [API Error Codes](./API_ERROR_CODES.md)
+- [Marketplace API Reference](./MARKETPLACE_API_REFERENCE.md) - Complete marketplace API documentation
 - [Interactive Documentation](../api-docs/)
 - [OpenAPI Schema](../api-docs/openapi.json)
+- [Scheduled Ingestion API Reference](API_ENDPOINTS_REFERENCE_SCHEDULED_INGESTION.md) - Complete scheduled ingestion API documentation (public and internal worker API)
+- [Scheduled Export API Reference](API_ENDPOINTS_REFERENCE_SCHEDULED_EXPORT.md) - Complete scheduled export API documentation (public and internal worker API)
 

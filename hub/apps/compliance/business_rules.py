@@ -221,8 +221,8 @@ class ComplianceBusinessRules(BusinessRules):
         errors = []
         warnings = []
         details = {
-            'compliance_run_id': str(compliance_run.id),
-            'status': compliance_run.status,
+            'compliance_run_id': str(getattr(compliance_run, 'id', None) or ''),
+            'status': getattr(compliance_run, 'status', ComplianceRunStatus.PENDING),
         }
 
         # Validate tenant context consistency

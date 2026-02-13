@@ -6,12 +6,13 @@ Tests for ODPS 3.x, 2.x, and 1.x normalizers to ensure:
 - Graceful degradation for missing features
 - Version-specific mappings
 """
+
 from django.test import TestCase
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
-from hub.apps.contracts.normalization.odps_normalizer_v3_x import ODPSNormalizerV3_X
-from hub.apps.contracts.normalization.odps_normalizer_v2_x import ODPSNormalizerV2_X
 from hub.apps.contracts.normalization.odps_normalizer_v1_x import ODPSNormalizerV1_X
+from hub.apps.contracts.normalization.odps_normalizer_v2_x import ODPSNormalizerV2_X
+from hub.apps.contracts.normalization.odps_normalizer_v3_x import ODPSNormalizerV3_X
 
 
 class ODPSNormalizerV3_XTest(TestCase):
@@ -22,38 +23,41 @@ class ODPSNormalizerV3_XTest(TestCase):
         self.normalizer = ODPSNormalizerV3_X()
 
     def test_supports_version_3_9(self):
-        """Test that normalizer supports ODPS 3.9"""
-        self.assertTrue(self.normalizer._supports_version("3.9"))
+        """Test that normalizer supports ODPS 3.9 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v3.9", "version": "3.9"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "3.9", contract_data))
 
     def test_supports_version_3_0(self):
-        """Test that normalizer supports ODPS 3.0"""
-        self.assertTrue(self.normalizer._supports_version("3.0"))
+        """Test that normalizer supports ODPS 3.0 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v3.0", "version": "3.0"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "3.0", contract_data))
 
     def test_supports_version_3_x(self):
-        """Test that normalizer supports generic 3.x version"""
-        self.assertTrue(self.normalizer._supports_version("3.x"))
+        """Test that normalizer supports generic 3.x version through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v3.x", "version": "3.x"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "3.x", contract_data))
 
     def test_does_not_support_version_4_0(self):
-        """Test that normalizer does not support ODPS 4.0"""
-        self.assertFalse(self.normalizer._supports_version("4.0"))
+        """Test that normalizer does not support ODPS 4.0 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v4.0", "version": "4.0"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertFalse(self.normalizer.supports(OriginalSpecType.ODPS, "4.0", contract_data))
 
     def test_does_not_support_version_2_x(self):
-        """Test that normalizer does not support ODPS 2.x"""
-        self.assertFalse(self.normalizer._supports_version("2.9"))
+        """Test that normalizer does not support ODPS 2.x through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v2.9", "version": "2.9"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertFalse(self.normalizer.supports(OriginalSpecType.ODPS, "2.9", contract_data))
 
     def test_supports_method_3_9(self):
         """Test that supports() method works for ODPS 3.9"""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v3.9",
             "version": "3.9",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
         self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "3.9", contract_data))
 
@@ -67,18 +71,11 @@ class ODPSNormalizerV3_XTest(TestCase):
                     "en": {
                         "productID": "test-product-3x",
                         "name": "ODPS 3.x Test Product",
-                        "description": "Test description"
+                        "description": "Test description",
                     }
                 },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
-            }
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
+            },
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="3.9")
@@ -96,25 +93,11 @@ class ODPSNormalizerV3_XTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v3.9",
             "version": "3.9",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
             },
             # productStrategy is not available in 3.x, but if present, should be skipped
-            "productStrategy": {
-                "objectives": ["Should be ignored"]
-            }
+            "productStrategy": {"objectives": ["Should be ignored"]},
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="3.9")
@@ -130,21 +113,9 @@ class ODPSNormalizerV3_XTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v3.9",
             "version": "3.9",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
+            },
             # Missing optional fields: marketplace, lifecycle, quality
         }
 
@@ -163,38 +134,41 @@ class ODPSNormalizerV2_XTest(TestCase):
         self.normalizer = ODPSNormalizerV2_X()
 
     def test_supports_version_2_9(self):
-        """Test that normalizer supports ODPS 2.9"""
-        self.assertTrue(self.normalizer._supports_version("2.9"))
+        """Test that normalizer supports ODPS 2.9 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v2.9", "version": "2.9"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "2.9", contract_data))
 
     def test_supports_version_2_0(self):
-        """Test that normalizer supports ODPS 2.0"""
-        self.assertTrue(self.normalizer._supports_version("2.0"))
+        """Test that normalizer supports ODPS 2.0 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v2.0", "version": "2.0"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "2.0", contract_data))
 
     def test_supports_version_2_x(self):
-        """Test that normalizer supports generic 2.x version"""
-        self.assertTrue(self.normalizer._supports_version("2.x"))
+        """Test that normalizer supports generic 2.x version through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v2.x", "version": "2.x"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "2.x", contract_data))
 
     def test_does_not_support_version_3_0(self):
-        """Test that normalizer does not support ODPS 3.0"""
-        self.assertFalse(self.normalizer._supports_version("3.0"))
+        """Test that normalizer does not support ODPS 3.0 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v3.0", "version": "3.0"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertFalse(self.normalizer.supports(OriginalSpecType.ODPS, "3.0", contract_data))
 
     def test_does_not_support_version_1_x(self):
-        """Test that normalizer does not support ODPS 1.x"""
-        self.assertFalse(self.normalizer._supports_version("1.9"))
+        """Test that normalizer does not support ODPS 1.x through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v1.9", "version": "1.9"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertFalse(self.normalizer.supports(OriginalSpecType.ODPS, "1.9", contract_data))
 
     def test_supports_method_2_9(self):
         """Test that supports() method works for ODPS 2.9"""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v2.9",
             "version": "2.9",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
         self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "2.9", contract_data))
 
@@ -208,18 +182,11 @@ class ODPSNormalizerV2_XTest(TestCase):
                     "en": {
                         "productID": "test-product-2x",
                         "name": "ODPS 2.x Test Product",
-                        "description": "Test description"
+                        "description": "Test description",
                     }
                 },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
-            }
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
+            },
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="2.9")
@@ -237,25 +204,11 @@ class ODPSNormalizerV2_XTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v2.9",
             "version": "2.9",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
             },
             # productStrategy is not available in 2.x, but if present, should be skipped
-            "productStrategy": {
-                "objectives": ["Should be ignored"]
-            }
+            "productStrategy": {"objectives": ["Should be ignored"]},
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="2.9")
@@ -271,21 +224,9 @@ class ODPSNormalizerV2_XTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v2.9",
             "version": "2.9",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
+            },
             # Missing optional fields: marketplace, lifecycle, quality
         }
 
@@ -304,34 +245,35 @@ class ODPSNormalizerV1_XTest(TestCase):
         self.normalizer = ODPSNormalizerV1_X()
 
     def test_supports_version_1_9(self):
-        """Test that normalizer supports ODPS 1.9"""
-        self.assertTrue(self.normalizer._supports_version("1.9"))
+        """Test that normalizer supports ODPS 1.9 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v1.9", "version": "1.9"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "1.9", contract_data))
 
     def test_supports_version_1_0(self):
-        """Test that normalizer supports ODPS 1.0"""
-        self.assertTrue(self.normalizer._supports_version("1.0"))
+        """Test that normalizer supports ODPS 1.0 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v1.0", "version": "1.0"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "1.0", contract_data))
 
     def test_supports_version_1_x(self):
-        """Test that normalizer supports generic 1.x version"""
-        self.assertTrue(self.normalizer._supports_version("1.x"))
+        """Test that normalizer supports generic 1.x version through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v1.x", "version": "1.x"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "1.x", contract_data))
 
     def test_does_not_support_version_2_0(self):
-        """Test that normalizer does not support ODPS 2.0"""
-        self.assertFalse(self.normalizer._supports_version("2.0"))
+        """Test that normalizer does not support ODPS 2.0 through public API"""
+        contract_data = {"schema": "https://opendataproducts.org/schema/v2.0", "version": "2.0"}
+        # Test through public API - supports() internally calls _supports_version()
+        self.assertFalse(self.normalizer.supports(OriginalSpecType.ODPS, "2.0", contract_data))
 
     def test_supports_method_1_9(self):
         """Test that supports() method works for ODPS 1.9"""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v1.9",
             "version": "1.9",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-product", "name": "Test Product"}}},
         }
         self.assertTrue(self.normalizer.supports(OriginalSpecType.ODPS, "1.9", contract_data))
 
@@ -345,18 +287,11 @@ class ODPSNormalizerV1_XTest(TestCase):
                     "en": {
                         "productID": "test-product-1x",
                         "name": "ODPS 1.x Test Product",
-                        "description": "Test description"
+                        "description": "Test description",
                     }
                 },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
-            }
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
+            },
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="1.9")
@@ -374,25 +309,11 @@ class ODPSNormalizerV1_XTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v1.9",
             "version": "1.9",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
             },
             # productStrategy is not available in 1.x, but if present, should be skipped
-            "productStrategy": {
-                "objectives": ["Should be ignored"]
-            }
+            "productStrategy": {"objectives": ["Should be ignored"]},
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="1.9")
@@ -408,21 +329,9 @@ class ODPSNormalizerV1_XTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v1.9",
             "version": "1.9",
             "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-product",
-                        "name": "Test Product"
-                    }
-                },
-                "dataSchema": {
-                    "fields": [
-                        {
-                            "name": "test_field",
-                            "type": "string"
-                        }
-                    ]
-                }
-            }
+                "details": {"en": {"productID": "test-product", "name": "Test Product"}},
+                "dataSchema": {"fields": [{"name": "test_field", "type": "string"}]},
+            },
             # Missing optional fields: marketplace, lifecycle, quality
         }
 
@@ -438,46 +347,34 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
 
     def test_all_versions_registered(self):
         """Test that all backward compatibility normalizers are registered"""
-        from hub.apps.contracts.normalization import get_normalizer, _NORMALIZER_REGISTRY
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import _NORMALIZER_REGISTRY, get_normalizer
 
         # Check that all versions have normalizers
         versions = ["3.9", "2.9", "1.9"]
-        
+
         for version in versions:
             contract_data = {
                 "schema": f"https://opendataproducts.org/schema/v{version}",
                 "version": version,
                 "product": {
-                    "details": {
-                        "en": {
-                            "productID": f"test-{version}",
-                            "name": f"Test {version}"
-                        }
-                    }
-                }
+                    "details": {"en": {"productID": f"test-{version}", "name": f"Test {version}"}}
+                },
             }
-            
+
             normalizer = get_normalizer(OriginalSpecType.ODPS, version, contract_data)
             self.assertIsNotNone(normalizer, f"Normalizer not found for version {version}")
 
     def test_version_specific_normalizer_selection(self):
         """Test that correct version-specific normalizer is selected"""
-        from hub.apps.contracts.normalization import get_normalizer
         from hub.apps.contracts.models import OriginalSpecType
+        from hub.apps.contracts.normalization import get_normalizer
 
         # Test 3.x normalizer
         contract_data_3x = {
             "schema": "https://opendataproducts.org/schema/v3.9",
             "version": "3.9",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-3x",
-                        "name": "Test 3.x"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-3x", "name": "Test 3.x"}}},
         }
         normalizer_3x = get_normalizer(OriginalSpecType.ODPS, "3.9", contract_data_3x)
         self.assertIsNotNone(normalizer_3x)
@@ -487,14 +384,7 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
         contract_data_2x = {
             "schema": "https://opendataproducts.org/schema/v2.9",
             "version": "2.9",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-2x",
-                        "name": "Test 2.x"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-2x", "name": "Test 2.x"}}},
         }
         normalizer_2x = get_normalizer(OriginalSpecType.ODPS, "2.9", contract_data_2x)
         self.assertIsNotNone(normalizer_2x)
@@ -504,43 +394,132 @@ class ODPSBackwardCompatibilityIntegrationTest(TestCase):
         contract_data_1x = {
             "schema": "https://opendataproducts.org/schema/v1.9",
             "version": "1.9",
-            "product": {
-                "details": {
-                    "en": {
-                        "productID": "test-1x",
-                        "name": "Test 1.x"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"productID": "test-1x", "name": "Test 1.x"}}},
         }
         normalizer_1x = get_normalizer(OriginalSpecType.ODPS, "1.9", contract_data_1x)
         self.assertIsNotNone(normalizer_1x)
         self.assertTrue(normalizer_1x.supports(OriginalSpecType.ODPS, "1.9", contract_data_1x))
 
+    def test_backward_compatibility_handles_unicode_characters(self):
+        """Test that backward compatibility normalizers handle unicode characters correctly."""
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v3.9",
+            "version": "3.9",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-unicode",
+                        "name": "测试产品",
+                        "description": "测试描述",
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "字段名称", "type": "string"}]},
+            },
+        }
 
+        normalizer = ODPSNormalizerV3_X()
+        result = normalizer.normalize(contract_data, spec_version="3.9")
 
+        # Should handle unicode characters
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "info" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["info"])
 
+    def test_backward_compatibility_handles_special_characters(self):
+        """Test that backward compatibility normalizers handle special characters correctly."""
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v3.9",
+            "version": "3.9",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-special",
+                        "name": "Test & Co. (Special)",
+                        "description": "Test <description> & more",
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "field-name", "type": "string"}]},
+            },
+        }
 
+        normalizer = ODPSNormalizerV3_X()
+        result = normalizer.normalize(contract_data, spec_version="3.9")
 
+        # Should handle special characters
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "info" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["info"])
 
+    def test_backward_compatibility_handles_very_large_documents(self):
+        """Test that backward compatibility normalizers handle very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v3.9",
+            "version": "3.9",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-large",
+                        "name": "Test Product",
+                        "description": large_description,
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
+        }
 
+        normalizer = ODPSNormalizerV3_X()
+        result = normalizer.normalize(contract_data, spec_version="3.9")
 
+        # Should handle very large documents
+        self.assertIsNotNone(result.hub_contract)
 
+    def test_backward_compatibility_handles_none_values(self):
+        """Test that backward compatibility normalizers handle None values correctly."""
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v3.9",
+            "version": "3.9",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-none",
+                        "name": "Test Product",
+                        "description": None,  # None value
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
+        }
 
+        normalizer = ODPSNormalizerV3_X()
+        result = normalizer.normalize(contract_data, spec_version="3.9")
 
+        # Should handle None values gracefully
+        self.assertIsNotNone(result.hub_contract)
 
+    def test_backward_compatibility_handles_nested_structures(self):
+        """Test that backward compatibility normalizers handle nested structures correctly."""
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v3.9",
+            "version": "3.9",
+            "product": {
+                "details": {"en": {"productID": "test-nested", "name": "Test Product"}},
+                "dataSchema": {
+                    "fields": [
+                        {
+                            "name": "id",
+                            "type": "string",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    ]
+                },
+            },
+        }
 
+        normalizer = ODPSNormalizerV3_X()
+        result = normalizer.normalize(contract_data, spec_version="3.9")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+        # Should handle nested structures
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "schema" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["schema"])

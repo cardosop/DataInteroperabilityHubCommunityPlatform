@@ -19,7 +19,6 @@ import hashlib
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
-from unittest.mock import patch
 
 from hub.apps.tenants.models import Tenant, KYCStatus
 from hub.apps.users.models import User, UserStatus

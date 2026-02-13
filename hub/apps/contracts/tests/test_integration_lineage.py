@@ -1,21 +1,21 @@
 """
 Integration tests for multi-level lineage in API.
 """
-from django.test import TestCase
-from rest_framework.test import APIClient
+import json
+
 from rest_framework import status
 
 from hub.apps.contracts.models import Contract
-import json
 from hub.apps.contracts.normalization import normalize_contract
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 
 
-class TestLineageIntegration(TestCase):
+class TestLineageIntegration(ContractsAPITestBase):
     """Integration tests for lineage in API."""
 
     def setUp(self):
         """Set up test fixtures."""
-        self.client = APIClient()
+        super().setUp()
 
     def test_contract_with_contract_level_lineage(self):
         """Test contract creation with contract-level lineage."""
@@ -39,10 +39,11 @@ class TestLineageIntegration(TestCase):
         self.assertEqual(status_val.value, "SUCCESS")
 
         contract = Contract.objects.create(
-            tenant="test-tenant",
+            tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             hub_contract_json=hub_contract,
+            created_by=self.user,
         )
 
         # Test API retrieval
@@ -81,10 +82,11 @@ class TestLineageIntegration(TestCase):
         self.assertEqual(status_val.value, "SUCCESS")
 
         contract = Contract.objects.create(
-            tenant="test-tenant",
+            tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             hub_contract_json=hub_contract,
+            created_by=self.user,
         )
 
         # Test API retrieval
@@ -133,10 +135,11 @@ class TestLineageIntegration(TestCase):
         self.assertEqual(status_val.value, "SUCCESS")
 
         contract = Contract.objects.create(
-            tenant="test-tenant",
+            tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             hub_contract_json=hub_contract,
+            created_by=self.user,
         )
 
         # Test API retrieval
@@ -193,10 +196,11 @@ class TestLineageIntegration(TestCase):
         self.assertEqual(status_val.value, "SUCCESS")
 
         contract = Contract.objects.create(
-            tenant="test-tenant",
+            tenant=self.tenant,
             original_spec_type="ODCS",
             original_spec_version="3.0.2",
             hub_contract_json=hub_contract,
+            created_by=self.user,
         )
 
         # Test API retrieval

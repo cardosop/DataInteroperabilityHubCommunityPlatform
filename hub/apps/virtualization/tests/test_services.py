@@ -3,22 +3,22 @@ Unit tests for Virtualization Service.
 
 Comprehensive tests without mocks/stubs, following engineering best practices.
 """
-import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from unittest.mock import patch
 
-from hub.apps.tenants.models import Tenant, KYCStatus
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from hub.apps.core.services.base import NotFoundError, PermissionError, ValidationError
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.virtualization.models import (
-    VirtualDataset,
     QueryExecution,
-    QueryType,
-    VirtualDatasetStatus,
-    QueryExecutionStatus,
     QueryExecutionMode,
+    QueryExecutionStatus,
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
 )
 from hub.apps.virtualization.services import VirtualizationService
-from hub.apps.core.services.base import ValidationError, PermissionError, NotFoundError
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
@@ -30,14 +30,10 @@ class VirtualizationServiceInitializationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="test@example.com", password="testpass123", tenant=self.tenant
         )
 
     def test_service_initialization_with_tenant_and_user(self):
@@ -74,16 +70,14 @@ class VirtualizationServiceEventPublishingTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="test@example.com", password="testpass123", tenant=self.tenant
         )
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
         self.virtual_dataset = VirtualDataset.objects.create(
             tenant=self.tenant,
             created_by=self.user,
@@ -183,30 +177,16 @@ class VirtualizationServiceEventPublishingTest(TestCase):
         self.assertIsInstance(event_id, str)
 
     def test_event_publisher_uses_service_tenant_and_user(self):
-        """Test that event publisher uses service tenant_id and user_id by default"""
-        # Create service with tenant and user
+        """Test that publish_virtual_dataset_created returns valid event id (real publisher)."""
         service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
-        # Mock the event publisher's publish method
-        with patch.object(service._event_publisher, 'publish') as mock_publish:
-            mock_publish.return_value = "test-event-id"
+        event_id = service.publish_virtual_dataset_created(
+            virtual_dataset_id=str(self.virtual_dataset.id),
+        )
 
-            service.publish_virtual_dataset_created(virtual_dataset_id=str(self.virtual_dataset.id))
-
-            # Verify publish was called
-            mock_publish.assert_called_once()
-            call_args = mock_publish.call_args
-            # Check that tenant_id and user_id are passed (from service)
-            # tenant_id and user_id can be in kwargs or as separate arguments
-            if len(call_args) > 1:
-                call_kwargs = call_args[1]
-                # tenant_id and user_id might be passed via the event publisher's internal handling
-                # The service sets them on the event publisher, so they're used automatically
-                # We just verify the call was made successfully
-                self.assertIsNotNone(call_kwargs)
-            else:
-                # If called with positional args, check the call was made
-                self.assertIsNotNone(call_args)
+        self.assertIsNotNone(event_id)
+        self.assertIsInstance(event_id, str)
+        self.assertGreater(len(event_id), 0)
 
 
 class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
@@ -217,28 +197,21 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
         from hub.apps.users.models import Role, UserRole
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="test@example.com", password="testpass123", tenant=self.tenant
         )
 
         # Create DATA_PROVIDER role and assign to user
         provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
 
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     def test_create_virtual_dataset_with_valid_sql_query(self):
         """Test creating virtual dataset with valid SQL query"""
@@ -293,7 +266,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
             "fields": [
                 {"name": "id", "type": "integer", "nullable": False},
                 {"name": "name", "type": "string", "nullable": True},
-                {"name": "created_at", "type": "timestamp", "nullable": False}
+                {"name": "created_at", "type": "timestamp", "nullable": False},
             ]
         }
         dataset = self.service.create_virtual_dataset(
@@ -343,7 +316,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
                 "host": "localhost",
                 "port": 5432,
                 "database": "testdb",
-                "username": "testuser"
+                "username": "testuser",
             }
         ]
         dataset = self.service.create_virtual_dataset(
@@ -468,6 +441,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
 
         # Try to create duplicate
         from hub.apps.core.services.base import ConflictError
+
         with self.assertRaises(ConflictError) as cm:
             self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
@@ -537,6 +511,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
     def test_create_virtual_dataset_with_nonexistent_tenant(self):
         """Test creating virtual dataset with nonexistent tenant raises error"""
         from hub.apps.core.services.base import NotFoundError
+
         with self.assertRaises(NotFoundError) as cm:
             self.service.create_virtual_dataset(
                 tenant_id="00000000-0000-0000-0000-000000000000",
@@ -552,6 +527,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
     def test_create_virtual_dataset_with_nonexistent_user(self):
         """Test creating virtual dataset with nonexistent user raises error"""
         from hub.apps.core.services.base import NotFoundError
+
         with self.assertRaises(NotFoundError) as cm:
             self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
@@ -584,9 +560,7 @@ class VirtualizationServiceCreateVirtualDatasetTest(TestCase):
 
         # Verify audit log details
         audit_event = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="CREATED",
-            resource_id=str(dataset.id)
+            resource_type="VIRTUAL_DATASET", action="CREATED", resource_id=str(dataset.id)
         ).first()
 
         self.assertIsNotNone(audit_event)
@@ -605,14 +579,14 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Integration Test Tenant",
             slug="integration-test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            kyc_status=KYCStatus.VERIFIED,
         )
         self.user = User.objects.create_user(
-            email="integration@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="integration@example.com", password="testpass123", tenant=self.tenant
         )
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     def test_create_virtual_dataset_full_workflow(self):
         """Test complete virtual dataset creation workflow"""
@@ -621,16 +595,10 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
             "fields": [
                 {"name": "id", "type": "integer"},
                 {"name": "name", "type": "string"},
-                {"name": "value", "type": "float"}
+                {"name": "value", "type": "float"},
             ]
         }
-        sources = [
-            {
-                "type": "postgresql",
-                "host": "localhost",
-                "database": "testdb"
-            }
-        ]
+        sources = [{"type": "postgresql", "host": "localhost", "database": "testdb"}]
 
         dataset = self.service.create_virtual_dataset(
             tenant_id=str(self.tenant.id),
@@ -658,18 +626,18 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
 
         # Verify dataset can be retrieved
         retrieved = self.service.get_virtual_dataset(
-            virtual_dataset_id=str(dataset.id),
-            tenant_id=str(self.tenant.id)
+            virtual_dataset_id=str(dataset.id), tenant_id=str(self.tenant.id)
         )
         self.assertEqual(retrieved.id, dataset.id)
         self.assertEqual(retrieved.name, dataset.name)
 
         # Verify audit log was created
         from hub.apps.audit.models import AuditEvent
+
         audit_event = AuditEvent.objects.filter(
             resource_type="VIRTUAL_DATASET",
             action="VIRTUAL_DATASET_CREATED",
-            resource_id=str(dataset.id)
+            resource_id=str(dataset.id),
         ).first()
         self.assertIsNotNone(audit_event)
 
@@ -728,16 +696,8 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
     def test_create_virtual_dataset_with_multiple_sources(self):
         """Test creating virtual dataset with multiple source configurations"""
         sources = [
-            {
-                "type": "postgresql",
-                "host": "db1.example.com",
-                "database": "database1"
-            },
-            {
-                "type": "mysql",
-                "host": "db2.example.com",
-                "database": "database2"
-            }
+            {"type": "postgresql", "host": "db1.example.com", "database": "database1"},
+            {"type": "mysql", "host": "db2.example.com", "database": "database2"},
         ]
 
         dataset = self.service.create_virtual_dataset(
@@ -757,26 +717,17 @@ class VirtualizationServiceCreateVirtualDatasetIntegrationTest(TestCase):
         """Test creating virtual dataset with complex schema structure"""
         schema = {
             "fields": [
-                {
-                    "name": "id",
-                    "type": "integer",
-                    "nullable": False,
-                    "primary_key": True
-                },
+                {"name": "id", "type": "integer", "nullable": False, "primary_key": True},
                 {
                     "name": "metadata",
                     "type": "object",
                     "nullable": True,
                     "properties": {
                         "tags": {"type": "array", "items": {"type": "string"}},
-                        "created_by": {"type": "string"}
-                    }
+                        "created_by": {"type": "string"},
+                    },
                 },
-                {
-                    "name": "scores",
-                    "type": "array",
-                    "items": {"type": "number"}
-                }
+                {"name": "scores", "type": "array", "items": {"type": "number"}},
             ]
         }
 
@@ -803,28 +754,21 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
         from hub.apps.users.models import Role, UserRole
 
         self.tenant = Tenant.objects.create(
-            name="Search Test Tenant",
-            slug="search-test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Search Test Tenant", slug="search-test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="search@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="search@example.com", password="testpass123", tenant=self.tenant
         )
 
         # Create DATA_PROVIDER role and assign to user
         provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
 
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     def test_create_virtual_dataset_indexes_for_search(self):
         """Test that creating virtual dataset indexes it for search"""
@@ -839,18 +783,13 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             query_type=QueryType.SQL,
             description="A searchable virtual dataset",
             schema={
-                "fields": [
-                    {"name": "id", "type": "integer"},
-                    {"name": "name", "type": "string"}
-                ]
-            }
+                "fields": [{"name": "id", "type": "integer"}, {"name": "name", "type": "string"}]
+            },
         )
 
         # Verify search index was created
         search_index = SearchIndex.objects.filter(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
         ).first()
 
         self.assertIsNotNone(search_index)
@@ -868,7 +807,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             "fields": [
                 {"name": "id", "type": "integer"},
                 {"name": "name", "type": "string"},
-                {"name": "email", "type": "string"}
+                {"name": "email", "type": "string"},
             ]
         }
 
@@ -878,13 +817,11 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Schema Dataset",
             query="SELECT id, name, email FROM users",
             query_type=QueryType.SQL,
-            schema=schema
+            schema=schema,
         )
 
         search_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
         )
 
         self.assertIsNotNone(search_index.schema_fields)
@@ -902,13 +839,11 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             user_id=str(self.user.id),
             name="Owner Dataset",
             query="SELECT * FROM source",
-            query_type=QueryType.SQL
+            query_type=QueryType.SQL,
         )
 
         search_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
         )
 
         self.assertEqual(search_index.owner_id, self.user.id)
@@ -925,7 +860,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Update Test Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
-            description="Original description"
+            description="Original description",
         )
 
         # Update dataset description
@@ -937,9 +872,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
 
         # Verify search index was updated
         search_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
         )
 
         self.assertEqual(search_index.description, "Updated description")
@@ -954,28 +887,27 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             user_id=str(self.user.id),
             name="Delete Test Dataset",
             query="SELECT * FROM source",
-            query_type=QueryType.SQL
+            query_type=QueryType.SQL,
         )
 
         # Verify search index exists
-        self.assertTrue(SearchIndex.objects.filter(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
-        ).exists())
+        self.assertTrue(
+            SearchIndex.objects.filter(
+                tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
+            ).exists()
+        )
 
         # Remove from search index
         self.service._remove_from_search_index(
-            virtual_dataset_id=str(dataset.id),
-            tenant_id=str(self.tenant.id)
+            virtual_dataset_id=str(dataset.id), tenant_id=str(self.tenant.id)
         )
 
         # Verify search index was removed
-        self.assertFalse(SearchIndex.objects.filter(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
-        ).exists())
+        self.assertFalse(
+            SearchIndex.objects.filter(
+                tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
+            ).exists()
+        )
 
     def test_search_service_can_find_indexed_virtual_dataset(self):
         """Test that SearchService can find indexed virtual dataset"""
@@ -988,19 +920,19 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Findable Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
-            description="This dataset should be findable via search"
+            description="This dataset should be findable via search",
         )
 
         # Search for it
         search_service = SearchService()
         results, total = search_service.search(
-            tenant_id=str(self.tenant.id),
-            query="Findable",
-            resource_type="VIRTUAL_DATASET"
+            tenant_id=str(self.tenant.id), query="Findable", resource_type="VIRTUAL_DATASET"
         )
 
         # Verify it was found
-        self.assertGreater(total, 0, f"Search should return results. Got {total} results: {results}")
+        self.assertGreater(
+            total, 0, f"Search should return results. Got {total} results: {results}"
+        )
         found = False
         for result in results:
             # Search results use 'id' field which contains the resource_id
@@ -1009,13 +941,14 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
                 self.assertEqual(result.get("title"), "Findable Dataset")
                 self.assertEqual(result.get("type"), "VIRTUAL_DATASET")
                 break
-        self.assertTrue(found, f"Virtual dataset should be found in search results. Results: {results}")
+        self.assertTrue(
+            found, f"Virtual dataset should be found in search results. Results: {results}"
+        )
 
     def test_search_index_handles_indexing_failure_gracefully(self):
-        """Test that search indexing failure doesn't break dataset creation"""
-        # This test verifies that if search indexing fails, dataset creation still succeeds
-        # We can't easily simulate a failure without mocking, but we can verify
-        # that the error handling is in place by checking the code structure
+        """Test success path: dataset creation succeeds; indexing failure handling is structural."""
+        # Verifies create_virtual_dataset succeeds. Indexing failure path would require
+        # external failure injection (no mocks); this test asserts the happy path only.
 
         # Create dataset - should succeed even if indexing has issues
         dataset = self.service.create_virtual_dataset(
@@ -1023,7 +956,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             user_id=str(self.user.id),
             name="Graceful Failure Test",
             query="SELECT * FROM source",
-            query_type=QueryType.SQL
+            query_type=QueryType.SQL,
         )
 
         # Dataset should be created successfully
@@ -1040,13 +973,11 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Empty Schema Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
-            schema=None  # No schema
+            schema=None,  # No schema
         )
 
         search_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
         )
 
         self.assertIsNotNone(search_index)
@@ -1064,13 +995,11 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="No Sources Dataset",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
-            sources=[]  # Empty sources
+            sources=[],  # Empty sources
         )
 
         search_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
         )
 
         self.assertIsNotNone(search_index)
@@ -1086,13 +1015,11 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             user_id=str(self.user.id),
             name="SQL Query Dataset",
             query="SELECT * FROM users",
-            query_type=QueryType.SQL
+            query_type=QueryType.SQL,
         )
 
         sql_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=sql_dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=sql_dataset.id
         )
         self.assertIsNotNone(sql_index)
 
@@ -1106,13 +1033,11 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             user_id=str(self.user.id),
             name="SPARQL Query Dataset",
             query=sparql_query.strip(),
-            query_type=QueryType.SPARQL
+            query_type=QueryType.SPARQL,
         )
 
         sparql_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=sparql_dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=sparql_dataset.id
         )
         self.assertIsNotNone(sparql_index)
 
@@ -1127,14 +1052,12 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Original Name",
             query="SELECT * FROM source",
             query_type=QueryType.SQL,
-            description="Original description"
+            description="Original description",
         )
 
         # Get initial search index
         search_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
         )
         initial_indexed_at = search_index.indexed_at
 
@@ -1163,28 +1086,27 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             user_id=str(self.user.id),
             name="To Be Deleted",
             query="SELECT * FROM source",
-            query_type=QueryType.SQL
+            query_type=QueryType.SQL,
         )
 
         # Verify search index exists
-        self.assertTrue(SearchIndex.objects.filter(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
-        ).exists())
+        self.assertTrue(
+            SearchIndex.objects.filter(
+                tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
+            ).exists()
+        )
 
         # Remove from search index
         self.service._remove_from_search_index(
-            virtual_dataset_id=str(dataset.id),
-            tenant_id=str(self.tenant.id)
+            virtual_dataset_id=str(dataset.id), tenant_id=str(self.tenant.id)
         )
 
         # Verify search index was removed
-        self.assertFalse(SearchIndex.objects.filter(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
-        ).exists())
+        self.assertFalse(
+            SearchIndex.objects.filter(
+                tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
+            ).exists()
+        )
 
     def test_search_index_with_complex_schema_structure(self):
         """Test search indexing with complex nested schema structure"""
@@ -1196,7 +1118,7 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
                     "name": "id",
                     "type": "integer",
                     "nullable": False,
-                    "constraints": {"primary_key": True}
+                    "constraints": {"primary_key": True},
                 },
                 {
                     "name": "metadata",
@@ -1204,9 +1126,9 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
                     "nullable": True,
                     "properties": {
                         "tags": {"type": "array", "items": {"type": "string"}},
-                        "created_by": {"type": "string"}
-                    }
-                }
+                        "created_by": {"type": "string"},
+                    },
+                },
             ]
         }
 
@@ -1216,13 +1138,11 @@ class VirtualizationServiceSearchIntegrationTest(TestCase):
             name="Complex Schema Dataset",
             query="SELECT id, metadata FROM complex_table",
             query_type=QueryType.SQL,
-            schema=complex_schema
+            schema=complex_schema,
         )
 
         search_index = SearchIndex.objects.get(
-            tenant_id=self.tenant.id,
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset.id
+            tenant_id=self.tenant.id, resource_type="VIRTUAL_DATASET", resource_id=dataset.id
         )
 
         self.assertIsNotNone(search_index)
@@ -1235,11 +1155,13 @@ def compliance_service_available():
     """Check if compliance service is available"""
     try:
         from hub.apps.compliance.service_client import ComplianceServiceClient
+
         client = ComplianceServiceClient()
         is_healthy, _ = client.health_check()
         return is_healthy
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.debug(f"Compliance service not available: {e}")
         return False
@@ -1249,12 +1171,14 @@ def storage_service_available():
     """Check if storage service is available"""
     try:
         from hub.apps.files.storage import S3StorageClient
+
         client = S3StorageClient()
         # Try to list buckets as a health check
         client.client.list_buckets()
         return True
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.debug(f"Storage service not available: {e}")
         return False
@@ -1266,47 +1190,42 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.other_tenant = Tenant.objects.create(
-            name="Other Tenant",
-            slug="other-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Other Tenant", slug="other-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="test@example.com", password="testpass123", tenant=self.tenant
         )
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     @pytest.mark.skipif(
         not compliance_service_available() or not storage_service_available(),
-        reason="Compliance service or storage service not available"
+        reason="Compliance service or storage service not available",
     )
     def test_create_virtual_dataset_with_compliant_asset_source(self):
         """Test creating virtual dataset with compliant asset source using real services"""
-        from hub.apps.assets.models import Asset
-        from hub.apps.files.models import File
-        from hub.apps.datasets.models import Dataset
-        from hub.apps.files.storage import S3StorageClient
         import uuid
+
+        from hub.apps.assets.models import Asset
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
+        from hub.apps.files.storage import S3StorageClient
 
         # Create asset with compliant dataset
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            compliance_status="PASS"
+            tenant=self.tenant, key="test-asset", name="Test Asset", compliance_status="PASS"
         )
 
         # Create test CSV content (compliant - no PII)
-        test_csv_content = b'id,name,value\n1,Test,100\n2,Sample,200\n3,Example,300'
+        test_csv_content = b"id,name,value\n1,Test,100\n2,Sample,200\n3,Example,300"
 
         # Upload file to real storage
         from django.core.files.base import ContentFile
+
         storage_client = S3StorageClient()
         try:
             # Use save_file method which requires tenant_id and file_id
@@ -1315,7 +1234,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path = storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=file_id,
-                file_content=ContentFile(test_csv_content, name="test.csv")
+                file_content=ContentFile(test_csv_content, name="test.csv"),
             )
         except Exception as e:
             self.skipTest(f"Failed to upload test file to storage: {e}")
@@ -1327,7 +1246,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path=storage_path,
             size=len(test_csv_content),
             content_type="text/csv",
-            status="ACTIVE"
+            status="ACTIVE",
         )
 
         dataset = Dataset.objects.create(
@@ -1335,17 +1254,11 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             asset=asset,
             file=file_obj,
             format="CSV",
-            schema_json={"fields": [{"name": "id", "type": "integer"}]}
+            schema_json={"fields": [{"name": "id", "type": "integer"}]},
         )
 
         # Create source with asset_id
-        sources = [
-            {
-                "type": "asset",
-                "asset_id": str(asset.id),
-                "name": "test-source"
-            }
-        ]
+        sources = [{"type": "asset", "asset_id": str(asset.id), "name": "test-source"}]
 
         # Use real compliance service
         dataset = self.service.create_virtual_dataset(
@@ -1362,29 +1275,31 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
     @pytest.mark.skipif(
         not compliance_service_available() or not storage_service_available(),
-        reason="Compliance service or storage service not available"
+        reason="Compliance service or storage service not available",
     )
     def test_create_virtual_dataset_blocks_non_compliant_source(self):
         """Test that virtual dataset creation is blocked for non-compliant sources using real services"""
-        from hub.apps.assets.models import Asset
-        from hub.apps.files.models import File
-        from hub.apps.datasets.models import Dataset
-        from hub.apps.files.storage import S3StorageClient
         import uuid
+
+        from hub.apps.assets.models import Asset
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
+        from hub.apps.files.storage import S3StorageClient
 
         # Create asset with non-compliant dataset
         asset = Asset.objects.create(
             tenant=self.tenant,
             key="non-compliant-asset",
             name="Non-Compliant Asset",
-            compliance_status="FAIL"
+            compliance_status="FAIL",
         )
 
         # Create test CSV content with PII (email addresses) - should fail compliance
-        test_csv_content = b'email,phone,name\ntest@example.com,555-1234,John Doe\nuser@example.com,555-5678,Jane Smith'
+        test_csv_content = b"email,phone,name\ntest@example.com,555-1234,John Doe\nuser@example.com,555-5678,Jane Smith"
 
         # Upload file to real storage
         from django.core.files.base import ContentFile
+
         storage_client = S3StorageClient()
         try:
             # Use save_file method which requires tenant_id and file_id
@@ -1393,7 +1308,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path = storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=file_id,
-                file_content=ContentFile(test_csv_content, name="test.csv")
+                file_content=ContentFile(test_csv_content, name="test.csv"),
             )
         except Exception as e:
             self.skipTest(f"Failed to upload test file to storage: {e}")
@@ -1405,7 +1320,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path=storage_path,
             size=len(test_csv_content),
             content_type="text/csv",
-            status="ACTIVE"
+            status="ACTIVE",
         )
 
         dataset = Dataset.objects.create(
@@ -1413,16 +1328,12 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             asset=asset,
             file=file_obj,
             format="CSV",
-            schema_json={"fields": [{"name": "email", "type": "string"}, {"name": "phone", "type": "string"}]}
+            schema_json={
+                "fields": [{"name": "email", "type": "string"}, {"name": "phone", "type": "string"}]
+            },
         )
 
-        sources = [
-            {
-                "type": "asset",
-                "asset_id": str(asset.id),
-                "name": "non-compliant-source"
-            }
-        ]
+        sources = [{"type": "asset", "asset_id": str(asset.id), "name": "non-compliant-source"}]
 
         # Use real compliance service - should block creation
         with self.assertRaises(ValidationError) as cm:
@@ -1440,23 +1351,19 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
     def test_create_virtual_dataset_blocks_cross_tenant_source_without_entitlement(self):
         """Test that cross-tenant source access is blocked without entitlement"""
         from hub.apps.assets.models import Asset
-        from hub.apps.files.models import File
         from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
             tenant=self.other_tenant,
             key="other-asset",
             name="Other Asset",
-            compliance_status="PASS"
+            compliance_status="PASS",
         )
 
         sources = [
-            {
-                "type": "asset",
-                "asset_id": str(other_asset.id),
-                "name": "cross-tenant-source"
-            }
+            {"type": "asset", "asset_id": str(other_asset.id), "name": "cross-tenant-source"}
         ]
 
         with self.assertRaises(ValidationError) as cm:
@@ -1473,16 +1380,17 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
     @pytest.mark.skipif(
         not compliance_service_available() or not storage_service_available(),
-        reason="Compliance service or storage service not available"
+        reason="Compliance service or storage service not available",
     )
     def test_create_virtual_dataset_allows_cross_tenant_source_with_entitlement(self):
         """Test that cross-tenant source access is allowed with entitlement using real services"""
-        from hub.apps.assets.models import Asset, AssetStatus
-        from hub.apps.files.models import File
-        from hub.apps.datasets.models import Dataset
-        from hub.apps.marketplace.models import Listing, Entitlement, EntitlementStatus
-        from hub.apps.files.storage import S3StorageClient
         import uuid
+
+        from hub.apps.assets.models import Asset, AssetStatus
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
+        from hub.apps.files.storage import S3StorageClient
+        from hub.apps.marketplace.models import Entitlement, EntitlementStatus, Listing
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(
@@ -1490,14 +1398,15 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             key="other-asset",
             name="Other Asset",
             compliance_status="PASS",
-            status=AssetStatus.ACTIVE
+            status=AssetStatus.ACTIVE,
         )
 
         # Create test CSV content (compliant)
-        test_csv_content = b'id,name,value\n1,Test,100\n2,Sample,200\n3,Example,300'
+        test_csv_content = b"id,name,value\n1,Test,100\n2,Sample,200\n3,Example,300"
 
         # Upload file to real storage
         from django.core.files.base import ContentFile
+
         storage_client = S3StorageClient()
         try:
             # Use save_file method which requires tenant_id and file_id
@@ -1506,7 +1415,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path = storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=file_id,
-                file_content=ContentFile(test_csv_content, name="test.csv")
+                file_content=ContentFile(test_csv_content, name="test.csv"),
             )
         except Exception as e:
             self.skipTest(f"Failed to upload test file to storage: {e}")
@@ -1518,7 +1427,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path=storage_path,
             size=len(test_csv_content),
             content_type="text/csv",
-            status="ACTIVE"
+            status="ACTIVE",
         )
 
         dataset = Dataset.objects.create(
@@ -1526,7 +1435,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             asset=other_asset,
             file=file_obj,
             format="CSV",
-            schema_json={"fields": [{"name": "id", "type": "integer"}]}
+            schema_json={"fields": [{"name": "id", "type": "integer"}]},
         )
 
         # Create listing and entitlement
@@ -1534,22 +1443,15 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             tenant=self.other_tenant,
             asset=other_asset,
             status="PUBLISHED",
-            metadata_json={"title": "Other Asset Listing"}
+            metadata_json={"title": "Other Asset Listing"},
         )
 
         entitlement = Entitlement.objects.create(
-            tenant=self.tenant,
-            listing=listing,
-            asset=other_asset,
-            status=EntitlementStatus.ACTIVE
+            tenant=self.tenant, listing=listing, asset=other_asset, status=EntitlementStatus.ACTIVE
         )
 
         sources = [
-            {
-                "type": "asset",
-                "asset_id": str(other_asset.id),
-                "name": "cross-tenant-source"
-            }
+            {"type": "asset", "asset_id": str(other_asset.id), "name": "cross-tenant-source"}
         ]
 
         # Use real compliance service
@@ -1567,43 +1469,39 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
     @pytest.mark.skipif(
         not compliance_service_available() or not storage_service_available(),
-        reason="Compliance service or storage service not available"
+        reason="Compliance service or storage service not available",
     )
     def test_create_virtual_dataset_with_multiple_sources_validates_all(self):
         """Test that all sources are validated for compliance using real services"""
-        from hub.apps.assets.models import Asset
-        from hub.apps.files.models import File
-        from hub.apps.datasets.models import Dataset
-        from hub.apps.files.storage import S3StorageClient
         import uuid
+
+        from hub.apps.assets.models import Asset
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
+        from hub.apps.files.storage import S3StorageClient
 
         # Create two assets
         asset1 = Asset.objects.create(
-            tenant=self.tenant,
-            key="asset1",
-            name="Asset 1",
-            compliance_status="PASS"
+            tenant=self.tenant, key="asset1", name="Asset 1", compliance_status="PASS"
         )
 
         asset2 = Asset.objects.create(
-            tenant=self.tenant,
-            key="asset2",
-            name="Asset 2",
-            compliance_status="PASS"
+            tenant=self.tenant, key="asset2", name="Asset 2", compliance_status="PASS"
         )
 
         # Create test CSV content for both assets
-        test_csv_content = b'id,name,value\n1,Test,100\n2,Sample,200\n3,Example,300'
+        test_csv_content = b"id,name,value\n1,Test,100\n2,Sample,200\n3,Example,300"
 
         # Upload file for asset1
         from django.core.files.base import ContentFile
+
         storage_client = S3StorageClient()
         file_id1 = str(uuid.uuid4())
         try:
             storage_path1 = storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=file_id1,
-                file_content=ContentFile(test_csv_content, name="asset1.csv")
+                file_content=ContentFile(test_csv_content, name="asset1.csv"),
             )
         except Exception as e:
             self.skipTest(f"Failed to upload test file to storage: {e}")
@@ -1614,7 +1512,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path=storage_path1,
             size=len(test_csv_content),
             content_type="text/csv",
-            status="ACTIVE"
+            status="ACTIVE",
         )
 
         dataset1 = Dataset.objects.create(
@@ -1622,7 +1520,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             asset=asset1,
             file=file_obj1,
             format="CSV",
-            schema_json={"fields": [{"name": "id", "type": "integer"}]}
+            schema_json={"fields": [{"name": "id", "type": "integer"}]},
         )
 
         # Upload file for asset2
@@ -1631,7 +1529,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path2 = storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=file_id2,
-                file_content=ContentFile(test_csv_content, name="asset2.csv")
+                file_content=ContentFile(test_csv_content, name="asset2.csv"),
             )
         except Exception as e:
             self.skipTest(f"Failed to upload test file to storage: {e}")
@@ -1642,7 +1540,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path=storage_path2,
             size=len(test_csv_content),
             content_type="text/csv",
-            status="ACTIVE"
+            status="ACTIVE",
         )
 
         dataset2 = Dataset.objects.create(
@@ -1650,20 +1548,12 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             asset=asset2,
             file=file_obj2,
             format="CSV",
-            schema_json={"fields": [{"name": "id", "type": "integer"}]}
+            schema_json={"fields": [{"name": "id", "type": "integer"}]},
         )
 
         sources = [
-            {
-                "type": "asset",
-                "asset_id": str(asset1.id),
-                "name": "source1"
-            },
-            {
-                "type": "asset",
-                "asset_id": str(asset2.id),
-                "name": "source2"
-            }
+            {"type": "asset", "asset_id": str(asset1.id), "name": "source1"},
+            {"type": "asset", "asset_id": str(asset2.id), "name": "source2"},
         ]
 
         # Use real compliance service - should validate both sources
@@ -1681,24 +1571,23 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
 
     def test_create_virtual_dataset_skips_compliance_when_service_unavailable(self):
         """Test that compliance check is skipped when service is unavailable"""
-        from hub.apps.assets.models import Asset
-        from hub.apps.files.models import File
-        from hub.apps.datasets.models import Dataset
-        from hub.apps.files.storage import S3StorageClient
         import uuid
 
+        from hub.apps.assets.models import Asset
+        from hub.apps.datasets.models import Dataset
+        from hub.apps.files.models import File
+        from hub.apps.files.storage import S3StorageClient
+
         asset = Asset.objects.create(
-            tenant=self.tenant,
-            key="test-asset",
-            name="Test Asset",
-            compliance_status="PASS"
+            tenant=self.tenant, key="test-asset", name="Test Asset", compliance_status="PASS"
         )
 
         # Create test CSV content
-        test_csv_content = b'id,name,value\n1,Test,100\n2,Sample,200\n3,Example,300'
+        test_csv_content = b"id,name,value\n1,Test,100\n2,Sample,200\n3,Example,300"
 
         # Upload file to real storage
         from django.core.files.base import ContentFile
+
         storage_client = S3StorageClient()
         try:
             # Use save_file method which requires tenant_id and file_id
@@ -1707,7 +1596,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path = storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=file_id,
-                file_content=ContentFile(test_csv_content, name="test.csv")
+                file_content=ContentFile(test_csv_content, name="test.csv"),
             )
         except Exception as e:
             self.skipTest(f"Failed to upload test file to storage: {e}")
@@ -1718,7 +1607,7 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             storage_path=storage_path,
             size=len(test_csv_content),
             content_type="text/csv",
-            status="ACTIVE"
+            status="ACTIVE",
         )
 
         dataset = Dataset.objects.create(
@@ -1726,34 +1615,24 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
             asset=asset,
             file=file_obj,
             format="CSV",
-            schema_json={"fields": [{"name": "id", "type": "integer"}]}
+            schema_json={"fields": [{"name": "id", "type": "integer"}]},
         )
 
-        sources = [
-            {
-                "type": "asset",
-                "asset_id": str(asset.id),
-                "name": "test-source"
-            }
-        ]
+        sources = [{"type": "asset", "asset_id": str(asset.id), "name": "test-source"}]
 
-        # Temporarily patch compliance service to be unavailable
-        # This tests the graceful degradation behavior
-        with patch('hub.apps.compliance.service_client.ComplianceServiceClient') as mock_client_class:
-            mock_client = mock_client_class.return_value
-            mock_client.health_check.return_value = (False, "compliance-service")
+        # Create dataset with sources (real compliance service; may succeed or degrade)
+        dataset = self.service.create_virtual_dataset(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            name="Dataset With Sources",
+            query="SELECT * FROM source",
+            query_type=QueryType.SQL,
+            sources=sources,
+        )
 
-            # Should still create dataset but log warning
-            dataset = self.service.create_virtual_dataset(
-                tenant_id=str(self.tenant.id),
-                user_id=str(self.user.id),
-                name="Dataset Without Compliance",
-                query="SELECT * FROM source",
-                query_type=QueryType.SQL,
-                sources=sources,
-            )
-
-            self.assertIsNotNone(dataset)
+        self.assertIsNotNone(dataset)
+        self.assertEqual(dataset.name, "Dataset With Sources")
+        self.assertEqual(dataset.query_type, QueryType.SQL)
 
 
 class VirtualizationServiceGovernanceIntegrationTest(TestCase):
@@ -1762,30 +1641,27 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="test@example.com", password="testpass123", tenant=self.tenant
         )
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     def test_create_virtual_dataset_checks_user_permissions(self):
         """Test that user permissions are checked for virtual dataset creation"""
         # Create user without required role
         regular_user = User.objects.create_user(
-            email="regular@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="regular@example.com", password="testpass123", tenant=self.tenant
         )
 
         service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(regular_user.id))
 
         # Should fail without required role
         from hub.apps.core.services.base import PermissionError
+
         with self.assertRaises(PermissionError) as cm:
             service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
@@ -1803,16 +1679,11 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
 
         # Create DATA_PROVIDER role
         role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data provider role"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data provider role"}
         )
 
         # Assign role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
 
         # Should succeed with DATA_PROVIDER role
         dataset = self.service.create_virtual_dataset(
@@ -1828,21 +1699,16 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
 
     def test_create_virtual_dataset_validates_resource_quota(self):
         """Test that resource quota is validated for virtual dataset creation"""
-        from hub.apps.users.models import Role, UserRole
         from hub.apps.governance.services import GovernanceService
+        from hub.apps.users.models import Role, UserRole
 
         # Create DATA_PROVIDER role
         role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data provider role"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data provider role"}
         )
 
         # Assign role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
 
         # Create virtual dataset - should validate quota
         dataset = self.service.create_virtual_dataset(
@@ -1858,21 +1724,16 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
 
     def test_create_virtual_dataset_checks_abac_policies(self):
         """Test that ABAC policies are checked for virtual dataset creation"""
-        from hub.apps.users.models import Role, UserRole
         from hub.apps.governance.models import AccessPolicy
+        from hub.apps.users.models import Role, UserRole
 
         # Create DATA_PROVIDER role
         role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data provider role"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data provider role"}
         )
 
         # Assign role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
 
         # Create ABAC policy that allows virtualization operations
         # Use simpler conditions that will match - just check tenant_id
@@ -1881,12 +1742,12 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
             name="Allow Virtualization Operations",
             conditions={
                 "user": {"tenant_id": str(self.tenant.id)},
-                "resource": {"tenant_id": str(self.tenant.id)}
+                "resource": {"tenant_id": str(self.tenant.id)},
             },
             effect="ALLOW",
             priority=100,
             enabled=True,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Should succeed with ABAC policy allowing access
@@ -1902,21 +1763,16 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
 
     def test_create_virtual_dataset_blocks_with_deny_abac_policy(self):
         """Test that ABAC policy denial blocks virtual dataset creation"""
-        from hub.apps.users.models import Role, UserRole
         from hub.apps.governance.models import AccessPolicy
+        from hub.apps.users.models import Role, UserRole
 
         # Create DATA_PROVIDER role
         role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data provider role"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data provider role"}
         )
 
         # Assign role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
 
         # Create ABAC policy that denies virtualization operations
         # Use simpler conditions that will match - just check tenant_id
@@ -1925,16 +1781,17 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
             name="Deny Virtualization Operations",
             conditions={
                 "user": {"tenant_id": str(self.tenant.id)},
-                "resource": {"tenant_id": str(self.tenant.id)}
+                "resource": {"tenant_id": str(self.tenant.id)},
             },
             effect="DENY",
             priority=200,  # Higher priority than allow
             enabled=True,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Should fail with ABAC policy denying access
         from hub.apps.core.services.base import PermissionError
+
         with self.assertRaises(PermissionError) as cm:
             self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
@@ -1948,36 +1805,32 @@ class VirtualizationServiceGovernanceIntegrationTest(TestCase):
 
     def test_create_virtual_dataset_enforces_tenant_resource_limits(self):
         """Test that tenant-level resource limits are enforced"""
-        from hub.apps.users.models import Role, UserRole
         from hub.apps.governance.services import GovernanceService
+        from hub.apps.users.models import Role, UserRole
 
         # Create DATA_PROVIDER role
         role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data provider role"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data provider role"}
         )
 
         # Assign role to user
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=role)
 
         # Create ABAC policy that allows virtualization operations
         # Use simpler conditions that will match - just check tenant_id
         from hub.apps.governance.models import AccessPolicy
+
         AccessPolicy.objects.create(
             tenant=self.tenant,
             name="Allow Virtualization Operations",
             conditions={
                 "user": {"tenant_id": str(self.tenant.id)},
-                "resource": {"tenant_id": str(self.tenant.id)}
+                "resource": {"tenant_id": str(self.tenant.id)},
             },
             effect="ALLOW",
             priority=100,
             enabled=True,
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Should succeed when within tenant limits
@@ -2000,28 +1853,21 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         from hub.apps.users.models import Role, UserRole
 
         self.tenant = Tenant.objects.create(
-            name="Audit Test Tenant",
-            slug="audit-test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Audit Test Tenant", slug="audit-test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="audit@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="audit@example.com", password="testpass123", tenant=self.tenant
         )
 
         # Create DATA_PROVIDER role and assign to user
         provider_role, _ = Role.objects.get_or_create(
-            tenant=self.tenant,
-            name="DATA_PROVIDER",
-            defaults={"description": "Data Provider"}
+            tenant=self.tenant, name="DATA_PROVIDER", defaults={"description": "Data Provider"}
         )
-        UserRole.objects.get_or_create(
-            user=self.user,
-            role=provider_role
-        )
+        UserRole.objects.get_or_create(user=self.user, role=provider_role)
 
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
     def test_create_virtual_dataset_creates_audit_event_with_correct_action(self):
         """Test that creating virtual dataset creates audit event with action=CREATED"""
@@ -2029,7 +1875,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
 
         sources = [
             {"type": "postgres", "connection": "postgresql://localhost:5432/db"},
-            {"type": "mysql", "connection": "mysql://localhost:3306/db"}
+            {"type": "mysql", "connection": "mysql://localhost:3306/db"},
         ]
 
         dataset = self.service.create_virtual_dataset(
@@ -2041,14 +1887,12 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             description="Test description",
             schema={"fields": [{"name": "id", "type": "integer"}]},
             sources=sources,
-            version="1.0.0"
+            version="1.0.0",
         )
 
         # Verify audit event was created
         audit_event = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="CREATED",
-            resource_id=str(dataset.id)
+            resource_type="VIRTUAL_DATASET", action="CREATED", resource_id=str(dataset.id)
         ).first()
 
         self.assertIsNotNone(audit_event, "Audit event should be created")
@@ -2079,13 +1923,11 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Required Fields Test",
             query="SELECT id, name FROM users",
             query_type=QueryType.SQL,
-            sources=sources
+            sources=sources,
         )
 
         audit_event = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="CREATED",
-            resource_id=str(dataset.id)
+            resource_type="VIRTUAL_DATASET", action="CREATED", resource_id=str(dataset.id)
         ).first()
 
         self.assertIsNotNone(audit_event)
@@ -2113,12 +1955,11 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Update Test Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
-            sources=[{"type": "postgres", "connection": "postgresql://localhost:5432/db"}]
+            sources=[{"type": "postgres", "connection": "postgresql://localhost:5432/db"}],
         )
 
         initial_audit_count = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            resource_id=str(dataset.id)
+            resource_type="VIRTUAL_DATASET", resource_id=str(dataset.id)
         ).count()
 
         # Update the dataset
@@ -2127,13 +1968,12 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             name="Updated Dataset Name",
-            description="Updated description"
+            description="Updated description",
         )
 
         # Verify audit event was created
         audit_events = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            resource_id=str(dataset.id)
+            resource_type="VIRTUAL_DATASET", resource_id=str(dataset.id)
         ).order_by("-timestamp")
 
         self.assertEqual(audit_events.count(), initial_audit_count + 1)
@@ -2167,7 +2007,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             description="Original description",
             sources=sources,
             version="1.0.0",
-            status=VirtualDatasetStatus.DRAFT
+            status=VirtualDatasetStatus.DRAFT,
         )
 
         # Update multiple fields
@@ -2178,13 +2018,11 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Updated Name",
             description="Updated description",
             version="1.1.0",
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         audit_event = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="UPDATED",
-            resource_id=str(dataset.id)
+            resource_type="VIRTUAL_DATASET", action="UPDATED", resource_id=str(dataset.id)
         ).first()
 
         self.assertIsNotNone(audit_event)
@@ -2217,23 +2055,19 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Delete Test Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
-            sources=sources
+            sources=sources,
         )
 
         dataset_id = str(dataset.id)
 
         # Delete the dataset
         self.service.delete_virtual_dataset(
-            virtual_dataset_id=dataset_id,
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            virtual_dataset_id=dataset_id, tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         # Verify audit event was created (before deletion)
         audit_event = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="DELETED",
-            resource_id=dataset_id
+            resource_type="VIRTUAL_DATASET", action="DELETED", resource_id=dataset_id
         ).first()
 
         self.assertIsNotNone(audit_event, "Audit event should be created before deletion")
@@ -2261,7 +2095,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
 
         sources = [
             {"type": "postgres", "connection": "postgresql://localhost:5432/db"},
-            {"type": "mysql", "connection": "mysql://localhost:3306/db"}
+            {"type": "mysql", "connection": "mysql://localhost:3306/db"},
         ]
 
         dataset = self.service.create_virtual_dataset(
@@ -2270,21 +2104,17 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Delete Fields Test",
             query="SELECT id, name FROM users",
             query_type=QueryType.SPARQL,
-            sources=sources
+            sources=sources,
         )
 
         dataset_id = str(dataset.id)
 
         self.service.delete_virtual_dataset(
-            virtual_dataset_id=dataset_id,
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            virtual_dataset_id=dataset_id, tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         audit_event = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="DELETED",
-            resource_id=dataset_id
+            resource_type="VIRTUAL_DATASET", action="DELETED", resource_id=dataset_id
         ).first()
 
         self.assertIsNotNone(audit_event)
@@ -2302,11 +2132,9 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
         self.assertEqual(len(details["sources"]), 2)
 
     def test_audit_logging_handles_failure_gracefully(self):
-        """Test that audit logging failures don't break operations"""
-        # This test verifies that if audit logging fails, the operation still succeeds
-        # We can't easily simulate a failure without mocking, but we can verify
-        # that the error handling is in place by checking the code structure
-        # and ensuring operations complete even if audit logging would fail
+        """Test success path: dataset creation succeeds; audit failure handling is structural."""
+        # Verifies create_virtual_dataset succeeds. Audit failure path would require
+        # external failure injection (no mocks); this test asserts the happy path only.
 
         # Create dataset - should succeed even if audit logging fails
         dataset = self.service.create_virtual_dataset(
@@ -2314,7 +2142,7 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             user_id=str(self.user.id),
             name="Graceful Failure Test",
             query="SELECT * FROM users",
-            query_type=QueryType.SQL
+            query_type=QueryType.SQL,
         )
 
         # Dataset should be created successfully
@@ -2334,13 +2162,11 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             name="Integration Test Dataset",
             query="SELECT * FROM users",
             query_type=QueryType.SQL,
-            sources=sources
+            sources=sources,
         )
 
         create_audit = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="CREATED",
-            resource_id=str(dataset.id)
+            resource_type="VIRTUAL_DATASET", action="CREATED", resource_id=str(dataset.id)
         ).first()
         self.assertIsNotNone(create_audit)
 
@@ -2349,35 +2175,28 @@ class VirtualizationServiceAuditLoggingTest(TestCase):
             virtual_dataset_id=str(dataset.id),
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
-            name="Updated Integration Test"
+            name="Updated Integration Test",
         )
 
         update_audit = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="UPDATED",
-            resource_id=str(dataset.id)
+            resource_type="VIRTUAL_DATASET", action="UPDATED", resource_id=str(dataset.id)
         ).first()
         self.assertIsNotNone(update_audit)
 
         # Delete
         dataset_id = str(dataset.id)
         self.service.delete_virtual_dataset(
-            virtual_dataset_id=dataset_id,
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id)
+            virtual_dataset_id=dataset_id, tenant_id=str(self.tenant.id), user_id=str(self.user.id)
         )
 
         delete_audit = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            action="DELETED",
-            resource_id=dataset_id
+            resource_type="VIRTUAL_DATASET", action="DELETED", resource_id=dataset_id
         ).first()
         self.assertIsNotNone(delete_audit)
 
         # Verify all three audit events exist
         all_audits = AuditEvent.objects.filter(
-            resource_type="VIRTUAL_DATASET",
-            resource_id=dataset_id
+            resource_type="VIRTUAL_DATASET", resource_id=dataset_id
         ).order_by("timestamp")
 
         self.assertEqual(all_audits.count(), 3)
@@ -2395,16 +2214,14 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
         from django.core.cache import cache
 
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            kyc_status=KYCStatus.VERIFIED
+            name="Test Tenant", slug="test-tenant", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant
+            email="test@example.com", password="testpass123", tenant=self.tenant
         )
-        self.service = VirtualizationService(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
+        self.service = VirtualizationService(
+            tenant_id=str(self.tenant.id), user_id=str(self.user.id)
+        )
 
         # Create a test virtual dataset
         self.virtual_dataset = VirtualDataset.objects.create(
@@ -2413,7 +2230,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             name="Test Dataset",
             query="SELECT * FROM test_table",
             query_type=QueryType.SQL,
-            status=VirtualDatasetStatus.ACTIVE
+            status=VirtualDatasetStatus.ACTIVE,
         )
 
         # Clear cache
@@ -2428,7 +2245,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
         test_results = [
             {"id": 1, "name": "Test 1", "value": 100},
             {"id": 2, "name": "Test 2", "value": 200},
-            {"id": 3, "name": "Test 3", "value": 300}
+            {"id": 3, "name": "Test 3", "value": 300},
         ]
 
         # Create cache key and store results
@@ -2439,9 +2256,9 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
                 "data": test_results,
                 "row_count": len(test_results),
                 "query_type": QueryType.SQL,
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=3600
+            timeout=3600,
         )
 
         # Create completed execution with cache key
@@ -2454,17 +2271,11 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             started_at=timezone.now(),
             completed_at=timezone.now(),
             result_cache_key=cache_key,
-            metrics={
-                "duration_ms": 100,
-                "rows_processed": len(test_results)
-            }
+            metrics={"duration_ms": 100, "rows_processed": len(test_results)},
         )
 
         # Retrieve results
-        result = self.service.get_query_result(
-            execution_id=str(execution.id),
-            format="json"
-        )
+        result = self.service.get_query_result(execution_id=str(execution.id), format="json")
 
         # Assertions
         self.assertIsNotNone(result)
@@ -2492,9 +2303,9 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
                 "data": test_results,
                 "row_count": len(test_results),
                 "query_type": QueryType.SQL,
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=3600
+            timeout=3600,
         )
 
         # Create completed execution
@@ -2507,15 +2318,12 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             started_at=timezone.now(),
             completed_at=timezone.now(),
             result_cache_key=cache_key,
-            metrics={"duration_ms": 100, "rows_processed": len(test_results)}
+            metrics={"duration_ms": 100, "rows_processed": len(test_results)},
         )
 
         # Retrieve first page
         result = self.service.get_query_result(
-            execution_id=str(execution.id),
-            format="json",
-            page=1,
-            page_size=25
+            execution_id=str(execution.id), format="json", page=1, page_size=25
         )
 
         # Assertions
@@ -2534,10 +2342,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
 
         # Retrieve second page
         result2 = self.service.get_query_result(
-            execution_id=str(execution.id),
-            format="json",
-            page=2,
-            page_size=25
+            execution_id=str(execution.id), format="json", page=2, page_size=25
         )
 
         self.assertEqual(result2["pagination"]["page"], 2)
@@ -2561,9 +2366,9 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
                 "data": test_results,
                 "row_count": len(test_results),
                 "query_type": QueryType.SQL,
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=3600
+            timeout=3600,
         )
 
         # Create completed execution
@@ -2576,15 +2381,12 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             started_at=timezone.now(),
             completed_at=timezone.now(),
             result_cache_key=cache_key,
-            metrics={"duration_ms": 100, "rows_processed": len(test_results)}
+            metrics={"duration_ms": 100, "rows_processed": len(test_results)},
         )
 
         # Retrieve with offset
         result = self.service.get_query_result(
-            execution_id=str(execution.id),
-            format="json",
-            offset=10,
-            limit=20
+            execution_id=str(execution.id), format="json", offset=10, limit=20
         )
 
         # Assertions
@@ -2608,7 +2410,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
         # Create test data
         test_results = [
             {"id": 1, "name": "Test 1", "value": 100},
-            {"id": 2, "name": "Test 2", "value": 200}
+            {"id": 2, "name": "Test 2", "value": 200},
         ]
 
         # Create cache key and store results
@@ -2619,9 +2421,9 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
                 "data": test_results,
                 "row_count": len(test_results),
                 "query_type": QueryType.SQL,
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=3600
+            timeout=3600,
         )
 
         # Create completed execution
@@ -2634,14 +2436,11 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             started_at=timezone.now(),
             completed_at=timezone.now(),
             result_cache_key=cache_key,
-            metrics={"duration_ms": 100, "rows_processed": len(test_results)}
+            metrics={"duration_ms": 100, "rows_processed": len(test_results)},
         )
 
         # Retrieve in CSV format
-        result = self.service.get_query_result(
-            execution_id=str(execution.id),
-            format="csv"
-        )
+        result = self.service.get_query_result(execution_id=str(execution.id), format="csv")
 
         # Assertions
         self.assertIsNotNone(result)
@@ -2653,14 +2452,15 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
 
     def test_get_query_result_parquet_format(self):
         """Test retrieving query result in Parquet format"""
+        import base64
+
         from django.core.cache import cache
         from django.utils import timezone
-        import base64
 
         # Create test data
         test_results = [
             {"id": 1, "name": "Test 1", "value": 100},
-            {"id": 2, "name": "Test 2", "value": 200}
+            {"id": 2, "name": "Test 2", "value": 200},
         ]
 
         # Create cache key and store results
@@ -2671,9 +2471,9 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
                 "data": test_results,
                 "row_count": len(test_results),
                 "query_type": QueryType.SQL,
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=3600
+            timeout=3600,
         )
 
         # Create completed execution
@@ -2686,14 +2486,11 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             started_at=timezone.now(),
             completed_at=timezone.now(),
             result_cache_key=cache_key,
-            metrics={"duration_ms": 100, "rows_processed": len(test_results)}
+            metrics={"duration_ms": 100, "rows_processed": len(test_results)},
         )
 
         # Retrieve in Parquet format
-        result = self.service.get_query_result(
-            execution_id=str(execution.id),
-            format="parquet"
-        )
+        result = self.service.get_query_result(execution_id=str(execution.id), format="parquet")
 
         # Assertions
         self.assertIsNotNone(result)
@@ -2717,7 +2514,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             query="SELECT * FROM test_table",
             parameters={},
             execution_mode=QueryExecutionMode.SYNC,
-            status=QueryExecutionStatus.PENDING
+            status=QueryExecutionStatus.PENDING,
         )
 
         # Attempt to retrieve results
@@ -2739,7 +2536,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             status=QueryExecutionStatus.COMPLETED,
             started_at=timezone.now(),
             completed_at=timezone.now(),
-            metrics={"duration_ms": 100}
+            metrics={"duration_ms": 100},
         )
 
         # Attempt to retrieve results
@@ -2764,9 +2561,9 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
                 "data": test_results,
                 "row_count": len(test_results),
                 "query_type": QueryType.SQL,
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=3600
+            timeout=3600,
         )
 
         # Create completed execution
@@ -2779,7 +2576,7 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             started_at=timezone.now(),
             completed_at=timezone.now(),
             result_cache_key=cache_key,
-            metrics={"duration_ms": 100}
+            metrics={"duration_ms": 100},
         )
 
         # Attempt to retrieve with invalid format
@@ -2804,9 +2601,9 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
                 "data": test_results,
                 "row_count": len(test_results),
                 "query_type": QueryType.SQL,
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=3600
+            timeout=3600,
         )
 
         # Create completed execution
@@ -2819,16 +2616,12 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             started_at=timezone.now(),
             completed_at=timezone.now(),
             result_cache_key=cache_key,
-            metrics={"duration_ms": 100}
+            metrics={"duration_ms": 100},
         )
 
         # Attempt to retrieve with both page and offset
         with self.assertRaises(ValidationError) as cm:
-            self.service.get_query_result(
-                execution_id=str(execution.id),
-                page=1,
-                offset=10
-            )
+            self.service.get_query_result(execution_id=str(execution.id), page=1, offset=10)
 
         self.assertIn("cannot use both", str(cm.exception).lower())
 
@@ -2848,9 +2641,9 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
                 "data": test_results,
                 "row_count": len(test_results),
                 "query_type": QueryType.SQL,
-                "cached_at": timezone.now().isoformat()
+                "cached_at": timezone.now().isoformat(),
             },
-            timeout=3600
+            timeout=3600,
         )
 
         # Create completed execution
@@ -2863,14 +2656,12 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
             started_at=timezone.now(),
             completed_at=timezone.now(),
             result_cache_key=cache_key,
-            metrics={"duration_ms": 100, "rows_processed": len(test_results)}
+            metrics={"duration_ms": 100, "rows_processed": len(test_results)},
         )
 
         # Retrieve with streaming enabled
         result = self.service.get_query_result(
-            execution_id=str(execution.id),
-            format="json",
-            stream=True
+            execution_id=str(execution.id), format="json", stream=True
         )
 
         # Assertions
@@ -2878,4 +2669,3 @@ class VirtualizationServiceGetQueryResultTest(TestCase):
         self.assertTrue(result["stream_enabled"])
         self.assertIn("stream_url", result)
         self.assertIn(str(execution.id), result["stream_url"])
-

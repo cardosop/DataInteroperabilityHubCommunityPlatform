@@ -337,10 +337,14 @@ class MarketplaceConnectionViewSet(viewsets.ModelViewSet):
                     "tenant_id": str(tenant_id),
                 }
             )
-            raise DRFValidationError({
-                'error': str(e),
-                'details': getattr(e, 'details', {})
-            })
+            return Response(
+                {
+                    'error': str(e),
+                    'code': getattr(e, 'code', 'VALIDATION_ERROR'),
+                    'details': getattr(e, 'details', {}),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except ConflictError as e:
             logger.warning(
                 "marketplace_connection_conflict",

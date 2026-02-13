@@ -1,0 +1,149 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.416661262512207
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-007-80956917",
+      "journey_name": "Create Transformation Pipeline",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1769313192.5375972,
+      "end_time": 1769313193.9542584,
+      "duration": 1.416661262512207,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313192.5376043,
+          "end_time": 1769313193.9412804,
+          "duration": 1.4036760330200195,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Design Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313193.9412973,
+          "end_time": 1769313193.9448893,
+          "duration": 0.0035920143127441406,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Transformation Pipeline API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313193.9449146,
+          "end_time": 1769313193.9449186,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Configure Nodes",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313193.9449208,
+          "end_time": 1769313193.944923,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Validation Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313193.948007,
+          "end_time": 1769313193.9480104,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313193.9513547,
+          "end_time": 1769313193.9513578,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Save Pipeline",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313193.95136,
+          "end_time": 1769313193.951362,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Execution Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313193.95425,
+          "end_time": 1769313193.9542532,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Review Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769313193.9542553,
+          "end_time": 1769313193.9542575,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "31a7e30c-f85b-4156-b7ae-a36a0ee2a946"
+      }
+    }
+  ],
+  "exported_at": "2026-01-25T03:53:13.954337"
+}

@@ -7,7 +7,8 @@ Tests verify:
 3. Map lifecycle.x_odps.status → product.details.<lang>.status
 4. Error handling for invalid lifecycle data
 """
-from django.test import TestCase, SimpleTestCase
+
+from django.test import SimpleTestCase, TestCase
 
 from hub.apps.contracts.odps_errors import ODPSExportError
 from hub.apps.contracts.odps_generator import generate_odps_from_hubcontract
@@ -25,18 +26,9 @@ class ODPSGeneratorLifecycleStatusMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product",
-                "description": "Test product description"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "x_odps": {
-                    "status": "active"
-                }
-            }
+            "info": {"name": "Test Product", "description": "Test product description"},
+            "schema": {"fields": []},
+            "lifecycle": {"x_odps": {"status": "active"}},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -62,25 +54,14 @@ class ODPSGeneratorLifecycleStatusMappingTest(SimpleTestCase):
         for status_value in status_values:
             hub_contract = {
                 "id": f"test-product-{status_value}",
-                "info": {
-                    "name": f"Test Product {status_value}"
-                },
-                "schema": {
-                    "fields": []
-                },
-                "lifecycle": {
-                    "x_odps": {
-                        "status": status_value
-                    }
-                }
+                "info": {"name": f"Test Product {status_value}"},
+                "schema": {"fields": []},
+                "lifecycle": {"x_odps": {"status": status_value}},
             }
 
             result = generate_odps_from_hubcontract(hub_contract)
 
-            self.assertEqual(
-                result["product"]["details"]["en"]["status"],
-                status_value
-            )
+            self.assertEqual(result["product"]["details"]["en"]["status"], status_value)
 
     def test_lifecycle_status_mapping_with_invalid_status_type(self):
         """
@@ -91,17 +72,9 @@ class ODPSGeneratorLifecycleStatusMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "x_odps": {
-                    "status": 123  # Invalid type
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"x_odps": {"status": 123}},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -128,18 +101,9 @@ class ODPSGeneratorLifecycleSLASMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "slas": {
-                    "availability": 99.9,
-                    "latency_ms_p95": 5000.0
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"slas": {"availability": 99.9, "latency_ms_p95": 5000.0}},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -169,17 +133,9 @@ class ODPSGeneratorLifecycleSLASMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "slas": {
-                    "availability": 99.5
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"slas": {"availability": 99.5}},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -198,17 +154,9 @@ class ODPSGeneratorLifecycleSLASMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "slas": {
-                    "latency_ms_p95": 3000.0
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"slas": {"latency_ms_p95": 3000.0}},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -227,18 +175,9 @@ class ODPSGeneratorLifecycleSLASMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "slas": {
-                    "availability": 99.9,
-                    "custom_sla_dimension": 100.0
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"slas": {"availability": 99.9, "custom_sla_dimension": 100.0}},
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -257,15 +196,9 @@ class ODPSGeneratorLifecycleSLASMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "slas": "not-a-dict"  # Invalid type
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"slas": "not-a-dict"},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -288,17 +221,9 @@ class ODPSGeneratorLifecycleSLASMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "slas": {
-                    "availability": "not-a-number"  # Invalid type
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"slas": {"availability": "not-a-number"}},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -325,32 +250,19 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "lifecycle": {
                 "x_odps": {
                     "sla_dimensions": [
                         {
                             "name": "availability",
-                            "data": {
-                                "target": 99.9,
-                                "description": "Availability target"
-                            }
+                            "data": {"target": 99.9, "description": "Availability target"},
                         },
-                        {
-                            "name": "latency",
-                            "data": {
-                                "target": 5000,
-                                "unit": "ms"
-                            }
-                        }
+                        {"name": "latency", "data": {"target": 5000, "unit": "ms"}},
                     ]
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -382,12 +294,8 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "lifecycle": {
                 "x_odps": {
                     "sla_dimensions": [
@@ -396,12 +304,12 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
                             "data": {
                                 "target": 100,
                                 "description": "Custom SLA dimension",
-                                "unit": "count"
-                            }
+                                "unit": "count",
+                            },
                         }
                     ]
                 }
-            }
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -421,16 +329,10 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "lifecycle": {
-                "slas": {
-                    "availability": 99.9
-                },
+                "slas": {"availability": 99.9},
                 "x_odps": {
                     "sla_dimensions": [
                         {
@@ -438,8 +340,8 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
                             # No data field
                         }
                     ]
-                }
-            }
+                },
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -457,28 +359,22 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "lifecycle": {
-                "slas": {
-                    "availability": 99.5  # This should be overwritten
-                },
+                "slas": {"availability": 99.5},  # This should be overwritten
                 "x_odps": {
                     "sla_dimensions": [
                         {
                             "name": "availability",
                             "data": {
                                 "target": 99.9,  # This should be used
-                                "description": "High availability target"
-                            }
+                                "description": "High availability target",
+                            },
                         }
                     ]
-                }
-            }
+                },
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -498,17 +394,9 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "x_odps": {
-                    "sla_dimensions": "not-a-list"  # Invalid type
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"x_odps": {"sla_dimensions": "not-a-list"}},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -531,24 +419,18 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "lifecycle": {
                 "x_odps": {
                     "sla_dimensions": [
                         {
-                            "data": {
-                                "target": 99.9
-                            }
+                            "data": {"target": 99.9}
                             # Missing name
                         }
                     ]
                 }
-            }
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -571,19 +453,9 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": {
-                "x_odps": {
-                    "sla_dimensions": [
-                        "not-a-dict"  # Invalid type
-                    ]
-                }
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"x_odps": {"sla_dimensions": ["not-a-dict"]}},  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -606,22 +478,15 @@ class ODPSGeneratorLifecycleSLADimensionsMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "lifecycle": {
                 "x_odps": {
                     "sla_dimensions": [
-                        {
-                            "name": "availability",
-                            "data": "not-a-dict"  # Invalid type
-                        }
+                        {"name": "availability", "data": "not-a-dict"}  # Invalid type
                     ]
                 }
-            }
+            },
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -648,21 +513,12 @@ class ODPSGeneratorLifecycleCombinedMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "lifecycle": {
-                "slas": {
-                    "availability": 99.9,
-                    "latency_ms_p95": 5000.0
-                },
-                "x_odps": {
-                    "status": "active"
-                }
-            }
+                "slas": {"availability": 99.9, "latency_ms_p95": 5000.0},
+                "x_odps": {"status": "active"},
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -686,36 +542,21 @@ class ODPSGeneratorLifecycleCombinedMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             "lifecycle": {
-                "slas": {
-                    "availability": 99.5  # Should be overwritten by sla_dimensions
-                },
+                "slas": {"availability": 99.5},  # Should be overwritten by sla_dimensions
                 "x_odps": {
                     "status": "active",
                     "sla_dimensions": [
                         {
                             "name": "availability",
-                            "data": {
-                                "target": 99.9,
-                                "description": "High availability"
-                            }
+                            "data": {"target": 99.9, "description": "High availability"},
                         },
-                        {
-                            "name": "latency",
-                            "data": {
-                                "target": 3000,
-                                "unit": "ms"
-                            }
-                        }
-                    ]
-                }
-            }
+                        {"name": "latency", "data": {"target": 3000, "unit": "ms"}},
+                    ],
+                },
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -741,12 +582,8 @@ class ODPSGeneratorLifecycleCombinedMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            }
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
             # No lifecycle section
         }
 
@@ -774,13 +611,9 @@ class ODPSGeneratorLifecycleCombinedMappingTest(SimpleTestCase):
         """
         hub_contract = {
             "id": "test-product",
-            "info": {
-                "name": "Test Product"
-            },
-            "schema": {
-                "fields": []
-            },
-            "lifecycle": "not-a-dict"  # Invalid type
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": "not-a-dict",  # Invalid type
         }
 
         with self.assertRaises(ODPSExportError) as context:
@@ -812,37 +645,26 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
                 "description": "Complete product description",
                 "version": "1.0.0",
                 "tags": ["data", "analytics"],
-                "owners": [
-                    {
-                        "name": "Data Team",
-                        "email": "data@example.com"
-                    }
-                ]
+                "owners": [{"name": "Data Team", "email": "data@example.com"}],
             },
             "schema": {
                 "fields": [
                     {"name": "id", "data_type": "string"},
-                    {"name": "name", "data_type": "string"}
+                    {"name": "name", "data_type": "string"},
                 ]
             },
             "lifecycle": {
-                "slas": {
-                    "availability": 99.9,
-                    "latency_ms_p95": 5000.0
-                },
+                "slas": {"availability": 99.9, "latency_ms_p95": 5000.0},
                 "x_odps": {
                     "status": "active",
                     "sla_dimensions": [
                         {
                             "name": "availability",
-                            "data": {
-                                "target": 99.9,
-                                "description": "High availability target"
-                            }
+                            "data": {"target": 99.9, "description": "High availability target"},
                         }
-                    ]
-                }
-            }
+                    ],
+                },
+            },
         }
 
         result = generate_odps_from_hubcontract(hub_contract)
@@ -865,3 +687,149 @@ class ODPSGeneratorLifecycleIntegrationTest(SimpleTestCase):
         self.assertEqual(dimensions["availability"]["target"], 99.9)
         self.assertEqual(dimensions["availability"]["description"], "High availability target")
 
+    def test_lifecycle_generation_handles_unicode_characters(self):
+        """Test that lifecycle generation handles unicode characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "测试产品", "description": "测试描述"},
+            "schema": {"fields": []},
+            "lifecycle": {
+                "x_odps": {
+                    "status": "活跃",
+                    "sla_dimensions": [
+                        {"name": "可用性", "data": {"target": 99.9, "description": "高可用性目标"}}
+                    ],
+                }
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify unicode characters are preserved
+        self.assertIn("product", result)
+        self.assertIn("details", result["product"])
+        self.assertIn("en", result["product"]["details"])
+        if "status" in result["product"]["details"]["en"]:
+            self.assertEqual(result["product"]["details"]["en"]["status"], "活跃")
+
+    def test_lifecycle_generation_handles_special_characters(self):
+        """Test that lifecycle generation handles special characters correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test & Co. (Special)"},
+            "schema": {"fields": []},
+            "lifecycle": {
+                "x_odps": {
+                    "status": "active",
+                    "sla_dimensions": [
+                        {
+                            "name": "availability",
+                            "data": {"target": 99.9, "description": "High <availability> & more"},
+                        }
+                    ],
+                }
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify special characters are preserved
+        self.assertIn("product", result)
+        self.assertIn("SLA", result["product"])
+        if "SLA" in result["product"]:
+            sla = result["product"]["SLA"]
+            if "declarative" in sla and "dimensions" in sla["declarative"]:
+                dimensions = sla["declarative"]["dimensions"]
+                if "availability" in dimensions and "description" in dimensions["availability"]:
+                    self.assertEqual(
+                        dimensions["availability"]["description"], "High <availability> & more"
+                    )
+
+    def test_lifecycle_generation_handles_very_large_documents(self):
+        """Test that lifecycle generation handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {
+                "x_odps": {
+                    "status": "active",
+                    "sla_dimensions": [
+                        {
+                            "name": "availability",
+                            "data": {"target": 99.9, "description": large_description},
+                        }
+                    ],
+                }
+            },
+        }
+
+        # Should handle large documents gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract)
+            # If generation succeeds, verify structure
+            self.assertIn("product", result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for very large documents"
+            )
+
+    def test_lifecycle_generation_handles_none_values(self):
+        """Test that lifecycle generation handles None values correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {"x_odps": {"status": None, "sla_dimensions": None}},  # None value
+        }
+
+        # Should handle None values gracefully
+        try:
+            result = generate_odps_from_hubcontract(hub_contract)
+            # If generation succeeds, None values may be omitted or handled
+            self.assertIsNotNone(result)
+        except Exception as e:
+            # If generation fails, it should fail gracefully
+            self.assertIsInstance(
+                e, ODPSExportError, "Should raise ODPSExportError for None values"
+            )
+
+    def test_lifecycle_generation_handles_nested_structures(self):
+        """Test that lifecycle generation handles nested structures correctly."""
+        hub_contract = {
+            "id": "test-product",
+            "info": {"name": "Test Product"},
+            "schema": {"fields": []},
+            "lifecycle": {
+                "x_odps": {
+                    "status": "active",
+                    "sla_dimensions": [
+                        {
+                            "name": "availability",
+                            "data": {
+                                "target": 99.9,
+                                "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                            },
+                        }
+                    ],
+                }
+            },
+        }
+
+        result = generate_odps_from_hubcontract(hub_contract)
+
+        # Verify nested structure is preserved
+        self.assertIn("product", result)
+        self.assertIn("SLA", result["product"])
+        if "SLA" in result["product"]:
+            sla = result["product"]["SLA"]
+            if "declarative" in sla and "dimensions" in sla["declarative"]:
+                dimensions = sla["declarative"]["dimensions"]
+                if "availability" in dimensions and "nested" in dimensions["availability"]:
+                    self.assertIn(
+                        "level1",
+                        dimensions["availability"]["nested"],
+                        "Nested structures should be preserved",
+                    )

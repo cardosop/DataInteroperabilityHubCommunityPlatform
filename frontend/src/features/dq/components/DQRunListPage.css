@@ -1,0 +1,246 @@
+.dq-run-list-page {
+  padding: 2rem;
+}
+
+.dq-run-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.dq-run-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.dq-create-run-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: #0066cc;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dq-create-run-btn:hover {
+  background: #0052a3;
+}
+
+.dq-create-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dq-create-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.dq-create-modal h2 {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+}
+
+.dq-create-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.dq-create-form .form-group label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.dq-create-form .form-group input,
+.dq-create-form .form-group select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.dq-create-error {
+  color: #842029;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0;
+}
+
+.dq-create-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.dq-create-modal-actions .btn-primary,
+.dq-create-modal-actions .btn-secondary {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dq-create-modal-actions .btn-secondary {
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+}
+
+.dq-create-modal-actions .btn-primary {
+  background: #0066cc;
+  color: white;
+  border: none;
+}
+
+.dq-run-list-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.dq-run-list-filters select {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.dq-run-list-table {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.dq-run-list-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dq-run-list-table thead {
+  background: #f5f5f5;
+}
+
+.dq-run-list-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #666;
+  border-bottom: 2px solid #ddd;
+}
+
+.dq-run-list-table td {
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.dq-run-row {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.dq-run-row:hover {
+  background-color: #f9f9f9;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-badge.status-pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-badge.status-running {
+  background: #cfe2ff;
+  color: #084298;
+}
+
+.status-badge.status-succeeded {
+  background: #d1e7dd;
+  color: #0f5132;
+}
+
+.status-badge.status-failed {
+  background: #f8d7da;
+  color: #842029;
+}
+
+.overall-status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.overall-status-badge.overall-status-pass {
+  background: #d1e7dd;
+  color: #0f5132;
+}
+
+.overall-status-badge.overall-status-fail {
+  background: #f8d7da;
+  color: #842029;
+}
+
+.overall-status-badge.overall-status-warn {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.overall-status-badge.overall-status-unknown {
+  background: #e2e3e5;
+  color: #41464b;
+}
+
+.quality-score {
+  font-weight: 600;
+  color: #0f5132;
+}
+
+.dq-run-list-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.dq-run-list-pagination button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.dq-run-list-pagination button:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.dq-run-list-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

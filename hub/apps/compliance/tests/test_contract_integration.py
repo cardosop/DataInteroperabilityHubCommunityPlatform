@@ -33,7 +33,7 @@ class ContractCompliancePolicyExtractionTest(TestCase):
         # Create contract with compliance policy
         self.contract_with_policy = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',
@@ -63,7 +63,7 @@ class ContractCompliancePolicyExtractionTest(TestCase):
         # Create contract without compliance policy
         self.contract_without_policy = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',
@@ -194,7 +194,7 @@ class ComplianceServiceContractIntegrationTest(TestCase):
         
         self.contract = Contract.objects.create(
             tenant=self.tenant,
-            original_spec_type=OriginalSpecType.DATACONTRACT_COM,
+            original_spec_type=OriginalSpecType.ODCS,
             original_spec_version="2.2.2",
             original_format=OriginalFormat.JSON,
             original_raw='{"version": "2.2.2", "name": "test"}',

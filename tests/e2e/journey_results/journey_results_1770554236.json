@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-002-09435f04",
+      "journey_name": "Publish Asset to Marketplace",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1770554236.7978783,
+      "end_time": 1770554236.8154185,
+      "duration": 0.01754021644592285,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': 'c60957fa-06c8-4920-aca0-e4643872ae34', 'timestamp': '2026-02-08T12:37:16.806988+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create and Activate Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770554236.797887,
+          "end_time": 1770554236.8154123,
+          "duration": 0.017525196075439453,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': 'c60957fa-06c8-4920-aca0-e4643872ae34', 'timestamp': '2026-02-08T12:37:16.806988+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:37:16.815546"
+}

@@ -71,7 +71,7 @@ class JobLifecycleIntegrationTest(TestCase):
             created_by=self.user
         )
     
-    @patch('hub.apps.jobs.tasks._execute_job_logic')
+    @patch('hub.apps.jobs.tasks_base._execute_job_logic')
     def test_dq_run_job_lifecycle(self, mock_execute_logic):
         """Test complete DQ run job lifecycle"""
         # Create job first (DQRun requires a job)
@@ -127,7 +127,7 @@ class JobLifecycleIntegrationTest(TestCase):
         # In real execution, the DQ run would be updated by execute_dq_run
         # The test verifies the job processing lifecycle, not the DQ run update
     
-    @patch('hub.apps.jobs.tasks._execute_job_logic')
+    @patch('hub.apps.jobs.tasks_base._execute_job_logic')
     def test_compliance_run_job_lifecycle(self, mock_execute_logic):
         """Test complete compliance run job lifecycle"""
         # Create job first (ComplianceRun requires a job)
@@ -175,7 +175,7 @@ class JobLifecycleIntegrationTest(TestCase):
         self.assertIsNotNone(job.result_json)
         self.assertEqual(job.result_json.get('risk_level'), RiskLevel.LOW)
     
-    @patch('hub.apps.jobs.tasks._execute_job_logic')
+    @patch('hub.apps.jobs.tasks_base._execute_job_logic')
     def test_contract_validation_job_lifecycle(self, mock_execute_logic):
         """Test complete contract validation job lifecycle"""
         # Create contract
@@ -220,7 +220,7 @@ class JobLifecycleIntegrationTest(TestCase):
         # It's updated by the view/signal when the validation result is processed
         # The job processor only returns the validation result
     
-    @patch('hub.apps.jobs.tasks._execute_job_logic')
+    @patch('hub.apps.jobs.tasks_base._execute_job_logic')
     def test_job_failure_lifecycle(self, mock_execute_logic):
         """Test job failure lifecycle"""
         # Create job with a valid DQ run (needed for job processing)
@@ -259,7 +259,7 @@ class JobLifecycleIntegrationTest(TestCase):
         self.assertIn('error', job.result_json)
         self.assertEqual(job.result_json.get('error_code'), 'VALIDATION_ERROR')
     
-    @patch('hub.apps.jobs.tasks._execute_job_logic')
+    @patch('hub.apps.jobs.tasks_base._execute_job_logic')
     def test_job_retry_lifecycle(self, mock_execute_logic):
         """Test job retry lifecycle with transient failure"""
         # Create job with a valid DQ run (needed for job processing)
@@ -354,7 +354,7 @@ class JobLifecycleIntegrationTest(TestCase):
         self.assertIsNotNone(job.completed_at)
         
         # Verify job cannot be processed when cancelled
-        with patch('hub.apps.jobs.tasks._execute_job_logic') as mock_execute:
+        with patch('hub.apps.jobs.tasks_base._execute_job_logic') as mock_execute:
             process_job(str(job.id), JobType.DQ_RUN)
             # Should not execute logic if already cancelled
             job.refresh_from_db()

@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-003-3907d419",
+      "journey_name": "ODPS Export/Download Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1769431035.9284127,
+      "end_time": 1769431035.9587069,
+      "duration": 0.030294179916381836,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'odps_contract'",
+      "error_type": "KeyError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769431035.928424,
+          "end_time": 1769431035.9350293,
+          "duration": 0.006605386734008789,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769431035.935099,
+          "end_time": 1769431035.9587011,
+          "duration": 0.02360224723815918,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-26T12:37:15.958903"
+}

@@ -7,8 +7,10 @@ Tests verify that progress_percentage is correctly stored and updated in state_d
 - At step failure
 - Progress persistence across workflow execution
 """
+
 try:
     import pytest
+
     pytestmark = pytest.mark.django_db(transaction=True)
 except ImportError:
     # pytest not available, using Django test runner
@@ -16,17 +18,18 @@ except ImportError:
     pytestmark = None
 
 import uuid
-from django.test import TestCase
+
 from django.contrib.auth import get_user_model
+from django.test import TestCase
 
 from hub.apps.orchestration.models import (
+    StepStatus,
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStatus,
-    StepStatus,
 )
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import UserStatus
 
 User = get_user_model()
@@ -39,15 +42,10 @@ class WorkflowProgressStateTest(TestCase):
         """Set up test fixtures"""
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="VERIFIED"
+            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register a test task
@@ -135,7 +133,7 @@ class WorkflowProgressStateTest(TestCase):
         self.assertEqual(
             instance.state_data["progress_percentage"],
             100.0,
-            "Progress should be 100% after all steps complete"
+            "Progress should be 100% after all steps complete",
         )
 
         # Verify workflow is completed
@@ -143,6 +141,7 @@ class WorkflowProgressStateTest(TestCase):
 
     def test_progress_updated_at_step_failure(self):
         """Test that progress_percentage is updated in state_data when step fails (Task 0.3.2)"""
+
         # Register a failing task
         def failing_task(input_data, instance, step):
             raise ValueError("Task failed intentionally")
@@ -197,7 +196,7 @@ class WorkflowProgressStateTest(TestCase):
             instance.state_data["progress_percentage"],
             expected_progress_at_failure,
             places=1,
-            msg="Progress should reflect the step that failed"
+            msg="Progress should reflect the step that failed",
         )
 
         # Verify error information is stored
@@ -238,21 +237,18 @@ class WorkflowProgressStateTest(TestCase):
         self.assertEqual(
             instance.state_data["progress_percentage"],
             100.0,
-            "Progress should be 100% when workflow completes"
+            "Progress should be 100% when workflow completes",
         )
 
     def test_progress_persistence_across_executions(self):
         """Test that progress_percentage persists correctly across multiple executions (Task 0.3.2)"""
+
         # Create workflow with 5 steps that can be executed incrementally
         # We'll use a task that checks state_data to verify progress
         def progress_aware_task(input_data, instance, step):
             # Access state_data to verify progress is stored
             progress = instance.state_data.get("progress_percentage", 0.0)
-            return {
-                "result": "success",
-                "step": step.step_name,
-                "progress_at_execution": progress
-            }
+            return {"result": "success", "step": step.step_name, "progress_at_execution": progress}
 
         self.engine.register_task("progress_aware_task", progress_aware_task)
 
@@ -372,15 +368,10 @@ class WorkflowProgressIntegrationTest(TestCase):
         """Set up test fixtures"""
         self.engine = WorkflowEngine()
         self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="VERIFIED"
+            name="Test Tenant", slug="test-tenant", status="ACTIVE", kyc_status=KYCStatus.VERIFIED
         )
         self.user = User.objects.create_user(
-            email="test@example.com",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE
+            email="test@example.com", tenant=self.tenant, status=UserStatus.ACTIVE
         )
 
         # Register test tasks
@@ -467,7 +458,7 @@ class WorkflowProgressIntegrationTest(TestCase):
         self.assertEqual(
             reloaded_instance.state_data["progress_percentage"],
             progress_after_completion,
-            "Progress should persist after database reload"
+            "Progress should persist after database reload",
         )
 
         # Verify workflow is completed
@@ -525,4 +516,3 @@ class WorkflowProgressIntegrationTest(TestCase):
         # Both should be completed
         self.assertEqual(instance1.status, WorkflowStatus.COMPLETED)
         self.assertEqual(instance2.status, WorkflowStatus.COMPLETED)
-

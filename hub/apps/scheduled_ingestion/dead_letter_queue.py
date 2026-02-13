@@ -17,7 +17,14 @@ from .incremental_state import IncrementalStateManager
 logger = structlog.get_logger(__name__)
 
 
-from .models import ScheduledIngestion, DeadLetterQueueItem
+def _parse_datetime_aware(value: Optional[str]) -> datetime:
+    """Parse ISO datetime string to timezone-aware datetime. Idempotent for already-aware values."""
+    if not value:
+        return timezone.now()
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if timezone.is_naive(dt):
+        return timezone.make_aware(dt)
+    return dt
 
 
 class DeadLetterQueueManager:
@@ -57,15 +64,9 @@ class DeadLetterQueueManager:
                     'error_message': failure.get("last_error", "Unknown error"),
                     'error_code': failure.get("last_error_code"),
                     'retry_count': failure.get("retry_count", 0),
-                    'first_failed_at': timezone.make_aware(
-                        datetime.fromisoformat(failure.get("first_failed_at"))
-                    ) if failure.get("first_failed_at") else timezone.now(),
-                    'last_failed_at': timezone.make_aware(
-                        datetime.fromisoformat(failure.get("last_failed_at"))
-                    ) if failure.get("last_failed_at") else timezone.now(),
-                    'permanently_failed_at': timezone.make_aware(
-                        datetime.fromisoformat(failure.get("permanently_failed_at"))
-                    ) if failure.get("permanently_failed_at") else timezone.now(),
+                    'first_failed_at': _parse_datetime_aware(failure.get("first_failed_at")),
+                    'last_failed_at': _parse_datetime_aware(failure.get("last_failed_at")),
+                    'permanently_failed_at': _parse_datetime_aware(failure.get("permanently_failed_at")),
                     'resolution_status': 'PENDING'
                 }
             )
@@ -75,9 +76,7 @@ class DeadLetterQueueManager:
                 dlq_item.error_message = failure.get("last_error", dlq_item.error_message)
                 dlq_item.error_code = failure.get("last_error_code", dlq_item.error_code)
                 dlq_item.retry_count = failure.get("retry_count", dlq_item.retry_count)
-                dlq_item.last_failed_at = timezone.make_aware(
-                    datetime.fromisoformat(failure.get("last_failed_at"))
-                ) if failure.get("last_failed_at") else timezone.now()
+                dlq_item.last_failed_at = _parse_datetime_aware(failure.get("last_failed_at"))
                 dlq_item.save()
             
             count += 1

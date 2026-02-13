@@ -145,9 +145,9 @@ class JobExecutionIntegrationTest(TestCase):
         # Setup health check mock
         mock_health_check.return_value = (True, "healthy")
         
-        # Setup S3 storage mock (file download)
+        # Setup S3 storage mock (compliance view uses get_file_content, not download_file)
         mock_storage_client = MagicMock()
-        mock_storage_client.download_file.return_value = b'col1,col2\nval1,val2\nval3,val4'
+        mock_storage_client.get_file_content.return_value = b'col1,col2\nval1,val2\nval3,val4'
         mock_storage_client_class.return_value = mock_storage_client
         
         # Setup compliance service mock
@@ -204,8 +204,8 @@ class JobExecutionIntegrationTest(TestCase):
         self.assertEqual(compliance_run.risk_level, RiskLevel.LOW)
         self.assertEqual(compliance_run.allowed_to_store, True)
         
-        # Verify external services were called
-        mock_storage_client.download_file.assert_called_once_with(self.file.storage_path)
+        # Verify external services were called (compliance view uses get_file_content)
+        mock_storage_client.get_file_content.assert_called_once_with(self.file.storage_path)
         mock_scan_file.assert_called_once()
         mock_health_check.assert_called_once()
     

@@ -8,20 +8,21 @@ now raise NotImplementedError.
 This test file validates that push operations correctly raise NotImplementedError.
 CKAN instances are public data portals that should be harvested FROM, not pushed TO.
 """
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.base import (
-    MarketplaceType,
     MarketplaceListing,
     MarketplaceResource,
+    MarketplaceType,
 )
+from hub.apps.integrations.connectors.ckan_connector import CKANConnector
 from hub.apps.integrations.tests.utils.marketplace_test_helpers import (
-    create_test_connector,
-    marketplace_available,
     # Backward compatibility (deprecated)
     ckan_available,
+    create_test_connector,
+    marketplace_available,
 )
 
 
@@ -103,17 +104,17 @@ class TestCKANConnectorPushOperations(TestCase):
 
     def test_sync_push_raises_not_implemented(self):
         """Test that sync_push raises NotImplementedError."""
+
         def asset_data_provider(asset_id: str):
             return {
-                'id': asset_id,
-                'name': 'Test Asset',
-                'description': 'Test description',
+                "id": asset_id,
+                "name": "Test Asset",
+                "description": "Test description",
             }
 
         with self.assertRaises(NotImplementedError) as context:
             self.connector.sync_push(
-                asset_ids=["test-asset-1"],
-                options={'asset_data_provider': asset_data_provider}
+                asset_ids=["test-asset-1"], options={"asset_data_provider": asset_data_provider}
             )
 
         self.assertIn("harvest-only", str(context.exception).lower())
@@ -122,9 +123,9 @@ class TestCKANConnectorPushOperations(TestCase):
     def test_map_from_hub_asset_raises_not_implemented(self):
         """Test that map_from_hub_asset raises NotImplementedError."""
         asset_data = {
-            'id': 'test-asset',
-            'name': 'Test Asset',
-            'description': 'Test description',
+            "id": "test-asset",
+            "name": "Test Asset",
+            "description": "Test description",
         }
 
         with self.assertRaises(NotImplementedError) as context:
@@ -142,3 +143,69 @@ class TestCKANConnectorPushOperations(TestCase):
         self.assertEqual(supported[0], SyncDirection.PULL)
         self.assertNotIn(SyncDirection.PUSH, supported)
         self.assertNotIn(SyncDirection.BIDIRECTIONAL, supported)
+
+    def test_create_listing_with_none(self):
+        """Test create_listing() error handling with None"""
+        with self.assertRaises((NotImplementedError, ValueError, TypeError)):
+            self.connector.create_listing(None)  # type: ignore[arg-type]
+
+    def test_update_listing_with_empty_id(self):
+        """Test update_listing() error handling with empty ID"""
+        listing = MarketplaceListing(
+            marketplace_id="test-package",
+            marketplace_type=MarketplaceType.CKAN_INSTANCE,
+            title="Test Package",
+        )
+        with self.assertRaises((NotImplementedError, ValueError)):
+            self.connector.update_listing("", listing)
+
+    def test_update_listing_with_none_id(self):
+        """Test update_listing() error handling with None ID"""
+        listing = MarketplaceListing(
+            marketplace_id="test-package",
+            marketplace_type=MarketplaceType.CKAN_INSTANCE,
+            title="Test Package",
+        )
+        with self.assertRaises((NotImplementedError, ValueError, TypeError)):
+            self.connector.update_listing(None, listing)  # type: ignore[arg-type]
+
+    def test_publish_resource_with_empty_package_id(self):
+        """Test publish_resource() error handling with empty package ID"""
+        resource = MarketplaceResource(
+            resource_id="test-resource",
+            resource_type="FILE",
+            name="Test Resource",
+        )
+        with self.assertRaises((NotImplementedError, ValueError)):
+            self.connector.publish_resource("", resource)
+
+    def test_publish_resource_with_none_package_id(self):
+        """Test publish_resource() error handling with None package ID"""
+        resource = MarketplaceResource(
+            resource_id="test-resource",
+            resource_type="FILE",
+            name="Test Resource",
+        )
+        with self.assertRaises((NotImplementedError, ValueError, TypeError)):
+            self.connector.publish_resource(None, resource)  # type: ignore[arg-type]
+
+    def test_sync_push_with_empty_asset_ids(self):
+        """Test sync_push() error handling with empty asset_ids list"""
+
+        def asset_data_provider(asset_id: str):
+            return {"id": asset_id, "name": "Test"}
+
+        with self.assertRaises((NotImplementedError, ValueError)):
+            self.connector.sync_push(
+                asset_ids=[], options={"asset_data_provider": asset_data_provider}
+            )
+
+    def test_map_from_hub_asset_with_none(self):
+        """Test map_from_hub_asset() error handling with None"""
+        with self.assertRaises((NotImplementedError, ValueError, TypeError)):
+            self.connector.map_from_hub_asset(None)  # type: ignore[arg-type]
+
+    def test_map_from_hub_asset_with_empty_dict(self):
+        """Test map_from_hub_asset() error handling with empty dict"""
+        with self.assertRaises(NotImplementedError):
+            self.connector.map_from_hub_asset({})

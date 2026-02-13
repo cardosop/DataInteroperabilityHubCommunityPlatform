@@ -195,6 +195,44 @@ workflow_state_size_bytes = _HistogramWrapper(
 
 
 # ============================================================================
+# Business Rules Validation Metrics
+# ============================================================================
+
+# Business rules validation counter
+workflow_business_rules_validations_total = _CounterWrapper(
+    'workflow_business_rules_validations_total',
+    'Total number of business rules validations in workflows',
+    unit='1',
+    expected_labels=('workflow_name', 'workflow_version', 'step_name', 'rule_name', 'status', 'tenant_id')
+)
+
+# Business rules validation duration histogram
+workflow_business_rules_validation_duration_seconds = _HistogramWrapper(
+    'workflow_business_rules_validation_duration_seconds',
+    'Business rules validation duration in seconds',
+    unit='s',
+    buckets=(0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0),
+    expected_labels=('workflow_name', 'workflow_version', 'step_name', 'rule_name', 'tenant_id')
+)
+
+# Business rules validation cache hits counter
+workflow_business_rules_validation_cache_hits_total = _CounterWrapper(
+    'workflow_business_rules_validation_cache_hits_total',
+    'Total number of business rules validation cache hits',
+    unit='1',
+    expected_labels=('workflow_name', 'workflow_version', 'step_name', 'rule_name', 'tenant_id')
+)
+
+# Business rules validation cache misses counter
+workflow_business_rules_validation_cache_misses_total = _CounterWrapper(
+    'workflow_business_rules_validation_cache_misses_total',
+    'Total number of business rules validation cache misses',
+    unit='1',
+    expected_labels=('workflow_name', 'workflow_version', 'step_name', 'rule_name', 'tenant_id')
+)
+
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 

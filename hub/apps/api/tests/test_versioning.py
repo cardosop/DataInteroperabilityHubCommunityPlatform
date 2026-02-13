@@ -107,20 +107,18 @@ class APIVersionMiddlewareTest(TestCase):
     
     def test_version_header_added(self):
         """Test that version header is added to response"""
+        from django.http import HttpResponse
         request = self.factory.get("/api/v1/assets/")
-        response = self.middleware.process_response(request, None)
+        # Root cause fix: Must call process_request first to extract and store version
+        self.middleware.process_request(request)
+        # Now process_response with HttpResponse
+        response = HttpResponse()
+        response = self.middleware.process_response(request, response)
         
-        # Mock response object
-        class MockResponse:
-            def __init__(self):
-                self.headers = {}
-            
-            def __setitem__(self, key, value):
-                self.headers[key] = value
+        # Version header should be added
+        self.assertIn('X-API-Version', response.headers)
+        self.assertIn('X-API-Supported-Versions', response.headers)
         
-        response = MockResponse()
-        self.middleware.process_response(request, response)
-        
-        # Version should be extracted and stored
+        # Version should be extracted and stored (from process_request)
         self.assertIsNotNone(getattr(request, 'api_version', None))
 

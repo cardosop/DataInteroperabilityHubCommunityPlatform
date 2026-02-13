@@ -34,7 +34,21 @@ class AccessRequestSerializer(serializers.ModelSerializer):
 
 class RetentionPolicySerializer(serializers.ModelSerializer):
     """Serializer for RetentionPolicy"""
-    
+
+    def validate_retention_period_days(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "retention_period_days must be >= 0."
+            )
+        return value
+
+    def validate_grace_period_days(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "grace_period_days must be >= 0."
+            )
+        return value
+
     class Meta:
         model = RetentionPolicy
         fields = [

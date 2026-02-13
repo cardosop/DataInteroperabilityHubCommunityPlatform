@@ -308,6 +308,8 @@ class ODPSParser:
         Returns:
             Detected format ("json" or "yaml")
         """
+        if content is None:
+            return "yaml"  # Default when content is missing (e.g. for optional detection)
         # Strip whitespace for detection
         stripped = content.strip()
 

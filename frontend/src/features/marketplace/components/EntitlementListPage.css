@@ -1,0 +1,114 @@
+.entitlement-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.entitlement-list-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.entitlement-list-header h1 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.entitlement-list-filters {
+  margin-bottom: var(--spacing-lg);
+}
+
+.filter-select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  min-width: 200px;
+}
+
+.entitlement-list-table {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+
+.entitlement-list-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.entitlement-list-table thead {
+  background: var(--color-gray-light);
+}
+
+.entitlement-list-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.entitlement-list-table td {
+  padding: var(--spacing-md);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.entitlement-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.entitlement-row:hover {
+  background: var(--color-gray-light);
+}
+
+.entitlement-status {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+
+.entitlement-status-active {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.entitlement-status-revoked {
+  background: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+.entitlement-status-expired {
+  background: var(--color-gray-light);
+  color: var(--color-gray-dark);
+}
+
+.entitlement-list-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.pagination-info {
+  color: var(--color-text-secondary);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+}
+
+.btn-link:hover {
+  color: var(--color-primary-dark);
+}

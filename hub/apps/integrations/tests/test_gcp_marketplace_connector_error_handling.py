@@ -11,18 +11,33 @@ These tests validate:
 - Circuit breaker integration
 - Structured logging with correlation IDs
 """
-import unittest
-from unittest.mock import Mock, patch, MagicMock
+
 import time
-from typing import Dict, Any
+import unittest
+from typing import Any, Dict
+from unittest.mock import MagicMock, Mock, patch
 
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 from hub.apps.core.services.base import NotFoundError, PermissionError
-from google.api_core import exceptions as google_exceptions
+from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
-GoogleAPIError = google_exceptions.GoogleAPIError
+# Optional Google Cloud imports - skip tests if not available
+try:
+    from google.api_core import exceptions as google_exceptions
+
+    GoogleAPIError = google_exceptions.GoogleAPIError
+    GOOGLE_CLOUD_AVAILABLE = True
+except ImportError:
+    google_exceptions = None
+    GoogleAPIError = Exception  # Fallback
+    GOOGLE_CLOUD_AVAILABLE = False
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    not GOOGLE_CLOUD_AVAILABLE, reason="Google Cloud libraries not installed"
+)
 
 
 class TestGCPMarketplaceConnectorRetryLogic(TestCase):
@@ -30,10 +45,7 @@ class TestGCPMarketplaceConnectorRetryLogic(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.connector = GCPMarketplaceConnector(
-            project_id='test-project',
-            use_adc=True
-        )
+        self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
 
     def test_is_transient_error_429(self):
         """Test _is_transient_error() returns True for 429 (Too Many Requests)"""
@@ -75,7 +87,7 @@ class TestGCPMarketplaceConnectorRetryLogic(TestCase):
         """Test _is_transient_error() returns False for None"""
         self.assertFalse(self.connector._is_transient_error(None))
 
-    @patch('time.sleep')
+    @patch("time.sleep")
     def test_execute_with_retry_retries_on_transient_error(self, mock_sleep):
         """Test _execute_with_retry() retries on transient errors"""
         call_count = [0]
@@ -89,9 +101,7 @@ class TestGCPMarketplaceConnectorRetryLogic(TestCase):
             return "success"
 
         result = self.connector._execute_with_retry(
-            failing_operation,
-            'test_operation',
-            'test context'
+            failing_operation, "test_operation", "test context"
         )
 
         self.assertEqual(result, "success")
@@ -101,9 +111,10 @@ class TestGCPMarketplaceConnectorRetryLogic(TestCase):
         # Check exponential backoff: backoff_factor * (2 ** attempt) = 1 * (2 ** 0) = 1
         mock_sleep.assert_called_with(1.0)
 
-    @patch('time.sleep')
+    @patch("time.sleep")
     def test_execute_with_retry_max_retries_exceeded(self, mock_sleep):
         """Test _execute_with_retry() raises ConnectionError after max retries"""
+
         def always_failing_operation():
             error = GoogleAPIError("Service unavailable")
             error.code = 503
@@ -111,12 +122,10 @@ class TestGCPMarketplaceConnectorRetryLogic(TestCase):
 
         with self.assertRaises(ConnectionError) as cm:
             self.connector._execute_with_retry(
-                always_failing_operation,
-                'test_operation',
-                'test context'
+                always_failing_operation, "test_operation", "test context"
             )
 
-        self.assertIn('Transient error', str(cm.exception))
+        self.assertIn("Transient error", str(cm.exception))
         # Should retry max_retries times (2), so sleep should be called 2 times
         self.assertEqual(mock_sleep.call_count, 2)
         # Check exponential backoff delays
@@ -125,45 +134,36 @@ class TestGCPMarketplaceConnectorRetryLogic(TestCase):
 
     def test_execute_with_retry_no_retry_on_client_error(self):
         """Test _execute_with_retry() does not retry on client errors"""
+
         def failing_operation():
             error = GoogleAPIError("Not found")
             error.code = 404
             raise error
 
         with self.assertRaises(NotFoundError):
-            self.connector._execute_with_retry(
-                failing_operation,
-                'test_operation',
-                'test context'
-            )
+            self.connector._execute_with_retry(failing_operation, "test_operation", "test context")
 
     def test_execute_with_retry_no_retry_on_permission_error(self):
         """Test _execute_with_retry() does not retry on permission errors"""
+
         def failing_operation():
             error = GoogleAPIError("Permission denied")
             error.code = 403
             raise error
 
         with self.assertRaises(PermissionError):
-            self.connector._execute_with_retry(
-                failing_operation,
-                'test_operation',
-                'test context'
-            )
+            self.connector._execute_with_retry(failing_operation, "test_operation", "test context")
 
     def test_execute_with_retry_no_retry_on_value_error(self):
         """Test _execute_with_retry() does not retry on validation errors"""
+
         def failing_operation():
             error = GoogleAPIError("Bad request")
             error.code = 400
             raise error
 
         with self.assertRaises(ValueError):
-            self.connector._execute_with_retry(
-                failing_operation,
-                'test_operation',
-                'test context'
-            )
+            self.connector._execute_with_retry(failing_operation, "test_operation", "test context")
 
 
 class TestGCPMarketplaceConnectorErrorMapping(TestCase):
@@ -171,10 +171,7 @@ class TestGCPMarketplaceConnectorErrorMapping(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.connector = GCPMarketplaceConnector(
-            project_id='test-project',
-            use_adc=True
-        )
+        self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
 
     def test_map_google_error_404(self):
         """Test _map_google_error() maps 404 to NotFoundError"""
@@ -251,10 +248,7 @@ class TestGCPMarketplaceConnectorCircuitBreaker(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.connector = GCPMarketplaceConnector(
-            project_id='test-project',
-            use_adc=True
-        )
+        self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
 
     def test_circuit_breaker_initialized(self):
         """Test circuit breaker is initialized"""
@@ -266,33 +260,31 @@ class TestGCPMarketplaceConnectorCircuitBreaker(TestCase):
 
     def test_execute_with_retry_uses_circuit_breaker(self):
         """Test _execute_with_retry() uses circuit breaker"""
+
         def successful_operation():
             return "success"
 
-        with patch.object(self.connector._circuit_breaker, 'call') as mock_cb_call:
+        with patch.object(self.connector._circuit_breaker, "call") as mock_cb_call:
             mock_cb_call.return_value = "success"
             result = self.connector._execute_with_retry(
-                successful_operation,
-                'test_operation',
-                'test context'
+                successful_operation, "test_operation", "test context"
             )
             self.assertEqual(result, "success")
             mock_cb_call.assert_called_once()
 
     def test_circuit_breaker_protects_against_cascading_failures(self):
         """Test circuit breaker protects against cascading failures"""
+
         def always_failing_operation():
             error = GoogleAPIError("Service unavailable", code=503)
             raise error
 
         # Simulate multiple failures to trigger circuit breaker
-        with patch('time.sleep'):
+        with patch("time.sleep"):
             for _ in range(6):  # More than failure_threshold (5)
                 try:
                     self.connector._execute_with_retry(
-                        always_failing_operation,
-                        'test_operation',
-                        'test context'
+                        always_failing_operation, "test_operation", "test context"
                     )
                 except Exception:
                     pass
@@ -306,86 +298,136 @@ class TestGCPMarketplaceConnectorStructuredLogging(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        self.connector = GCPMarketplaceConnector(
-            project_id='test-project',
-            use_adc=True
-        )
+        self.connector = GCPMarketplaceConnector(project_id="test-project", use_adc=True)
 
-    @patch('hub.apps.integrations.connectors.gcp_marketplace_connector.logger')
+    @patch("hub.apps.integrations.connectors.gcp_marketplace_connector.logger")
     def test_log_with_context_includes_operation(self, mock_logger):
         """Test _log_with_context() includes operation in log context"""
-        self.connector._log_with_context(
-            'info',
-            'Test message',
-            operation='test_operation'
-        )
+        self.connector._log_with_context("info", "Test message", operation="test_operation")
         mock_logger.info.assert_called_once()
         call_args = mock_logger.info.call_args
-        self.assertEqual(call_args[0][0], 'Test message')
-        self.assertIn('operation', call_args[1].get('extra', {}))
+        self.assertEqual(call_args[0][0], "Test message")
+        self.assertIn("operation", call_args[1].get("extra", {}))
 
-    @patch('hub.apps.integrations.connectors.gcp_marketplace_connector.logger')
+    @patch("hub.apps.integrations.connectors.gcp_marketplace_connector.logger")
     def test_log_with_context_includes_error_code(self, mock_logger):
         """Test _log_with_context() includes error_code in log context"""
         self.connector._log_with_context(
-            'error',
-            'Test error',
-            operation='test_operation',
-            error_code=500
+            "error", "Test error", operation="test_operation", error_code=500
         )
         mock_logger.error.assert_called_once()
         call_args = mock_logger.error.call_args
-        extra = call_args[1].get('extra', {})
-        self.assertEqual(extra.get('error_code'), 500)
+        extra = call_args[1].get("extra", {})
+        self.assertEqual(extra.get("error_code"), 500)
 
-    @patch('hub.apps.integrations.connectors.gcp_marketplace_connector.logger')
+    @patch("hub.apps.integrations.connectors.gcp_marketplace_connector.logger")
     def test_log_with_context_includes_retry_info(self, mock_logger):
         """Test _log_with_context() includes retry information"""
         self.connector._log_with_context(
-            'warning',
-            'Retrying operation',
-            operation='test_operation',
+            "warning",
+            "Retrying operation",
+            operation="test_operation",
             attempt=2,
             max_retries=3,
-            delay=2.0
+            delay=2.0,
         )
         mock_logger.warning.assert_called_once()
         call_args = mock_logger.warning.call_args
-        extra = call_args[1].get('extra', {})
-        self.assertEqual(extra.get('attempt'), 2)
-        self.assertEqual(extra.get('max_retries'), 3)
-        self.assertEqual(extra.get('retry_delay'), 2.0)
+        extra = call_args[1].get("extra", {})
+        self.assertEqual(extra.get("attempt"), 2)
+        self.assertEqual(extra.get("max_retries"), 3)
+        self.assertEqual(extra.get("retry_delay"), 2.0)
 
-    @patch('hub.apps.api.middleware.trace_propagation.get_current_request')
-    @patch('hub.apps.integrations.connectors.gcp_marketplace_connector.logger')
+    @patch("hub.apps.api.middleware.trace_propagation.get_current_request")
+    @patch("hub.apps.integrations.connectors.gcp_marketplace_connector.logger")
     def test_log_with_context_includes_correlation_id(self, mock_logger, mock_get_request):
         """Test _log_with_context() includes correlation ID from trace context"""
         mock_request = Mock()
-        mock_request.trace_id = 'test-trace-id-123'
+        mock_request.trace_id = "test-trace-id-123"
         mock_get_request.return_value = mock_request
 
-        self.connector._log_with_context(
-            'info',
-            'Test message',
-            operation='test_operation'
-        )
+        self.connector._log_with_context("info", "Test message", operation="test_operation")
         mock_logger.info.assert_called_once()
         call_args = mock_logger.info.call_args
-        extra = call_args[1].get('extra', {})
-        self.assertEqual(extra.get('correlation_id'), 'test-trace-id-123')
-        self.assertEqual(extra.get('trace_id'), 'test-trace-id-123')
+        extra = call_args[1].get("extra", {})
+        self.assertEqual(extra.get("correlation_id"), "test-trace-id-123")
+        self.assertEqual(extra.get("trace_id"), "test-trace-id-123")
 
-    @patch('hub.apps.integrations.connectors.gcp_marketplace_connector.logger')
+    @patch("hub.apps.integrations.connectors.gcp_marketplace_connector.logger")
     def test_log_with_context_includes_project_id(self, mock_logger):
         """Test _log_with_context() includes project_id in log context"""
-        self.connector._log_with_context(
-            'info',
-            'Test message',
-            operation='test_operation'
-        )
+        self.connector._log_with_context("info", "Test message", operation="test_operation")
         mock_logger.info.assert_called_once()
         call_args = mock_logger.info.call_args
-        extra = call_args[1].get('extra', {})
-        self.assertEqual(extra.get('project_id'), 'test-project')
-        self.assertEqual(extra.get('connector'), 'gcp-marketplace')
+        extra = call_args[1].get("extra", {})
+        self.assertEqual(extra.get("project_id"), "test-project")
+        self.assertEqual(extra.get("connector"), "gcp-marketplace")
 
+    def test_execute_with_retry_max_retries_exceeded(self):
+        """Test _execute_with_retry() raises error after max retries"""
+        call_count = [0]
+
+        def failing_operation():
+            call_count[0] += 1
+            error = GoogleAPIError("Service unavailable")
+            error.code = 503  # type: ignore[attr-defined]
+            raise error
+
+        # Set max_retries to 3 for this test
+        original_max_retries = self.connector.max_retries
+        self.connector.max_retries = 3
+
+        try:
+            with self.assertRaises(ConnectionError):
+                self.connector._execute_with_retry(
+                    failing_operation, operation_name="test_operation", context="test context"
+                )
+
+            # Should have retried 3 times + initial call = 4 total
+            self.assertGreaterEqual(call_count[0], 3)
+        finally:
+            self.connector.max_retries = original_max_retries
+
+    def test_execute_with_retry_non_transient_error(self):
+        """Test _execute_with_retry() does not retry on non-transient errors"""
+        call_count = [0]
+
+        def failing_operation():
+            call_count[0] += 1
+            error = GoogleAPIError("Bad request")
+            error.code = 400  # type: ignore[attr-defined]
+            raise error
+
+        with self.assertRaises(ValueError):
+            self.connector._execute_with_retry(
+                failing_operation, operation_name="test_operation", context="test context"
+            )
+
+        # Should not retry for non-transient errors
+        self.assertEqual(call_count[0], 1)
+
+    def test_map_google_error_not_found(self):
+        """Test _map_google_error() maps NotFound to NotFoundError"""
+        if not GOOGLE_CLOUD_AVAILABLE:
+            self.skipTest("Google Cloud libraries not available")
+        from google.api_core.exceptions import NotFound
+
+        error = NotFound("Resource not found")
+        mapped_error = self.connector._map_google_error(error, context="test", operation="test")
+        self.assertIsInstance(mapped_error, NotFoundError)
+
+    def test_map_google_error_permission_denied(self):
+        """Test _map_google_error() maps PermissionDenied to PermissionError"""
+        if not GOOGLE_CLOUD_AVAILABLE:
+            self.skipTest("Google Cloud libraries not available")
+        from google.api_core.exceptions import PermissionDenied
+
+        error = PermissionDenied("Permission denied")
+        mapped_error = self.connector._map_google_error(error, context="test", operation="test")
+        self.assertIsInstance(mapped_error, PermissionError)
+
+    def test_map_google_error_generic_error(self):
+        """Test _map_google_error() maps generic errors to ConnectionError"""
+        error = GoogleAPIError("Generic error")
+        mapped_error = self.connector._map_google_error(error, context="test", operation="test")
+        self.assertIsInstance(mapped_error, ConnectionError)

@@ -1,0 +1,111 @@
+.governance-access-request-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.governance-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+.governance-list-header h1 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.governance-list-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-lg);
+}
+
+.governance-list-filters select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-base);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.governance-access-request-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.governance-access-request-table th,
+.governance-access-request-table td {
+  padding: var(--spacing-md);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.governance-access-request-table th {
+  background: var(--color-bg-primary);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.governance-access-request-table tr:hover {
+  background: var(--color-bg-primary);
+}
+
+.governance-access-request-table .row-link {
+  cursor: pointer;
+}
+
+.governance-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.governance-status-badge.PENDING {
+  background: var(--color-warning-light, #fff3e0);
+  color: var(--color-warning, #ed6c02);
+}
+
+.governance-status-badge.APPROVED {
+  background: var(--color-success-light, #e8f5e9);
+  color: var(--color-success, #2e7d32);
+}
+
+.governance-status-badge.REJECTED {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.governance-status-badge.EXPIRED,
+.governance-status-badge.REVOKED {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
+.governance-list-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--spacing-lg);
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+.governance-list-pagination .pagination-info {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}

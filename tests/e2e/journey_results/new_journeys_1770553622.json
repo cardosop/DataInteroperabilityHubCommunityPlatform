@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.026494741439819336
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-003-7462eabe",
+      "journey_name": "Configure ML-Based Anomaly Detection",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1770553622.7078612,
+      "end_time": 1770553622.734356,
+      "duration": 0.026494741439819336,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Anomaly Detection Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553622.718773,
+          "end_time": 1770553622.7187831,
+          "duration": 1.0251998901367188e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Model Training Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553622.7269528,
+          "end_time": 1770553622.7269628,
+          "duration": 1.0013580322265625e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Model Deployment Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553622.7343447,
+          "end_time": 1770553622.734354,
+          "duration": 9.298324584960938e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:27:02.734457"
+}

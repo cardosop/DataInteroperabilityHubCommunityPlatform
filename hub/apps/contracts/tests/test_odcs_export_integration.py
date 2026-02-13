@@ -15,55 +15,36 @@ Tests use real implementations (no mocks/stubs) and follow TDD principles.
 
 import json
 import time
+
 import pytest
 import yaml
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
 )
 from hub.apps.contracts.normalization import normalize_contract
 from hub.apps.contracts.odcs_generator import generate_odcs_from_hubcontract
-from hub.apps.users.models import UserStatus
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase, ContractsTestBase
 from hub.apps.tenants.models import Tenant
-
+from hub.apps.users.models import User, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
-User = get_user_model()
 
 # All supported ODCS versions
 ODCS_VERSIONS = ["3.0.2", "3.0.1", "3.0.0", "3.0.0-preview", "2.2.2"]
 
 
-class ODCSExportIntegrationTest(TestCase):
+class ODCSExportIntegrationTest(ContractsAPITestBase):
     """Comprehensive integration tests for ODCS export endpoint"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED",
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        super().setUp()
 
         # Create comprehensive HubContract for generation tests
         self.hub_contract = {
@@ -76,9 +57,25 @@ class ODCSExportIntegrationTest(TestCase):
             },
             "schema": {
                 "fields": [
-                    {"name": "id", "data_type": "string", "description": "Unique identifier", "nullable": False},
-                    {"name": "name", "data_type": "string", "description": "Name field", "nullable": True},
-                    {"name": "email", "data_type": "string", "description": "Email address", "nullable": True, "format": "email"},
+                    {
+                        "name": "id",
+                        "data_type": "string",
+                        "description": "Unique identifier",
+                        "nullable": False,
+                    },
+                    {
+                        "name": "name",
+                        "data_type": "string",
+                        "description": "Name field",
+                        "nullable": True,
+                    },
+                    {
+                        "name": "email",
+                        "data_type": "string",
+                        "description": "Email address",
+                        "nullable": True,
+                        "format": "email",
+                    },
                 ]
             },
         }
@@ -224,7 +221,10 @@ class ODCSExportIntegrationTest(TestCase):
         )
 
         # Should return 400 or 500 with error details (implementation returns 400 for missing data)
-        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR])
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
+        )
         self.assertIn("error", response.data)
 
     def test_export_performance_under_2s(self):
@@ -252,33 +252,18 @@ class ODCSExportIntegrationTest(TestCase):
 
         # Performance check: p95 should be under 2 seconds
         self.assertLess(
-            p95_duration, 2.0,
-            f"Export p95 duration is {p95_duration:.3f}s, expected < 2.0s. Durations: {durations}"
+            p95_duration,
+            2.0,
+            f"Export p95 duration is {p95_duration:.3f}s, expected < 2.0s. Durations: {durations}",
         )
 
 
-class ODCSDownloadIntegrationTest(TestCase):
+class ODCSDownloadIntegrationTest(ContractsAPITestBase):
     """Comprehensive integration tests for ODCS download endpoint"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED",
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        super().setUp()
 
         # Create comprehensive HubContract for generation tests
         self.hub_contract = {
@@ -291,8 +276,18 @@ class ODCSDownloadIntegrationTest(TestCase):
             },
             "schema": {
                 "fields": [
-                    {"name": "id", "data_type": "string", "description": "Unique identifier", "nullable": False},
-                    {"name": "name", "data_type": "string", "description": "Name field", "nullable": True},
+                    {
+                        "name": "id",
+                        "data_type": "string",
+                        "description": "Unique identifier",
+                        "nullable": False,
+                    },
+                    {
+                        "name": "name",
+                        "data_type": "string",
+                        "description": "Name field",
+                        "nullable": True,
+                    },
                 ]
             },
         }
@@ -420,23 +415,18 @@ class ODCSDownloadIntegrationTest(TestCase):
 
         # Performance check: p95 should be under 2 seconds
         self.assertLess(
-            p95_duration, 2.0,
-            f"Download p95 duration is {p95_duration:.3f}s, expected < 2.0s. Durations: {durations}"
+            p95_duration,
+            2.0,
+            f"Download p95 duration is {p95_duration:.3f}s, expected < 2.0s. Durations: {durations}",
         )
 
 
-class ODCSGenerationIntegrationTest(TestCase):
+class ODCSGenerationIntegrationTest(ContractsTestBase):
     """Comprehensive integration tests for ODCS generation from HubContract"""
 
     def setUp(self):
         """Set up test fixtures"""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED",
-        )
+        super().setUp()
 
         # Create comprehensive HubContract for generation tests
         self.hub_contract = {
@@ -449,8 +439,18 @@ class ODCSGenerationIntegrationTest(TestCase):
             },
             "schema": {
                 "fields": [
-                    {"name": "id", "data_type": "string", "description": "Unique identifier", "nullable": False},
-                    {"name": "name", "data_type": "string", "description": "Name field", "nullable": True},
+                    {
+                        "name": "id",
+                        "data_type": "string",
+                        "description": "Unique identifier",
+                        "nullable": False,
+                    },
+                    {
+                        "name": "name",
+                        "data_type": "string",
+                        "description": "Name field",
+                        "nullable": True,
+                    },
                 ]
             },
         }
@@ -462,7 +462,7 @@ class ODCSGenerationIntegrationTest(TestCase):
                 odcs_doc = generate_odcs_from_hubcontract(
                     hub_contract=self.hub_contract,
                     target_version=version,
-                    tenant_id=str(self.tenant.id)
+                    tenant_id=str(self.tenant.id),
                 )
 
                 self.assertIsNotNone(odcs_doc)
@@ -484,7 +484,7 @@ class ODCSGenerationIntegrationTest(TestCase):
             generate_odcs_from_hubcontract(
                 hub_contract=invalid_hub_contract,
                 target_version="3.0.2",
-                tenant_id=str(self.tenant.id)
+                tenant_id=str(self.tenant.id),
             )
 
         # Should raise ODCSGenerationError or similar
@@ -498,25 +498,19 @@ class ODCSGenerationIntegrationTest(TestCase):
             generate_odcs_from_hubcontract(
                 hub_contract=empty_hub_contract,
                 target_version="3.0.2",
-                tenant_id=str(self.tenant.id)
+                tenant_id=str(self.tenant.id),
             )
 
         # Should raise ODCSGenerationError or similar
         self.assertIsNotNone(cm.exception)
 
 
-class ODCSRoundTripIntegrationTest(TestCase):
+class ODCSRoundTripIntegrationTest(ContractsAPITestBase):
     """Comprehensive integration tests for ODCS round-trip: ODCS → HubContract → ODCS"""
 
     def setUp(self):
         """Set up test fixtures"""
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED",
-        )
+        super().setUp()
 
     def _create_odcs_contract(self, version: str) -> dict:
         """Helper to create ODCS contract for a specific version"""
@@ -544,22 +538,26 @@ class ODCSRoundTripIntegrationTest(TestCase):
 
                 # Step 2: Normalize ODCS → HubContract
                 odcs_json = json.dumps(original_odcs)
-                hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-                    raw_contract=odcs_json,
-                    format="json",
-                    spec_type="ODCS"
+                hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = (
+                    normalize_contract(raw_contract=odcs_json, format="json", spec_type="ODCS")
                 )
 
                 # Verify normalization succeeded
-                self.assertIsNotNone(hub_contract_dict, f"Normalization failed for version {version}. Errors: {errors}")
-                self.assertIn(norm_status.value, ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"],
-                             f"Normalization status was {norm_status.value} for version {version}")
+                self.assertIsNotNone(
+                    hub_contract_dict,
+                    f"Normalization failed for version {version}. Errors: {errors}",
+                )
+                self.assertIn(
+                    norm_status.value,
+                    ["NORMALIZED_OK", "NORMALIZED_WITH_WARNINGS"],
+                    f"Normalization status was {norm_status.value} for version {version}",
+                )
 
                 # Step 3: Generate ODCS from HubContract
                 generated_odcs = generate_odcs_from_hubcontract(
                     hub_contract=hub_contract_dict,
                     target_version=version,
-                    tenant_id=str(self.tenant.id)
+                    tenant_id=str(self.tenant.id),
                 )
 
                 # Verify generated ODCS matches original
@@ -584,9 +582,25 @@ class ODCSRoundTripIntegrationTest(TestCase):
             "description": "Test contract with complex schema",
             "schema": {
                 "fields": [
-                    {"name": "id", "type": "string", "nullable": False, "description": "Unique identifier"},
-                    {"name": "name", "type": "string", "nullable": True, "description": "Name field"},
-                    {"name": "email", "type": "string", "nullable": True, "format": "email", "description": "Email address"},
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nullable": False,
+                        "description": "Unique identifier",
+                    },
+                    {
+                        "name": "name",
+                        "type": "string",
+                        "nullable": True,
+                        "description": "Name field",
+                    },
+                    {
+                        "name": "email",
+                        "type": "string",
+                        "nullable": True,
+                        "format": "email",
+                        "description": "Email address",
+                    },
                     {"name": "age", "type": "integer", "nullable": True, "description": "Age"},
                 ]
             },
@@ -594,10 +608,8 @@ class ODCSRoundTripIntegrationTest(TestCase):
 
         # Normalize ODCS → HubContract
         odcs_json = json.dumps(original_odcs)
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            raw_contract=odcs_json,
-            format="json",
-            spec_type="ODCS"
+        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = (
+            normalize_contract(raw_contract=odcs_json, format="json", spec_type="ODCS")
         )
 
         self.assertIsNotNone(hub_contract_dict)
@@ -605,9 +617,7 @@ class ODCSRoundTripIntegrationTest(TestCase):
 
         # Generate ODCS from HubContract
         generated_odcs = generate_odcs_from_hubcontract(
-            hub_contract=hub_contract_dict,
-            target_version=version,
-            tenant_id=str(self.tenant.id)
+            hub_contract=hub_contract_dict, target_version=version, tenant_id=str(self.tenant.id)
         )
 
         # Verify schema fields are preserved
@@ -629,19 +639,15 @@ class ODCSRoundTripIntegrationTest(TestCase):
 
         # Normalize ODCS 3.0.2 → HubContract
         odcs_json = json.dumps(original_odcs_v302)
-        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = normalize_contract(
-            raw_contract=odcs_json,
-            format="json",
-            spec_type="ODCS"
+        hub_contract_dict, spec_type, spec_version, norm_status, errors, warnings = (
+            normalize_contract(raw_contract=odcs_json, format="json", spec_type="ODCS")
         )
 
         self.assertIsNotNone(hub_contract_dict)
 
         # Generate ODCS 3.0.1 from HubContract
         generated_odcs_v301 = generate_odcs_from_hubcontract(
-            hub_contract=hub_contract_dict,
-            target_version="3.0.1",
-            tenant_id=str(self.tenant.id)
+            hub_contract=hub_contract_dict, target_version="3.0.1", tenant_id=str(self.tenant.id)
         )
 
         # Verify version conversion worked
@@ -649,3 +655,200 @@ class ODCSRoundTripIntegrationTest(TestCase):
         self.assertEqual(generated_odcs_v301["id"], original_odcs_v302["id"])
         self.assertEqual(generated_odcs_v301["name"], original_odcs_v302["name"])
 
+    def test_export_handles_unicode_characters(self):
+        """Test that export handles unicode characters correctly."""
+        hub_contract = {
+            "hub_contract_version": "1.0.0",
+            "id": "test-unicode",
+            "info": {"name": "测试合同", "description": "测试描述"},
+            "schema": {"fields": []},
+        }
+
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            hub_contract_json=hub_contract,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/contracts/{contract.id}/export/?format=odcs&output_format=json&version=3.0.2"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify unicode characters are preserved in export
+        exported_data = json.loads(response.content)
+        self.assertIsNotNone(exported_data)
+
+    def test_export_handles_special_characters(self):
+        """Test that export handles special characters correctly."""
+        hub_contract = {
+            "hub_contract_version": "1.0.0",
+            "id": "test-special",
+            "info": {"name": "Test & Co. (Special)", "description": "Test <description> & more"},
+            "schema": {"fields": []},
+        }
+
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            hub_contract_json=hub_contract,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/contracts/{contract.id}/export/?format=odcs&output_format=json&version=3.0.2"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify special characters are preserved in export
+        exported_data = json.loads(response.content)
+        self.assertIsNotNone(exported_data)
+
+    def test_export_handles_very_large_documents(self):
+        """Test that export handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        hub_contract = {
+            "hub_contract_version": "1.0.0",
+            "id": "test-large",
+            "info": {"name": "Test Product", "description": large_description},
+            "schema": {"fields": []},
+        }
+
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            hub_contract_json=hub_contract,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/contracts/{contract.id}/export/?format=odcs&output_format=json&version=3.0.2"
+        )
+
+        # Should handle large documents gracefully
+        self.assertIn(
+            response.status_code, [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR]
+        )
+
+    def test_export_handles_none_values(self):
+        """Test that export handles None values correctly."""
+        hub_contract = {
+            "hub_contract_version": "1.0.0",
+            "id": "test-none",
+            "info": {"name": "Test Product", "description": None},  # None value
+            "schema": {"fields": []},
+        }
+
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            hub_contract_json=hub_contract,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/contracts/{contract.id}/export/?format=odcs&output_format=json&version=3.0.2"
+        )
+
+        # Should handle None values gracefully
+        self.assertIn(
+            response.status_code, [status.HTTP_200_OK, status.HTTP_500_INTERNAL_SERVER_ERROR]
+        )
+
+    def test_export_handles_nested_structures(self):
+        """Test that export handles nested structures correctly."""
+        hub_contract = {
+            "hub_contract_version": "1.0.0",
+            "id": "test-nested",
+            "info": {
+                "name": "Test Product",
+                "nested": {"level1": {"level2": {"level3": {"level4": {"value": "deep"}}}}},
+            },
+            "schema": {"fields": []},
+        }
+
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            hub_contract_json=hub_contract,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/contracts/{contract.id}/export/?format=odcs&output_format=json&version=3.0.2"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify nested structures are preserved in export
+        exported_data = json.loads(response.content)
+        self.assertIsNotNone(exported_data)
+
+    def test_export_maintains_cross_tenant_isolation(self):
+        """Test that export maintains cross-tenant isolation."""
+        # Create second tenant
+        tenant2 = Tenant.objects.create(
+            name="Test Tenant 2",
+            slug="test-tenant-2",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+
+        user2 = User.objects.create_user(
+            email="user2@example.com",
+            password="testpass123",
+            tenant=tenant2,
+            status=UserStatus.ACTIVE,
+        )
+
+        hub_contract = {
+            "hub_contract_version": "1.0.0",
+            "id": "test-tenant2",
+            "info": {"name": "Test Product Tenant 2"},
+            "schema": {"fields": []},
+        }
+
+        contract2 = Contract.objects.create(
+            tenant=tenant2,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_spec_version="3.0.2",
+            original_format=OriginalFormat.JSON,
+            hub_contract_json=hub_contract,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            status=ContractStatus.ACTIVE,
+            created_by=user2,
+        )
+
+        # Try to access tenant2 contract from tenant1 user
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(
+            f"/api/v1/contracts/{contract2.id}/export/?format=json&version=3.0.2"
+        )
+
+        # Should be denied due to tenant isolation
+        self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])

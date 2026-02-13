@@ -7,9 +7,11 @@ Tests the ODCS 3.0.1-specific normalizer implementation including:
 - Graceful degradation for missing 3.0.2 features
 - Error handling
 """
-import pytest
+
+from typing import Any, Dict
 from unittest import TestCase
-from typing import Dict, Any
+
+import pytest
 
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
 from hub.apps.contracts.normalization import NormalizationResult, get_normalizer
@@ -35,19 +37,25 @@ class ODCSNormalizerV3_0_1SupportsTest(TestCase):
     """Test the supports() and _supports_version() methods."""
 
     def test_supports_version_3_0_1(self):
-        """Test that _supports_version() returns True for version 3.0.1."""
+        """Test that supports() returns True for version 3.0.1 through public API."""
         normalizer = ODCSNormalizerV3_0_1()
-        assert normalizer._supports_version("3.0.1") is True
+        contract_data = {"apiVersion": "odcs.io/v3.0.1", "kind": "DataContract"}
+        # Test through public API - supports() internally calls _supports_version()
+        assert normalizer.supports(OriginalSpecType.ODCS, "3.0.1", contract_data) is True
 
     def test_supports_version_does_not_support_3_0_2(self):
-        """Test that _supports_version() returns False for version 3.0.2."""
+        """Test that supports() returns False for version 3.0.2 through public API."""
         normalizer = ODCSNormalizerV3_0_1()
-        assert normalizer._supports_version("3.0.2") is False
+        contract_data = {"apiVersion": "odcs.io/v3.0.2", "kind": "DataContract"}
+        # Test through public API - supports() internally calls _supports_version()
+        assert normalizer.supports(OriginalSpecType.ODCS, "3.0.2", contract_data) is False
 
     def test_supports_version_does_not_support_3_0_0(self):
-        """Test that _supports_version() returns False for version 3.0.0."""
+        """Test that supports() returns False for version 3.0.0 through public API."""
         normalizer = ODCSNormalizerV3_0_1()
-        assert normalizer._supports_version("3.0.0") is False
+        contract_data = {"apiVersion": "odcs.io/v3.0.0", "kind": "DataContract"}
+        # Test through public API - supports() internally calls _supports_version()
+        assert normalizer.supports(OriginalSpecType.ODCS, "3.0.0", contract_data) is False
 
     def test_supports_odcs_spec_type_3_0_1(self):
         """Test that supports() returns True for ODCS spec type with version 3.0.1."""
@@ -79,23 +87,19 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
             "id": "test-1",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
 
         # Check that result has the expected attributes
-        assert hasattr(result, 'hub_contract')
-        assert hasattr(result, 'status')
-        assert hasattr(result, 'errors')
-        assert hasattr(result, 'warnings')
-        assert hasattr(result, 'spec_type')
-        assert hasattr(result, 'spec_version')
-        assert hasattr(result, 'coverage')
+        assert hasattr(result, "hub_contract")
+        assert hasattr(result, "status")
+        assert hasattr(result, "errors")
+        assert hasattr(result, "warnings")
+        assert hasattr(result, "spec_type")
+        assert hasattr(result, "spec_version")
+        assert hasattr(result, "coverage")
 
         assert result.spec_type == OriginalSpecType.ODCS
         assert result.spec_version == "3.0.1"
@@ -111,11 +115,7 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
             "id": "test-1",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = normalizer.normalize(contract_data, spec_version=None)
@@ -129,11 +129,7 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
             "version": "3.0.1",
             "id": "test-1",
             "name": "Test Contract",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         result = normalizer.normalize(contract_data, spec_version=None)
@@ -148,14 +144,17 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
             "kind": "DataContract",
             "id": "test-1",
             "name": "Test Contract",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.2")
 
         assert result.status == NormalizationStatus.NORMALIZATION_FAILED
         assert len(result.errors) > 0
-        assert "does not support" in result.errors[0].lower() or "not support" in result.errors[0].lower()
+        assert (
+            "does not support" in result.errors[0].lower()
+            or "not support" in result.errors[0].lower()
+        )
 
     def test_normalize_validates_contract_data_is_dict(self):
         """Test that normalize() validates contract_data is a dictionary."""
@@ -175,7 +174,7 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
             "kind": "DataContract",
             "id": "test-1",
             # Missing 'name' field
-            "schema": {}  # Missing 'fields' array
+            "schema": {},  # Missing 'fields' array
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
@@ -198,18 +197,18 @@ class ODCSNormalizerV3_0_1NormalizeTest(TestCase):
             "schema": {
                 "fields": [
                     {"name": "id", "type": "string", "nullable": False},
-                    {"name": "value", "type": "integer", "nullable": True}
+                    {"name": "value", "type": "integer", "nullable": True},
                 ]
             },
-            "info": {
-                "owners": ["owner1@example.com"],
-                "tags": ["test", "3.0.1"]
-            }
+            "info": {"owners": ["owner1@example.com"], "tags": ["test", "3.0.1"]},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
 
-        assert result.status in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+        assert result.status in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]
         assert result.hub_contract is not None
         assert result.hub_contract["id"] == "test-contract-3-0-1"
         assert result.hub_contract["info"]["name"] == "Test Contract 3.0.1"
@@ -230,18 +229,17 @@ class ODCSNormalizerV3_0_1GracefulDegradationTest(TestCase):
             "id": "test-1",
             "name": "Test Contract",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
             # Missing optional fields like quality, lifecycle, marketplace, etc.
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
 
         # Should succeed even without optional fields
-        assert result.status in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+        assert result.status in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]
         assert result.hub_contract is not None
         assert result.hub_contract["id"] == "test-1"
         assert result.hub_contract["info"]["name"] == "Test Contract"
@@ -273,34 +271,28 @@ class ODCSNormalizerV3_0_1GracefulDegradationTest(TestCase):
                 "fields": [
                     {"name": "id", "type": "string", "nullable": False},
                     {"name": "timestamp", "type": "datetime", "nullable": False},
-                    {"name": "data", "type": "string", "nullable": True}
+                    {"name": "data", "type": "string", "nullable": True},
                 ]
             },
             "info": {
                 "owners": ["owner1@example.com", "owner2@example.com"],
-                "tags": ["production", "critical"]
+                "tags": ["production", "critical"],
             },
-            "quality": {
-                "default_profile_key": "profile1",
-                "rules": []
-            },
+            "quality": {"default_profile_key": "profile1", "rules": []},
             "privacy_compliance": {
                 "contains_personal_data": True,
-                "personal_data_categories": ["PII"]
+                "personal_data_categories": ["PII"],
             },
-            "lifecycle": {
-                "data_source": "database",
-                "refresh_cadence": "daily"
-            },
-            "marketplace": {
-                "license_summary": "MIT",
-                "intended_use": "Analytics"
-            }
+            "lifecycle": {"data_source": "database", "refresh_cadence": "daily"},
+            "marketplace": {"license_summary": "MIT", "intended_use": "Analytics"},
         }
 
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
 
-        assert result.status in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+        assert result.status in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]
         assert result.hub_contract is not None
         assert result.hub_contract["id"] == "complex-contract-3-0-1"
         assert "quality" in result.hub_contract
@@ -325,7 +317,7 @@ class ODCSNormalizerV3_0_1RegistryTest(TestCase):
             "kind": "DataContract",
             "id": "test",
             "name": "Test",
-            "schema": {"fields": [{"name": "id", "type": "string"}]}
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.1", contract_data)
@@ -341,11 +333,7 @@ class ODCSNormalizerV3_0_1RegistryTest(TestCase):
             "id": "test-registry",
             "name": "Test Registry",
             "version": "1.0.0",
-            "schema": {
-                "fields": [
-                    {"name": "id", "type": "string", "nullable": False}
-                ]
-            }
+            "schema": {"fields": [{"name": "id", "type": "string", "nullable": False}]},
         }
 
         normalizer = get_normalizer(OriginalSpecType.ODCS, "3.0.1", contract_data)
@@ -353,7 +341,113 @@ class ODCSNormalizerV3_0_1RegistryTest(TestCase):
 
         result = normalizer.normalize(contract_data, spec_version="3.0.1")
 
-        assert result.status in [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS]
+        assert result.status in [
+            NormalizationStatus.NORMALIZED_OK,
+            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
+        ]
         assert result.hub_contract is not None
         assert result.spec_version == "3.0.1"
 
+    def test_normalization_handles_unicode_characters(self):
+        """Test that normalization handles unicode characters correctly."""
+        normalizer = ODCSNormalizerV3_0_1()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.1",
+            "kind": "DataContract",
+            "id": "test-unicode",
+            "name": "测试合同",
+            "version": "1.0.0",
+            "description": "测试描述",
+            "schema": {"fields": [{"name": "字段名称", "type": "string"}]},
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.1")
+
+        # Should handle unicode characters
+        assert result.hub_contract is not None
+        if result.hub_contract and "info" in result.hub_contract:
+            assert result.hub_contract["info"] is not None
+
+    def test_normalization_handles_special_characters(self):
+        """Test that normalization handles special characters correctly."""
+        normalizer = ODCSNormalizerV3_0_1()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.1",
+            "kind": "DataContract",
+            "id": "test-special",
+            "name": "Test & Co. (Special)",
+            "version": "1.0.0",
+            "description": "Test <description> & more",
+            "schema": {"fields": [{"name": "field-name", "type": "string"}]},
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.1")
+
+        # Should handle special characters
+        assert result.hub_contract is not None
+        if result.hub_contract and "info" in result.hub_contract:
+            assert result.hub_contract["info"] is not None
+
+    def test_normalization_handles_very_large_documents(self):
+        """Test that normalization handles very large documents correctly."""
+        normalizer = ODCSNormalizerV3_0_1()
+        large_description = "A" * 100000  # 100KB string
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.1",
+            "kind": "DataContract",
+            "id": "test-large",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": large_description,
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.1")
+
+        # Should handle very large documents
+        assert result.hub_contract is not None
+
+    def test_normalization_handles_none_values(self):
+        """Test that normalization handles None values correctly."""
+        normalizer = ODCSNormalizerV3_0_1()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.1",
+            "kind": "DataContract",
+            "id": "test-none",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "description": None,  # None value
+            "schema": {"fields": [{"name": "id", "type": "string"}]},
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.1")
+
+        # Should handle None values gracefully
+        assert result.hub_contract is not None
+
+    def test_normalization_handles_nested_structures(self):
+        """Test that normalization handles nested structures correctly."""
+        normalizer = ODCSNormalizerV3_0_1()
+        contract_data = {
+            "apiVersion": "odcs.io/v3.0.1",
+            "kind": "DataContract",
+            "id": "test-nested",
+            "name": "Test Product",
+            "version": "1.0.0",
+            "schema": {
+                "fields": [
+                    {
+                        "name": "id",
+                        "type": "string",
+                        "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                    }
+                ]
+            },
+        }
+
+        result = normalizer.normalize(contract_data, spec_version="3.0.1")
+
+        # Should handle nested structures
+        assert result.hub_contract is not None
+        if result.hub_contract and "schema" in result.hub_contract:
+            assert result.hub_contract["schema"] is not None

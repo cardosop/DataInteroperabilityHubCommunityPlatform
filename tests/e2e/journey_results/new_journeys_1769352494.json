@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.377274513244629
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-005-136f958f",
+      "journey_name": "Review Auto-Classification Results",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1769352492.7010098,
+      "end_time": 1769352494.0782843,
+      "duration": 1.377274513244629,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352492.7010164,
+          "end_time": 1769352494.074586,
+          "duration": 1.3735694885253906,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Note: Auto-Classification Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352494.0782754,
+          "end_time": 1769352494.0782819,
+          "duration": 6.4373016357421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "39ad600e-4a5b-4616-bac4-ba925f59bd43"
+      }
+    }
+  ],
+  "exported_at": "2026-01-25T14:48:14.078357"
+}

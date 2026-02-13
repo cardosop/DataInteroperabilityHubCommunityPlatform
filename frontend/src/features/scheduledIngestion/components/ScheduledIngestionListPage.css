@@ -1,0 +1,111 @@
+.scheduled-ingestion-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.scheduled-ingestion-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+.scheduled-ingestion-list-header h1 {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.scheduled-ingestion-list-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-lg);
+}
+
+.scheduled-ingestion-list-filters label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.scheduled-ingestion-list-filters select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-base);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.scheduled-ingestion-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.scheduled-ingestion-table th,
+.scheduled-ingestion-table td {
+  padding: var(--spacing-md);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.scheduled-ingestion-table th {
+  background: var(--color-bg-primary);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.scheduled-ingestion-table tr:hover {
+  background: var(--color-bg-primary);
+}
+
+.scheduled-ingestion-table .row-link {
+  cursor: pointer;
+}
+
+.scheduled-ingestion-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.scheduled-ingestion-status-badge.active {
+  background: var(--color-success-light, #e8f5e9);
+  color: var(--color-success, #2e7d32);
+}
+
+.scheduled-ingestion-status-badge.paused {
+  background: var(--color-warning-light, #fff3e0);
+  color: var(--color-warning, #ed6c02);
+}
+
+.scheduled-ingestion-status-badge.error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.scheduled-ingestion-list-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--spacing-lg);
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+.scheduled-ingestion-list-pagination .pagination-info {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}

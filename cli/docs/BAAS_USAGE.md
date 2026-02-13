@@ -713,4 +713,6 @@ All BaaS errors follow a consistent format:
 - **[CLI README](../README.md)** - Complete CLI documentation
 - **[ODPS Usage Guide](ODPS_USAGE.md)** - ODPS contract management
 - **[Marketplace Usage Guide](MARKETPLACE_USAGE.md)** - Marketplace integration
+- **[ODH Usage Guide](ODH_USAGE.md)** - ML/ODH commands
+- **[Model Serving Usage Guide](MODEL_SERVING_USAGE.md)** - Model serving and A/B testing
 - **[API Reference](../../docs/API_REFERENCE.md)** - Complete API documentation

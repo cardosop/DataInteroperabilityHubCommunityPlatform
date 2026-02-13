@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError, NotFound
 from django.db import transaction
 from rest_framework.filters import OrderingFilter, SearchFilter
 
+from hub.apps.tenants.request_tenant import get_request_tenant_id
 from .models import Job, JobStatus, JobType
 from .serializers import JobSerializer, JobCreateSerializer, JobCancelSerializer
 from .utils import create_job, get_queue_for_job_type
@@ -35,42 +36,19 @@ class JobViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_queryset(self):
-        """Filter queryset based on user permissions"""
+        """Filter queryset based on user permissions (Phase 16: central helper)."""
         user = self.request.user
-
-        # Platform admins can see all jobs
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             return Job.objects.all()
-
-        # Get tenant from request (set by middleware/authentication) or user
-        # Priority: request.tenant_id > request.tenant > user.tenant_id > user.tenant
-        tenant_id = None
-        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-            tenant_id = self.request.tenant_id
-            if isinstance(tenant_id, str):
-                import uuid
-                try:
-                    tenant_id = uuid.UUID(tenant_id)
-                except (ValueError, TypeError):
-                    tenant_id = None
-        if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
-            tenant_id = self.request.tenant.id
-        if not tenant_id and hasattr(user, "tenant_id") and user.tenant_id:
-            tenant_id = user.tenant_id
-        if not tenant_id and hasattr(user, "tenant") and user.tenant:
-            tenant_id = user.tenant.id
-
-        # Regular users can only see jobs in their tenant
-        if tenant_id:
-            if isinstance(tenant_id, str):
-                import uuid
-                try:
-                    tenant_id = uuid.UUID(tenant_id)
-                except (ValueError, TypeError):
-                    return Job.objects.none()
-            return Job.objects.filter(tenant_id=tenant_id)
-
-        return Job.objects.none()
+        tenant_id_str = get_request_tenant_id(self.request)
+        if not tenant_id_str:
+            return Job.objects.none()
+        import uuid
+        try:
+            tenant_id = uuid.UUID(tenant_id_str)
+        except (ValueError, TypeError):
+            return Job.objects.none()
+        return Job.objects.filter(tenant_id=tenant_id)
 
     @transaction.atomic
     def create(self, request):

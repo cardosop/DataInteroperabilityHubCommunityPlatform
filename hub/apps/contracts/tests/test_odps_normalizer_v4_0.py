@@ -7,10 +7,11 @@ Tests verify:
 3. Graceful degradation for missing ODPS 4.1 features (productStrategy, paymentGateways)
 4. All common normalization features working correctly
 """
+
 from django.test import TestCase
 
-from hub.apps.contracts.normalization.odps_normalizer_v4_0 import ODPSNormalizerV4_0
 from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
+from hub.apps.contracts.normalization.odps_normalizer_v4_0 import ODPSNormalizerV4_0
 
 
 class ODPSNormalizerV4_0SupportsTest(TestCase):
@@ -69,7 +70,7 @@ class ODPSNormalizerV4_0NormalizeTest(TestCase):
                         "description": "A test product for ODPS 4.0",
                         "productVersion": "1.0.0",
                         "tags": ["test", "odps"],
-                        "categories": ["data-product"]
+                        "categories": ["data-product"],
                     }
                 },
                 "dataQuality": {
@@ -79,59 +80,37 @@ class ODPSNormalizerV4_0NormalizeTest(TestCase):
                             "completeness": {
                                 "objectives": {"min": 0.95},
                                 "unit": "percentage",
-                                "threshold": 0.90
+                                "threshold": 0.90,
                             }
-                        }
+                        },
                     }
                 },
-                "SLA": {
-                    "declarative": {
-                        "dimensions": {
-                            "availability": {
-                                "target": 99.9
-                            }
-                        }
-                    }
-                },
+                "SLA": {"declarative": {"dimensions": {"availability": {"target": 99.9}}}},
                 "marketplace": {
-                    "pricingPlans": [
-                        {
-                            "name": "Basic",
-                            "price": 10.00
-                        }
-                    ],
-                    "accessMethods": {
-                        "api": {
-                            "endpoint": "https://api.example.com"
-                        }
-                    }
+                    "pricingPlans": [{"name": "Basic", "price": 10.00}],
+                    "accessMethods": {"api": {"endpoint": "https://api.example.com"}},
                     # Note: paymentGateways is NOT present (4.1+ feature)
-                }
+                },
             },
-            "dataHolder": {
-                "en": {
-                    "legalName": "Test Company",
-                    "email": "test@example.com"
-                }
-            },
+            "dataHolder": {"en": {"legalName": "Test Company", "email": "test@example.com"}},
             "license": {
                 "en": {
                     "definition": "MIT License",
                     "restrictions": ["No commercial use"],
-                    "rights": ["Read", "Write"]
+                    "rights": ["Read", "Write"],
                 }
-            }
+            },
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="4.0")
 
         # Check result structure
-        self.assertTrue(hasattr(result, 'hub_contract'))
-        self.assertTrue(hasattr(result, 'status'))
-        self.assertTrue(hasattr(result, 'errors'))
-        self.assertTrue(hasattr(result, 'warnings'))
-        self.assertTrue(hasattr(result, 'spec_type'))
-        self.assertTrue(hasattr(result, 'spec_version'))
+        self.assertTrue(hasattr(result, "hub_contract"))
+        self.assertTrue(hasattr(result, "status"))
+        self.assertTrue(hasattr(result, "errors"))
+        self.assertTrue(hasattr(result, "warnings"))
+        self.assertTrue(hasattr(result, "spec_type"))
+        self.assertTrue(hasattr(result, "spec_version"))
 
         # Check spec type and version
         self.assertEqual(result.spec_type, OriginalSpecType.ODPS)
@@ -191,14 +170,7 @@ class ODPSNormalizerV4_0NormalizeTest(TestCase):
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.1",
             "version": "4.1",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "productID": "test-product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"name": "Test Product", "productID": "test-product"}}},
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="4.1")
@@ -214,27 +186,25 @@ class ODPSNormalizerV4_0NormalizeTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v4.0",
             "version": "4.0",
             "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "productID": "test-product"
-                    }
-                },
+                "details": {"en": {"name": "Test Product", "productID": "test-product"}},
                 "marketplace": {
                     "pricingPlans": [],
-                    "accessMethods": {}
+                    "accessMethods": {},
                     # paymentGateways is missing (expected for 4.0)
-                }
-            }
+                },
+            },
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="4.0")
 
         # Should succeed without errors
-        self.assertTrue(hasattr(result, 'hub_contract'))
+        self.assertTrue(hasattr(result, "hub_contract"))
         if result.hub_contract:
             # Marketplace should be normalized without paymentGateways
-            if "marketplace" in result.hub_contract and "x_odps" in result.hub_contract["marketplace"]:
+            if (
+                "marketplace" in result.hub_contract
+                and "x_odps" in result.hub_contract["marketplace"]
+            ):
                 self.assertNotIn("payment_gateways", result.hub_contract["marketplace"]["x_odps"])
 
     def test_normalize_gracefully_handles_product_strategy(self):
@@ -242,49 +212,38 @@ class ODPSNormalizerV4_0NormalizeTest(TestCase):
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.0",
             "version": "4.0",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "productID": "test-product"
-                    }
-                }
-            },
+            "product": {"details": {"en": {"name": "Test Product", "productID": "test-product"}}},
             # productStrategy is present but should be ignored (4.1+ feature)
             "productStrategy": {
                 "objectives": ["Objective 1"],
                 "strategicAlignment": ["Alignment 1"],
-                "productKPIs": ["KPI 1"]
-            }
+                "productKPIs": ["KPI 1"],
+            },
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="4.0")
 
         # Should succeed without errors
-        self.assertTrue(hasattr(result, 'hub_contract'))
+        self.assertTrue(hasattr(result, "hub_contract"))
         if result.hub_contract:
             # productStrategy should NOT be normalized (4.1+ feature)
-            if "extensions" in result.hub_contract and "x_odps" in result.hub_contract["extensions"]:
+            if (
+                "extensions" in result.hub_contract
+                and "x_odps" in result.hub_contract["extensions"]
+            ):
                 self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
 
     def test_normalize_detects_version_if_not_provided(self):
         """Test that normalize() detects ODPS 4.0 version if not provided"""
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.0",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "productID": "test-product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"name": "Test Product", "productID": "test-product"}}},
         }
 
         result = self.normalizer.normalize(contract_data)
 
         # Should detect version 4.0
-        self.assertTrue(hasattr(result, 'spec_version'))
+        self.assertTrue(hasattr(result, "spec_version"))
         self.assertEqual(result.spec_version, "4.0")
 
     def test_normalize_handles_minimal_contract(self):
@@ -293,21 +252,16 @@ class ODPSNormalizerV4_0NormalizeTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v4.0",
             "version": "4.0",
             "product": {
-                "details": {
-                    "en": {
-                        "name": "Minimal Product",
-                        "productID": "minimal-product"
-                    }
-                }
-            }
+                "details": {"en": {"name": "Minimal Product", "productID": "minimal-product"}}
+            },
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="4.0")
 
         # Should return a result (may fail due to missing schema fields, but structure should be correct)
-        self.assertTrue(hasattr(result, 'hub_contract'))
-        self.assertTrue(hasattr(result, 'status'))
-        self.assertTrue(hasattr(result, 'spec_version'))
+        self.assertTrue(hasattr(result, "hub_contract"))
+        self.assertTrue(hasattr(result, "status"))
+        self.assertTrue(hasattr(result, "spec_version"))
         self.assertEqual(result.spec_version, "4.0")
 
         if result.hub_contract:
@@ -339,18 +293,13 @@ class ODPSNormalizerV4_0GracefulDegradationTest(TestCase):
             "schema": "https://opendataproducts.org/schema/v4.0",
             "version": "4.0",
             "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "productID": "test-product"
-                    }
-                },
+                "details": {"en": {"name": "Test Product", "productID": "test-product"}},
                 "marketplace": {
                     "pricingPlans": [],
-                    "accessMethods": {}
+                    "accessMethods": {},
                     # paymentGateways is missing (expected for 4.0)
-                }
-            }
+                },
+            },
         }
 
         result = self.normalizer.normalize(contract_data, spec_version="4.0")
@@ -371,14 +320,7 @@ class ODPSNormalizerV4_0GracefulDegradationTest(TestCase):
         contract_data = {
             "schema": "https://opendataproducts.org/schema/v4.0",
             "version": "4.0",
-            "product": {
-                "details": {
-                    "en": {
-                        "name": "Test Product",
-                        "productID": "test-product"
-                    }
-                }
-            }
+            "product": {"details": {"en": {"name": "Test Product", "productID": "test-product"}}},
             # productStrategy is missing (expected for 4.0)
         }
 
@@ -395,3 +337,121 @@ class ODPSNormalizerV4_0GracefulDegradationTest(TestCase):
             if "x_odps" in result.hub_contract["extensions"]:
                 self.assertNotIn("product_strategy", result.hub_contract["extensions"]["x_odps"])
 
+    def test_normalize_handles_unicode_characters(self):
+        """Test that normalization handles unicode characters correctly."""
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v4.0",
+            "version": "4.0",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-unicode",
+                        "name": "测试产品",
+                        "description": "测试描述",
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "字段名称", "type": "string"}]},
+            },
+        }
+
+        result = self.normalizer.normalize(contract_data, spec_version="4.0")
+
+        # Should handle unicode characters
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "info" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["info"])
+
+    def test_normalize_handles_special_characters(self):
+        """Test that normalization handles special characters correctly."""
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v4.0",
+            "version": "4.0",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-special",
+                        "name": "Test & Co. (Special)",
+                        "description": "Test <description> & more",
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "field-name", "type": "string"}]},
+            },
+        }
+
+        result = self.normalizer.normalize(contract_data, spec_version="4.0")
+
+        # Should handle special characters
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "info" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["info"])
+
+    def test_normalize_handles_very_large_documents(self):
+        """Test that normalization handles very large documents correctly."""
+        large_description = "A" * 100000  # 100KB string
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v4.0",
+            "version": "4.0",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-large",
+                        "name": "Test Product",
+                        "description": large_description,
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
+        }
+
+        result = self.normalizer.normalize(contract_data, spec_version="4.0")
+
+        # Should handle very large documents
+        self.assertIsNotNone(result.hub_contract)
+
+    def test_normalize_handles_none_values(self):
+        """Test that normalization handles None values correctly."""
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v4.0",
+            "version": "4.0",
+            "product": {
+                "details": {
+                    "en": {
+                        "productID": "test-none",
+                        "name": "Test Product",
+                        "description": None,  # None value
+                    }
+                },
+                "dataSchema": {"fields": [{"name": "id", "type": "string"}]},
+            },
+        }
+
+        result = self.normalizer.normalize(contract_data, spec_version="4.0")
+
+        # Should handle None values gracefully
+        self.assertIsNotNone(result.hub_contract)
+
+    def test_normalize_handles_nested_structures(self):
+        """Test that normalization handles nested structures correctly."""
+        contract_data = {
+            "schema": "https://opendataproducts.org/schema/v4.0",
+            "version": "4.0",
+            "product": {
+                "details": {"en": {"productID": "test-nested", "name": "Test Product"}},
+                "dataSchema": {
+                    "fields": [
+                        {
+                            "name": "id",
+                            "type": "string",
+                            "nested": {"level1": {"level2": {"level3": {"value": "deep"}}}},
+                        }
+                    ]
+                },
+            },
+        }
+
+        result = self.normalizer.normalize(contract_data, spec_version="4.0")
+
+        # Should handle nested structures
+        self.assertIsNotNone(result.hub_contract)
+        if result.hub_contract and "schema" in result.hub_contract:
+            self.assertIsNotNone(result.hub_contract["schema"])

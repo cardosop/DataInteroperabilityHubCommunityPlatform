@@ -1,13 +1,13 @@
 # User Personas
 
-**Last Updated**: 2025-01-10
-**Version**: 2.1.0
+**Last Updated**: 2026-01-28
+**Version**: 2.2.0
 
 ---
 
 ## Overview
 
-The Data Interoperability Hub serves **12 personas** (8 original + 4 new), each with distinct goals, responsibilities, and technical capabilities. This document provides comprehensive profiles for all personas, their role mappings, and how they interact with the platform.
+The Data Interoperability Hub serves **13 personas**: **Visitor / Prospect** (unauthenticated, non-registered) and **12 role-based personas** (8 original + 4 new), each with distinct goals, responsibilities, and technical capabilities. This document provides comprehensive profiles for all personas, their role mappings, and how they interact with the platform. **Authentication & Access** use cases (UC-AUTH-001–004) and journeys (JOURNEY-AUTH-001–004) apply to the Visitor persona before a user has a role.
 
 **Key Principles:**
 - **Multi-tenant isolation**: Each persona operates within tenant boundaries (except Platform Admin)
@@ -19,6 +19,7 @@ The Data Interoperability Hub serves **12 personas** (8 original + 4 new), each 
 
 ## Table of Contents
 
+0. [Persona 0: Visitor / Prospect](#persona-0-visitor--prospect) **NEW**
 1. [Persona 1: Data Product Owner](#persona-1-data-product-owner)
 2. [Persona 2: Data Engineer / Contract Author](#persona-2-data-engineer--contract-author)
 3. [Persona 3: Compliance & Privacy Officer](#persona-3-compliance--privacy-officer)
@@ -33,6 +34,53 @@ The Data Interoperability Hub serves **12 personas** (8 original + 4 new), each 
 12. [Persona 12: Data Mesh Domain Owner](#persona-12-data-mesh-domain-owner) **NEW**
 13. [Role Mapping Matrix](#role-mapping-matrix)
 14. [Access Control Summary](#access-control-summary)
+
+---
+
+## Persona 0: Visitor / Prospect
+
+**Aliases**: Unauthenticated user, prospect, anonymous visitor
+**Typical Role Mapping**: None (no role until authenticated and assigned)
+**Seniority**: N/A
+**Technical Level**: Any – may use browser or API
+
+### Summary
+
+A **Visitor** is someone who has not yet authenticated or registered. They may land on a public landing page, documentation, or health endpoint, or be redirected to the login page. Once they register (when self-service is enabled) or log in, they assume a role-based persona (e.g. Data Consumer, Data Product Owner). Use cases **UC-AUTH-001** (User Registers), **UC-AUTH-002** (User Logs In), **UC-AUTH-003** (User Resets Password), and **UC-AUTH-004** (Unauthenticated User Accesses Public Resources) and journeys **JOURNEY-AUTH-001** through **JOURNEY-AUTH-004** apply to this persona.
+
+### Goals
+
+- Access public resources (health, API docs, optional landing)
+- Register an account (when self-service registration is enabled)
+- Log in to access protected resources
+- Reset password (when feature is available)
+
+### Key Responsibilities / Tasks
+
+- Navigate to login or registration page (or call auth APIs)
+- Enter credentials or registration data
+- Access only public/unauthenticated endpoints (e.g. health, docs)
+
+### Technical Capabilities
+
+- **UI Access**: Login page, optional registration and landing; no protected UI until authenticated
+- **API Access**: Auth endpoints (login, register, password reset); public health/docs endpoints only
+- **SDK/CLI Access**: Same as API – auth and public endpoints only
+
+### Pain Points
+
+- Registration may be disabled (admin-only onboarding)
+- No access to catalog or marketplace until authenticated
+
+### Success Metrics
+
+- Successful login or registration
+- Access to protected resources after authentication
+
+### Related Documentation
+
+- [Use Cases – Authentication & Access](USE_CASES.md#authentication--access-use-cases) (UC-AUTH-001–004)
+- [User Journeys – Visitor / Authentication](USER_JOURNEYS.md#visitor--authentication-journeys) (JOURNEY-AUTH-001–004)
 
 ---
 
@@ -102,6 +150,29 @@ They work primarily through the **web UI**, relying on the platform to enforce d
 - **NEW**: **Social Features**: Respond to ratings and reviews, manage asset reputation
 - **NEW**: **Data Mesh**: Configure domain ownership, manage domain-scoped assets
 
+#### ODPS (Open Data Product Standard) Management
+
+- **Create ODPS Products**: Create ODPS products using Product-First flow (with embedded ODCS)
+  - Upload ODPS documents (JSON or YAML)
+  - System automatically extracts ODCS from `product.contract.spec`
+  - System creates both ODPS and ODCS contracts with bidirectional linking
+- **Link ODPS to ODCS**: Link existing ODCS contracts to ODPS products (Technical-First flow)
+  - Select existing ODCS contract
+  - Create or select ODPS contract
+  - System validates linking compatibility
+  - System establishes bidirectional links
+- **Export ODPS Products**: Export ODPS contracts in ODPS format (JSON or YAML)
+  - Export includes linked ODCS contract in `product.contract.spec`
+  - Support for multiple ODPS versions (4.1, 4.0)
+- **Manage ODPS Pricing**: Configure pricing plans, access methods, and payment gateways
+  - Define pricing plans (free, basic, premium, enterprise)
+  - Configure access methods (API, download, streaming)
+  - Set up payment gateways (Stripe, PayPal, etc.)
+- **ODPS Marketplace Integration**: Publish ODPS products to marketplace
+  - Configure marketplace listing with ODPS metadata
+  - Set up pricing and access controls
+  - Monitor marketplace performance
+
 #### Marketplace Integration (External Marketplaces)
 
 - **Create Marketplace Connections**: Set up connections to external marketplaces (Snowflake, AWS, Azure, GCP, Databricks, CKAN, etc.)
@@ -139,6 +210,23 @@ They work primarily through the **web UI**, relying on the platform to enforce d
 - **External marketplace sync success rate**
 - **Number of external marketplace connections**
 - **Assets published to external marketplaces**
+- **Scheduled exports configured and running successfully**
+
+### Related Journeys
+
+- [JOURNEY-DPO-001](USER_JOURNEYS.md#journey-dpo-001-onboard-new-asset-via-data-first-flow): Onboard New Asset via Data-First Flow
+- [JOURNEY-DPO-002](USER_JOURNEYS.md#journey-dpo-002-publish-asset-to-marketplace): Publish Asset to Marketplace
+- [JOURNEY-EXPORT-001](USER_JOURNEYS.md#journey-export-001-create-and-run-scheduled-export): Create and Run Scheduled Export **NEW**
+- [JOURNEY-EXPORT-002](USER_JOURNEYS.md#journey-export-002-monitor-and-troubleshoot-export-runs): Monitor and Troubleshoot Export Runs **NEW**
+
+### Related Use Cases
+
+- [UC-AM-001](USE_CASES.md#uc-am-001-create-asset-via-data-first-flow): Create Asset via Data-First Flow
+- [UC-DPO-002](USE_CASES.md#uc-dpo-002-publish-asset-to-marketplace): Publish Asset to Marketplace
+- [UC-EXPORT-001](USE_CASES.md#uc-export-001-schedule-recurring-export): Schedule Recurring Export **NEW**
+- [UC-EXPORT-002](USE_CASES.md#uc-export-002-configure-export-destination): Configure Export Destination **NEW**
+- [UC-EXPORT-003](USE_CASES.md#uc-export-003-monitor-export-runs): Monitor Export Runs **NEW**
+- [UC-EXPORT-004](USE_CASES.md#uc-export-004-manual-trigger-of-scheduled-export): Manual Trigger of Scheduled Export **NEW**
 
 ---
 
@@ -159,9 +247,11 @@ Technical implementer who creates contracts, sets up data pipelines, integrates 
 - Integrate hub with external systems (CI/CD, data sources, BI tools)
 - Create and validate contracts programmatically
 - Set up scheduled ingestions
+- Set up scheduled exports
 - **NEW**: Create and manage transformation pipelines
 - **NEW**: Integrate AI/ML features into workflows
 - **NEW**: Set up data virtualization and federation
+- Set up scheduled exports
 
 ### Key Responsibilities / Tasks
 
@@ -173,9 +263,31 @@ Technical implementer who creates contracts, sets up data pipelines, integrates 
 - **NEW**: Use AI schema matching to generate contracts
 - **NEW**: Integrate auto-classification into contract creation
 
+#### ODPS (Open Data Product Standard) Management
+
+- **Create ODPS via API**: Programmatically create ODPS products using REST API, GraphQL, or SDKs
+  - REST API: `POST /api/v1/contracts/products/`
+  - GraphQL: `mutation { createODPS(input: {...}) }`
+  - Python SDK: `client.contracts.create_odps(...)`
+  - JavaScript SDK: `client.contracts.createODPS(...)`
+  - CLI: `datahub contracts create-odps ...`
+- **ODPS Workflow Integration**: Integrate ODPS creation into CI/CD pipelines
+  - Automate ODPS product creation from templates
+  - Validate ODPS documents in build pipelines
+  - Monitor workflow execution status
+- **ODPS Linking Automation**: Automate linking of ODPS to ODCS contracts
+  - Link ODPS products to existing ODCS contracts
+  - Validate linking compatibility programmatically
+  - Manage bidirectional links via API
+- **ODPS Export Automation**: Export ODPS products programmatically
+  - Export ODPS contracts in JSON or YAML format
+  - Include linked ODCS contracts in exports
+  - Version-specific exports (4.1, 4.0)
+
 #### Integration
 
 - Set up scheduled ingestions
+- Set up scheduled exports
 - Integrate with external data sources
 - Set up CI/CD integration
 - **NEW**: Create custom connectors
@@ -332,6 +444,12 @@ Discovers, evaluates, and accesses data assets for analysis, reporting, or integ
 - Filter assets by type, quality, compliance, domain
 - Use semantic search for concept-based discovery
 - **NEW**: Use asset recommendations
+- **ODPS Product Discovery**: Discover ODPS products using semantic search
+  - Search by product name/description (multilingual support)
+  - Search by pricing plan
+  - Search by access method
+  - Search by product strategy
+  - Filter by product-contract linking (ODPS ↔ ODCS)
 
 #### Evaluation
 
@@ -350,6 +468,13 @@ Discovers, evaluates, and accesses data assets for analysis, reporting, or integ
 - Access data via API
 - **NEW**: Execute transformation pipelines
 - **NEW**: Query virtual datasets
+- **ODPS Product Purchase**: Purchase ODPS products from marketplace
+  - View ODPS product details (pricing plans, access methods, payment gateways)
+  - Select pricing plan (free, basic, premium, enterprise)
+  - Select access method (API, download, streaming)
+  - Process payment via configured payment gateway (Stripe, PayPal, etc.)
+  - Receive entitlement with access credentials
+  - Access ODPS product data via selected access method
 
 #### Marketplace Integration (External Marketplaces)
 
@@ -1048,6 +1173,7 @@ Manages data mesh domains, federated governance, and domain topology. Works thro
 
 | Persona | Primary Role | Secondary Roles | Access Level |
 |---------|-------------|-----------------|--------------|
+| Visitor / Prospect | None | - | Public only (auth, health, docs); no role until authenticated |
 | Data Product Owner | `DATA_PROVIDER` | `TENANT_ADMIN` | Full (tenant-scoped) |
 | Data Engineer | `DATA_PROVIDER` | - | Full (tenant-scoped) |
 | Compliance Officer | `AUDITOR` | `TENANT_ADMIN` | Read-only or Full (tenant-scoped) |
@@ -1065,11 +1191,14 @@ Manages data mesh domains, federated governance, and domain topology. Works thro
 
 ## Access Control Summary
 
+**Visitor / Prospect** (unauthenticated): Access is limited to authentication flows (login, register, password reset) and public resources (health, API docs, optional landing). No role is assigned until the user is authenticated; thereafter they are covered by one of the 12 role-based personas below. See [Use Cases – Authentication & Access](USE_CASES.md#authentication--access-use-cases) and [User Journeys – Visitor / Authentication](USER_JOURNEYS.md#visitor--authentication-journeys).
+
 ### UI Access
 
 - **Full Access**: Data Product Owner, Data Engineer, Tenant Admin, Platform Admin, Data Scientist, Data Analyst, Community Manager, Data Mesh Domain Owner
 - **Limited Access**: Data Consumer, External Developer
 - **Read-Only Access**: Compliance Officer, Auditor
+- **Public / Unauthenticated Only**: Visitor (login, register, password reset, health, docs)
 
 ### API Access
 
@@ -1091,6 +1220,6 @@ Manages data mesh domains, federated governance, and domain topology. Works thro
 
 ---
 
-**Last Updated**: 2025-01-10
-**Version**: 2.1.0 (Added marketplace integration capabilities to Data Product Owner, Data Consumer, External Developer, and Platform Administrator personas)
+**Last Updated**: 2026-02-03
+**Version**: 2.3.0 (Added Scheduled Export capabilities to Data Engineer and Data Product Owner personas; linked to JOURNEY-EXPORT-001–002 and UC-EXPORT-001–004)
 

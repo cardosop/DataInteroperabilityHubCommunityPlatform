@@ -41,36 +41,36 @@ This directory contains engineering-grade End-to-End (E2E) tests for the Data In
 ## Test Coverage
 
 ### Success Paths (25+ tests)
-✅ All three onboarding flows (data-first, contract-first, contract-only)  
-✅ Marketplace publishing, browsing, and purchasing  
-✅ Audit log viewing and filtering  
-✅ Compliance report viewing  
+✅ All three onboarding flows (data-first, contract-first, contract-only)
+✅ Marketplace publishing, browsing, and purchasing
+✅ Audit log viewing and filtering
+✅ Compliance report viewing
 
 ### Failure Scenarios (20+ tests)
-✅ Compliance failures (fail-closed behavior)  
-✅ DQ failures (activation blocking)  
-✅ Contract validation failures  
-✅ Service timeouts and unavailability  
-✅ Unauthorized access attempts  
-✅ Cross-tenant access prevention  
+✅ Compliance failures (fail-closed behavior)
+✅ DQ failures (activation blocking)
+✅ Contract validation failures
+✅ Service timeouts and unavailability
+✅ Unauthorized access attempts
+✅ Cross-tenant access prevention
 
 ### Edge Cases (20+ tests)
-✅ Empty files  
-✅ Very large files (size limits)  
-✅ Unsupported file formats  
-✅ Malformed data  
-✅ Concurrent operations  
-✅ Schema mismatches  
-✅ Contract normalization failures  
-✅ Multiple contracts per asset  
-✅ Contract without schema  
+✅ Empty files
+✅ Very large files (size limits)
+✅ Unsupported file formats
+✅ Malformed data
+✅ Concurrent operations
+✅ Schema mismatches
+✅ Contract normalization failures
+✅ Multiple contracts per asset
+✅ Contract without schema
 
 ### Error Handling (10+ tests)
-✅ Service timeouts  
-✅ Service unavailability  
-✅ Retry mechanisms  
-✅ Validation errors  
-✅ Network errors  
+✅ Service timeouts
+✅ Service unavailability
+✅ Retry mechanisms
+✅ Validation errors
+✅ Network errors
 
 ## Running Tests
 
@@ -138,6 +138,25 @@ Tests run automatically in CI/CD:
    - Service health checks
    - Test result artifacts
 
+## Run Conditions and Required Services
+
+E2E tests use real services; no mocks of application code. Some tests skip when a required service is unavailable. For full coverage, run with Docker Compose and required services up.
+
+| Service / condition | Required by (examples) | Skip behavior |
+|---------------------|------------------------|----------------|
+| **Redis** | Event bus, rate limiting, job queue, cache | Tests skip with "Redis not available" or similar. |
+| **MinIO / S3** | File storage, asset uploads | `conftest.complete_file_upload` can use S3 fallback (mark file ACTIVE in DB without upload) when MinIO unavailable; prefer running with MinIO up. |
+| **Prefect** | Scheduled ingestion, scheduled export, workflow runs | test_scheduled_ingestion*.py, test_scheduled_export.py skip when Prefect not available. |
+| **DataContract service** | Contract validation, normalize, migrate, convert | test_contract_migration.py, test_contract_operations.py may skip when endpoint returns 400/unavailable. |
+| **DQ service** | Data quality checks, activation blocking | test_dq_service.py, test_complete_user_journeys.py, test_contract_first_flow.py, test_data_first_flow.py skip or accept 503 when DQ down. |
+| **Compliance service** | Compliance checks, fail-closed | test_compliance_service.py, test_audit_compliance_journeys.py, persona/journey tests skip when Compliance down. |
+| **Semantic / Fuseki** | Semantic discovery, RDF | test_external_resource_semantic_discovery.py, test_contract_normalization_enhanced_e2e.py skip when service unavailable. |
+| **ErasureService** | GDPR erasure | test_phase25_gdpr_erasure_e2e.py skips when `execute_erasure` not implemented. |
+| **Grafana / Prometheus / OpenTelemetry / Jaeger** | Observability | test_monitoring_e2e.py, test_workflow_observability_business_rules_e2e.py skip when stack unavailable. |
+| **Rate limiting** | Rate-limit middleware | test_rate_limiting_e2e.py, test_rate_limiting.py depend on RATE_LIMIT_ENABLED / Redis. |
+
+**Recommendation**: Run E2E with `docker compose up -d`, apply migrations, and ensure Redis and MinIO are up for broad coverage. Use `tests.utils.polling.wait_until` instead of fixed `time.sleep` when waiting for async state (see Phase 4.2 gap analysis).
+
 ## Coverage Monitoring
 
 ### Coverage Goals
@@ -202,14 +221,14 @@ All tests inherit from `E2ETestBase` which provides:
 
 ### S3/MinIO Connection Errors
 
-**Problem**: Some tests fail with S3 connection errors  
-**Solution**: Helper methods support S3 mocking  
+**Problem**: Some tests fail with S3 connection errors
+**Solution**: Helper methods support S3 mocking
 **Action**: Use `mock_s3=True` in `complete_file_upload()` calls
 
 ### API Endpoint Verification
 
-**Problem**: Some endpoints may not match test expectations  
-**Solution**: Verify endpoints and update tests as needed  
+**Problem**: Some endpoints may not match test expectations
+**Solution**: Verify endpoints and update tests as needed
 **Status**: Most endpoints verified and working
 
 ## Documentation
@@ -253,9 +272,9 @@ When adding a new feature, ensure:
 
 ## Status
 
-✅ **E2E Test Suite**: Fully implemented (81 tests)  
-✅ **CI/CD Integration**: Complete  
-✅ **Coverage Monitoring**: Configured  
-✅ **Documentation**: Comprehensive (12 guides)  
+✅ **E2E Test Suite**: Fully implemented (81 tests)
+✅ **CI/CD Integration**: Complete
+✅ **Coverage Monitoring**: Configured
+✅ **Documentation**: Comprehensive (12 guides)
 
 **Ready for use!** 🚀

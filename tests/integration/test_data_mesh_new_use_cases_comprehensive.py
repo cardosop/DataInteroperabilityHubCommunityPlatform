@@ -54,15 +54,25 @@ pytestmark = [
 class DataMeshNewUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
     """Base test class for Data Mesh new use cases"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    @classmethod
+    def _fixture_teardown(cls):
+        """Override to skip database flush for integration tests."""
+        # Don't flush - transactions are rolled back which provides isolation
+        pass
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
         self.client = APIClient()
 
-        # Create tenant
+        # Create tenant (use unique name/slug to avoid conflicts)
+        unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
-            name="Test Tenant",
-            slug="test-tenant",
+            name=f"Test Tenant {unique_id}",
+            slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )

@@ -1,15 +1,16 @@
 # Docker Compose configuration for comprehensive test infrastructure
-# This file provides a complete test environment with all required services
-# Usage: docker-compose -f docker-compose.test.yml up -d
+# This file provides a complete test environment with all services from main compose
+# Usage: docker compose -f docker-compose.test.yml up -d
+# Or with test env: docker compose -f docker-compose.test.yml --env-file .env.test up -d
+# Frontend is under --profile frontend (has build TS errors; use when fixed)
 #
 # Features:
 # - Isolated test database (hub_test)
-# - All microservices configured for testing
+# - All microservices matching docker-compose.yml
 # - Real services (no mocks/stubs)
 # - Health checks for all services
 # - Test-specific configuration
-
-version: "3.8"
+# Note: version is obsolete in Compose V2 and is ignored.
 
 services:
   # PostgreSQL Database for Testing
@@ -34,7 +35,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 180s
     networks:
       - hub-test-net
     command: >
@@ -170,14 +171,71 @@ services:
       - DEBUG=True
       - LOG_LEVEL=DEBUG
 
+  # Redis Exporters for Testing
+  redis-exporter-cache-test:
+    image: oliver006/redis_exporter:latest
+    container_name: hub-test-redis-exporter-cache
+    command:
+      - '--redis.addr=redis://redis-cache-test:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_CACHE_TEST_PORT:-9121}:9121"
+    networks:
+      - hub-test-net
+    depends_on:
+      redis-cache-test:
+        condition: service_healthy
+
+  redis-exporter-queue-test:
+    image: oliver006/redis_exporter:latest
+    container_name: hub-test-redis-exporter-queue
+    command:
+      - '--redis.addr=redis://redis-queue-test:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_QUEUE_TEST_PORT:-9122}:9121"
+    networks:
+      - hub-test-net
+    depends_on:
+      redis-queue-test:
+        condition: service_healthy
+
+  redis-exporter-events-test:
+    image: oliver006/redis_exporter:latest
+    container_name: hub-test-redis-exporter-events
+    command:
+      - '--redis.addr=redis://redis-events-test:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_EVENTS_TEST_PORT:-9123}:9121"
+    networks:
+      - hub-test-net
+    depends_on:
+      redis-events-test:
+        condition: service_healthy
+
+  redis-exporter-channels-test:
+    image: oliver006/redis_exporter:latest
+    container_name: hub-test-redis-exporter-channels
+    command:
+      - '--redis.addr=redis://redis-channels-test:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_CHANNELS_TEST_PORT:-9124}:9121"
+    networks:
+      - hub-test-net
+    depends_on:
+      redis-channels-test:
+        condition: service_healthy
+
   # MinIO (S3-compatible storage) for Testing
   minio-test:
     image: minio/minio:latest
     container_name: hub-test-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
       ENVIRONMENT: test
       DEBUG: "True"
       LOG_LEVEL: DEBUG
@@ -217,6 +275,50 @@ services:
       start_period: 15s
     networks:
       - hub-test-net
+
+  # Jaeger (all-in-one) for Testing
+  jaeger-test:
+    image: jaegertracing/all-in-one:latest
+    container_name: hub-test-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    ports:
+      - "${JAEGER_UI_TEST_PORT:-16686}:16686"
+      - "${JAEGER_HTTP_TEST_PORT:-14268}:14268"
+      - "${JAEGER_UDP_TEST_PORT:-6831}:6831/udp"
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16686/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Mock Server for Testing marketplace connectors
+  mock-server-test:
+    image: mockserver/mockserver:latest
+    container_name: hub-test-mock-server
+    command: -serverPort 8080 -logLevel INFO
+    ports:
+      - "${MOCK_SERVER_TEST_PORT:-8095}:8080"
+    networks:
+      - hub-test-net
+
+  # MailHog for Testing (local email capture)
+  mailhog-test:
+    image: mailhog/mailhog:v1.0.1
+    container_name: hub-test-mailhog
+    ports:
+      - "${MAILHOG_TEST_PORT:-8025}:8025"
+      - "${MAILHOG_SMTP_TEST_PORT:-1025}:1025"
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8025/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # DataContract Service for Testing
   datacontract-service-test:
@@ -352,7 +454,7 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
     container_name: hub-test-api
-    command: python hub/manage.py runserver 0.0.0.0:8000
+    command: python hub/manage.py runserver 0.0.0.0:8000 --noreload
     volumes:
       - .:/app
     ports:
@@ -363,26 +465,37 @@ services:
       EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${POSTGRES_USER:-hub_test}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hub_test}
-      POSTGRES_DB: ${POSTGRES_DB:-hub_test}
-      REDIS_URL: redis://redis-test:6379/0
-      REDIS_HOST: redis-test
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      REDIS_URL: redis://redis-cache-test:6379/0
+      REDIS_HOST: redis-cache-test
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
       AWS_S3_ENDPOINT_URL: http://minio-test:9000
-      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:-hub-test}
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:-hub-files}
       DATACONTRACT_SERVICE_URL: http://datacontract-service-test:8080
       DQ_SERVICE_URL: http://dq-service-test:8083
       COMPLIANCE_SERVICE_URL: http://compliance-service-test:8082
       SEMANTIC_SERVICE_URL: http://semantic-service-test:8081
       FUSEKI_URL: http://fuseki-test:3030
+      PREFECT_INTEGRATION_SERVICE_URL: http://prefect-integration-service-test:8084
+      PREFECT_API_URL: http://prefect-server-test:4200/api
+      MOCK_SERVER_URL: http://mock-server-test:8080
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
       ENVIRONMENT: test
       APP_VERSION: ${APP_VERSION:-1.0.0-test}
       DEBUG: "True"
       LOG_LEVEL: DEBUG
       USE_PRODUCTION_DB_FOR_SDK_TESTS: "0"
       DJANGO_SETTINGS_MODULE: hub.settings
+      # Optional: set STRIPE_SECRET_KEY (e.g. sk_test_...) to run billing Stripe-dependent tests (no mocks)
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -404,14 +517,18 @@ services:
         condition: service_healthy
       semantic-service-test:
         condition: service_healthy
+      jaeger-test:
+        condition: service_healthy
+      mock-server-test:
+        condition: service_started
     networks:
       - hub-test-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 20s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/').read()\" || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 8
+      start_period: 120s
     deploy:
       resources:
         limits:
@@ -442,11 +559,22 @@ services:
       WORKER_STARVATION_THRESHOLD_SECONDS: ${WORKER_STARVATION_THRESHOLD_SECONDS:-300}
       POSTGRES_HOST: postgres-test
       POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${POSTGRES_USER:-hub_test}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hub_test}
-      POSTGRES_DB: ${POSTGRES_DB:-hub_test}
-      REDIS_URL: redis://redis-test:6379/0
-      REDIS_HOST: redis-test
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      REDIS_URL: redis://redis-cache-test:6379/0
+      REDIS_HOST: redis-cache-test
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      AWS_S3_ENDPOINT_URL: http://minio-test:9000
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:-hub-files}
+      MOCK_SERVER_URL: http://mock-server-test:8080
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
       ENVIRONMENT: test
       APP_VERSION: ${APP_VERSION:-1.0.0-test}
       DEBUG: "True"
@@ -464,7 +592,11 @@ services:
       redis-channels-test:
         condition: service_healthy
       api-service-test:
+        condition: service_started
+      jaeger-test:
         condition: service_healthy
+      mock-server-test:
+        condition: service_started
     networks:
       - hub-test-net
     healthcheck:
@@ -482,14 +614,14 @@ services:
           cpus: "0.25"
           memory: 256M
 
-  # Prefect Server for Testing Scheduled Ingestion
+  # Prefect Server for Testing
   prefect-server-test:
     image: prefecthq/prefect:2-python3.12
     container_name: hub-test-prefect-server
-    command: prefect server start --host 0.0.0.0
+    command: sh -c "pip install --quiet asyncpg && prefect server database upgrade -y 2>/dev/null || true; exec prefect server start --host 0.0.0.0"
     environment:
       PREFECT_API_URL: http://localhost:4200/api
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql://prefect:prefect@prefect-db-test:5432/prefect
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-db-test:5432/prefect
       PREFECT_LOGGING_LEVEL: DEBUG
       ENVIRONMENT: test
     ports:
@@ -498,11 +630,11 @@ services:
     volumes:
       - prefect-server-test-data:/root/.prefect
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
-      interval: 30s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health', timeout=5)"]
+      interval: 15s
       timeout: 10s
-      retries: 5
-      start_period: 30s
+      retries: 12
+      start_period: 90s
     depends_on:
       prefect-db-test:
         condition: service_healthy
@@ -522,6 +654,7 @@ services:
       - "${PREFECT_DB_TEST_PORT:-5435}:5432"
     volumes:
       - prefect-db-test-data:/var/lib/postgresql/data
+      - ./infrastructure/prefect-db/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U prefect"]
       interval: 10s
@@ -539,14 +672,608 @@ services:
     environment:
       PREFECT_API_URL: http://prefect-server-test:4200/api
       PREFECT_LOGGING_LEVEL: DEBUG
+      # Hub API configuration for scheduled ingestion worker API (E2E profile)
+      HUB_BASE_URL: ${HUB_BASE_URL:-http://api-service-test:8000}
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-}
       ENVIRONMENT: test
     volumes:
       - ./services/prefect-integration:/app:ro
     depends_on:
       prefect-server-test:
         condition: service_healthy
+      api-service-test:
+        condition: service_started
     networks:
       - hub-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os; procs = [d for d in os.listdir('/proc') if d.isdigit()]; found = any(os.path.exists(f'/proc/{p}/cmdline') and b'prefect' in open(f'/proc/{p}/cmdline', 'rb').read() for p in procs); exit(0 if found else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Frontend Service for Testing
+  # Use --profile frontend when frontend build succeeds (currently has TS errors)
+  frontend-test:
+    profiles:
+      - frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hub-test-frontend
+    ports:
+      - "${FRONTEND_TEST_PORT:-3010}:80"
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://api-service-test:8000/api/v1}
+      - VITE_WS_BASE_URL=${VITE_WS_BASE_URL:-ws://api-service-test:8000}
+      - VITE_ENV=${ENV:-development}
+    networks:
+      - hub-test-net
+    depends_on:
+      api-service-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # Workflow Engine Service for Testing
+  workflow-engine-service-test:
+    build:
+      context: .
+      dockerfile: services/workflow-engine/Dockerfile
+    container_name: hub-test-workflow-engine
+    command: sh -c "python hub/manage.py migrate --noinput && exec python services/workflow-engine/main.py --poll-interval 5 --batch-size 10"
+    ports:
+      - "${WORKFLOW_ENGINE_TEST_PORT:-8098}:8088"
+    volumes:
+      - .:/app
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      REDIS_URL: redis://redis-cache-test:6379/0
+      DJANGO_SETTINGS_MODULE: hub.settings
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+      redis-queue-test:
+        condition: service_healthy
+      redis-events-test:
+        condition: service_healthy
+      redis-channels-test:
+        condition: service_healthy
+      jaeger-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8088/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+  # Prefect Integration Service for Testing
+  prefect-integration-service-test:
+    build:
+      context: .
+      dockerfile: services/prefect-integration/Dockerfile
+    container_name: hub-test-prefect-integration
+    command: sh -c "cd /app/services/prefect-integration && PYTHONPATH=/app python -m uvicorn main:app --host 0.0.0.0 --port 8084"
+    ports:
+      - "${PREFECT_INTEGRATION_TEST_PORT:-8114}:8084"
+    volumes:
+      - .:/app
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      PREFECT_API_URL: http://prefect-server-test:4200/api
+      DJANGO_SETTINGS_MODULE: hub.settings
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      REDIS_URL: redis://redis-cache-test:6379/0
+      HUB_BASE_URL: http://api-service-test:8000
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      prefect-server-test:
+        condition: service_healthy
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # Search Service for Testing
+  search-service-test:
+    build:
+      context: .
+      dockerfile: services/search-service/Dockerfile
+    container_name: hub-test-search
+    ports:
+      - "${SEARCH_TEST_PORT:-8115}:8085"
+    environment:
+      DATABASE_URL: postgresql://hub_test:hub_test@postgres-test:5432/hub_test
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Observability Service for Testing
+  observability-service-test:
+    build:
+      context: .
+      dockerfile: services/observability-service/Dockerfile
+    container_name: hub-test-observability
+    ports:
+      - "${OBSERVABILITY_TEST_PORT:-8116}:8086"
+    environment:
+      DATABASE_URL: postgresql://hub_test:hub_test@postgres-test:5432/hub_test
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      PROMETHEUS_URL: http://prometheus-test:9090
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      prometheus-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Webhook Service for Testing
+  webhook-service-test:
+    build:
+      context: .
+      dockerfile: services/webhook-service/Dockerfile
+    container_name: hub-test-webhook
+    ports:
+      - "${WEBHOOK_TEST_PORT:-8092}:8087"
+    environment:
+      DATABASE_URL: postgresql://hub_test:hub_test@postgres-test:5432/hub_test
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway Service for Testing
+  api-gateway-test:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: hub-test-api-gateway
+    command: ["sh", "-c", "cd /app/services/api-gateway && PYTHONPATH=/app uvicorn main:app --host 0.0.0.0 --port 8088"]
+    ports:
+      - "${API_GATEWAY_TEST_PORT:-8094}:8088"
+    volumes:
+      - .:/app
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_URL: redis://redis-cache-test:6379/0
+      DJANGO_SETTINGS_MODULE: hub.settings
+      BACKEND_SERVICE_URL: http://api-service-test:8000
+      PORT: 8088
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+      api-service-test:
+        condition: service_started
+      jaeger-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Event Bus Health Service for Testing
+  event-bus-health-service-test:
+    build:
+      context: .
+      dockerfile: services/event-bus/Dockerfile
+    container_name: hub-test-event-bus-health
+    ports:
+      - "${EVENT_BUS_HEALTH_TEST_PORT:-8090}:8090"
+    volumes:
+      - .:/app
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      REDIS_URL: redis://redis-cache-test:6379/0
+      DJANGO_SETTINGS_MODULE: hub.settings
+      EVENT_BUS_HEALTH_PORT: 8090
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+      redis-queue-test:
+        condition: service_healthy
+      redis-events-test:
+        condition: service_healthy
+      redis-channels-test:
+        condition: service_healthy
+      jaeger-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Event Schema Registry Service for Testing
+  event-schema-registry-service-test:
+    build:
+      context: .
+      dockerfile: services/event-schema-registry/Dockerfile
+    container_name: hub-test-event-schema-registry
+    ports:
+      - "${EVENT_SCHEMA_REGISTRY_TEST_PORT:-8091}:8091"
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      DJANGO_SETTINGS_MODULE: hub.settings
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      jaeger-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Workflow Registry Service for Testing
+  workflow-registry-service-test:
+    build:
+      context: .
+      dockerfile: services/workflow-registry/Dockerfile
+    container_name: hub-test-workflow-registry
+    ports:
+      - "${WORKFLOW_REGISTRY_TEST_PORT:-8089}:8089"
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: hub_test
+      POSTGRES_PASSWORD: hub_test
+      POSTGRES_DB: hub_test
+      DJANGO_SETTINGS_MODULE: hub.settings
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
+      ENVIRONMENT: test
+      DEBUG: "True"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      jaeger-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Prometheus for Testing
+  prometheus-test:
+    image: prom/prometheus:latest
+    container_name: hub-test-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "${PROMETHEUS_TEST_PORT:-9091}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus-test.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus-test-data:/prometheus
+    networks:
+      - hub-test-net
+    depends_on:
+      - api-service-test
+      - worker-service-test
+      - semantic-service-test
+      - dq-service-test
+      - compliance-service-test
+      - datacontract-service-test
+      - prefect-integration-service-test
+      - search-service-test
+      - webhook-service-test
+      - api-gateway-test
+      - workflow-engine-service-test
+      - workflow-registry-service-test
+      - event-schema-registry-service-test
+      - event-bus-health-service-test
+      - redis-exporter-cache-test
+      - redis-exporter-queue-test
+      - redis-exporter-events-test
+      - redis-exporter-channels-test
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana for Testing
+  grafana-test:
+    image: grafana/grafana:latest
+    container_name: hub-test-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "${GRAFANA_TEST_PORT:-3011}:3000"
+    volumes:
+      - grafana-test-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - hub-test-net
+    depends_on:
+      - prometheus-test
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Alertmanager for Testing
+  alertmanager-test:
+    image: prom/alertmanager:latest
+    container_name: hub-test-alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "${ALERTMANAGER_TEST_PORT:-9093}:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-test-data:/alertmanager
+    networks:
+      - hub-test-net
+    depends_on:
+      - prometheus-test
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CKAN Test Database for Testing
+  ckan-test-db-test:
+    image: postgres:16-alpine
+    container_name: hub-test-ckan-test-db
+    environment:
+      POSTGRES_USER: ckan
+      POSTGRES_PASSWORD: ckan
+      POSTGRES_DB: ckan_test
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "${CKAN_TEST_DB_TEST_PORT:-5436}:5432"
+    volumes:
+      - ckan-test-db-test-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ckan -d ckan_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub-test-net
+
+  # CKAN Test Solr for Testing
+  ckan-test-solr-test:
+    image: solr:9
+    container_name: hub-test-ckan-test-solr
+    command:
+      - solr-precreate
+      - ckan
+    ports:
+      - "${CKAN_TEST_SOLR_TEST_PORT:-8983}:8983"
+    volumes:
+      - ckan-test-solr-test-data:/var/solr
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8983/api/node/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - hub-test-net
+
+  # CKAN Test Redis for Testing
+  ckan-test-redis-test:
+    image: redis:7-alpine
+    container_name: hub-test-ckan-test-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "${CKAN_TEST_REDIS_TEST_PORT:-6383}:6379"
+    volumes:
+      - ckan-test-redis-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-test-net
+
+  # ODH Training Operator Service for Testing
+  odh-training-operator-test:
+    build:
+      context: .
+      dockerfile: services/odh-training-operator/Dockerfile
+    container_name: hub-test-odh-training-operator
+    ports:
+      - "${ODH_TRAINING_OPERATOR_TEST_PORT:-8096}:8080"
+    networks:
+      - hub-test-net
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ODH Inference Scheduler Service for Testing
+  odh-inference-scheduler-test:
+    build:
+      context: .
+      dockerfile: services/odh-inference-scheduler/Dockerfile
+    container_name: hub-test-odh-inference-scheduler
+    ports:
+      - "${ODH_INFERENCE_SCHEDULER_TEST_PORT:-8097}:8080"
+    networks:
+      - hub-test-net
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # Traefik API Gateway for Testing
+  traefik-test:
+    image: traefik:v3.0
+    container_name: hub-test-traefik
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--log.level=INFO"
+    ports:
+      - "${TRAEFIK_TEST_PORT:-8080}:80"
+      - "${TRAEFIK_SECURE_TEST_PORT:-8443}:443"
+      - "${TRAEFIK_DASHBOARD_TEST_PORT:-8099}:8080"
+    volumes:
+      - ./infrastructure/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
+    networks:
+      - hub-test-net
+    depends_on:
+      - jaeger-test
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/rawdata"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
 volumes:
   postgres-test-data:
@@ -566,6 +1293,18 @@ volumes:
   prefect-server-test-data:
     driver: local
   prefect-db-test-data:
+    driver: local
+  prometheus-test-data:
+    driver: local
+  grafana-test-data:
+    driver: local
+  alertmanager-test-data:
+    driver: local
+  ckan-test-db-test-data:
+    driver: local
+  ckan-test-solr-test-data:
+    driver: local
+  ckan-test-redis-test-data:
     driver: local
 
 networks:

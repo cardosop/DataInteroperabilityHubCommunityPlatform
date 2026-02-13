@@ -12,49 +12,28 @@ Tests use real implementations (no mocks/stubs) and follow TDD principles.
 """
 
 import json
+
 import pytest
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
 from rest_framework import status
 
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
-    OriginalSpecType,
-    OriginalFormat,
     NormalizationStatus,
+    OriginalFormat,
+    OriginalSpecType,
 )
-from hub.apps.users.models import UserStatus
-from hub.apps.tenants.models import Tenant
-
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase
 
 pytestmark = pytest.mark.django_db(transaction=True)
-User = get_user_model()
 
 
-class ContractDownloadEndpointTest(TestCase):
+class ContractDownloadEndpointTest(ContractsAPITestBase):
     """Integration tests for contract download endpoint"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED",
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        super().setUp()
 
         # Create ODCS contract
         self.odcs_contract_data = {
@@ -395,28 +374,12 @@ class ContractDownloadEndpointTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
-class ODCSDownloadVersionSupportTest(TestCase):
+class ODCSDownloadVersionSupportTest(ContractsAPITestBase):
     """Comprehensive tests for ODCS download with version support (Task 9.5.4.1.5.1)"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-
-        # Create tenant
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status="ACTIVE",
-            kyc_status="UNVERIFIED",
-        )
-
-        # Create user
-        self.user = User.objects.create_user(
-            email="user@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
+        super().setUp()
 
         # Create HubContract for generation tests
         self.hub_contract = {
@@ -509,7 +472,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         # Format: {name}.odcs.{version}.json or {name}-v{version}.odcs.json
         self.assertTrue(
             "3.0.2" in filename or "v3.0.2" in filename or "302" in filename,
-            f"Filename '{filename}' should contain version 3.0.2"
+            f"Filename '{filename}' should contain version 3.0.2",
         )
 
         data = json.loads(response.content)
@@ -535,6 +498,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.assertIn(".odcs.yaml", filename)
 
         import yaml
+
         data = yaml.safe_load(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.2")
 
@@ -667,6 +631,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.assertIn(".odcs.yaml", filename)
 
         import yaml
+
         data = yaml.safe_load(response.content)
         self.assertEqual(data["apiVersion"], "odcs.io/v3.0.2")
         self.assertEqual(data["id"], "test-contract-v302")
@@ -676,7 +641,9 @@ class ODCSDownloadVersionSupportTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create contract with YAML original
-        yaml_original = "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-yaml\nname: Test YAML"
+        yaml_original = (
+            "apiVersion: odcs.io/v3.0.2\nkind: DataContract\nid: test-yaml\nname: Test YAML"
+        )
         contract_yaml = Contract.objects.create(
             tenant=self.tenant,
             original_spec_type=OriginalSpecType.ODCS,
@@ -762,9 +729,15 @@ class ODCSDownloadVersionSupportTest(TestCase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK)
                 self.assertIn("Content-Disposition", response)
 
-                filename = self._extract_filename_from_content_disposition(response["Content-Disposition"])
+                filename = self._extract_filename_from_content_disposition(
+                    response["Content-Disposition"]
+                )
                 self.assertIsNotNone(filename, f"Filename should be present for version {version}")
-                self.assertIn(".odcs.json", filename, f"Filename should contain .odcs.json for version {version}")
+                self.assertIn(
+                    ".odcs.json",
+                    filename,
+                    f"Filename should contain .odcs.json for version {version}",
+                )
 
     def test_download_odcs_all_versions_json(self):
         """Test downloading ODCS in all supported versions as JSON"""
@@ -805,6 +778,7 @@ class ODCSDownloadVersionSupportTest(TestCase):
                 self.assertIn("Content-Disposition", response)
 
                 import yaml
+
                 data = yaml.safe_load(response.content)
                 self.assertEqual(data["apiVersion"], f"odcs.io/v{version}")
                 self.assertEqual(data["id"], "test-contract-version")
@@ -847,4 +821,3 @@ class ODCSDownloadVersionSupportTest(TestCase):
         )
         self.assertEqual(response_yaml.status_code, status.HTTP_200_OK)
         self.assertIn("yaml", response_yaml["Content-Type"].lower())
-

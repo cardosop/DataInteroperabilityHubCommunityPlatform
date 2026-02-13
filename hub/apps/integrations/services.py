@@ -40,6 +40,7 @@ from hub.apps.integrations.base import (
 from hub.apps.integrations.event_publishers import MarketplaceEventPublisher
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
 from hub.apps.integrations.logging_utils import get_correlation_context
+from hub.apps.integrations.business_rules import MarketplaceIntegrationBusinessRules
 from hub.apps.integrations.models import (
     MarketplaceConnection,
     MarketplaceMapping,
@@ -175,6 +176,26 @@ class MarketplaceIntegrationService(
                 user_obj = User.objects.get(id=user_id)
             except User.DoesNotExist:
                 raise NotFoundError(f"User with id {user_id} not found")
+
+            # Validate via MarketplaceIntegrationBusinessRules before mutation
+            payload_connection = MarketplaceConnection(
+                tenant=tenant_obj,
+                marketplace_type=marketplace_type,
+                name=name,
+                config=config,
+                is_active=is_active,
+            )
+            rules = MarketplaceIntegrationBusinessRules(tenant_id=tenant_id, user_id=user_id)
+            result = rules.validate(
+                connection=payload_connection,
+                validation_type="connection",
+            )
+            if not result.is_valid:
+                raise ValidationError(
+                    "; ".join(result.errors),
+                    code="BUSINESS_RULES_VALIDATION",
+                    details=result.details,
+                )
 
             # Check for duplicate connection name
             if MarketplaceConnection.objects.filter(tenant_id=tenant_id, name=name).exists():

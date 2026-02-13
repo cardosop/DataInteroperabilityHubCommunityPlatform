@@ -3,6 +3,8 @@ Unit tests for Access Analytics
 
 Tests for access logging, anomaly detection, and analytics.
 """
+import uuid
+
 import pytest
 from django.test import TestCase
 from django.utils import timezone
@@ -37,102 +39,101 @@ class AccessAnalyticsServiceTest(TestCase):
     
     def test_log_access(self):
         """Test access logging"""
+        resource_uuid = str(uuid.uuid4())
         AccessAnalyticsService.log_access(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             resource_type="ASSET",
-            resource_id="test-resource-id",
+            resource_id=resource_uuid,
             action="READ",
             result="ALLOWED",
-            ip_address="127.0.0.1"
+            ip_address="127.0.0.1",
         )
-        
+
         # Verify log was created
         log = AccessLog.objects.filter(tenant=self.tenant).first()
         self.assertIsNotNone(log)
         self.assertEqual(log.resource_type, "ASSET")
+        self.assertEqual(str(log.resource_id), resource_uuid)
         self.assertEqual(log.action, "READ")
         self.assertEqual(log.result, "ALLOWED")
     
     def test_get_access_patterns(self):
         """Test access pattern analysis"""
-        # Create multiple access logs
-        for i in range(10):
+        resource_uuid = str(uuid.uuid4())
+        for _ in range(10):
             AccessAnalyticsService.log_access(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 resource_type="ASSET",
-                resource_id="asset-1",
+                resource_id=resource_uuid,
                 action="READ",
-                result="ALLOWED"
+                result="ALLOWED",
             )
-        
+
         patterns = AccessAnalyticsService.get_access_patterns(
             tenant_id=str(self.tenant.id)
         )
-        
+
         self.assertGreater(len(patterns), 0)
     
     def test_get_anomalies(self):
         """Test anomaly detection"""
-        # Create access log outside business hours
-        now = timezone.now().replace(hour=2, minute=0)  # 2 AM
-        
+        # Create access log outside business hours (2 AM)
+        now = timezone.now().replace(hour=2, minute=0, second=0, microsecond=0)
+        resource_uuid = uuid.uuid4()
+
         log = AccessLog.objects.create(
             tenant=self.tenant,
             user=self.user,
             resource_type="ASSET",
-            resource_id="test-id",
+            resource_id=resource_uuid,
             action="READ",
             result="ALLOWED",
-            created_at=now
         )
-        
-        # Check for anomalies
+        # Force created_at so auto_now_add does not override (persist 2 AM for anomaly check)
+        log.created_at = now
+        log.save(update_fields=["created_at"])
+
         AccessAnalyticsService._check_anomalies(log)
-        
-        # Refresh from DB
         log.refresh_from_db()
-        
-        # Should be flagged as anomaly (outside business hours)
-        self.assertTrue(log.is_anomaly)
+        self.assertTrue(log.is_anomaly, msg=f"Expected is_anomaly=True (created_at={log.created_at})")
     
     def test_get_security_events(self):
         """Test security event tracking"""
-        # Create denied access
+        resource_uuid = str(uuid.uuid4())
         AccessAnalyticsService.log_access(
             tenant_id=str(self.tenant.id),
             user_id=str(self.user.id),
             resource_type="ASSET",
-            resource_id="test-id",
+            resource_id=resource_uuid,
             action="READ",
-            result="DENIED"
+            result="DENIED",
         )
-        
+
         events = AccessAnalyticsService.get_security_events(
             tenant_id=str(self.tenant.id)
         )
-        
+
         self.assertGreater(len(events), 0)
-        self.assertEqual(events[0]['result'], 'DENIED')
+        self.assertEqual(events[0]["result"], "DENIED")
     
     def test_get_analytics_dashboard(self):
         """Test complete analytics dashboard"""
-        # Create some test data
         for i in range(5):
             AccessAnalyticsService.log_access(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
                 resource_type="ASSET",
-                resource_id=f"asset-{i}",
+                resource_id=str(uuid.uuid4()),
                 action="READ",
-                result="ALLOWED"
+                result="ALLOWED",
             )
-        
+
         dashboard = AccessAnalyticsService.get_analytics_dashboard(
             tenant_id=str(self.tenant.id)
         )
-        
+
         self.assertIn("summary", dashboard)
         self.assertIn("top_users", dashboard)
         self.assertIn("top_resources", dashboard)

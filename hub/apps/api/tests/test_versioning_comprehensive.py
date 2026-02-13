@@ -626,7 +626,12 @@ class APIVersionMiddlewareTest(TestCase):
         response = HttpResponse()
         response = self.middleware.process_response(request, response)
 
-        self.assertIn("Warning", response)
+        # Root cause fix: Check Warning header is present (RFC 7234 deprecation warning)
+        # Middleware now calls add_deprecation_warning which adds Warning header
+        self.assertIn("Warning", response.headers)
+        # Verify Warning header contains deprecation info
+        warning_value = response.headers.get("Warning", "")
+        self.assertIn("Deprecated API", warning_value)
 
     def test_middleware_response_non_api(self):
         """Test middleware ignores non-API responses"""

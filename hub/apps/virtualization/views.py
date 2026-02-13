@@ -3,50 +3,68 @@ Virtualization Views
 
 REST API views for virtual dataset management.
 """
+
 import logging
 import time
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError as DRFValidationError, NotFound, PermissionDenied, Throttled
-from rest_framework.filters import OrderingFilter, SearchFilter
-from django.db import transaction
-from django.core.exceptions import ValidationError as DjangoValidationError
-from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer, OpenApiResponse, OpenApiParameter
-from drf_spectacular.types import OpenApiTypes
-from rest_framework import serializers as drf_serializers
-from django.utils import timezone
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import permissions, status, viewsets
+from rest_framework import serializers as drf_serializers
+from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, PermissionDenied, Throttled
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.filters import OrderingFilter, SearchFilter
+from rest_framework.response import Response
+
+from hub.apps.api.standards.pagination import StandardPageNumberPagination
+from hub.apps.audit.utils import create_audit_event
+from hub.apps.auth.permissions import HasAnyRole, HasRole, HasScope
+from hub.apps.core.responses import handle_service_exception
+from hub.apps.core.services.base import NotFoundError, PermissionError, ValidationError
+from hub.apps.governance.abac import ABACEngine, PolicyEvaluationResult
+from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
+
+from .business_rules import VirtualizationBusinessRules, VirtualizationRuleExecutionContext
+from .cross_tenant_helpers import (
+    check_abac_for_dataset,
+    check_abac_for_execution,
+    get_dataset_for_cross_tenant_check,
+    get_execution_for_cross_tenant_check,
+)
 from .models import (
-    VirtualDataset,
     QueryExecution,
-    QueryType,
-    VirtualDatasetStatus,
+    QueryExecutionMode,
     QueryExecutionStatus,
-    QueryExecutionMode
+    QueryType,
+    VirtualDataset,
+    VirtualDatasetStatus,
 )
 from .serializers import (
-    VirtualDatasetSerializer,
+    DatasetTopologySerializer,
+    QueryExecutionCancelResponseSerializer,
+    QueryExecutionCreateSerializer,
+    QueryExecutionProgressSerializer,
+    QueryExecutionResultSerializer,
+    QueryExecutionSerializer,
     VirtualDatasetCreateSerializer,
+    VirtualDatasetSerializer,
     VirtualDatasetUpdateSerializer,
     VirtualDatasetValidationResponseSerializer,
     VirtualDatasetVersionSerializer,
-    QueryExecutionSerializer,
-    QueryExecutionCreateSerializer,
-    QueryExecutionResultSerializer,
-    QueryExecutionProgressSerializer,
-    QueryExecutionCancelResponseSerializer,
     VirtualizationTopologySerializer,
-    DatasetTopologySerializer
 )
 from .services import VirtualizationService
-from .business_rules import VirtualizationBusinessRules, VirtualizationRuleExecutionContext
-from hub.apps.core.services.base import ValidationError, NotFoundError, PermissionError
-from hub.apps.audit.utils import create_audit_event
-from hub.apps.auth.permissions import HasRole, HasAnyRole, HasScope
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
-from hub.apps.governance.abac import ABACEngine, PolicyEvaluationResult
-from hub.apps.api.standards.pagination import StandardPageNumberPagination
 
 logger = logging.getLogger(__name__)
 
@@ -57,60 +75,60 @@ logger = logging.getLogger(__name__)
         description="List all virtual datasets for the authenticated user's tenant with filtering, pagination, and search.",
         parameters=[
             OpenApiParameter(
-                name='status',
+                name="status",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by status (DRAFT, ACTIVE, INACTIVE, ARCHIVED)',
-                required=False
+                description="Filter by status (DRAFT, ACTIVE, INACTIVE, ARCHIVED)",
+                required=False,
             ),
             OpenApiParameter(
-                name='query_type',
+                name="query_type",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Filter by query type (SQL, SPARQL, FEDERATED, GRAPHQL, REST)',
-                required=False
+                description="Filter by query type (SQL, SPARQL, FEDERATED, GRAPHQL, REST)",
+                required=False,
             ),
             OpenApiParameter(
-                name='owner',
+                name="owner",
                 type=OpenApiTypes.UUID,
                 location=OpenApiParameter.QUERY,
-                description='Filter by owner/created_by user ID',
-                required=False
+                description="Filter by owner/created_by user ID",
+                required=False,
             ),
             OpenApiParameter(
-                name='created_by',
+                name="created_by",
                 type=OpenApiTypes.UUID,
                 location=OpenApiParameter.QUERY,
-                description='Filter by created_by user ID (alias for owner)',
-                required=False
+                description="Filter by created_by user ID (alias for owner)",
+                required=False,
             ),
             OpenApiParameter(
-                name='search',
+                name="search",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Search in name, description, and query fields',
-                required=False
+                description="Search in name, description, and query fields",
+                required=False,
             ),
             OpenApiParameter(
-                name='ordering',
+                name="ordering",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='Order by field (e.g., name, -created_at). Prefix with - for descending.',
-                required=False
+                description="Order by field (e.g., name, -created_at). Prefix with - for descending.",
+                required=False,
             ),
             OpenApiParameter(
-                name='page',
+                name="page",
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
-                description='Page number (default: 1)',
-                required=False
+                description="Page number (default: 1)",
+                required=False,
             ),
             OpenApiParameter(
-                name='page_size',
+                name="page_size",
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
-                description='Items per page (default: 50, max: 100)',
-                required=False
+                description="Items per page (default: 50, max: 100)",
+                required=False,
             ),
         ],
         tags=["Virtualization"],
@@ -144,25 +162,26 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
     Supports RBAC (role-based) and ABAC (attribute-based) authorization.
     Includes rate limiting, comprehensive filtering, pagination, and audit logging.
     """
+
     queryset = VirtualDataset.objects.all()
     serializer_class = VirtualDatasetSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
     filter_backends = [OrderingFilter, SearchFilter]
-    ordering_fields = ['name', 'query_type', 'status', 'version', 'created_at', 'updated_at']
-    ordering = ['-created_at']  # Default ordering
-    search_fields = ['name', 'description', 'query']
+    ordering_fields = ["name", "query_type", "status", "version", "created_at", "updated_at"]
+    ordering = ["-created_at"]  # Default ordering
+    search_fields = ["name", "description", "query"]
     pagination_class = StandardPageNumberPagination
 
     def get_permissions(self):
         """Return appropriate permissions based on action"""
-        write_actions = ['create', 'update', 'partial_update', 'destroy']
+        write_actions = ["create", "update", "partial_update", "destroy"]
         if self.action in write_actions:
             # Write operations require DATA_PROVIDER or TENANT_ADMIN role and virtualization:write scope
             return [
                 permissions.IsAuthenticated(),
-                HasAnyRole(['DATA_PROVIDER', 'TENANT_ADMIN']),
-                HasScope('virtualization:write'),
+                HasAnyRole(["DATA_PROVIDER", "TENANT_ADMIN"]),
+                HasScope("virtualization:write"),
             ]
         # Read operations only require authentication
         return [permissions.IsAuthenticated()]
@@ -183,53 +202,20 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
             queryset = VirtualDataset.objects.all()
         else:
-            # Get tenant from request (set by middleware/authentication) or user
-            tenant_id = None
-
-            # Try request.tenant_id first (set by authentication/middleware)
-            if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-                tenant_id = self.request.tenant_id
-                # Convert to UUID if it's a string
-                if isinstance(tenant_id, str):
-                    import uuid
-                    try:
-                        tenant_id = uuid.UUID(tenant_id)
-                    except (ValueError, TypeError):
-                        tenant_id = None
-
-            # Fallback to request.tenant object
-            if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
-                tenant_id = self.request.tenant.id
-
-            # Fallback to user.tenant_id (direct field access)
-            if not tenant_id and hasattr(user, "id") and user.id:
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
-                try:
-                    db_user = User.objects.only('tenant_id').get(id=user.id)
-                    if db_user.tenant_id:
-                        tenant_id = db_user.tenant_id
-                except User.DoesNotExist:
-                    pass
-
-            # Last resort: get from user.tenant relationship
-            if not tenant_id and hasattr(user, "tenant") and user.tenant:
-                tenant_id = user.tenant.id
-
-            # Regular users can only see virtual datasets in their tenant
-            if tenant_id:
-                if isinstance(tenant_id, str):
-                    import uuid
-                    try:
-                        tenant_id = uuid.UUID(tenant_id)
-                    except (ValueError, TypeError):
-                        return VirtualDataset.objects.none()
-                queryset = VirtualDataset.objects.filter(tenant_id=tenant_id)
-            else:
+            # Phase 16: use central helper (docs/TENANT_ISOLATION.md)
+            tenant_id_str = get_request_tenant_id(self.request)
+            if not tenant_id_str:
                 return VirtualDataset.objects.none()
+            import uuid
+
+            try:
+                tenant_id = uuid.UUID(tenant_id_str)
+            except (ValueError, TypeError):
+                return VirtualDataset.objects.none()
+            queryset = VirtualDataset.objects.filter(tenant_id=tenant_id)
 
         # Apply status filter if provided
-        status_filter = self.request.query_params.get('status')
+        status_filter = self.request.query_params.get("status")
         if status_filter:
             valid_statuses = [choice[0] for choice in VirtualDatasetStatus.choices]
             if status_filter.upper() in valid_statuses:
@@ -238,7 +224,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 return VirtualDataset.objects.none()
 
         # Apply query_type filter if provided
-        query_type_filter = self.request.query_params.get('query_type')
+        query_type_filter = self.request.query_params.get("query_type")
         if query_type_filter:
             valid_query_types = [choice[0] for choice in QueryType.choices]
             if query_type_filter.upper() in valid_query_types:
@@ -247,10 +233,13 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 return VirtualDataset.objects.none()
 
         # Apply owner/created_by filter if provided
-        owner_filter = self.request.query_params.get('owner') or self.request.query_params.get('created_by')
+        owner_filter = self.request.query_params.get("owner") or self.request.query_params.get(
+            "created_by"
+        )
         if owner_filter:
             try:
                 import uuid
+
                 owner_uuid = uuid.UUID(owner_filter)
                 queryset = queryset.filter(created_by_id=owner_uuid)
             except (ValueError, TypeError):
@@ -260,26 +249,9 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         return queryset
 
     def get_tenant_from_request(self):
-        """Get tenant from request"""
-        user = self.request.user
-
-        # Try request.tenant_id first
-        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-            from hub.apps.tenants.models import Tenant
-            try:
-                return Tenant.objects.get(id=self.request.tenant_id)
-            except Tenant.DoesNotExist:
-                pass
-
-        # Fallback to request.tenant object
-        if hasattr(self.request, "tenant") and self.request.tenant:
-            return self.request.tenant
-
-        # Fallback to user.tenant
-        if hasattr(user, "tenant") and user.tenant:
-            return user.tenant
-
-        return None
+        """Get tenant from request using central helper (Phase 10.1.8)"""
+        tenant_id, tenant = get_request_tenant(self.request)
+        return tenant
 
     def _check_abac_policy(
         self,
@@ -287,7 +259,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         tenant_id: str,
         resource_type: str,
         resource_id: str,
-        access_type: str = "WRITE"
+        access_type: str = "WRITE",
     ) -> None:
         """
         Check ABAC policy for resource access.
@@ -308,7 +280,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 tenant_id=tenant_id,
                 resource_type=resource_type,
                 resource_id=resource_id,
-                access_type=access_type
+                access_type=access_type,
             )
 
             if not result.allowed:
@@ -328,8 +300,8 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                         "tenant_id": tenant_id,
                         "resource_type": resource_type,
                         "resource_id": resource_id,
-                        "access_type": access_type
-                    }
+                        "access_type": access_type,
+                    },
                 )
                 # Allow access when no policy matches (fail open)
                 return
@@ -344,9 +316,9 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "resource_type": resource_type,
                     "resource_id": resource_id,
                     "access_type": access_type,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             # Fail open: if ABAC check fails, allow access (but log the warning)
             # In production, you might want to fail closed instead
@@ -363,7 +335,10 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         if not allowed:
             headers = get_rate_limit_headers(request, rate_limit_results)
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -384,15 +359,13 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         tenant = self.get_tenant_from_request()
         if not tenant:
             return Response(
-                {'error': 'Tenant context required'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Tenant context required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
             return Response(
-                {'error': 'User authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         user_id = str(request.user.id)
@@ -407,48 +380,39 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 tenant_id=tenant_id,
                 resource_type="VIRTUAL_DATASET",
                 resource_id=placeholder_resource_id,
-                access_type="WRITE"
+                access_type="WRITE",
             )
         except PermissionDenied as e:
             logger.warning(
                 "ABAC policy denied virtual dataset creation",
-                extra={
-                    "user_id": user_id,
-                    "tenant_id": tenant_id,
-                    "error": str(e)
-                }
+                extra={"user_id": user_id, "tenant_id": tenant_id, "error": str(e)},
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
 
         # Initialize service
-        service = VirtualizationService(
-            tenant_id=tenant_id,
-            user_id=user_id
-        )
+        service = VirtualizationService(tenant_id=tenant_id, user_id=user_id)
 
         try:
             # Ensure user_id is provided
             if not request.user or not request.user.id:
                 return Response(
-                    {'error': 'User authentication required'},
-                    status=status.HTTP_401_UNAUTHORIZED
+                    {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
                 )
 
             # Create virtual dataset using service
             virtual_dataset = service.create_virtual_dataset(
-                name=serializer.validated_data['name'],
-                query=serializer.validated_data['query'],
-                query_type=serializer.validated_data['query_type'],
+                name=serializer.validated_data["name"],
+                query=serializer.validated_data["query"],
+                query_type=serializer.validated_data["query_type"],
                 tenant_id=tenant_id,
                 user_id=user_id,
-                description=serializer.validated_data.get('description'),
-                schema=serializer.validated_data.get('schema'),
-                sources=serializer.validated_data.get('sources'),
-                version=serializer.validated_data.get('version', '1.0.0'),
-                status=serializer.validated_data.get('status', VirtualDatasetStatus.DRAFT)
+                description=serializer.validated_data.get("description"),
+                schema=serializer.validated_data.get("schema"),
+                sources=serializer.validated_data.get("sources"),
+                version=serializer.validated_data.get("version", "1.0.0"),
+                status=serializer.validated_data.get("status", VirtualDatasetStatus.DRAFT),
             )
 
             # Log audit event
@@ -459,12 +423,12 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 tenant=tenant,
                 resource_id=str(virtual_dataset.id),
                 details={
-                    'name': virtual_dataset.name,
-                    'query_type': virtual_dataset.query_type,
-                    'status': virtual_dataset.status,
-                    'version': virtual_dataset.version
+                    "name": virtual_dataset.name,
+                    "query_type": virtual_dataset.query_type,
+                    "status": virtual_dataset.status,
+                    "version": virtual_dataset.version,
                 },
-                request=request
+                request=request,
             )
 
             # Get rate limit headers for response
@@ -474,7 +438,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             return Response(
                 VirtualDatasetSerializer(virtual_dataset).data,
                 status=status.HTTP_201_CREATED,
-                headers=headers
+                headers=headers,
             )
 
         except ValidationError as e:
@@ -483,27 +447,23 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 extra={
                     "tenant_id": str(tenant.id),
                     "user_id": str(request.user.id) if request.user else None,
-                    "error": str(e),
-                    "error_code": getattr(e, 'code', None)
+                    "error": getattr(e, "message", str(e)),
+                    "error_code": getattr(e, "code", None),
                 },
-                exc_info=True
+                exc_info=True,
             )
-            return Response(
-                {'error': str(e), 'code': getattr(e, 'code', 'VALIDATION_ERROR')},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
                 "Permission denied for virtual dataset creation",
                 extra={
                     "tenant_id": str(tenant.id),
                     "user_id": str(request.user.id) if request.user else None,
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
         except Exception as e:
             logger.error(
@@ -511,13 +471,13 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 extra={
                     "tenant_id": str(tenant.id),
                     "user_id": str(request.user.id) if request.user else None,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             return Response(
-                {'error': 'An unexpected error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "An unexpected error occurred"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     def list(self, request, *args, **kwargs):
@@ -532,7 +492,10 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         if not allowed:
             headers = get_rate_limit_headers(request, rate_limit_results)
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -569,7 +532,10 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         if not allowed:
             headers = get_rate_limit_headers(request, rate_limit_results)
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -583,19 +549,14 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             exception.headers = headers
             raise exception
 
-        dataset_id = kwargs.get('id')
-        tenant = self.get_tenant_from_request()
+        dataset_id = kwargs.get("id")
 
-        # Check if dataset exists in another tenant first (for proper 403 vs 404)
-        if dataset_id and tenant:
-            try:
-                # Try to get dataset without tenant filtering
-                other_tenant_dataset = VirtualDataset.objects.get(id=dataset_id)
-                if str(other_tenant_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot access virtual dataset from different tenant")
-            except VirtualDataset.DoesNotExist:
-                pass  # Dataset doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+            dataset_id, request
+        )
+        if permission_error:
+            raise permission_error
 
         # Try to get from tenant-scoped queryset
         try:
@@ -603,36 +564,14 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         except NotFound:
             raise NotFound("Virtual dataset not found")
 
-        # Check ABAC policy for READ access
-        if request.user and request.user.id and tenant:
-            try:
-                self._check_abac_policy(
-                    user_id=str(request.user.id),
-                    tenant_id=str(tenant.id),
-                    resource_type="VIRTUAL_DATASET",
-                    resource_id=str(virtual_dataset.id),
-                    access_type="READ"
-                )
-            except PermissionDenied as e:
-                logger.warning(
-                    "ABAC policy denied virtual dataset read access",
-                    extra={
-                        "user_id": str(request.user.id),
-                        "tenant_id": str(tenant.id),
-                        "virtual_dataset_id": str(virtual_dataset.id),
-                        "error": str(e)
-                    }
-                )
-                raise
+        # Check ABAC policy for READ access using shared helper
+        check_abac_for_dataset(virtual_dataset, request, access_type="READ")
 
         # Get rate limit headers for response
         _, rate_limit_results = check_rate_limit(request)
         headers = get_rate_limit_headers(request, rate_limit_results)
 
-        return Response(
-            VirtualDatasetSerializer(virtual_dataset).data,
-            headers=headers
-        )
+        return Response(VirtualDatasetSerializer(virtual_dataset).data, headers=headers)
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
@@ -646,7 +585,10 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         if not allowed:
             headers = get_rate_limit_headers(request, rate_limit_results)
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -660,19 +602,14 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             exception.headers = headers
             raise exception
 
-        dataset_id = kwargs.get('id')
-        tenant = self.get_tenant_from_request()
+        dataset_id = kwargs.get("id")
 
-        # Check if dataset exists in another tenant first (for proper 403 vs 404)
-        if dataset_id and tenant:
-            try:
-                # Try to get dataset without tenant filtering
-                other_tenant_dataset = VirtualDataset.objects.get(id=dataset_id)
-                if str(other_tenant_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot update virtual dataset from different tenant")
-            except VirtualDataset.DoesNotExist:
-                pass  # Dataset doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+            dataset_id, request
+        )
+        if permission_error:
+            raise PermissionDenied("Cannot update virtual dataset from different tenant")
 
         # Try to get from tenant-scoped queryset
         try:
@@ -686,22 +623,15 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         # Ensure user_id is provided
         if not request.user or not request.user.id:
             return Response(
-                {'error': 'User authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         user_id = str(request.user.id)
         tenant_id = str(virtual_dataset.tenant_id)
 
-        # Check ABAC policy for WRITE access
+        # Check ABAC policy for WRITE access using shared helper
         try:
-            self._check_abac_policy(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                resource_type="VIRTUAL_DATASET",
-                resource_id=str(virtual_dataset.id),
-                access_type="WRITE"
-            )
+            check_abac_for_dataset(virtual_dataset, request, access_type="WRITE")
         except PermissionDenied as e:
             logger.warning(
                 "ABAC policy denied virtual dataset update",
@@ -709,19 +639,15 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "user_id": user_id,
                     "tenant_id": tenant_id,
                     "virtual_dataset_id": str(virtual_dataset.id),
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
 
         # Initialize service
-        service = VirtualizationService(
-            tenant_id=tenant_id,
-            user_id=user_id
-        )
+        service = VirtualizationService(tenant_id=tenant_id, user_id=user_id)
 
         try:
             # Update virtual dataset using service
@@ -729,7 +655,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             virtual_dataset = service.update_virtual_dataset(
                 virtual_dataset_id=str(virtual_dataset.id),
                 tenant_id=str(virtual_dataset.tenant_id),
-                **update_data
+                **update_data,
             )
 
             # Log audit event
@@ -740,17 +666,14 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 tenant=virtual_dataset.tenant,
                 resource_id=str(virtual_dataset.id),
                 details=update_data,
-                request=request
+                request=request,
             )
 
             # Get rate limit headers for response
             _, rate_limit_results = check_rate_limit(request)
             headers = get_rate_limit_headers(request, rate_limit_results)
 
-            return Response(
-                VirtualDatasetSerializer(virtual_dataset).data,
-                headers=headers
-            )
+            return Response(VirtualDatasetSerializer(virtual_dataset).data, headers=headers)
 
         except ValidationError as e:
             logger.error(
@@ -759,13 +682,17 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": str(virtual_dataset.tenant_id),
                     "error": str(e),
-                    "error_code": getattr(e, 'code', None)
+                    "error_code": getattr(e, "code", None),
                 },
-                exc_info=True
+                exc_info=True,
             )
             return Response(
-                {'error': str(e), 'code': getattr(e, 'code', 'VALIDATION_ERROR')},
-                status=status.HTTP_400_BAD_REQUEST
+                {
+                    "error": str(e),
+                    "code": getattr(e, "code", "VALIDATION_ERROR"),
+                    "details": getattr(e, "details", {}),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except PermissionError as e:
             logger.warning(
@@ -774,28 +701,27 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": str(virtual_dataset.tenant_id),
                     "user_id": str(request.user.id) if request.user else None,
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except Exception as e:
             logger.error(
                 "Unexpected error during virtual dataset update",
                 extra={
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": str(virtual_dataset.tenant_id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             return Response(
-                {'error': 'An unexpected error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "An unexpected error occurred"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @transaction.atomic
@@ -819,7 +745,10 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         if not allowed:
             headers = get_rate_limit_headers(request, rate_limit_results)
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -833,19 +762,14 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             exception.headers = headers
             raise exception
 
-        dataset_id = kwargs.get('id')
-        tenant = self.get_tenant_from_request()
+        dataset_id = kwargs.get("id")
 
-        # Check if dataset exists in another tenant first (for proper 403 vs 404)
-        if dataset_id and tenant:
-            try:
-                # Try to get dataset without tenant filtering
-                other_tenant_dataset = VirtualDataset.objects.get(id=dataset_id)
-                if str(other_tenant_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot delete virtual dataset from different tenant")
-            except VirtualDataset.DoesNotExist:
-                pass  # Dataset doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+            dataset_id, request
+        )
+        if permission_error:
+            raise PermissionDenied("Cannot delete virtual dataset from different tenant")
 
         # Try to get from tenant-scoped queryset
         try:
@@ -860,22 +784,15 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         # Ensure user_id is provided
         if not request.user or not request.user.id:
             return Response(
-                {'error': 'User authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         user_id = str(request.user.id)
         tenant_id = str(virtual_dataset.tenant_id)
 
-        # Check ABAC policy for DELETE access
+        # Check ABAC policy for DELETE access using shared helper
         try:
-            self._check_abac_policy(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                resource_type="VIRTUAL_DATASET",
-                resource_id=dataset_id,
-                access_type="DELETE"
-            )
+            check_abac_for_dataset(virtual_dataset, request, access_type="DELETE")
         except PermissionDenied as e:
             logger.warning(
                 "ABAC policy denied virtual dataset deletion",
@@ -883,25 +800,20 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "user_id": user_id,
                     "tenant_id": tenant_id,
                     "virtual_dataset_id": dataset_id,
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
 
         # Initialize service
-        service = VirtualizationService(
-            tenant_id=tenant_id,
-            user_id=user_id
-        )
+        service = VirtualizationService(tenant_id=tenant_id, user_id=user_id)
 
         try:
             # Delete virtual dataset using service
             service.delete_virtual_dataset(
-                virtual_dataset_id=dataset_id,
-                tenant_id=str(virtual_dataset.tenant_id)
+                virtual_dataset_id=dataset_id, tenant_id=str(virtual_dataset.tenant_id)
             )
 
             # Log audit event
@@ -911,20 +823,15 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 actor_user=request.user,
                 tenant=virtual_dataset.tenant,
                 resource_id=dataset_id,
-                details={
-                    'name': dataset_name
-                },
-                request=request
+                details={"name": dataset_name},
+                request=request,
             )
 
             # Get rate limit headers for response
             _, rate_limit_results = check_rate_limit(request)
             headers = get_rate_limit_headers(request, rate_limit_results)
 
-            return Response(
-                status=status.HTTP_204_NO_CONTENT,
-                headers=headers
-            )
+            return Response(status=status.HTTP_204_NO_CONTENT, headers=headers)
 
         except PermissionError as e:
             logger.warning(
@@ -933,28 +840,27 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "virtual_dataset_id": dataset_id,
                     "tenant_id": str(virtual_dataset.tenant_id),
                     "user_id": str(request.user.id) if request.user else None,
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except Exception as e:
             logger.error(
                 "Unexpected error during virtual dataset deletion",
                 extra={
                     "virtual_dataset_id": dataset_id,
                     "tenant_id": str(virtual_dataset.tenant_id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             return Response(
-                {'error': 'An unexpected error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "An unexpected error occurred"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @extend_schema(
@@ -966,7 +872,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         },
         tags=["Virtualization"],
     )
-    @action(detail=True, methods=['post'], url_path='validate')
+    @action(detail=True, methods=["post"], url_path="validate")
     def validate_dataset(self, request, id=None):
         """
         Validate virtual dataset.
@@ -974,19 +880,14 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         POST /api/v1/virtualization/datasets/{id}/validate/
         """
         # Get dataset ID from URL kwargs
-        dataset_id = id or request.parser_context.get('kwargs', {}).get('id')
-        tenant = self.get_tenant_from_request()
+        dataset_id = id or request.parser_context.get("kwargs", {}).get("id")
 
-        # Check if dataset exists in another tenant first (for proper 403 vs 404)
-        if dataset_id and tenant:
-            try:
-                # Try to get dataset without tenant filtering
-                other_tenant_dataset = VirtualDataset.objects.get(id=dataset_id)
-                if str(other_tenant_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot validate virtual dataset from different tenant")
-            except VirtualDataset.DoesNotExist:
-                pass  # Dataset doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+            dataset_id, request
+        )
+        if permission_error:
+            raise PermissionDenied("Cannot validate virtual dataset from different tenant")
 
         # Try to get from tenant-scoped queryset
         try:
@@ -997,7 +898,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         # Initialize business rules
         business_rules = VirtualizationBusinessRules(
             tenant_id=str(virtual_dataset.tenant_id),
-            user_id=str(request.user.id) if request.user and request.user.id else None
+            user_id=str(request.user.id) if request.user and request.user.id else None,
         )
 
         # Create execution context for better integration with base class features
@@ -1006,23 +907,23 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             tenant_id=str(virtual_dataset.tenant_id),
             user_id=str(request.user.id) if request.user and request.user.id else None,
             virtual_dataset=virtual_dataset,
-            query=virtual_dataset.query
+            query=virtual_dataset.query,
         )
 
         # Use execute() method for comprehensive validation with caching, metrics, and tracing
         # This enables better observability and performance through caching
         validation_result = business_rules.execute(
             context=context,
-            validation_type='all',
-            use_cache=True  # Enable caching for validation results
+            validation_type="all",
+            use_cache=True,  # Enable caching for validation results
         )
 
         # Convert ValidationResult to the expected format
         validation_results = {
-            'is_valid': validation_result.is_valid,
-            'errors': validation_result.errors,
-            'warnings': validation_result.warnings,
-            'details': validation_result.details
+            "is_valid": validation_result.is_valid,
+            "errors": validation_result.errors,
+            "warnings": validation_result.warnings,
+            "details": validation_result.details,
         }
 
         # Log audit event
@@ -1033,16 +934,16 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
             tenant=virtual_dataset.tenant,
             resource_id=str(virtual_dataset.id),
             details={
-                'validation_result': validation_results['is_valid'],
-                'error_count': len(validation_results['errors']),
-                'warning_count': len(validation_results['warnings'])
+                "validation_result": validation_results["is_valid"],
+                "error_count": len(validation_results["errors"]),
+                "warning_count": len(validation_results["warnings"]),
             },
-            request=request
+            request=request,
         )
 
         return Response(
             VirtualDatasetValidationResponseSerializer(validation_results).data,
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
     @extend_schema(
@@ -1050,18 +951,16 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         description="Get all versions of a virtual dataset (by name) for the current tenant.",
         responses={
             200: inline_serializer(
-                name='VirtualDatasetVersionsResponse',
+                name="VirtualDatasetVersionsResponse",
                 fields={
-                    'versions': drf_serializers.ListField(
-                        child=VirtualDatasetVersionSerializer()
-                    ),
-                    'count': drf_serializers.IntegerField()
-                }
+                    "versions": drf_serializers.ListField(child=VirtualDatasetVersionSerializer()),
+                    "count": drf_serializers.IntegerField(),
+                },
             ),
         },
         tags=["Virtualization"],
     )
-    @action(detail=True, methods=['get'], url_path='versions')
+    @action(detail=True, methods=["get"], url_path="versions")
     def versions(self, request, id=None):
         """
         Get all versions of a virtual dataset.
@@ -1069,19 +968,14 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         GET /api/v1/virtualization/datasets/{id}/versions/
         """
         # Get dataset ID from URL kwargs
-        dataset_id = id or request.parser_context.get('kwargs', {}).get('id')
-        tenant = self.get_tenant_from_request()
+        dataset_id = id or request.parser_context.get("kwargs", {}).get("id")
 
-        # Check if dataset exists in another tenant first (for proper 403 vs 404)
-        if dataset_id and tenant:
-            try:
-                # Try to get dataset without tenant filtering
-                other_tenant_dataset = VirtualDataset.objects.get(id=dataset_id)
-                if str(other_tenant_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot access virtual dataset from different tenant")
-            except VirtualDataset.DoesNotExist:
-                pass  # Dataset doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+            dataset_id, request
+        )
+        if permission_error:
+            raise permission_error
 
         # Try to get from tenant-scoped queryset
         try:
@@ -1091,26 +985,29 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
 
         # Get all versions of this dataset (same name, same tenant)
         versions = VirtualDataset.objects.filter(
-            tenant_id=virtual_dataset.tenant_id,
-            name=virtual_dataset.name
-        ).order_by('-created_at')
+            tenant_id=virtual_dataset.tenant_id, name=virtual_dataset.name
+        ).order_by("-created_at")
 
         # Serialize versions
         version_data = []
         for version in versions:
-            version_data.append({
-                'version': version.version,
-                'status': version.status,
-                'created_at': version.created_at,
-                'updated_at': version.updated_at,
-                'query_type': version.query_type,
-                'source_count': version.get_source_count()
-            })
+            version_data.append(
+                {
+                    "version": version.version,
+                    "status": version.status,
+                    "created_at": version.created_at,
+                    "updated_at": version.updated_at,
+                    "query_type": version.query_type,
+                    "source_count": version.get_source_count(),
+                }
+            )
 
-        return Response({
-            'versions': VirtualDatasetVersionSerializer(version_data, many=True).data,
-            'count': len(version_data)
-        })
+        return Response(
+            {
+                "versions": VirtualDatasetVersionSerializer(version_data, many=True).data,
+                "count": len(version_data),
+            }
+        )
 
     @extend_schema(
         summary="Execute query on virtual dataset",
@@ -1118,11 +1015,11 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         request=QueryExecutionCreateSerializer,
         responses={
             201: QueryExecutionSerializer,
-            400: OpenApiResponse(description='Bad request'),
+            400: OpenApiResponse(description="Bad request"),
         },
         tags=["Virtualization"],
     )
-    @action(detail=True, methods=['post'], url_path='queries')
+    @action(detail=True, methods=["post"], url_path="queries")
     @transaction.atomic
     def execute_query(self, request, id=None):
         """
@@ -1131,34 +1028,26 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
         POST /api/v1/virtualization/datasets/{id}/queries/
         """
         # Get dataset ID from URL kwargs
-        dataset_id = id or request.parser_context.get('kwargs', {}).get('id')
-        tenant = self.get_tenant_from_request()
+        dataset_id = id or request.parser_context.get("kwargs", {}).get("id")
 
         # Try to get from tenant-scoped queryset
         try:
             virtual_dataset = self.get_object()
         except NotFound:
-            # Check if dataset exists in another tenant (for proper 403 vs 404)
-            if dataset_id and tenant:
-                try:
-                    other_tenant_dataset = VirtualDataset.objects.get(id=dataset_id)
-                    if str(other_tenant_dataset.tenant_id) != str(tenant.id):
-                        if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                            raise PermissionDenied("Cannot execute query on virtual dataset from different tenant")
-                except VirtualDataset.DoesNotExist:
-                    pass
+            # Check cross-tenant access using shared helper
+            other_tenant_dataset, permission_error = get_dataset_for_cross_tenant_check(
+                dataset_id, request
+            )
+            if permission_error:
+                raise PermissionDenied(
+                    "Cannot execute query on virtual dataset from different tenant"
+                )
             raise NotFound("Virtual dataset not found")
-
-        # Check tenant isolation
-        if tenant and str(virtual_dataset.tenant_id) != str(tenant.id):
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot execute query on virtual dataset from different tenant")
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
             return Response(
-                {'error': 'User authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         # Rate limiting check
@@ -1170,11 +1059,14 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 extra={
                     "user_id": str(request.user.id),
                     "tenant_id": str(tenant.id) if tenant else None,
-                    "virtual_dataset_id": dataset_id
-                }
+                    "virtual_dataset_id": dataset_id,
+                },
             )
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -1198,7 +1090,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                         tenant_id=str(virtual_dataset.tenant_id),
                         resource_type="VIRTUAL_DATASET",
                         resource_id=str(virtual_dataset.id),
-                        access_type="WRITE"
+                        access_type="WRITE",
                     )
                 except PermissionDenied:
                     logger.warning(
@@ -1206,8 +1098,8 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                         extra={
                             "user_id": str(request.user.id),
                             "tenant_id": str(virtual_dataset.tenant_id),
-                            "virtual_dataset_id": str(virtual_dataset.id)
-                        }
+                            "virtual_dataset_id": str(virtual_dataset.id),
+                        },
                     )
                     raise
 
@@ -1217,8 +1109,7 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
 
         # Initialize service
         service = VirtualizationService(
-            tenant_id=str(virtual_dataset.tenant_id),
-            user_id=str(request.user.id)
+            tenant_id=str(virtual_dataset.tenant_id), user_id=str(request.user.id)
         )
 
         try:
@@ -1227,10 +1118,10 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 virtual_dataset_id=str(virtual_dataset.id),
                 tenant_id=str(virtual_dataset.tenant_id),
                 user_id=str(request.user.id),
-                execution_mode=serializer.validated_data.get('execution_mode'),
-                parameters=serializer.validated_data.get('parameters'),
-                force_async=serializer.validated_data.get('force_async', False),
-                timeout_seconds=serializer.validated_data.get('timeout_seconds')
+                execution_mode=serializer.validated_data.get("execution_mode"),
+                parameters=serializer.validated_data.get("parameters"),
+                force_async=serializer.validated_data.get("force_async", False),
+                timeout_seconds=serializer.validated_data.get("timeout_seconds"),
             )
 
             # Log audit event
@@ -1241,17 +1132,16 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                 tenant=virtual_dataset.tenant,
                 resource_id=str(execution.id),
                 details={
-                    'virtual_dataset_id': str(virtual_dataset.id),
-                    'virtual_dataset_name': virtual_dataset.name,
-                    'execution_mode': execution.execution_mode,
-                    'status': execution.status
+                    "virtual_dataset_id": str(virtual_dataset.id),
+                    "virtual_dataset_name": virtual_dataset.name,
+                    "execution_mode": execution.execution_mode,
+                    "status": execution.status,
                 },
-                request=request
+                request=request,
             )
 
             response = Response(
-                QueryExecutionSerializer(execution).data,
-                status=status.HTTP_201_CREATED
+                QueryExecutionSerializer(execution).data, status=status.HTTP_201_CREATED
             )
 
             # Add rate limit headers
@@ -1270,16 +1160,13 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "tenant_id": str(virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
                     "error": str(e),
-                    "error_code": getattr(e, 'code', None)
+                    "error_code": getattr(e, "code", None),
                 },
-                exc_info=True
+                exc_info=True,
             )
-            return Response(
-                {'error': str(e), 'code': getattr(e, 'code', 'VALIDATION_ERROR')},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return handle_service_exception(e)
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
                 "Permission denied for query execution",
@@ -1287,12 +1174,11 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": str(virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
         except Exception as e:
             logger.error(
@@ -1301,13 +1187,13 @@ class VirtualDatasetViewSet(viewsets.ModelViewSet):
                     "virtual_dataset_id": str(virtual_dataset.id),
                     "tenant_id": str(virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             return Response(
-                {'error': 'An unexpected error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "An unexpected error occurred"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -1326,6 +1212,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     Supports RBAC (role-based) and ABAC (attribute-based) authorization.
     Includes rate limiting, comprehensive audit logging, and result retrieval in multiple formats.
     """
+
     queryset = QueryExecution.objects.all()
     serializer_class = QueryExecutionSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -1334,13 +1221,13 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_permissions(self):
         """Return appropriate permissions based on action"""
-        write_actions = ['cancel_execution']
+        write_actions = ["cancel_execution"]
         if self.action in write_actions:
             # Write operations require DATA_PROVIDER or TENANT_ADMIN role and virtualization:write scope
             return [
                 permissions.IsAuthenticated(),
-                HasAnyRole(['DATA_PROVIDER', 'TENANT_ADMIN']),
-                HasScope('virtualization:write'),
+                HasAnyRole(["DATA_PROVIDER", "TENANT_ADMIN"]),
+                HasScope("virtualization:write"),
             ]
         # Read operations only require authentication
         return [permissions.IsAuthenticated()]
@@ -1351,7 +1238,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         tenant_id: str,
         resource_type: str,
         resource_id: str,
-        access_type: str = "WRITE"
+        access_type: str = "WRITE",
     ) -> None:
         """
         Check ABAC policy for resource access.
@@ -1372,7 +1259,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 tenant_id=tenant_id,
                 resource_type=resource_type,
                 resource_id=resource_id,
-                access_type=access_type
+                access_type=access_type,
             )
 
             if not result.allowed:
@@ -1391,8 +1278,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                         "tenant_id": tenant_id,
                         "resource_type": resource_type,
                         "resource_id": resource_id,
-                        "access_type": access_type
-                    }
+                        "access_type": access_type,
+                    },
                 )
                 # Allow access when no policy matches (fail open for reads)
                 return
@@ -1407,9 +1294,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "resource_type": resource_type,
                     "resource_id": resource_id,
                     "access_type": access_type,
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             # On ABAC engine failure, allow access (fail open) but log the error
             return
@@ -1420,56 +1307,25 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Platform admins can see all query executions
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            queryset = QueryExecution.objects.select_related('virtual_dataset', 'job').all()
+            queryset = QueryExecution.objects.select_related("virtual_dataset", "job").all()
         else:
-            # Get tenant from request
-            tenant_id = None
+            # Use central helper for tenant resolution (Phase 10.1.8)
+            tenant_id_str = get_request_tenant_id(self.request)
+            if tenant_id_str:
+                import uuid
 
-            # Try request.tenant_id first
-            if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-                tenant_id = self.request.tenant_id
-                if isinstance(tenant_id, str):
-                    import uuid
-                    try:
-                        tenant_id = uuid.UUID(tenant_id)
-                    except (ValueError, TypeError):
-                        tenant_id = None
-
-            # Fallback to request.tenant object
-            if not tenant_id and hasattr(self.request, "tenant") and self.request.tenant:
-                tenant_id = self.request.tenant.id
-
-            # Fallback to user.tenant_id
-            if not tenant_id and hasattr(user, "id") and user.id:
-                from django.contrib.auth import get_user_model
-                User = get_user_model()
                 try:
-                    db_user = User.objects.only('tenant_id').get(id=user.id)
-                    if db_user.tenant_id:
-                        tenant_id = db_user.tenant_id
-                except User.DoesNotExist:
-                    pass
-
-            # Last resort: get from user.tenant relationship
-            if not tenant_id and hasattr(user, "tenant") and user.tenant:
-                tenant_id = user.tenant.id
-
-            # Filter by tenant via virtual_dataset relationship
-            if tenant_id:
-                if isinstance(tenant_id, str):
-                    import uuid
-                    try:
-                        tenant_id = uuid.UUID(tenant_id)
-                    except (ValueError, TypeError):
-                        return QueryExecution.objects.none()
-                queryset = QueryExecution.objects.select_related('virtual_dataset', 'job').filter(
+                    tenant_id = uuid.UUID(tenant_id_str)
+                except (ValueError, TypeError):
+                    return QueryExecution.objects.none()
+                queryset = QueryExecution.objects.select_related("virtual_dataset", "job").filter(
                     virtual_dataset__tenant_id=tenant_id
                 )
             else:
                 return QueryExecution.objects.none()
 
         # Apply status filter if provided
-        status_filter = self.request.query_params.get('status')
+        status_filter = self.request.query_params.get("status")
         if status_filter:
             valid_statuses = [choice[0] for choice in QueryExecutionStatus.choices]
             if status_filter.upper() in valid_statuses:
@@ -1478,10 +1334,11 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 return QueryExecution.objects.none()
 
         # Apply virtual_dataset filter if provided
-        dataset_filter = self.request.query_params.get('virtual_dataset_id')
+        dataset_filter = self.request.query_params.get("virtual_dataset_id")
         if dataset_filter:
             try:
                 import uuid
+
                 dataset_uuid = uuid.UUID(dataset_filter)
                 queryset = queryset.filter(virtual_dataset_id=dataset_uuid)
             except (ValueError, TypeError):
@@ -1490,26 +1347,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
     def get_tenant_from_request(self):
-        """Get tenant from request"""
-        user = self.request.user
-
-        # Try request.tenant_id first
-        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-            from hub.apps.tenants.models import Tenant
-            try:
-                return Tenant.objects.get(id=self.request.tenant_id)
-            except Tenant.DoesNotExist:
-                pass
-
-        # Fallback to request.tenant object
-        if hasattr(self.request, "tenant") and self.request.tenant:
-            return self.request.tenant
-
-        # Fallback to user.tenant
-        if hasattr(user, "tenant") and user.tenant:
-            return user.tenant
-
-        return None
+        """Get tenant from request using central helper"""
+        tenant_id, tenant = get_request_tenant(self.request)
+        return tenant
 
     def retrieve(self, request, *args, **kwargs):
         """
@@ -1517,8 +1357,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
         GET /api/v1/virtualization/queries/{id}/
         """
-        execution_id = kwargs.get('id')
-        tenant = self.get_tenant_from_request()
+        execution_id = kwargs.get("id")
+        tenant_id, tenant = get_request_tenant(request)
 
         # Rate limiting check
         allowed, rate_limit_results = check_rate_limit(request)
@@ -1528,12 +1368,15 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 "rate_limit_exceeded",
                 extra={
                     "user_id": str(request.user.id) if request.user else None,
-                    "tenant_id": str(tenant.id) if tenant else None,
-                    "execution_id": execution_id
-                }
+                    "tenant_id": tenant_id,
+                    "execution_id": execution_id,
+                },
             )
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -1547,16 +1390,12 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             exception.headers = headers
             raise exception
 
-        # Check if execution exists in another tenant first (for proper 403 vs 404)
-        if execution_id and tenant:
-            try:
-                # Try to get execution without tenant filtering
-                other_tenant_execution = QueryExecution.objects.select_related('virtual_dataset').get(id=execution_id)
-                if str(other_tenant_execution.virtual_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot access query execution from different tenant")
-            except QueryExecution.DoesNotExist:
-                pass  # Execution doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+            execution_id, request
+        )
+        if permission_error:
+            raise permission_error
 
         # Try to get from tenant-scoped queryset
         try:
@@ -1564,28 +1403,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         except NotFound:
             raise NotFound("Query execution not found")
 
-        # ABAC check for read access
-        if request.user and request.user.id and execution.virtual_dataset.tenant:
-            # Skip ABAC for platform admins
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                try:
-                    self._check_abac_policy(
-                        user_id=str(request.user.id),
-                        tenant_id=str(execution.virtual_dataset.tenant_id),
-                        resource_type="QUERY_EXECUTION",
-                        resource_id=str(execution.id),
-                        access_type="READ"
-                    )
-                except PermissionDenied:
-                    logger.warning(
-                        "abac_denied_query_execution_read",
-                        extra={
-                            "user_id": str(request.user.id),
-                            "tenant_id": str(execution.virtual_dataset.tenant_id),
-                            "execution_id": str(execution.id)
-                        }
-                    )
-                    raise
+        # ABAC check for read access using shared helper
+        check_abac_for_execution(execution, request, access_type="READ")
 
         # Log audit event
         try:
@@ -1598,9 +1417,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 details={
                     "virtual_dataset_id": str(execution.virtual_dataset.id),
                     "virtual_dataset_name": execution.virtual_dataset.name,
-                    "status": execution.status
+                    "status": execution.status,
                 },
-                request=request
+                request=request,
             )
         except Exception as e:
             logger.warning(
@@ -1608,9 +1427,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 extra={
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         response = Response(QueryExecutionSerializer(execution).data)
@@ -1629,11 +1448,11 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         request=None,
         responses={
             200: QueryExecutionCancelResponseSerializer,
-            400: OpenApiResponse(description='Execution cannot be cancelled'),
+            400: OpenApiResponse(description="Execution cannot be cancelled"),
         },
         tags=["Virtualization"],
     )
-    @action(detail=True, methods=['post'], url_path='cancel')
+    @action(detail=True, methods=["post"], url_path="cancel")
     @transaction.atomic
     def cancel_execution(self, request, id=None):
         """
@@ -1641,14 +1460,13 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
         POST /api/v1/virtualization/queries/{id}/cancel/
         """
-        execution_id = id or request.parser_context.get('kwargs', {}).get('id')
-        tenant = self.get_tenant_from_request()
+        execution_id = id or request.parser_context.get("kwargs", {}).get("id")
+        tenant_id, tenant = get_request_tenant(request)
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
             return Response(
-                {'error': 'User authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         # Rate limiting check
@@ -1659,12 +1477,15 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 "rate_limit_exceeded",
                 extra={
                     "user_id": str(request.user.id),
-                    "tenant_id": str(tenant.id) if tenant else None,
-                    "execution_id": execution_id
-                }
+                    "tenant_id": tenant_id,
+                    "execution_id": execution_id,
+                },
             )
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -1678,16 +1499,12 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             exception.headers = headers
             raise exception
 
-        # Check if execution exists in another tenant first (for proper 403 vs 404)
-        if execution_id and tenant:
-            try:
-                # Try to get execution without tenant filtering
-                other_tenant_execution = QueryExecution.objects.select_related('virtual_dataset').get(id=execution_id)
-                if str(other_tenant_execution.virtual_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot cancel query execution from different tenant")
-            except QueryExecution.DoesNotExist:
-                pass  # Execution doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+            execution_id, request
+        )
+        if permission_error:
+            raise PermissionDenied("Cannot cancel query execution from different tenant")
 
         # Try to get from tenant-scoped queryset
         try:
@@ -1695,44 +1512,34 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         except NotFound:
             raise NotFound("Query execution not found")
 
-        # ABAC check for write access
-        if execution.virtual_dataset.tenant:
-            # Skip ABAC for platform admins
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                try:
-                    self._check_abac_policy(
-                        user_id=str(request.user.id),
-                        tenant_id=str(execution.virtual_dataset.tenant_id),
-                        resource_type="QUERY_EXECUTION",
-                        resource_id=str(execution.id),
-                        access_type="WRITE"
-                    )
-                except PermissionDenied:
-                    logger.warning(
-                        "abac_denied_query_execution_cancel",
-                        extra={
-                            "user_id": str(request.user.id),
-                            "tenant_id": str(execution.virtual_dataset.tenant_id),
-                            "execution_id": str(execution.id)
-                        }
-                    )
-                    raise
+        # ABAC check for write access using shared helper
+        try:
+            check_abac_for_execution(execution, request, access_type="WRITE")
+        except PermissionDenied:
+            logger.warning(
+                "abac_denied_query_execution_cancel",
+                extra={
+                    "user_id": str(request.user.id),
+                    "tenant_id": str(execution.virtual_dataset.tenant_id),
+                    "execution_id": str(execution.id),
+                },
+            )
+            raise
 
         # Check if execution can be cancelled
         if not execution.can_cancel():
             return Response(
                 {
-                    'error': f'Query execution cannot be cancelled (current status: {execution.status})',
-                    'execution_id': str(execution.id),
-                    'status': execution.status
+                    "error": f"Query execution cannot be cancelled (current status: {execution.status})",
+                    "execution_id": str(execution.id),
+                    "status": execution.status,
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Initialize service
         service = VirtualizationService(
-            tenant_id=str(execution.virtual_dataset.tenant_id),
-            user_id=str(request.user.id)
+            tenant_id=str(execution.virtual_dataset.tenant_id), user_id=str(request.user.id)
         )
 
         try:
@@ -1755,8 +1562,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 # If job was running, release tenant concurrency slot
                 if job_previous_status == JobStatus.RUNNING and execution.virtual_dataset.tenant:
                     decrement_tenant_job_counter(
-                        str(execution.virtual_dataset.tenant.id),
-                        "running"
+                        str(execution.virtual_dataset.tenant.id), "running"
                     )
 
             # Publish cancellation event
@@ -1766,7 +1572,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     virtual_dataset_id=str(execution.virtual_dataset.id),
                     tenant_id=str(execution.virtual_dataset.tenant_id),
                     user_id=str(request.user.id),
-                    reason="User requested cancellation via API"
+                    reason="User requested cancellation via API",
                 )
             except Exception as e:
                 logger.warning(
@@ -1774,9 +1580,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     extra={
                         "execution_id": str(execution.id),
                         "tenant_id": str(execution.virtual_dataset.tenant_id),
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Log audit event
@@ -1791,9 +1597,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                         "virtual_dataset_id": str(execution.virtual_dataset.id),
                         "virtual_dataset_name": execution.virtual_dataset.name,
                         "previous_status": previous_status,
-                        "reason": "User requested cancellation via API"
+                        "reason": "User requested cancellation via API",
                     },
-                    request=request
+                    request=request,
                 )
             except Exception as e:
                 logger.warning(
@@ -1801,20 +1607,22 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     extra={
                         "execution_id": str(execution.id),
                         "tenant_id": str(execution.virtual_dataset.tenant_id),
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             cancelled_execution = execution
 
             response = Response(
-                QueryExecutionCancelResponseSerializer({
-                    'execution_id': str(cancelled_execution.id),
-                    'status': cancelled_execution.status,
-                    'message': 'Query execution cancelled successfully'
-                }).data,
-                status=status.HTTP_200_OK
+                QueryExecutionCancelResponseSerializer(
+                    {
+                        "execution_id": str(cancelled_execution.id),
+                        "status": cancelled_execution.status,
+                        "message": "Query execution cancelled successfully",
+                    }
+                ).data,
+                status=status.HTTP_200_OK,
             )
 
             # Add rate limit headers
@@ -1833,15 +1641,12 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
                     "error": str(e),
-                    "error_code": getattr(e, 'code', None)
-                }
+                    "error_code": getattr(e, "code", None),
+                },
             )
-            return Response(
-                {'error': str(e), 'code': getattr(e, 'code', 'VALIDATION_ERROR')},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return handle_service_exception(e)
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
                 "Permission denied for query execution cancellation",
@@ -1849,12 +1654,11 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
         except Exception as e:
             logger.error(
@@ -1863,13 +1667,13 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             return Response(
-                {'error': 'An unexpected error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "An unexpected error occurred"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @extend_schema(
@@ -1877,12 +1681,12 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         description="Get the result of a completed query execution, with support for pagination and multiple formats.",
         responses={
             200: QueryExecutionResultSerializer,
-            400: OpenApiResponse(description='Execution not completed'),
-            404: OpenApiResponse(description='Execution not found'),
+            400: OpenApiResponse(description="Execution not completed"),
+            404: OpenApiResponse(description="Execution not found"),
         },
         tags=["Virtualization"],
     )
-    @action(detail=True, methods=['get'], url_path='result')
+    @action(detail=True, methods=["get"], url_path="result")
     def get_result(self, request, id=None):
         """
         Get query execution result.
@@ -1891,14 +1695,13 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         Query params: output_format (json|csv|parquet), page, page_size, offset, limit
         Note: Using 'output_format' instead of 'format' to avoid DRF content negotiation conflict
         """
-        execution_id = id or request.parser_context.get('kwargs', {}).get('id')
-        tenant = self.get_tenant_from_request()
+        execution_id = id or request.parser_context.get("kwargs", {}).get("id")
+        tenant_id, tenant = get_request_tenant(request)
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
             return Response(
-                {'error': 'User authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         # Rate limiting check
@@ -1909,12 +1712,15 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 "rate_limit_exceeded",
                 extra={
                     "user_id": str(request.user.id),
-                    "tenant_id": str(tenant.id) if tenant else None,
-                    "execution_id": execution_id
-                }
+                    "tenant_id": tenant_id,
+                    "execution_id": execution_id,
+                },
             )
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -1928,16 +1734,12 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             exception.headers = headers
             raise exception
 
-        # Check if execution exists in another tenant first (for proper 403 vs 404)
-        if execution_id and tenant:
-            try:
-                # Try to get execution without tenant filtering
-                other_tenant_execution = QueryExecution.objects.select_related('virtual_dataset').get(id=execution_id)
-                if str(other_tenant_execution.virtual_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot access query execution result from different tenant")
-            except QueryExecution.DoesNotExist:
-                pass  # Execution doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+            execution_id, request
+        )
+        if permission_error:
+            raise PermissionDenied("Cannot access query execution result from different tenant")
 
         # Try to get from tenant-scoped queryset
         try:
@@ -1945,45 +1747,37 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         except NotFound:
             raise NotFound("Query execution not found")
 
-        # ABAC check for read access
-        if execution.virtual_dataset.tenant:
-            # Skip ABAC for platform admins
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                try:
-                    self._check_abac_policy(
-                        user_id=str(request.user.id),
-                        tenant_id=str(execution.virtual_dataset.tenant_id),
-                        resource_type="QUERY_EXECUTION",
-                        resource_id=str(execution.id),
-                        access_type="READ"
-                    )
-                except PermissionDenied:
-                    logger.warning(
-                        "abac_denied_query_execution_result",
-                        extra={
-                            "user_id": str(request.user.id),
-                            "tenant_id": str(execution.virtual_dataset.tenant_id),
-                            "execution_id": str(execution.id)
-                        }
-                    )
-                    raise
+        # ABAC check for read access using shared helper
+        try:
+            check_abac_for_execution(execution, request, access_type="READ")
+        except PermissionDenied:
+            logger.warning(
+                "abac_denied_query_execution_result",
+                extra={
+                    "user_id": str(request.user.id),
+                    "tenant_id": str(execution.virtual_dataset.tenant_id),
+                    "execution_id": str(execution.id),
+                },
+            )
+            raise
 
         # Initialize service
         service = VirtualizationService(
-            tenant_id=str(execution.virtual_dataset.tenant_id),
-            user_id=str(request.user.id)
+            tenant_id=str(execution.virtual_dataset.tenant_id), user_id=str(request.user.id)
         )
 
         try:
             # Get query parameters
             # Use 'output_format' to avoid conflict with DRF's 'format' parameter for content negotiation
-            result_format = request.query_params.get('output_format') or request.query_params.get('format', 'json')
+            result_format = request.query_params.get("output_format") or request.query_params.get(
+                "format", "json"
+            )
             result_format = result_format.lower()
-            page = request.query_params.get('page')
-            page_size = request.query_params.get('page_size')
-            offset = request.query_params.get('offset')
-            limit = request.query_params.get('limit')
-            stream = request.query_params.get('stream', 'false').lower() == 'true'
+            page = request.query_params.get("page")
+            page_size = request.query_params.get("page_size")
+            offset = request.query_params.get("offset")
+            limit = request.query_params.get("limit")
+            stream = request.query_params.get("stream", "false").lower() == "true"
 
             # Parse pagination parameters
             page_int = int(page) if page else None
@@ -2001,7 +1795,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 offset=offset_int,
                 limit=limit_int,
                 stream=stream,
-                execution=execution  # Pass execution object to avoid re-fetching
+                execution=execution,  # Pass execution object to avoid re-fetching
             )
 
             # Log audit event
@@ -2016,9 +1810,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                         "virtual_dataset_id": str(execution.virtual_dataset.id),
                         "virtual_dataset_name": execution.virtual_dataset.name,
                         "format": result_format,
-                        "status": execution.status
+                        "status": execution.status,
                     },
-                    request=request
+                    request=request,
                 )
             except Exception as e:
                 logger.warning(
@@ -2026,41 +1820,38 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     extra={
                         "execution_id": str(execution.id),
                         "tenant_id": str(execution.virtual_dataset.tenant_id),
-                        "error": str(e)
+                        "error": str(e),
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
 
             # Create response with appropriate content type
             # For CSV and Parquet, return the data directly as string/bytes
-            if result_format == 'csv':
+            if result_format == "csv":
                 response = Response(
-                    result.get('data', ''),
-                    status=status.HTTP_200_OK,
-                    content_type='text/csv'
+                    result.get("data", ""), status=status.HTTP_200_OK, content_type="text/csv"
                 )
-            elif result_format == 'parquet':
+            elif result_format == "parquet":
                 # Parquet is base64 encoded in the result
                 import base64
-                parquet_data = result.get('data', '')
+
+                parquet_data = result.get("data", "")
                 if parquet_data:
                     response = Response(
                         base64.b64decode(parquet_data),
                         status=status.HTTP_200_OK,
-                        content_type='application/parquet'
+                        content_type="application/parquet",
                     )
                 else:
                     response = Response(
-                        b'',
-                        status=status.HTTP_200_OK,
-                        content_type='application/parquet'
+                        b"", status=status.HTTP_200_OK, content_type="application/parquet"
                     )
             else:
                 # JSON format - use serializer
                 response = Response(
                     QueryExecutionResultSerializer(result).data,
                     status=status.HTTP_200_OK,
-                    content_type='application/json'
+                    content_type="application/json",
                 )
 
             # Add rate limit headers
@@ -2079,19 +1870,19 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
                     "error": str(e),
-                    "error_code": getattr(e, 'code', None)
-                }
+                    "error_code": getattr(e, "code", None),
+                },
             )
             # Include execution details in error response
             error_response = {
-                'error': str(e),
-                'code': getattr(e, 'code', 'VALIDATION_ERROR'),
-                'execution_id': str(execution.id),
-                'status': execution.status
+                "error": str(e),
+                "code": getattr(e, "code", "VALIDATION_ERROR"),
+                "execution_id": str(execution.id),
+                "status": execution.status,
             }
             return Response(error_response, status=status.HTTP_400_BAD_REQUEST)
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
                 "Permission denied for query result retrieval",
@@ -2099,12 +1890,11 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
         except Exception as e:
             logger.error(
@@ -2113,13 +1903,13 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             return Response(
-                {'error': 'An unexpected error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "An unexpected error occurred"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @extend_schema(
@@ -2127,25 +1917,24 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         description="Get real-time progress information for a query execution.",
         responses={
             200: QueryExecutionProgressSerializer,
-            404: OpenApiResponse(description='Execution not found'),
+            404: OpenApiResponse(description="Execution not found"),
         },
         tags=["Virtualization"],
     )
-    @action(detail=True, methods=['get'], url_path='progress')
+    @action(detail=True, methods=["get"], url_path="progress")
     def get_progress(self, request, id=None):
         """
         Get query execution progress.
 
         GET /api/v1/virtualization/queries/{id}/progress/
         """
-        execution_id = id or request.parser_context.get('kwargs', {}).get('id')
-        tenant = self.get_tenant_from_request()
+        execution_id = id or request.parser_context.get("kwargs", {}).get("id")
+        tenant_id, tenant = get_request_tenant(request)
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
             return Response(
-                {'error': 'User authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         # Rate limiting check
@@ -2156,12 +1945,15 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 "rate_limit_exceeded",
                 extra={
                     "user_id": str(request.user.id),
-                    "tenant_id": str(tenant.id) if tenant else None,
-                    "execution_id": execution_id
-                }
+                    "tenant_id": tenant_id,
+                    "execution_id": execution_id,
+                },
             )
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -2175,16 +1967,12 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             exception.headers = headers
             raise exception
 
-        # Check if execution exists in another tenant first (for proper 403 vs 404)
-        if execution_id and tenant:
-            try:
-                # Try to get execution without tenant filtering
-                other_tenant_execution = QueryExecution.objects.select_related('virtual_dataset').get(id=execution_id)
-                if str(other_tenant_execution.virtual_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot access query execution progress from different tenant")
-            except QueryExecution.DoesNotExist:
-                pass  # Execution doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+            execution_id, request
+        )
+        if permission_error:
+            raise PermissionDenied("Cannot access query execution progress from different tenant")
 
         # Try to get from tenant-scoped queryset
         try:
@@ -2192,28 +1980,19 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         except NotFound:
             raise NotFound("Query execution not found")
 
-        # ABAC check for read access
-        if execution.virtual_dataset.tenant:
-            # Skip ABAC for platform admins
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                try:
-                    self._check_abac_policy(
-                        user_id=str(request.user.id),
-                        tenant_id=str(execution.virtual_dataset.tenant_id),
-                        resource_type="QUERY_EXECUTION",
-                        resource_id=str(execution.id),
-                        access_type="READ"
-                    )
-                except PermissionDenied:
-                    logger.warning(
-                        "abac_denied_query_execution_progress",
-                        extra={
-                            "user_id": str(request.user.id),
-                            "tenant_id": str(execution.virtual_dataset.tenant_id),
-                            "execution_id": str(execution.id)
-                        }
-                    )
-                    raise
+        # ABAC check for read access using shared helper
+        try:
+            check_abac_for_execution(execution, request, access_type="READ")
+        except PermissionDenied:
+            logger.warning(
+                "abac_denied_query_execution_progress",
+                extra={
+                    "user_id": str(request.user.id),
+                    "tenant_id": str(execution.virtual_dataset.tenant_id),
+                    "execution_id": str(execution.id),
+                },
+            )
+            raise
 
         # Calculate progress
         progress_percentage = None
@@ -2223,8 +2002,8 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             progress_percentage = 0.0
         elif execution.status == QueryExecutionStatus.RUNNING:
             # Estimate progress based on metrics if available
-            if execution.metrics and 'progress_percentage' in execution.metrics:
-                progress_percentage = execution.metrics['progress_percentage']
+            if execution.metrics and "progress_percentage" in execution.metrics:
+                progress_percentage = execution.metrics["progress_percentage"]
             elif execution.started_at:
                 # Estimate based on elapsed time (rough estimate)
                 elapsed = (timezone.now() - execution.started_at).total_seconds()
@@ -2238,14 +2017,14 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             latest_logs = execution.execution_log[-10:]
 
         progress_data = {
-            'execution_id': str(execution.id),
-            'status': execution.status,
-            'progress_percentage': progress_percentage,
-            'started_at': execution.started_at,
-            'completed_at': execution.completed_at,
-            'duration_seconds': execution.get_duration_seconds(),
-            'metrics': execution.metrics if execution.metrics else {},
-            'latest_logs': latest_logs
+            "execution_id": str(execution.id),
+            "status": execution.status,
+            "progress_percentage": progress_percentage,
+            "started_at": execution.started_at,
+            "completed_at": execution.completed_at,
+            "duration_seconds": execution.get_duration_seconds(),
+            "metrics": execution.metrics if execution.metrics else {},
+            "latest_logs": latest_logs,
         }
 
         # Log audit event
@@ -2260,9 +2039,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "virtual_dataset_id": str(execution.virtual_dataset.id),
                     "virtual_dataset_name": execution.virtual_dataset.name,
                     "status": execution.status,
-                    "progress_percentage": progress_percentage
+                    "progress_percentage": progress_percentage,
                 },
-                request=request
+                request=request,
             )
         except Exception as e:
             logger.warning(
@@ -2270,14 +2049,13 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 extra={
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         response = Response(
-            QueryExecutionProgressSerializer(progress_data).data,
-            status=status.HTTP_200_OK
+            QueryExecutionProgressSerializer(progress_data).data, status=status.HTTP_200_OK
         )
 
         # Add rate limit headers
@@ -2292,13 +2070,13 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         summary="Stream query execution result",
         description="Stream query execution result using Server-Sent Events (SSE) for large datasets.",
         responses={
-            200: OpenApiResponse(description='SSE stream'),
-            400: OpenApiResponse(description='Execution not completed'),
-            404: OpenApiResponse(description='Execution not found'),
+            200: OpenApiResponse(description="SSE stream"),
+            400: OpenApiResponse(description="Execution not completed"),
+            404: OpenApiResponse(description="Execution not found"),
         },
         tags=["Virtualization"],
     )
-    @action(detail=True, methods=['get'], url_path='stream')
+    @action(detail=True, methods=["get"], url_path="stream")
     def stream_result(self, request, id=None):
         """
         Stream query execution result using Server-Sent Events (SSE).
@@ -2306,18 +2084,18 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         GET /api/v1/virtualization/queries/{id}/stream/
         Query params: format (json|csv)
         """
-        from django.http import StreamingHttpResponse
         import json
         import time
 
-        execution_id = id or request.parser_context.get('kwargs', {}).get('id')
-        tenant = self.get_tenant_from_request()
+        from django.http import StreamingHttpResponse
+
+        execution_id = id or request.parser_context.get("kwargs", {}).get("id")
+        tenant_id, tenant = get_request_tenant(request)
 
         # Ensure user_id is provided
         if not request.user or not request.user.id:
             return Response(
-                {'error': 'User authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "User authentication required"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         # Rate limiting check
@@ -2328,12 +2106,15 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 "rate_limit_exceeded",
                 extra={
                     "user_id": str(request.user.id),
-                    "tenant_id": str(tenant.id) if tenant else None,
-                    "execution_id": execution_id
-                }
+                    "tenant_id": tenant_id,
+                    "execution_id": execution_id,
+                },
             )
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -2347,16 +2128,12 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             exception.headers = headers
             raise exception
 
-        # Check if execution exists in another tenant first (for proper 403 vs 404)
-        if execution_id and tenant:
-            try:
-                # Try to get execution without tenant filtering
-                other_tenant_execution = QueryExecution.objects.select_related('virtual_dataset').get(id=execution_id)
-                if str(other_tenant_execution.virtual_dataset.tenant_id) != str(tenant.id):
-                    if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                        raise PermissionDenied("Cannot stream query execution result from different tenant")
-            except QueryExecution.DoesNotExist:
-                pass  # Execution doesn't exist at all, will return 404 below
+        # Check cross-tenant access using shared helper
+        other_tenant_execution, permission_error = get_execution_for_cross_tenant_check(
+            execution_id, request
+        )
+        if permission_error:
+            raise PermissionDenied("Cannot stream query execution result from different tenant")
 
         # Try to get from tenant-scoped queryset
         try:
@@ -2364,48 +2141,43 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         except NotFound:
             raise NotFound("Query execution not found")
 
-        # ABAC check for read access
-        if execution.virtual_dataset.tenant:
-            # Skip ABAC for platform admins
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                try:
-                    self._check_abac_policy(
-                        user_id=str(request.user.id),
-                        tenant_id=str(execution.virtual_dataset.tenant_id),
-                        resource_type="QUERY_EXECUTION",
-                        resource_id=str(execution.id),
-                        access_type="READ"
-                    )
-                except PermissionDenied:
-                    logger.warning(
-                        "abac_denied_query_execution_stream",
-                        extra={
-                            "user_id": str(request.user.id),
-                            "tenant_id": str(execution.virtual_dataset.tenant_id),
-                            "execution_id": str(execution.id)
-                        }
-                    )
-                    raise
+        # ABAC check for read access using shared helper
+        try:
+            check_abac_for_execution(execution, request, access_type="READ")
+        except PermissionDenied:
+            logger.warning(
+                "abac_denied_query_execution_stream",
+                extra={
+                    "user_id": str(request.user.id),
+                    "tenant_id": str(execution.virtual_dataset.tenant_id),
+                    "execution_id": str(execution.id),
+                },
+            )
+            raise
 
         # Check execution status
         if execution.status != QueryExecutionStatus.COMPLETED:
             return Response(
                 {
-                    'error': f'Query execution is not completed (status: {execution.status})',
-                    'execution_id': str(execution.id),
-                    'status': execution.status
+                    "error": f"Query execution is not completed (status: {execution.status})",
+                    "execution_id": str(execution.id),
+                    "status": execution.status,
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Get format parameter
         # Use 'output_format' to avoid conflict with DRF's 'format' parameter for content negotiation
-        result_format = request.query_params.get('output_format') or request.query_params.get('format', 'json')
+        result_format = request.query_params.get("output_format") or request.query_params.get(
+            "format", "json"
+        )
         result_format = result_format.lower()
-        if result_format not in ['json', 'csv']:
+        if result_format not in ["json", "csv"]:
             return Response(
-                {'error': f'Unsupported format for streaming: {result_format}. Supported formats: json, csv'},
-                status=status.HTTP_400_BAD_REQUEST
+                {
+                    "error": f"Unsupported format for streaming: {result_format}. Supported formats: json, csv"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Log audit event
@@ -2420,9 +2192,9 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "virtual_dataset_id": str(execution.virtual_dataset.id),
                     "virtual_dataset_name": execution.virtual_dataset.name,
                     "format": result_format,
-                    "status": execution.status
+                    "status": execution.status,
                 },
-                request=request
+                request=request,
             )
         except Exception as e:
             logger.warning(
@@ -2430,15 +2202,14 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 extra={
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # Initialize service
         service = VirtualizationService(
-            tenant_id=str(execution.virtual_dataset.tenant_id),
-            user_id=str(request.user.id)
+            tenant_id=str(execution.virtual_dataset.tenant_id), user_id=str(request.user.id)
         )
 
         try:
@@ -2447,7 +2218,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 execution_id=str(execution.id),
                 tenant_id=str(execution.virtual_dataset.tenant_id),
                 format=result_format,
-                stream=False  # Get full result, we'll stream it ourselves
+                stream=False,  # Get full result, we'll stream it ourselves
             )
 
             def generate_sse_stream():
@@ -2456,19 +2227,19 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 yield f"data: {json.dumps({'type': 'metadata', 'total_count': result['total_count'], 'format': result_format})}\n\n"
 
                 # Stream data in chunks
-                data = result.get('data', [])
+                data = result.get("data", [])
                 if isinstance(data, list):
                     # Stream JSON array
                     chunk_size = 100  # Stream 100 rows at a time
                     for i in range(0, len(data), chunk_size):
-                        chunk = data[i:i + chunk_size]
+                        chunk = data[i : i + chunk_size]
                         yield f"data: {json.dumps({'type': 'data', 'chunk': chunk, 'offset': i, 'count': len(chunk)})}\n\n"
                         time.sleep(0.01)  # Small delay to prevent overwhelming the client
                 elif isinstance(data, str):
                     # Stream CSV or other string format in chunks
                     chunk_size = 8192  # 8KB chunks
                     for i in range(0, len(data), chunk_size):
-                        chunk = data[i:i + chunk_size]
+                        chunk = data[i : i + chunk_size]
                         yield f"data: {json.dumps({'type': 'data', 'chunk': chunk})}\n\n"
                         time.sleep(0.01)
 
@@ -2476,11 +2247,10 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                 yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
             response = StreamingHttpResponse(
-                generate_sse_stream(),
-                content_type='text/event-stream'
+                generate_sse_stream(), content_type="text/event-stream"
             )
-            response['Cache-Control'] = 'no-cache'
-            response['X-Accel-Buffering'] = 'no'  # Disable buffering in nginx
+            response["Cache-Control"] = "no-cache"
+            response["X-Accel-Buffering"] = "no"  # Disable buffering in nginx
             return response
 
         except ValidationError as e:
@@ -2491,15 +2261,12 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
                     "error": str(e),
-                    "error_code": getattr(e, 'code', None)
-                }
+                    "error_code": getattr(e, "code", None),
+                },
             )
-            return Response(
-                {'error': str(e), 'code': getattr(e, 'code', 'VALIDATION_ERROR')},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return handle_service_exception(e)
         except NotFoundError as e:
-            raise NotFound(str(e))
+            return handle_service_exception(e)
         except PermissionError as e:
             logger.warning(
                 "Permission denied for query result streaming",
@@ -2507,12 +2274,11 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
-                    "error": str(e)
-                }
+                    "error": str(e),
+                },
             )
             return Response(
-                {'error': str(e), 'code': 'PERMISSION_DENIED'},
-                status=status.HTTP_403_FORBIDDEN
+                {"error": str(e), "code": "PERMISSION_DENIED"}, status=status.HTTP_403_FORBIDDEN
             )
         except Exception as e:
             logger.error(
@@ -2521,13 +2287,13 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
                     "execution_id": str(execution.id),
                     "tenant_id": str(execution.virtual_dataset.tenant_id),
                     "user_id": str(request.user.id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
             return Response(
-                {'error': 'An unexpected error occurred'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "An unexpected error occurred"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -2537,16 +2303,16 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         description="Get complete virtualization topology including all virtual datasets, relationships, and health metrics.",
         parameters=[
             OpenApiParameter(
-                name='include_health_metrics',
+                name="include_health_metrics",
                 type=OpenApiTypes.BOOL,
                 location=OpenApiParameter.QUERY,
-                description='Include health metrics in response (default: true)',
-                required=False
+                description="Include health metrics in response (default: true)",
+                required=False,
             ),
         ],
         responses={
             200: VirtualizationTopologySerializer,
-            400: OpenApiResponse(description='Bad request'),
+            400: OpenApiResponse(description="Bad request"),
         },
         tags=["Virtualization"],
     ),
@@ -2555,7 +2321,7 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         description="Get topology view for a specific virtual dataset including its relationships and health metrics.",
         responses={
             200: DatasetTopologySerializer,
-            404: OpenApiResponse(description='Dataset not found'),
+            404: OpenApiResponse(description="Dataset not found"),
         },
         tags=["Virtualization"],
     ),
@@ -2573,6 +2339,7 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
     Supports RBAC (role-based) and ABAC (attribute-based) authorization.
     Includes rate limiting and comprehensive audit logging.
     """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get_permissions(self):
@@ -2581,62 +2348,13 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
         return [permissions.IsAuthenticated()]
 
     def get_tenant_from_request(self):
-        """Get tenant from request"""
-        user = self.request.user
-
-        # Try request.tenant_id first
-        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-            from hub.apps.tenants.models import Tenant
-            try:
-                return Tenant.objects.get(id=self.request.tenant_id)
-            except Tenant.DoesNotExist:
-                pass
-
-        # Fallback to request.tenant object
-        if hasattr(self.request, "tenant") and self.request.tenant:
-            return self.request.tenant
-
-        # Fallback to user.tenant
-        if hasattr(user, "tenant") and user.tenant:
-            return user.tenant
-
-        return None
+        """Get tenant from request using central helper (Phase 10.1.8)"""
+        tenant_id, tenant = get_request_tenant(self.request)
+        return tenant
 
     def get_tenant_id_from_request(self):
-        """Get tenant_id from request with proper fallback logic"""
-        tenant = self.get_tenant_from_request()
-        if tenant:
-            return str(tenant.id)
-
-        # Try request.tenant_id first (set by authentication/middleware)
-        if hasattr(self.request, "tenant_id") and self.request.tenant_id:
-            tenant_id = self.request.tenant_id
-            if isinstance(tenant_id, str):
-                import uuid
-                try:
-                    tenant_id = uuid.UUID(tenant_id)
-                except (ValueError, TypeError):
-                    tenant_id = None
-            if tenant_id:
-                return str(tenant_id)
-
-        # Fallback to user.tenant_id
-        user = self.request.user
-        if hasattr(user, "id") and user.id:
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            try:
-                db_user = User.objects.only('tenant_id').get(id=user.id)
-                if db_user.tenant_id:
-                    return str(db_user.tenant_id)
-            except User.DoesNotExist:
-                pass
-
-        # Last resort: get from user.tenant relationship
-        if hasattr(user, "tenant") and user.tenant:
-            return str(user.tenant.id)
-
-        return None
+        """Get tenant_id from request using central helper (Phase 10.1.8)"""
+        return get_request_tenant_id(self.request)
 
     def get_user_id_from_request(self):
         """Get user_id from request"""
@@ -2661,11 +2379,14 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
                 extra={
                     "user_id": self.get_user_id_from_request(),
                     "tenant_id": self.get_tenant_id_from_request(),
-                    "action": "topology.list"
-                }
+                    "action": "topology.list",
+                },
             )
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -2714,18 +2435,15 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
                 details={
                     "dataset_count": topology["metadata"]["dataset_count"],
                     "relationship_count": topology["metadata"]["relationship_count"],
-                    "include_health_metrics": include_health_metrics
+                    "include_health_metrics": include_health_metrics,
                 },
-                request=request
+                request=request,
             )
         except Exception as e:
             logger.warning(
                 f"Failed to create audit event for topology access: {e}",
-                extra={
-                    "tenant_id": tenant_id,
-                    "error": str(e)
-                },
-                exc_info=True
+                extra={"tenant_id": tenant_id, "error": str(e)},
+                exc_info=True,
             )
 
         # Get rate limit headers
@@ -2754,11 +2472,14 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
                     "user_id": self.get_user_id_from_request(),
                     "tenant_id": self.get_tenant_id_from_request(),
                     "action": "topology.retrieve",
-                    "dataset_id": pk
-                }
+                    "dataset_id": pk,
+                },
             )
             # Find the limiting result to get reset time
-            limiting_result = next((r for r in rate_limit_results if not r.allowed), rate_limit_results[0] if rate_limit_results else None)
+            limiting_result = next(
+                (r for r in rate_limit_results if not r.allowed),
+                rate_limit_results[0] if rate_limit_results else None,
+            )
             reset_time = limiting_result.reset_time if limiting_result else None
 
             exception = Throttled(
@@ -2789,12 +2510,17 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
                 other_tenant_dataset = VirtualDataset.objects.get(id=pk)
                 if str(other_tenant_dataset.tenant_id) != str(tenant_id):
                     # Allow platform admin to access datasets from other tenants
-                    if hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin:
+                    if (
+                        hasattr(request.user, "is_platform_admin")
+                        and request.user.is_platform_admin
+                    ):
                         dataset = other_tenant_dataset
                         # Update tenant_id to the dataset's tenant for topology generation
                         tenant_id = str(other_tenant_dataset.tenant_id)
                     else:
-                        raise PermissionDenied("Cannot access virtual dataset topology from different tenant")
+                        raise PermissionDenied(
+                            "Cannot access virtual dataset topology from different tenant"
+                        )
             except VirtualDataset.DoesNotExist:
                 raise NotFound("Virtual dataset not found")
 
@@ -2805,44 +2531,12 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
         tenant = self.get_tenant_from_request()
         if tenant and str(dataset.tenant_id) != str(tenant.id):
             if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                raise PermissionDenied("Cannot access virtual dataset topology from different tenant")
+                raise PermissionDenied(
+                    "Cannot access virtual dataset topology from different tenant"
+                )
 
-        # ABAC check for read access
-        if dataset.tenant:
-            # Skip ABAC for platform admins
-            if not (hasattr(request.user, "is_platform_admin") and request.user.is_platform_admin):
-                try:
-                    result = ABACEngine.evaluate_access(
-                        user_id=str(request.user.id),
-                        tenant_id=str(dataset.tenant_id),
-                        resource_type="VIRTUAL_DATASET",
-                        resource_id=str(dataset.id),
-                        access_type="READ"
-                    )
-
-                    if not result.allowed:
-                        # If a policy explicitly denied access, raise PermissionDenied
-                        if result.policy:
-                            policy_name = result.policy.name if result.policy else "Unknown Policy"
-                            raise PermissionDenied(
-                                f"ABAC policy '{policy_name}' denies READ access to VIRTUAL_DATASET {dataset.id}"
-                            )
-                except PermissionDenied:
-                    raise
-                except Exception as e:
-                    logger.warning(
-                        "abac_check_failed",
-                        extra={
-                            "user_id": str(request.user.id),
-                            "tenant_id": str(dataset.tenant_id),
-                            "resource_type": "VIRTUAL_DATASET",
-                            "resource_id": str(dataset.id),
-                            "access_type": "READ",
-                            "error": str(e)
-                        },
-                        exc_info=True
-                    )
-                    # On ABAC engine failure, allow access (fail open) but log the error
+        # ABAC check for read access using shared helper
+        check_abac_for_dataset(dataset, request, access_type="READ")
 
         # Initialize service and get full topology
         service = VirtualizationService(tenant_id=tenant_id, user_id=user_id)
@@ -2886,9 +2580,9 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
                 details={
                     "dataset_id": str(dataset.id),
                     "dataset_name": dataset.name,
-                    "relationship_count": len(dataset_relationships)
+                    "relationship_count": len(dataset_relationships),
                 },
-                request=request
+                request=request,
             )
         except Exception as e:
             logger.warning(
@@ -2896,9 +2590,9 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
                 extra={
                     "dataset_id": str(dataset.id),
                     "tenant_id": str(dataset.tenant_id),
-                    "error": str(e)
+                    "error": str(e),
                 },
-                exc_info=True
+                exc_info=True,
             )
 
         # Get rate limit headers
@@ -2910,4 +2604,3 @@ class VirtualizationTopologyViewSet(viewsets.ViewSet):
         response = Response(serializer.data, headers=headers)
 
         return response
-

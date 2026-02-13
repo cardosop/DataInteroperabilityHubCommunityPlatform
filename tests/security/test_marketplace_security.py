@@ -176,9 +176,9 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
                 SNOWFLAKE_AVAILABLE,
             )
             if not SNOWFLAKE_AVAILABLE:
-                pytest.skip("Snowflake connector not available")
+                self.skipTest("Snowflake connector not available")
         except ImportError:
-            pytest.skip("Snowflake connector not available")
+            self.skipTest("Snowflake connector not available")
 
         factory = MarketplaceConnectorFactory()
 
@@ -211,9 +211,9 @@ class MarketplaceAuthenticationSecurityTest(TestCase):
                 SNOWFLAKE_AVAILABLE,
             )
             if not SNOWFLAKE_AVAILABLE:
-                pytest.skip("Snowflake connector not available")
+                self.skipTest("Snowflake connector not available")
         except ImportError:
-            pytest.skip("Snowflake connector not available")
+            self.skipTest("Snowflake connector not available")
 
         factory = MarketplaceConnectorFactory()
 

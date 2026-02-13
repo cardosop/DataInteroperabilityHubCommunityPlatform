@@ -26,6 +26,15 @@ post_save.disconnect(create_default_roles, sender=Tenant)
 class MinimalTimeoutTest(TransactionTestCase):
     """Minimal test to debug timeout"""
 
+    reset_sequences = False
+    serialized_rollback = False
+
+    @classmethod
+    def _fixture_teardown(cls):
+        """Override to skip database flush for integration tests."""
+        # Don't flush - transactions are rolled back which provides isolation
+        pass
+
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
@@ -35,9 +44,12 @@ class MinimalTimeoutTest(TransactionTestCase):
 
         print(f"[{time.time()}] Creating tenant...")
         start = time.time()
+        # Use unique name/slug to avoid conflicts
+        import uuid
+        unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
-            name="Minimal Test Tenant",
-            slug="minimal-test-tenant",
+            name=f"Minimal Test Tenant {unique_id}",
+            slug=f"minimal-test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
         )
@@ -54,7 +66,7 @@ class MinimalTimeoutTest(TransactionTestCase):
 
         print(f"[{time.time()}] Creating user...")
         start = time.time()
-        self.user = UserFactory.create_user(tenant=self.tenant, email="minimal@test.com")
+        self.user = UserFactory.create_user(tenant=self.tenant, email=f"minimal-{unique_id}@test.com")
         UserRole.objects.get_or_create(user=self.user, role=self.role)
         print(f"[{time.time()}] User created in {time.time() - start:.3f}s")
 
@@ -93,6 +105,7 @@ class MinimalTimeoutTest(TransactionTestCase):
         sample_contract = {
             "id": "orders",
             "info": {
+                "name": "Customer Orders",
                 "title": "Customer Orders",
                 "owners": [{"name": "Data Platform Team", "email": "dataplatform@example.com"}],
                 "tags": ["analytics", "sales"],

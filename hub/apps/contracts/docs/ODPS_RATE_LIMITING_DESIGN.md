@@ -1,324 +1,125 @@
 # ODPS $ref Resolution Rate Limiting Design
 
-**Version:** 1.0.0
-**Last Updated:** 2025-01-15
-**Task:** 0.0.4.3 - Design Redis-based rate limiting
-
----
-
 ## Overview
 
-This document describes the Redis-based rate limiting design for ODPS $ref resolution. Rate limiting prevents abuse and ensures fair resource usage across tenants and users when resolving external and local $ref references in ODPS documents.
+ODPS $ref resolution uses a **separate rate limiting system** from the platform's general API rate limiting. This document explains the rationale, implementation, and usage.
 
-## Architecture
+## Rationale for Separate Rate Limiting
 
-### Rate Limiting Levels
+### Why Not Use Platform Rate Limiting?
 
-Rate limiting is enforced at three hierarchical levels:
+1. **Different Use Case**: ODPS $ref resolution involves:
+   - External HTTP requests to remote servers
+   - Caching of external resources (1-hour TTL)
+   - Potential for abuse (fetching large external schemas repeatedly)
+   - Different failure modes (network timeouts, DNS failures)
 
-1. **Global Level**: 1000 requests per hour (across all tenants)
-2. **Tenant Level**: 100 requests per hour (per tenant)
-3. **User Level**: 50 requests per hour (per user within a tenant)
+2. **Specialized Limits**: ODPS ref resolution requires lower limits than general API endpoints:
+   - **Per-tenant**: 100 requests per hour (vs 600 requests per minute for general API)
+   - **Per-user**: 50 requests per hour (vs 300 requests per minute for general API)
+   - **Global**: 1000 requests per hour (platform-wide protection)
 
-All three limits must pass for a request to be allowed. If any limit is exceeded, the request is rejected.
+3. **Different Error Handling**: ODPS rate limiting uses `ODPSRefResolutionError` with:
+   - Specialized retry-after calculation
+   - Context-specific error messages
+   - Integration with ODPS security logging
 
-### Algorithm
+4. **Separate Metrics**: ODPS rate limiting tracks `odps_rate_limit_violations_total` separately from platform rate limiting metrics, allowing independent monitoring and alerting.
 
-Uses **sliding window algorithm** with Redis sorted sets for accurate rate limiting:
+## Implementation
 
-- **Prevents boundary bursts**: Unlike fixed window, sliding window prevents bursts at window boundaries
-- **Accurate counting**: Uses Redis sorted sets to track individual request timestamps
-- **Automatic cleanup**: Expired entries are removed automatically
-- **TTL management**: Keys expire after window duration + 1 hour for cleanup
+### Module: `hub.apps.contracts.odps_rate_limiting`
 
-## Redis Key Format
+**Location**: `hub/apps/contracts/odps_rate_limiting.py`
 
-### Key Structure
+**Key Functions**:
+- `check_rate_limit(tenant_id, user_id, redis_client)` - Check if request is within limits
+- `generate_rate_limit_key(tenant_id, user_id, level)` - Generate Redis keys
+- `get_rate_limit_info(tenant_id, user_id, redis_client)` - Get current usage without incrementing
 
-```
-odps_ref_rate_limit:{level}:{identifiers}:{hour}
-```
+**Algorithm**: Sliding window with Redis sorted sets (same as platform rate limiting for consistency)
 
-Where:
-- `{level}`: One of `tenant`, `user`, or `global`
-- `{identifiers}`: Level-specific identifiers
-- `{hour}`: Current hour as Unix timestamp (rounded down to hour)
+**Time Window**: 1 hour (3600 seconds)
 
-### Key Examples
+**Rate Limits**:
+- Global: 1000 requests/hour
+- Per-tenant: 100 requests/hour
+- Per-user: 50 requests/hour
 
-**Per-Tenant:**
-```
-odps_ref_rate_limit:tenant:{tenant_id}:{hour}
-```
+### Usage in Ref-Resolver
 
-Example:
-```
-odps_ref_rate_limit:tenant:550e8400-e29b-41d4-a716-446655440000:1704067200
-```
+**Location**: `hub/apps/contracts/ref_resolver.py`
 
-**Per-User:**
-```
-odps_ref_rate_limit:user:{tenant_id}:{user_id}:{hour}
-```
+**When Applied**: Before resolving external $refs (HTTP URLs)
 
-Example:
-```
-odps_ref_rate_limit:user:550e8400-e29b-41d4-a716-446655440000:660e8400-e29b-41d4-a716-446655440001:1704067200
-```
-
-**Global:**
-```
-odps_ref_rate_limit:global:{hour}
-```
-
-Example:
-```
-odps_ref_rate_limit:global:1704067200
-```
-
-### Hour Calculation
-
-The `{hour}` component is calculated as:
+**Example**:
 ```python
-current_time = int(time.time())
-current_hour = (current_time // 3600) * 3600
-```
+from hub.apps.contracts.odps_rate_limiting import check_rate_limit
 
-This creates 1-hour windows that reset at the top of each hour (e.g., 12:00:00, 13:00:00, 14:00:00).
-
-## Rate Limits
-
-### Default Limits
-
-| Level | Limit | Window |
-|-------|-------|--------|
-| Global | 1000 requests | 1 hour |
-| Tenant | 100 requests | 1 hour |
-| User | 50 requests | 1 hour |
-
-### Configuration
-
-Rate limits are defined as constants in `odps_rate_limiting.py`:
-
-```python
-RATE_LIMIT_PER_TENANT = 100  # requests per hour
-RATE_LIMIT_PER_USER = 50     # requests per hour
-RATE_LIMIT_GLOBAL = 1000     # requests per hour
-RATE_LIMIT_WINDOW = 3600     # 1 hour in seconds
-```
-
-Future enhancement: Make limits configurable via environment variables or configuration file.
-
-## TTL Strategy
-
-### Key Expiration
-
-Redis keys use TTL (Time To Live) for automatic cleanup:
-
-- **TTL Duration**: `RATE_LIMIT_WINDOW + 3600` seconds (2 hours total)
-  - 1 hour for the active window
-  - 1 hour buffer for cleanup after window expires
-
-### Rationale
-
-1. **Active Window**: Keys remain active during the 1-hour window
-2. **Cleanup Buffer**: Additional 1 hour ensures keys are cleaned up even if requests stop
-3. **Memory Efficiency**: Prevents accumulation of expired keys in Redis
-
-### Implementation
-
-```python
-# Set TTL when adding request
-redis_client.expire(key, RATE_LIMIT_WINDOW + 3600)
-```
-
-## Error Response Format
-
-### ODPSRefResolutionError Exception
-
-When rate limit is exceeded, an `ODPSRefResolutionError` exception is raised with:
-
-- **message**: Human-readable error message
-- **retry_after**: Unix timestamp when rate limit resets
-- **error_code**: `RATE_LIMIT_EXCEEDED`
-- **tenant_id**: Tenant ID (if applicable)
-- **user_id**: User ID (if applicable)
-
-### Error Dictionary Format
-
-```python
-{
-    "error": "RATE_LIMIT_EXCEEDED",
-    "message": "Tenant ODPS $ref resolution rate limit exceeded: 101/100 requests per hour",
-    "tenant_id": "550e8400-e29b-41d4-a716-446655440000",
-    "user_id": "660e8400-e29b-41d4-a716-446655440001",  # if applicable
-    "retry_after": 3600,  # seconds until retry
-    "retry_after_timestamp": 1704070800  # Unix timestamp
-}
-```
-
-### HTTP Response Headers
-
-When rate limit is exceeded, include `Retry-After` header:
-
-```
-Retry-After: 3600
-```
-
-The `Retry-After` value is calculated as:
-```python
-current_time = int(time.time())
-retry_seconds = max(0, retry_after - current_time)
-```
-
-## Implementation Details
-
-### Sliding Window Algorithm
-
-1. **Remove Expired Entries**: Remove entries older than window duration
-   ```python
-   window_start = current_time - RATE_LIMIT_WINDOW
-   redis_client.zremrangebyscore(key, 0, window_start)
-   ```
-
-2. **Count Current Requests**: Count entries in sorted set
-   ```python
-   current_count = redis_client.zcard(key)
-   ```
-
-3. **Check Limit**: Compare count to limit
-   ```python
-   if current_count >= limit:
-       return False, current_count, reset_time
-   ```
-
-4. **Add Request**: Add current request timestamp
-   ```python
-   request_id = f"{current_time}:{time.time_ns()}"
-   redis_client.zadd(key, {request_id: current_time})
-   ```
-
-5. **Set TTL**: Set expiration for cleanup
-   ```python
-   redis_client.expire(key, RATE_LIMIT_WINDOW + 3600)
-   ```
-
-### Fail-Open Strategy
-
-If Redis is unavailable or errors occur:
-- **Allow requests**: Fail open to prevent service disruption
-- **Log errors**: Log all errors for monitoring
-- **Monitor**: Alert on Redis connection failures
-
-This ensures that Redis failures don't break ODPS $ref resolution.
-
-## Usage Example
-
-### Basic Usage
-
-```python
-from hub.apps.contracts.odps_rate_limiting import check_rate_limit, ODPSRefResolutionError
-
-# Check rate limit before resolving $ref
+# Before resolving external $ref
 is_allowed, error = check_rate_limit(
-    tenant_id="550e8400-e29b-41d4-a716-446655440000",
-    user_id="660e8400-e29b-41d4-a716-446655440001"
+    tenant_id=str(tenant.id),
+    user_id=str(user.id) if user else None
 )
 
 if not is_allowed:
-    # Rate limit exceeded
-    raise error  # ODPSRefResolutionError with retry_after
-
-# Proceed with $ref resolution
-resolve_ref(ref_url)
+    raise error  # ODPSRefResolutionError with retry-after
 ```
 
-### Error Handling
+## Integration with Platform Rate Limiting
 
-```python
-try:
-    is_allowed, error = check_rate_limit(tenant_id=tenant_id, user_id=user_id)
-    if not is_allowed:
-        # Return error response with Retry-After header
-        return JsonResponse(
-            error.to_dict(),
-            status=429,  # Too Many Requests
-            headers={"Retry-After": error.get_retry_after_header()}
-        )
-except ODPSRefResolutionError as e:
-    # Handle other ODPS ref resolution errors
-    return JsonResponse(e.to_dict(), status=400)
-```
+### Two-Layer Protection
 
-### Getting Rate Limit Info
+1. **Platform Middleware**: Applies general API rate limits to all `/api/v1/` endpoints (including ODPS endpoints)
+2. **ODPS Rate Limiting**: Applies specialized limits specifically to external $ref resolution
 
-```python
-from hub.apps.contracts.odps_rate_limiting import get_rate_limit_info
+**Result**: ODPS $ref resolution is protected by both:
+- General API rate limits (via middleware)
+- Specialized ODPS ref resolution limits (via in-code check)
 
-# Get current usage without incrementing counters
-info = get_rate_limit_info(tenant_id=tenant_id, user_id=user_id)
+This provides defense-in-depth: even if platform limits are high, ODPS-specific limits prevent abuse of external resource fetching.
 
-print(f"Global: {info['global']['count']}/{info['global']['limit']}")
-print(f"Tenant: {info['tenant']['count']}/{info['tenant']['limit']}")
-print(f"User: {info['user']['count']}/{info['user']['limit']}")
-```
-
-## Monitoring and Observability
+## Monitoring and Alerting
 
 ### Metrics
 
-Recommended Prometheus metrics:
-
-- `odps_ref_rate_limit_checks_total`: Total rate limit checks
-- `odps_ref_rate_limit_exceeded_total`: Total rate limit violations
-- `odps_ref_rate_limit_redis_errors_total`: Redis connection errors
-- `odps_ref_rate_limit_current_usage`: Current usage per level (gauge)
-
-### Logging
-
-Structured logging with:
-- `odps_ref_rate_limit_exceeded`: Rate limit exceeded events
-- `rate_limit_redis_error`: Redis connection/operation errors
-- `rate_limit_check_error`: Rate limit check errors
+- `odps_rate_limit_violations_total`: Counter of rate limit violations by level (global, tenant, user)
+- Tracked separately from platform rate limiting metrics
 
 ### Alerts
 
-Recommended alerts:
-- High rate of rate limit violations (>10% of requests)
-- Redis connection failures
-- Unusual patterns in rate limit usage
+- `ODPSExcessiveRateLimitViolations`: Alert when ODPS rate limit violations exceed threshold
+- See `monitoring/prometheus/alerts/` for alert configuration
 
-## Testing
+## Future Considerations
 
-### Unit Tests
+### Potential Unification
 
-See `hub/apps/contracts/tests/test_odps_rate_limiting.py` for comprehensive unit tests covering:
-- Redis key format generation
-- Rate limit checking logic
-- Error handling
-- TTL management
-- Fail-open behavior
+If platform rate limiting evolves to support:
+- Custom rate limit categories per endpoint
+- Different time windows per category
+- Specialized error handling per category
 
-### Integration Tests
+Then ODPS rate limiting could potentially be unified with platform rate limiting. However, the current separation provides:
+- Clear separation of concerns
+- Independent monitoring
+- Specialized error handling
+- Easier maintenance
 
-Integration tests verify:
-- Real Redis interactions
-- Sliding window accuracy
-- Multi-level rate limiting
-- Error response format
+**Recommendation**: Keep ODPS rate limiting separate unless platform rate limiting gains sufficient flexibility to handle ODPS-specific requirements without complexity.
 
-## Future Enhancements
+## Configuration
 
-1. **Configurable Limits**: Make limits configurable via environment variables or config file
-2. **Per-Tenant Overrides**: Allow per-tenant rate limit customization
-3. **Dynamic Limits**: Adjust limits based on system load
-4. **Rate Limit Exemptions**: Support exempting certain tenants/users
-5. **Metrics Dashboard**: Create Grafana dashboard for rate limit monitoring
+### Environment Variables
 
-## References
+ODPS rate limiting uses the same Redis connection as platform rate limiting (`REDIS_URL`). No separate configuration is required.
 
-- Redis Sorted Sets: https://redis.io/docs/data-types/sorted-sets/
-- Sliding Window Rate Limiting: https://en.wikipedia.org/wiki/Sliding_window_protocol
-- HTTP 429 Status Code: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
-- Retry-After Header: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
+### Rate Limit Constants
 
+Defined in `hub/apps/contracts/odps_rate_limiting.py`:
+- `RATE_LIMIT_PER_TENANT = 100` (requests per hour)
+- `RATE_LIMIT_PER_USER = 50` (requests per hour)
+- `RATE_LIMIT_GLOBAL = 1000` (requests per hour)
+- `RATE_LIMIT_WINDOW = 3600` (1 hour in seconds)
+
+These can be adjusted based on operational requirements.

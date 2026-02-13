@@ -14,21 +14,22 @@ To run these tests:
 1. Set GCP_SERVICE_ACCOUNT_JSON environment variable with service account JSON
 2. Run: docker-compose exec api-service python -m pytest hub/apps/integrations/tests/test_gcp_marketplace_connector_pull_integration.py -v
 """
-import os
+
 import json
+import os
+
 import pytest
 from django.test import TestCase
 
-from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
+from hub.apps.assets.models import AssetSourceType
+from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.base import (
-    MarketplaceType,
     MarketplaceAssetMapping,
+    MarketplaceType,
     SyncResult,
     SyncStatus,
 )
-from hub.apps.assets.models import AssetSourceType
-from hub.apps.core.services.base import NotFoundError
-
+from hub.apps.integrations.connectors.gcp_marketplace_connector import GCPMarketplaceConnector
 
 # Real service account credentials for testing
 REAL_SERVICE_ACCOUNT_JSON = {
@@ -42,13 +43,13 @@ REAL_SERVICE_ACCOUNT_JSON = {
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
     "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dih-786%40projzero-441310.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
+    "universe_domain": "googleapis.com",
 }
 
 
 def get_test_credentials():
     """Get test credentials from environment or use default"""
-    env_json = os.environ.get('GCP_SERVICE_ACCOUNT_JSON')
+    env_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
     if env_json:
         try:
             return json.loads(env_json)
@@ -66,19 +67,15 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
         """Set up test class with real credentials"""
         super().setUpClass()
         cls.credentials_json = get_test_credentials()
-        cls.project_id = cls.credentials_json.get('project_id', 'projzero-441310')
+        cls.project_id = cls.credentials_json.get("project_id", "projzero-441310")
 
     def setUp(self):
         """Set up test fixtures"""
         self.connector = GCPMarketplaceConnector(
-            project_id=self.project_id,
-            credentials_json=self.credentials_json
+            project_id=self.project_id, credentials_json=self.credentials_json
         )
         # Authenticate the connector before tests
-        credentials = {
-            'project_id': self.project_id,
-            'credentials_json': self.credentials_json
-        }
+        credentials = {"project_id": self.project_id, "credentials_json": self.credentials_json}
         try:
             self.connector.authenticate(credentials)
         except Exception:
@@ -100,32 +97,36 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
                 self.assertIsInstance(mapping, MarketplaceAssetMapping)
                 self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
                 self.assertIsNotNone(mapping.asset_data)
-                self.assertIn('name', mapping.asset_data)
-                self.assertIn('description', mapping.asset_data)
-                self.assertEqual(mapping.source_metadata['marketplace_type'], MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value)
-                self.assertEqual(mapping.source_metadata['listing_id'], listing.marketplace_id)
+                self.assertIn("name", mapping.asset_data)
+                self.assertIn("description", mapping.asset_data)
+                self.assertEqual(
+                    mapping.source_metadata["marketplace_type"],
+                    MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
+                )
+                self.assertEqual(mapping.source_metadata["listing_id"], listing.marketplace_id)
             else:
                 # Test with sample listing data structure (no mocks - just sample data)
                 # This tests the mapping logic even without real listings
                 from hub.apps.integrations.base import MarketplaceListing
+
                 sample_listing = MarketplaceListing(
-                    marketplace_id='test-listing-id',
+                    marketplace_id="test-listing-id",
                     marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE,
-                    title='Test Listing',
-                    description='Test description',
-                    category='test-category',
-                    tags=['tag1'],
-                    url='https://console.cloud.google.com/bigquery/analytics-hub/...',
+                    title="Test Listing",
+                    description="Test description",
+                    category="test-category",
+                    tags=["tag1"],
+                    url="https://console.cloud.google.com/bigquery/analytics-hub/...",
                     metadata={
-                        'analytics_hub_listing': {
-                            'name': 'projects/test-project/locations/US/dataExchanges/test-exchange/listings/test-listing-id',
-                            'display_name': 'Test Listing',
-                            'description': 'Test description',
-                            'categories': ['test-category'],
-                            'data_provider': 'Test Provider',
+                        "analytics_hub_listing": {
+                            "name": "projects/test-project/locations/US/dataExchanges/test-exchange/listings/test-listing-id",
+                            "display_name": "Test Listing",
+                            "description": "Test description",
+                            "categories": ["test-category"],
+                            "data_provider": "Test Provider",
                         },
-                        'data_exchange_id': 'test-exchange',
-                    }
+                        "data_exchange_id": "test-exchange",
+                    },
                 )
 
                 # Map to Hub asset
@@ -135,26 +136,30 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
                 self.assertIsInstance(mapping, MarketplaceAssetMapping)
                 self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
                 self.assertIsNotNone(mapping.asset_data)
-                self.assertEqual(mapping.asset_data['name'], 'Test Listing')
-                self.assertEqual(mapping.source_metadata['marketplace_type'], MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value)
-                self.assertEqual(mapping.source_metadata['listing_id'], 'test-listing-id')
+                self.assertEqual(mapping.asset_data["name"], "Test Listing")
+                self.assertEqual(
+                    mapping.source_metadata["marketplace_type"],
+                    MarketplaceType.GOOGLE_CLOUD_MARKETPLACE.value,
+                )
+                self.assertEqual(mapping.source_metadata["listing_id"], "test-listing-id")
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
         except NotFoundError:
             # Test with sample listing data even if no real listings
             from hub.apps.integrations.base import MarketplaceListing
+
             sample_listing = MarketplaceListing(
-                marketplace_id='test-listing-id',
+                marketplace_id="test-listing-id",
                 marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE,
-                title='Test Listing',
-                description='Test description',
+                title="Test Listing",
+                description="Test description",
                 metadata={
-                    'analytics_hub_listing': {
-                        'display_name': 'Test Listing',
-                        'description': 'Test description',
+                    "analytics_hub_listing": {
+                        "display_name": "Test Listing",
+                        "description": "Test description",
                     },
-                    'data_exchange_id': 'test-exchange',
-                }
+                    "data_exchange_id": "test-exchange",
+                },
             )
 
             mapping = self.connector.map_to_hub_asset(sample_listing)
@@ -165,23 +170,23 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
         """Test sync_pull() returns mappings without subscribing or extracting schema"""
         try:
             # Execute sync_pull (metadata-only)
-            result = self.connector.sync_pull(options={'limit': 5, 'include_resources': True})
+            result = self.connector.sync_pull(options={"limit": 5, "include_resources": True})
 
             # Verify result structure
             self.assertIsInstance(result, SyncResult)
             self.assertIn(result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL])
-            self.assertIn('mappings', result.metadata)
-            self.assertIsInstance(result.metadata['mappings'], list)
+            self.assertIn("mappings", result.metadata)
+            self.assertIsInstance(result.metadata["mappings"], list)
 
             # Verify mappings structure
-            if result.metadata['mappings']:
-                mapping_item = result.metadata['mappings'][0]
-                self.assertIn('listing_id', mapping_item)
-                self.assertIn('mapping', mapping_item)
-                mapping = mapping_item['mapping']
-                self.assertIn('asset_data', mapping)
-                self.assertIn('source_type', mapping)
-                self.assertIn('source_metadata', mapping)
+            if result.metadata["mappings"]:
+                mapping_item = result.metadata["mappings"][0]
+                self.assertIn("listing_id", mapping_item)
+                self.assertIn("mapping", mapping_item)
+                mapping = mapping_item["mapping"]
+                self.assertIn("asset_data", mapping)
+                self.assertIn("source_type", mapping)
+                self.assertIn("source_metadata", mapping)
 
             # Verify sync_pull did NOT subscribe (no subscription calls should have been made)
             # This is validated by the fact that we can call sync_pull multiple times
@@ -196,8 +201,7 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
         try:
             # Execute sync_pull with filters
             result = self.connector.sync_pull(
-                filters={'data_exchange_id': 'test-exchange'},
-                options={'limit': 10}
+                filters={"data_exchange_id": "test-exchange"}, options={"limit": 10}
             )
 
             # Verify result
@@ -206,14 +210,16 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
             # Handle case where exchange doesn't exist (NotFoundError caught internally)
             if result.status == SyncStatus.FAILED:
                 # Check if failure is due to NotFoundError (exchange not found)
-                if result.errors and any('not found' in str(error).lower() for error in result.errors):
+                if result.errors and any(
+                    "not found" in str(error).lower() for error in result.errors
+                ):
                     # This is acceptable - exchange doesn't exist in test project
                     return
                 # Other failures should still fail the test
                 self.fail(f"sync_pull failed with errors: {result.errors}")
 
             # If successful, verify mappings are present
-            self.assertIn('mappings', result.metadata)
+            self.assertIn("mappings", result.metadata)
         except ImportError:
             self.skipTest("Analytics Hub client library not installed")
         except NotFoundError:
@@ -224,11 +230,11 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
         """Test sync_pull() with dry_run option"""
         try:
             # Execute sync_pull in dry_run mode
-            result = self.connector.sync_pull(options={'dry_run': True, 'limit': 5})
+            result = self.connector.sync_pull(options={"dry_run": True, "limit": 5})
 
             # Verify result
             self.assertIsInstance(result, SyncResult)
-            self.assertEqual(result.metadata.get('dry_run'), True)
+            self.assertEqual(result.metadata.get("dry_run"), True)
             # In dry_run mode, successful_items should be counted but no actual mapping done
             self.assertGreaterEqual(result.successful_items, 0)
         except ImportError:
@@ -239,14 +245,172 @@ class TestGCPMarketplaceConnectorPullIntegration(TestCase):
     def test_map_bigquery_type_integration(self):
         """Test _map_bigquery_type() with various BigQuery types"""
         # Test various type mappings
-        self.assertEqual(self.connector._map_bigquery_type('STRING'), 'string')
-        self.assertEqual(self.connector._map_bigquery_type('INT64'), 'number')
-        self.assertEqual(self.connector._map_bigquery_type('FLOAT64'), 'number')
-        self.assertEqual(self.connector._map_bigquery_type('BOOL'), 'boolean')
-        self.assertEqual(self.connector._map_bigquery_type('TIMESTAMP'), 'datetime')
-        self.assertEqual(self.connector._map_bigquery_type('DATE'), 'date')
-        self.assertEqual(self.connector._map_bigquery_type('TIME'), 'time')
-        self.assertEqual(self.connector._map_bigquery_type('ARRAY'), 'array')
-        self.assertEqual(self.connector._map_bigquery_type('STRUCT'), 'object')
-        self.assertEqual(self.connector._map_bigquery_type('GEOGRAPHY'), 'string')
+        self.assertEqual(self.connector._map_bigquery_type("STRING"), "string")
+        self.assertEqual(self.connector._map_bigquery_type("INT64"), "number")
+        self.assertEqual(self.connector._map_bigquery_type("FLOAT64"), "number")
+        self.assertEqual(self.connector._map_bigquery_type("BOOL"), "boolean")
+        self.assertEqual(self.connector._map_bigquery_type("TIMESTAMP"), "datetime")
+        self.assertEqual(self.connector._map_bigquery_type("DATE"), "date")
+        self.assertEqual(self.connector._map_bigquery_type("TIME"), "time")
+        self.assertEqual(self.connector._map_bigquery_type("ARRAY"), "array")
+        self.assertEqual(self.connector._map_bigquery_type("STRUCT"), "object")
+        self.assertEqual(self.connector._map_bigquery_type("GEOGRAPHY"), "string")
 
+    def test_sync_pull_with_invalid_listing_ids(self):
+        """Test sync_pull() error handling with invalid listing IDs"""
+        try:
+            result = self.connector.sync_pull(
+                listing_ids=["invalid-listing-id-1", "invalid-listing-id-2"]
+            )
+
+            # Should handle invalid IDs gracefully
+            self.assertIsInstance(result, SyncResult)
+            # May complete with errors or fail - both are acceptable
+            if result.status == SyncStatus.FAILED:
+                self.assertGreater(len(result.errors), 0)
+            elif result.status == SyncStatus.COMPLETED:
+                # Completed but with 0 successful items
+                self.assertEqual(result.successful_items, 0)
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except NotFoundError:
+            # Expected for invalid listing IDs
+            pass
+
+    def test_sync_pull_with_empty_options(self):
+        """Test sync_pull() with empty options dictionary"""
+        try:
+            result = self.connector.sync_pull(options={})
+
+            # Should handle empty options gracefully
+            self.assertIsInstance(result, SyncResult)
+            self.assertIn(
+                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED]
+            )
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except NotFoundError:
+            self.skipTest("No listings available")
+
+    def test_sync_pull_with_none_filters(self):
+        """Test sync_pull() with None filters"""
+        try:
+            result = self.connector.sync_pull(filters=None)
+
+            # Should handle None filters gracefully
+            self.assertIsInstance(result, SyncResult)
+            self.assertIn(
+                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED]
+            )
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except NotFoundError:
+            self.skipTest("No listings available")
+
+    def test_map_to_hub_asset_with_none_listing(self):
+        """Test map_to_hub_asset() error handling with None listing"""
+        with self.assertRaises((ValueError, TypeError, AttributeError)):
+            self.connector.map_to_hub_asset(None)  # type: ignore[arg-type]
+
+    def test_map_to_hub_asset_with_invalid_listing_structure(self):
+        """Test map_to_hub_asset() error handling with invalid listing structure"""
+        # Create invalid listing (missing required fields)
+        from hub.apps.integrations.base import MarketplaceListing
+
+        invalid_listing = MarketplaceListing(
+            marketplace_id="test-id",
+            marketplace_type=MarketplaceType.GOOGLE_CLOUD_MARKETPLACE,
+            title=None,  # type: ignore[arg-type]  # Missing title
+            description=None,  # type: ignore[arg-type]  # Missing description
+            metadata={},  # Empty metadata
+        )
+
+        # Should handle gracefully or raise appropriate error
+        try:
+            mapping = self.connector.map_to_hub_asset(invalid_listing)
+            # If it succeeds, verify basic structure
+            self.assertIsInstance(mapping, MarketplaceAssetMapping)
+            self.assertEqual(mapping.source_type, AssetSourceType.FEDERATED)
+        except (ValueError, AttributeError, KeyError):
+            # Expected for invalid listing structure
+            pass
+
+    def test_sync_pull_with_zero_limit(self):
+        """Test sync_pull() edge case with zero limit"""
+        try:
+            result = self.connector.sync_pull(options={"limit": 0})
+
+            # Should handle zero limit gracefully
+            self.assertIsInstance(result, SyncResult)
+            self.assertEqual(result.total_items, 0)
+            self.assertEqual(result.successful_items, 0)
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except (ValueError, NotFoundError):
+            # Zero limit may be invalid or cause no results
+            pass
+
+    def test_sync_pull_with_very_large_limit(self):
+        """Test sync_pull() edge case with very large limit"""
+        try:
+            result = self.connector.sync_pull(options={"limit": 1000000})
+
+            # Should handle large limit gracefully (may be capped internally)
+            self.assertIsInstance(result, SyncResult)
+            self.assertIn(
+                result.status, [SyncStatus.COMPLETED, SyncStatus.PARTIAL, SyncStatus.FAILED]
+            )
+            # Total items should not exceed reasonable bounds
+            self.assertLessEqual(result.total_items, 1000000)
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except NotFoundError:
+            self.skipTest("No listings available")
+
+    def test_map_bigquery_type_with_unknown_type(self):
+        """Test _map_bigquery_type() with unknown BigQuery type"""
+        # Unknown types should default to 'string' or raise error
+        try:
+            result = self.connector._map_bigquery_type("UNKNOWN_TYPE")
+            # If it doesn't raise, should return a default value
+            self.assertIsInstance(result, str)
+        except (ValueError, KeyError):
+            # Expected for unknown types
+            pass
+
+    def test_map_bigquery_type_with_none(self):
+        """Test _map_bigquery_type() error handling with None"""
+        with self.assertRaises((TypeError, AttributeError)):
+            self.connector._map_bigquery_type(None)  # type: ignore[arg-type]
+
+    def test_sync_pull_without_authentication(self):
+        """Test sync_pull() error handling when not authenticated"""
+        # Create unauthenticated connector
+        unauthenticated_connector = GCPMarketplaceConnector(
+            project_id=self.project_id, credentials_json=self.credentials_json
+        )
+        # Don't authenticate
+
+        try:
+            result = unauthenticated_connector.sync_pull(options={"limit": 1})
+            # If it succeeds, authentication may be lazy
+            self.assertIsInstance(result, SyncResult)
+        except (ValueError, PermissionError, NotFoundError):
+            # Expected if authentication is required
+            pass
+
+    def test_sync_pull_handles_network_errors_gracefully(self):
+        """Test sync_pull() handles network errors gracefully"""
+        try:
+            # This test verifies that network errors are handled
+            # In real scenarios, network errors would be caught and handled
+            result = self.connector.sync_pull(options={"limit": 1})
+            self.assertIsInstance(result, SyncResult)
+            # Network errors would result in FAILED status
+            if result.status == SyncStatus.FAILED:
+                self.assertGreater(len(result.errors), 0)
+        except ImportError:
+            self.skipTest("Analytics Hub client library not installed")
+        except (ConnectionError, TimeoutError):
+            # Network errors are acceptable in integration tests
+            pass

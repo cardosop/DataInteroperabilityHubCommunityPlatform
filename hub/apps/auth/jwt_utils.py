@@ -128,6 +128,8 @@ class JWTTokenGenerator:
         Returns:
             True if token version is valid, False otherwise
         """
+        if payload is None:
+            return False
         token_version = payload.get('authz_version', 0)
         return token_version == user.token_version
     
@@ -142,6 +144,8 @@ class JWTTokenGenerator:
         Returns:
             User instance if found, None otherwise
         """
+        if payload is None:
+            return None
         user_id = payload.get('sub')
         if not user_id:
             return None

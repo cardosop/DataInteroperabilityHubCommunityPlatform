@@ -77,6 +77,8 @@ class ScheduledIngestion(models.Model):
         help_text="Source type: S3, GCS, AZURE_BLOB, HTTP, FTP, SFTP, DATABASE"
     )
     source_config = models.JSONField(
+        blank=True,
+        default=dict,
         help_text="Source configuration (connection details, credentials, paths) stored securely"
     )
     schedule_type = models.CharField(
@@ -90,7 +92,9 @@ class ScheduledIngestion(models.Model):
     )
     file_pattern = models.CharField(
         max_length=255,
-        help_text="File pattern (regex pattern for matching files, e.g., orders_YYYY-MM-DD.csv)"
+        blank=True,
+        null=True,
+        help_text="File pattern (regex for matching files). Omit or leave blank to match all files (.*)."
     )
     asset = models.ForeignKey(
         "assets.Asset",
@@ -193,11 +197,12 @@ class ScheduledIngestion(models.Model):
     
     def clean(self):
         """Validate scheduled ingestion"""
-        # Validate file pattern is a valid regex
-        try:
-            re.compile(self.file_pattern)
-        except re.error as e:
-            raise ValidationError(f"Invalid file pattern regex: {str(e)}")
+        # Validate file pattern is a valid regex when set (None means match-all in processor)
+        if self.file_pattern:
+            try:
+                re.compile(self.file_pattern)
+            except re.error as e:
+                raise ValidationError(f"Invalid file pattern regex: {str(e)}")
         
         # Validate cron expression if schedule_type is CUSTOM_CRON
         if self.schedule_type == ScheduleType.CUSTOM_CRON:

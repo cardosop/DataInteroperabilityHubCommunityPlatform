@@ -599,6 +599,10 @@ class ODPSBusinessRules(BusinessRules):
         errors: List[str] = []
         warnings: List[str] = []
 
+        if contract is None:
+            errors.append("Contract must not be None")
+            return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
+
         # Validate contract type
         if contract.original_spec_type != OriginalSpecType.ODPS:
             errors.append(
@@ -805,6 +809,11 @@ class ODPSLinkingRules(BusinessRules):
         errors: List[str] = []
         warnings: List[str] = []
 
+        # Handle None contract
+        if odps_contract is None:
+            errors.append("ODPS contract cannot be None")
+            return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
+
         # Validate contract type
         if odps_contract.original_spec_type != OriginalSpecType.ODPS:
             errors.append(
@@ -873,6 +882,14 @@ class ODPSLinkingRules(BusinessRules):
         if errors:
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
+        # Check for self-reference (contract linking to itself)
+        if odps_contract_id == odcs_contract_id:
+            errors.append(
+                f"Cannot link contract to itself: {odps_contract_id}. "
+                "Self-reference creates an invalid circular reference."
+            )
+            return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
+
         # Use existing validation function
         try:
             validate_no_circular_reference(
@@ -915,6 +932,11 @@ class ODPSLinkingRules(BusinessRules):
         """
         errors: List[str] = []
         warnings: List[str] = []
+
+        # Handle None contract
+        if contract is None:
+            errors.append("Contract cannot be None for referential integrity validation")
+            return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
         # Validate contract has hub_contract_json
         if not contract.hub_contract_json:

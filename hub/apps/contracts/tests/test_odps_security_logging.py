@@ -7,19 +7,21 @@ Tests verify that:
 3. Alert rules match events correctly
 4. Log structures include required security tags
 """
+
 import uuid
 from datetime import datetime, timezone
-from django.test import TestCase
 from unittest.mock import patch
 
+from django.test import TestCase
+
 from hub.apps.contracts.odps_security_logging import (
-    SecurityLogger,
-    SecurityEventType,
-    SecuritySeverity,
-    SecurityViolationLog,
+    DEFAULT_ALERT_RULES,
     RefResolutionAuditLog,
     SecurityAlertRule,
-    DEFAULT_ALERT_RULES,
+    SecurityEventType,
+    SecurityLogger,
+    SecuritySeverity,
+    SecurityViolationLog,
     get_security_logger,
 )
 
@@ -41,23 +43,23 @@ class ODPSecurityLoggingTest(TestCase):
             description="Test path traversal",
             attempted_path="../../../etc/passwd",
             tenant_id=str(uuid.uuid4()),
-            user_id=str(uuid.uuid4())
+            user_id=str(uuid.uuid4()),
         )
 
         log_dict = violation_log.to_log_dict()
 
         # Check required fields
-        self.assertIn('security_event', log_dict)
-        self.assertTrue(log_dict['security_event'])
-        self.assertIn('security_type', log_dict)
-        self.assertEqual(log_dict['security_type'], SecurityEventType.PATH_TRAVERSAL.value)
-        self.assertIn('security_severity', log_dict)
-        self.assertEqual(log_dict['security_severity'], SecuritySeverity.HIGH.value)
-        self.assertIn('event_type', log_dict)
-        self.assertIn('severity', log_dict)
-        self.assertIn('timestamp', log_dict)
-        self.assertIn('violation_type', log_dict)
-        self.assertIn('description', log_dict)
+        self.assertIn("security_event", log_dict)
+        self.assertTrue(log_dict["security_event"])
+        self.assertIn("security_type", log_dict)
+        self.assertEqual(log_dict["security_type"], SecurityEventType.PATH_TRAVERSAL.value)
+        self.assertIn("security_severity", log_dict)
+        self.assertEqual(log_dict["security_severity"], SecuritySeverity.HIGH.value)
+        self.assertIn("event_type", log_dict)
+        self.assertIn("severity", log_dict)
+        self.assertIn("timestamp", log_dict)
+        self.assertIn("violation_type", log_dict)
+        self.assertIn("description", log_dict)
 
     def test_security_violation_log_to_dict_removes_none(self):
         """Test that to_dict() removes None values"""
@@ -69,29 +71,29 @@ class ODPSecurityLoggingTest(TestCase):
             description="Test path traversal",
             attempted_path="../../../etc/passwd",
             tenant_id=None,  # None value
-            user_id=None  # None value
+            user_id=None,  # None value
         )
 
         log_dict = violation_log.to_dict()
 
         # None values should be removed
-        self.assertNotIn('tenant_id', log_dict)
-        self.assertNotIn('user_id', log_dict)
+        self.assertNotIn("tenant_id", log_dict)
+        self.assertNotIn("user_id", log_dict)
 
         # Non-None values should be present
-        self.assertIn('event_type', log_dict)
-        self.assertIn('attempted_path', log_dict)
+        self.assertIn("event_type", log_dict)
+        self.assertIn("attempted_path", log_dict)
 
     def test_log_security_violation_path_traversal(self):
         """Test logging a path traversal security violation"""
-        with patch.object(self.security_logger.logger, 'warning') as mock_warning:
+        with patch.object(self.security_logger.logger, "warning") as mock_warning:
             violation_log = self.security_logger.log_security_violation(
                 event_type=SecurityEventType.PATH_TRAVERSAL,
                 severity=SecuritySeverity.HIGH,
                 violation_type="Path Traversal Attempt",
                 description="Attempted to access file outside allowed directories",
                 attempted_path="../../../etc/passwd",
-                allowed_dirs=["./contracts/refs", "./odps-refs"]
+                allowed_dirs=["./contracts/refs", "./odps-refs"],
             )
 
             # Verify log was called
@@ -103,10 +105,10 @@ class ODPSecurityLoggingTest(TestCase):
 
             # Verify log structure
             log_dict = call_args[1]
-            self.assertTrue(log_dict['security_event'])
-            self.assertEqual(log_dict['security_type'], SecurityEventType.PATH_TRAVERSAL.value)
-            self.assertEqual(log_dict['security_severity'], SecuritySeverity.HIGH.value)
-            self.assertEqual(log_dict['attempted_path'], "../../../etc/passwd")
+            self.assertTrue(log_dict["security_event"])
+            self.assertEqual(log_dict["security_type"], SecurityEventType.PATH_TRAVERSAL.value)
+            self.assertEqual(log_dict["security_severity"], SecuritySeverity.HIGH.value)
+            self.assertEqual(log_dict["attempted_path"], "../../../etc/passwd")
 
             # Verify returned log object
             self.assertIsInstance(violation_log, SecurityViolationLog)
@@ -114,31 +116,31 @@ class ODPSecurityLoggingTest(TestCase):
 
     def test_log_security_violation_url_denied(self):
         """Test logging a URL denied security violation"""
-        with patch.object(self.security_logger.logger, 'warning') as mock_warning:
+        with patch.object(self.security_logger.logger, "warning") as mock_warning:
             violation_log = self.security_logger.log_security_violation(
                 event_type=SecurityEventType.URL_DENIED,
                 severity=SecuritySeverity.MEDIUM,
                 violation_type="URL Denied by Denylist",
                 description="Attempted to access URL that is in denylist",
                 attempted_url="https://malicious.com/schema.yaml",
-                url_pattern="https://*.malicious.com"
+                url_pattern="https://*.malicious.com",
             )
 
             mock_warning.assert_called_once()
             log_dict = mock_warning.call_args[1]
 
-            self.assertEqual(log_dict['security_type'], SecurityEventType.URL_DENIED.value)
-            self.assertEqual(log_dict['attempted_url'], "https://malicious.com/schema.yaml")
-            self.assertEqual(log_dict['url_pattern'], "https://*.malicious.com")
+            self.assertEqual(log_dict["security_type"], SecurityEventType.URL_DENIED.value)
+            self.assertEqual(log_dict["attempted_url"], "https://malicious.com/schema.yaml")
+            self.assertEqual(log_dict["url_pattern"], "https://*.malicious.com")
 
     def test_log_security_violation_critical_severity(self):
         """Test that critical severity logs at error level"""
-        with patch.object(self.security_logger.logger, 'error') as mock_error:
+        with patch.object(self.security_logger.logger, "error") as mock_error:
             self.security_logger.log_security_violation(
                 event_type=SecurityEventType.PATH_TRAVERSAL,
                 severity=SecuritySeverity.CRITICAL,
                 violation_type="Critical Path Traversal",
-                description="Critical security violation"
+                description="Critical security violation",
             )
 
             mock_error.assert_called_once()
@@ -146,12 +148,12 @@ class ODPSecurityLoggingTest(TestCase):
 
     def test_log_security_violation_low_severity(self):
         """Test that low severity logs at info level"""
-        with patch.object(self.security_logger.logger, 'info') as mock_info:
+        with patch.object(self.security_logger.logger, "info") as mock_info:
             self.security_logger.log_security_violation(
                 event_type=SecurityEventType.INVALID_URL,
                 severity=SecuritySeverity.LOW,
                 violation_type="Invalid URL Format",
-                description="URL format validation failed"
+                description="URL format validation failed",
             )
 
             mock_info.assert_called_once()
@@ -165,26 +167,26 @@ class ODPSecurityLoggingTest(TestCase):
             duration_ms=125.5,
             ref_type="external",
             ref_path="https://example.com/schema.yaml",
-            success=True
+            success=True,
         )
 
         log_dict = audit_log.to_log_dict()
 
         # Check required fields
-        self.assertIn('audit_event', log_dict)
-        self.assertTrue(log_dict['audit_event'])
-        self.assertIn('audit_type', log_dict)
-        self.assertEqual(log_dict['audit_type'], 'ref_resolution')
-        self.assertIn('operation_id', log_dict)
-        self.assertIn('timestamp', log_dict)
-        self.assertIn('duration_ms', log_dict)
-        self.assertIn('ref_type', log_dict)
-        self.assertIn('ref_path', log_dict)
-        self.assertIn('success', log_dict)
+        self.assertIn("audit_event", log_dict)
+        self.assertTrue(log_dict["audit_event"])
+        self.assertIn("audit_type", log_dict)
+        self.assertEqual(log_dict["audit_type"], "ref_resolution")
+        self.assertIn("operation_id", log_dict)
+        self.assertIn("timestamp", log_dict)
+        self.assertIn("duration_ms", log_dict)
+        self.assertIn("ref_type", log_dict)
+        self.assertIn("ref_path", log_dict)
+        self.assertIn("success", log_dict)
 
     def test_log_ref_resolution_audit_success(self):
         """Test logging a successful ref resolution audit"""
-        with patch.object(self.security_logger.logger, 'info') as mock_info:
+        with patch.object(self.security_logger.logger, "info") as mock_info:
             operation_id = str(uuid.uuid4())
             audit_log = self.security_logger.log_ref_resolution_audit(
                 operation_id=operation_id,
@@ -195,7 +197,7 @@ class ODPSecurityLoggingTest(TestCase):
                 tenant_id=str(uuid.uuid4()),
                 resolved_path="https://example.com/schema.yaml",
                 size_bytes=1024,
-                cache_hit=False
+                cache_hit=False,
             )
 
             mock_info.assert_called_once()
@@ -206,20 +208,20 @@ class ODPSecurityLoggingTest(TestCase):
 
             # Verify log structure
             log_dict = call_args[1]
-            self.assertTrue(log_dict['audit_event'])
-            self.assertEqual(log_dict['audit_type'], 'ref_resolution')
-            self.assertEqual(log_dict['operation_id'], operation_id)
-            self.assertTrue(log_dict['success'])
-            self.assertEqual(log_dict['ref_type'], "external")
-            self.assertEqual(log_dict['size_bytes'], 1024)
-            self.assertFalse(log_dict['cache_hit'])
+            self.assertTrue(log_dict["audit_event"])
+            self.assertEqual(log_dict["audit_type"], "ref_resolution")
+            self.assertEqual(log_dict["operation_id"], operation_id)
+            self.assertTrue(log_dict["success"])
+            self.assertEqual(log_dict["ref_type"], "external")
+            self.assertEqual(log_dict["size_bytes"], 1024)
+            self.assertFalse(log_dict["cache_hit"])
 
             # Verify returned log object
             self.assertIsInstance(audit_log, RefResolutionAuditLog)
 
     def test_log_ref_resolution_audit_failure(self):
         """Test logging a failed ref resolution audit"""
-        with patch.object(self.security_logger.logger, 'warning') as mock_warning:
+        with patch.object(self.security_logger.logger, "warning") as mock_warning:
             audit_log = self.security_logger.log_ref_resolution_audit(
                 operation_id=str(uuid.uuid4()),
                 ref_type="local",
@@ -227,19 +229,19 @@ class ODPSecurityLoggingTest(TestCase):
                 success=False,
                 duration_ms=50.0,
                 error_type="FileNotFoundError",
-                error_message="File not found: ./schema.yaml"
+                error_message="File not found: ./schema.yaml",
             )
 
             mock_warning.assert_called_once()
             log_dict = mock_warning.call_args[1]
 
-            self.assertFalse(log_dict['success'])
-            self.assertEqual(log_dict['error_type'], "FileNotFoundError")
-            self.assertEqual(log_dict['error_message'], "File not found: ./schema.yaml")
+            self.assertFalse(log_dict["success"])
+            self.assertEqual(log_dict["error_type"], "FileNotFoundError")
+            self.assertEqual(log_dict["error_message"], "File not found: ./schema.yaml")
 
     def test_log_ref_resolution_audit_with_security_violations(self):
         """Test logging audit trail with security violations"""
-        with patch.object(self.security_logger.logger, 'warning') as mock_warning:
+        with patch.object(self.security_logger.logger, "warning") as mock_warning:
             audit_log = self.security_logger.log_ref_resolution_audit(
                 operation_id=str(uuid.uuid4()),
                 ref_type="local",
@@ -247,15 +249,15 @@ class ODPSecurityLoggingTest(TestCase):
                 success=False,
                 duration_ms=10.0,
                 security_checks_passed=False,
-                security_violations=["PATH_TRAVERSAL"]
+                security_violations=["PATH_TRAVERSAL"],
             )
 
             mock_warning.assert_called_once()
             log_dict = mock_warning.call_args[1]
 
-            self.assertFalse(log_dict['security_checks_passed'])
-            self.assertIn('security_violations', log_dict)
-            self.assertEqual(log_dict['security_violations'], ["PATH_TRAVERSAL"])
+            self.assertFalse(log_dict["security_checks_passed"])
+            self.assertIn("security_violations", log_dict)
+            self.assertEqual(log_dict["security_violations"], ["PATH_TRAVERSAL"])
 
     def test_security_alert_rule_matches_event_type(self):
         """Test that alert rule matches events by event type"""
@@ -265,7 +267,7 @@ class ODPSecurityLoggingTest(TestCase):
             threshold=5,
             window_seconds=300,
             severity=SecuritySeverity.HIGH,
-            description="Test rule"
+            description="Test rule",
         )
 
         matching_event = SecurityViolationLog(
@@ -273,7 +275,7 @@ class ODPSecurityLoggingTest(TestCase):
             severity=SecuritySeverity.HIGH.value,
             timestamp=datetime.now(timezone.utc).isoformat(),
             violation_type="Path Traversal",
-            description="Test"
+            description="Test",
         )
 
         non_matching_event = SecurityViolationLog(
@@ -281,7 +283,7 @@ class ODPSecurityLoggingTest(TestCase):
             severity=SecuritySeverity.HIGH.value,
             timestamp=datetime.now(timezone.utc).isoformat(),
             violation_type="URL Denied",
-            description="Test"
+            description="Test",
         )
 
         self.assertTrue(rule.matches(matching_event))
@@ -296,7 +298,7 @@ class ODPSecurityLoggingTest(TestCase):
             threshold=5,
             window_seconds=300,
             severity=SecuritySeverity.HIGH,
-            description="Test rule"
+            description="Test rule",
         )
 
         matching_event = SecurityViolationLog(
@@ -305,7 +307,7 @@ class ODPSecurityLoggingTest(TestCase):
             timestamp=datetime.now(timezone.utc).isoformat(),
             violation_type="Path Traversal",
             description="Test",
-            tenant_id=tenant_id
+            tenant_id=tenant_id,
         )
 
         non_matching_event = SecurityViolationLog(
@@ -314,7 +316,7 @@ class ODPSecurityLoggingTest(TestCase):
             timestamp=datetime.now(timezone.utc).isoformat(),
             violation_type="Path Traversal",
             description="Test",
-            tenant_id=str(uuid.uuid4())  # Different tenant
+            tenant_id=str(uuid.uuid4()),  # Different tenant
         )
 
         self.assertTrue(rule.matches(matching_event))
@@ -343,12 +345,12 @@ class ODPSecurityLoggingTest(TestCase):
     def test_security_violation_log_all_event_types(self):
         """Test that all security event types can be logged"""
         for event_type in SecurityEventType:
-            with patch.object(self.security_logger.logger, 'warning'):
+            with patch.object(self.security_logger.logger, "warning"):
                 violation_log = self.security_logger.log_security_violation(
                     event_type=event_type,
                     severity=SecuritySeverity.MEDIUM,
                     violation_type=f"{event_type.value} Violation",
-                    description=f"Test {event_type.value} violation"
+                    description=f"Test {event_type.value} violation",
                 )
 
                 self.assertEqual(violation_log.event_type, event_type.value)
@@ -356,10 +358,10 @@ class ODPSecurityLoggingTest(TestCase):
     def test_security_violation_log_all_severities(self):
         """Test that all security severity levels can be logged"""
         severity_log_methods = {
-            SecuritySeverity.CRITICAL: 'error',
-            SecuritySeverity.HIGH: 'warning',
-            SecuritySeverity.MEDIUM: 'warning',
-            SecuritySeverity.LOW: 'info',
+            SecuritySeverity.CRITICAL: "error",
+            SecuritySeverity.HIGH: "warning",
+            SecuritySeverity.MEDIUM: "warning",
+            SecuritySeverity.LOW: "info",
         }
 
         for severity, expected_method in severity_log_methods.items():
@@ -368,7 +370,7 @@ class ODPSecurityLoggingTest(TestCase):
                     event_type=SecurityEventType.PATH_TRAVERSAL,
                     severity=severity,
                     violation_type="Test Violation",
-                    description="Test"
+                    description="Test",
                 )
 
                 mock_log.assert_called_once()
@@ -378,13 +380,13 @@ class ODPSecurityLoggingTest(TestCase):
         ref_types = ["internal", "local", "external"]
 
         for ref_type in ref_types:
-            with patch.object(self.security_logger.logger, 'info'):
+            with patch.object(self.security_logger.logger, "info"):
                 audit_log = self.security_logger.log_ref_resolution_audit(
                     operation_id=str(uuid.uuid4()),
                     ref_type=ref_type,
                     ref_path=f"test-{ref_type}",
                     success=True,
-                    duration_ms=100.0
+                    duration_ms=100.0,
                 )
 
                 self.assertEqual(audit_log.ref_type, ref_type)
@@ -399,25 +401,22 @@ class ODPSecurityLoggingTest(TestCase):
             ref_path="https://example.com/schema.yaml",
             success=True,
             tenant_id=None,  # None value
-            user_id=None  # None value
+            user_id=None,  # None value
         )
 
         log_dict = audit_log.to_dict()
 
         # None values should be removed
-        self.assertNotIn('tenant_id', log_dict)
-        self.assertNotIn('user_id', log_dict)
+        self.assertNotIn("tenant_id", log_dict)
+        self.assertNotIn("user_id", log_dict)
 
         # Non-None values should be present
-        self.assertIn('operation_id', log_dict)
-        self.assertIn('ref_path', log_dict)
+        self.assertIn("operation_id", log_dict)
+        self.assertIn("ref_path", log_dict)
 
     def test_security_violation_log_with_metadata(self):
         """Test that security violation logs can include metadata"""
-        metadata = {
-            "custom_field": "custom_value",
-            "additional_info": 123
-        }
+        metadata = {"custom_field": "custom_value", "additional_info": 123}
 
         violation_log = SecurityViolationLog(
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
@@ -425,19 +424,16 @@ class ODPSecurityLoggingTest(TestCase):
             timestamp=datetime.now(timezone.utc).isoformat(),
             violation_type="Path Traversal",
             description="Test",
-            metadata=metadata
+            metadata=metadata,
         )
 
         log_dict = violation_log.to_dict()
-        self.assertIn('metadata', log_dict)
-        self.assertEqual(log_dict['metadata'], metadata)
+        self.assertIn("metadata", log_dict)
+        self.assertEqual(log_dict["metadata"], metadata)
 
     def test_audit_log_with_metadata(self):
         """Test that audit logs can include metadata"""
-        metadata = {
-            "source": "api",
-            "version": "1.0"
-        }
+        metadata = {"source": "api", "version": "1.0"}
 
         audit_log = RefResolutionAuditLog(
             operation_id=str(uuid.uuid4()),
@@ -446,10 +442,100 @@ class ODPSecurityLoggingTest(TestCase):
             ref_type="external",
             ref_path="https://example.com/schema.yaml",
             success=True,
-            metadata=metadata
+            metadata=metadata,
         )
 
         log_dict = audit_log.to_dict()
-        self.assertIn('metadata', log_dict)
-        self.assertEqual(log_dict['metadata'], metadata)
+        self.assertIn("metadata", log_dict)
+        self.assertEqual(log_dict["metadata"], metadata)
 
+    def test_security_logging_handles_unicode_characters(self):
+        """Test that security logging handles unicode characters correctly."""
+        violation_log = SecurityViolationLog(
+            event_type=SecurityEventType.PATH_TRAVERSAL.value,
+            severity=SecuritySeverity.HIGH.value,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            violation_type="路径遍历尝试",
+            description="测试路径遍历",
+            attempted_path="../../../etc/passwd",
+            tenant_id=str(uuid.uuid4()),
+            user_id=str(uuid.uuid4()),
+        )
+
+        log_dict = violation_log.to_log_dict()
+        # Should handle unicode characters
+        self.assertIsNotNone(log_dict)
+        self.assertIn("security_event", log_dict)
+
+    def test_security_logging_handles_special_characters(self):
+        """Test that security logging handles special characters correctly."""
+        violation_log = SecurityViolationLog(
+            event_type=SecurityEventType.PATH_TRAVERSAL.value,
+            severity=SecuritySeverity.HIGH.value,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            violation_type="Test & Co. (Special)",
+            description="Test <description> & more",
+            attempted_path="../../../etc/passwd",
+            tenant_id=str(uuid.uuid4()),
+            user_id=str(uuid.uuid4()),
+        )
+
+        log_dict = violation_log.to_log_dict()
+        # Should handle special characters
+        self.assertIsNotNone(log_dict)
+        self.assertIn("security_event", log_dict)
+
+    def test_security_logging_handles_very_large_messages(self):
+        """Test that security logging handles very large messages correctly."""
+        large_description = "A" * 100000  # 100KB string
+        violation_log = SecurityViolationLog(
+            event_type=SecurityEventType.PATH_TRAVERSAL.value,
+            severity=SecuritySeverity.HIGH.value,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            violation_type="Path Traversal Attempt",
+            description=large_description,
+            attempted_path="../../../etc/passwd",
+            tenant_id=str(uuid.uuid4()),
+            user_id=str(uuid.uuid4()),
+        )
+
+        log_dict = violation_log.to_log_dict()
+        # Should handle very large messages
+        self.assertIsNotNone(log_dict)
+        self.assertIn("security_event", log_dict)
+
+    def test_security_logging_handles_none_values(self):
+        """Test that security logging handles None values correctly."""
+        violation_log = SecurityViolationLog(
+            event_type=SecurityEventType.PATH_TRAVERSAL.value,
+            severity=SecuritySeverity.HIGH.value,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            violation_type="Path Traversal Attempt",
+            description=None,  # None value
+            attempted_path="../../../etc/passwd",
+            tenant_id=str(uuid.uuid4()),
+            user_id=str(uuid.uuid4()),
+        )
+
+        log_dict = violation_log.to_log_dict()
+        # Should handle None values gracefully
+        self.assertIsNotNone(log_dict)
+        self.assertIn("security_event", log_dict)
+
+    def test_security_logging_handles_nested_structures(self):
+        """Test that security logging handles nested structures correctly."""
+        nested_metadata = {"level1": {"level2": {"level3": {"value": "deep"}}}}
+        audit_log = RefResolutionAuditLog(
+            operation_id=str(uuid.uuid4()),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            duration_ms=100.0,
+            ref_type="external",
+            ref_path="https://example.com/schema.yaml",
+            success=True,
+            metadata=nested_metadata,
+        )
+
+        log_dict = audit_log.to_dict()
+        # Should handle nested structures
+        self.assertIsNotNone(log_dict)
+        self.assertIn("metadata", log_dict)

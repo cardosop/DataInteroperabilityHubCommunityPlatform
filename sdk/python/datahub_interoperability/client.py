@@ -89,24 +89,29 @@ class DataHubClient:
         )
 
         # Initialize API modules
+        from .baas import BaaSAPI
+        from .billing import BillingAPI
         from .contracts import ContractsAPI
+        from .gdpr import GDPRAPI
         from .governance import GovernanceAPI
         from .lineage import LineageAPI
+        from .marketplace import MarketplaceIntegrationAPI
         from .mesh import MeshAPI
+        from .ml import InferenceAPI, ODHIntegrationAPI, TrainingAPI
+        from .model_serving import ModelServingAPI
         from .observability import ObservabilityAPI
+        from .scheduled_export import ScheduledExportAPI
         from .scheduled_ingestion import ScheduledIngestionAPI
         from .search import SearchAPI
+        from .tenants import TenantsAPI
         from .versioning import VersioningAPI
         from .virtualization import VirtualizationAPI
         from .webhooks import WebhooksAPI
-        from .marketplace import MarketplaceIntegrationAPI
-        from .baas import BaaSAPI
-        from .ml import ODHIntegrationAPI, TrainingAPI, InferenceAPI
-        from .model_serving import ModelServingAPI
 
         self.contracts = ContractsAPI(self)
         self.lineage = LineageAPI(self)
         self.scheduled_ingestion = ScheduledIngestionAPI(self)
+        self.scheduled_export = ScheduledExportAPI(self)
         self.versioning = VersioningAPI(self)
         self.governance = GovernanceAPI(self)
         self.mesh = MeshAPI(self)
@@ -117,6 +122,9 @@ class DataHubClient:
         self.marketplace = MarketplaceIntegrationAPI(self)
         self.baas = BaaSAPI(self)
         self.ml = ODHIntegrationAPI(self)
+        self.billing = BillingAPI(self)
+        self.tenants = TenantsAPI(self)
+        self.gdpr = GDPRAPI(self)
         self.training = TrainingAPI(self)
         self.inference = InferenceAPI(self)
         self.model_serving = ModelServingAPI(self)
@@ -280,9 +288,9 @@ class DataHubClient:
                         is_odcs_endpoint = "odcs" in url_lower
                         # Check for ODPS-related endpoints
                         is_odps_endpoint = (
-                            "odps" in url_lower or
-                            "products" in url_lower or
-                            "/link-odps" in url_lower
+                            "odps" in url_lower
+                            or "products" in url_lower
+                            or "/link-odps" in url_lower
                         )
 
                         # For export/download endpoints, check format parameter
@@ -298,6 +306,7 @@ class DataHubClient:
                         # Try ODCS error parsing first (for ODCS endpoints)
                         if is_odcs_endpoint:
                             from .errors import parse_odcs_error
+
                             try:
                                 raise parse_odcs_error(error_data)
                             except Exception:
@@ -307,6 +316,7 @@ class DataHubClient:
                         # Try ODPS error parsing (for ODPS endpoints)
                         if is_odps_endpoint:
                             from .errors import parse_odps_error
+
                             try:
                                 raise parse_odps_error(error_data)
                             except Exception:
@@ -340,8 +350,15 @@ class DataHubClient:
                     error_data = e.response.json()
                     # Check if this is an ODPS-related endpoint and try to parse as ODPS error
                     url_lower = str(e.request.url).lower() if e.request.url else ""
-                    if "odps" in url_lower or "products" in url_lower or "/export" in url_lower or "/download" in url_lower or "/link-odps" in url_lower:
+                    if (
+                        "odps" in url_lower
+                        or "products" in url_lower
+                        or "/export" in url_lower
+                        or "/download" in url_lower
+                        or "/link-odps" in url_lower
+                    ):
                         from .errors import parse_odps_error
+
                         try:
                             raise parse_odps_error(error_data)
                         except Exception:

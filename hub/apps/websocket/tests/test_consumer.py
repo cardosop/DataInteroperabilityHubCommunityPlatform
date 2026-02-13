@@ -6,9 +6,22 @@ import asyncio
 import json
 
 import pytest
-from channels.layers import InMemoryChannelLayer
-from channels.testing import WebsocketCommunicator
+
+# Optional channels imports
+try:
+    from channels.layers import InMemoryChannelLayer, get_channel_layer
+    from channels.testing import WebsocketCommunicator
+    CHANNELS_AVAILABLE = True
+except ImportError:
+    InMemoryChannelLayer = None
+    WebsocketCommunicator = None
+    get_channel_layer = None
+    CHANNELS_AVAILABLE = False
+
 from django.contrib.auth import get_user_model
+
+# Skip tests if channels not available
+pytestmark = pytest.mark.skipif(not CHANNELS_AVAILABLE, reason="Django Channels not installed")
 
 from hub.apps.tenants.models import Tenant
 from hub.apps.websocket.consumers.event_consumer import EventConsumer
@@ -38,7 +51,8 @@ class TestEventConsumer(AsyncWebSocketTestCase):
 
         # Ensure clean channel layer state for each test
         # This prevents test isolation issues
-        from channels.layers import get_channel_layer
+        if not CHANNELS_AVAILABLE:
+            return
 
         try:
             channel_layer = get_channel_layer()

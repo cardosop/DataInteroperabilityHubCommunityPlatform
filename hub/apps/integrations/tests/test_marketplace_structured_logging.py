@@ -10,10 +10,11 @@ Tests verify:
 
 All tests use real implementations (no mocks/stubs).
 """
+
 import json
+
 import pytest
 import structlog
-from unittest.mock import patch, MagicMock
 from django.test import TestCase, override_settings
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -33,6 +34,7 @@ class MarketplaceStructuredLoggingTest(TestCase):
             if isinstance(event_dict, dict):
                 # Make a deep copy to avoid mutations
                 import copy
+
                 self.log_capture.append(copy.deepcopy(event_dict))
             return event_dict
 
@@ -66,9 +68,9 @@ class MarketplaceStructuredLoggingTest(TestCase):
         """Test that logging utilities can be imported"""
         from hub.apps.integrations.logging_utils import (
             get_correlation_context,
+            log_api_call,
             log_connector_operation,
             log_sync_job,
-            log_api_call,
         )
 
         # Verify functions exist
@@ -234,9 +236,9 @@ class MarketplaceStructuredLoggingTest(TestCase):
     def test_logs_are_searchable(self):
         """Test that logs have searchable fields"""
         from hub.apps.integrations.logging_utils import (
+            log_api_call,
             log_connector_operation,
             log_sync_job,
-            log_api_call,
         )
 
         self.log_capture.clear()
@@ -268,44 +270,40 @@ class MarketplaceStructuredLoggingTest(TestCase):
 
         # Verify logs are searchable by event
         connector_logs = [
-            log for log in self.log_capture
-            if log.get("event") == "connector_operation_started"
+            log for log in self.log_capture if log.get("event") == "connector_operation_started"
         ]
         self.assertEqual(len(connector_logs), 1)
 
         # Verify logs are searchable by component
         connector_component_logs = [
-            log for log in self.log_capture
-            if log.get("component") == "marketplace_connector"
+            log for log in self.log_capture if log.get("component") == "marketplace_connector"
         ]
         self.assertEqual(len(connector_component_logs), 1)
 
         # Verify logs are searchable by marketplace_type
         ckan_logs = [
-            log for log in self.log_capture
-            if log.get("marketplace_type") == "CKAN_INSTANCE"
+            log for log in self.log_capture if log.get("marketplace_type") == "CKAN_INSTANCE"
         ]
         self.assertEqual(len(ckan_logs), 3)  # All three logs
 
         # Verify logs are searchable by tenant_id
-        tenant_logs = [
-            log for log in self.log_capture
-            if log.get("tenant_id") == "tenant-1"
-        ]
+        tenant_logs = [log for log in self.log_capture if log.get("tenant_id") == "tenant-1"]
         self.assertEqual(len(tenant_logs), 3)  # All three logs
 
     def test_correlation_ids_in_logs(self):
         """Test that correlation IDs are included in logs when available"""
+        import structlog.contextvars
+
         from hub.apps.integrations.logging_utils import log_connector_operation
 
-        # Mock trace context
-        with patch('hub.apps.integrations.logging_utils.get_correlation_context') as mock_context:
-            mock_context.return_value = {
-                'trace_id': 'test-trace-id',
-                'span_id': 'test-span-id',
-                'request_id': 'test-request-id',
-            }
+        # Set real trace context using structlog contextvars (not mocking)
+        structlog.contextvars.bind_contextvars(
+            trace_id="test-trace-id",
+            span_id="test-span-id",
+            request_id="test-request-id",
+        )
 
+        try:
             self.log_capture.clear()
 
             log_connector_operation(
@@ -319,6 +317,9 @@ class MarketplaceStructuredLoggingTest(TestCase):
             self.assertEqual(log_entry.get("trace_id"), "test-trace-id")
             self.assertEqual(log_entry.get("span_id"), "test-span-id")
             self.assertEqual(log_entry.get("request_id"), "test-request-id")
+        finally:
+            # Clear contextvars after test
+            structlog.contextvars.clear_contextvars()
 
     def test_services_use_structlog(self):
         """Test that services.py uses structlog"""
@@ -326,9 +327,9 @@ class MarketplaceStructuredLoggingTest(TestCase):
 
         # Verify logger is structlog logger (check by trying to use it)
         # structlog loggers have the bound logger interface
-        self.assertTrue(hasattr(services.logger, 'info'))
-        self.assertTrue(hasattr(services.logger, 'warning'))
-        self.assertTrue(hasattr(services.logger, 'error'))
+        self.assertTrue(hasattr(services.logger, "info"))
+        self.assertTrue(hasattr(services.logger, "warning"))
+        self.assertTrue(hasattr(services.logger, "error"))
 
     def test_base_uses_structlog(self):
         """Test that base.py uses structlog in _track_connector_operation"""
@@ -338,6 +339,7 @@ class MarketplaceStructuredLoggingTest(TestCase):
         # We can't easily test the abstract class, but we can verify
         # the logging utility is imported correctly
         from hub.apps.integrations.logging_utils import get_correlation_context
+
         self.assertTrue(callable(get_correlation_context))
 
     def test_metrics_utils_uses_structlog(self):
@@ -345,18 +347,18 @@ class MarketplaceStructuredLoggingTest(TestCase):
         from hub.apps.integrations import metrics_utils
 
         # Verify logger is structlog logger (check by trying to use it)
-        self.assertTrue(hasattr(metrics_utils.logger, 'info'))
-        self.assertTrue(hasattr(metrics_utils.logger, 'warning'))
-        self.assertTrue(hasattr(metrics_utils.logger, 'error'))
+        self.assertTrue(hasattr(metrics_utils.logger, "info"))
+        self.assertTrue(hasattr(metrics_utils.logger, "warning"))
+        self.assertTrue(hasattr(metrics_utils.logger, "error"))
 
     def test_tasks_uses_structlog(self):
         """Test that tasks.py uses structlog"""
         from hub.apps.integrations import tasks
 
         # Verify logger is structlog logger (check by trying to use it)
-        self.assertTrue(hasattr(tasks.logger, 'info'))
-        self.assertTrue(hasattr(tasks.logger, 'warning'))
-        self.assertTrue(hasattr(tasks.logger, 'error'))
+        self.assertTrue(hasattr(tasks.logger, "info"))
+        self.assertTrue(hasattr(tasks.logger, "warning"))
+        self.assertTrue(hasattr(tasks.logger, "error"))
 
     def test_logs_have_required_fields(self):
         """Test that logs have required structured fields"""
@@ -379,9 +381,7 @@ class MarketplaceStructuredLoggingTest(TestCase):
 
         for field in required_fields:
             self.assertIn(
-                field,
-                log_entry,
-                f"Log entry should have {field} field for searchability"
+                field, log_entry, f"Log entry should have {field} field for searchability"
             )
 
     def test_error_logging_includes_error_context(self):
@@ -434,5 +434,3 @@ class MarketplaceStructuredLoggingTest(TestCase):
             self.assertEqual(parsed.get("event"), "test_json_serializable")
         except (TypeError, ValueError) as e:
             self.fail(f"Log entry is not JSON serializable: {e}")
-
-

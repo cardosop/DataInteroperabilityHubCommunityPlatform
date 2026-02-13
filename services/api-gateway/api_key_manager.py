@@ -19,8 +19,12 @@ django.setup()
 from django.utils import timezone
 from hub.apps.auth.models import APIKey
 from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import TenantConfig
 
 logger = structlog.get_logger(__name__)
+
+# Key in TenantConfig.rate_limits JSON for API gateway requests per hour
+TENANT_RATE_LIMIT_KEY = "api_gateway_requests_per_hour"
 
 
 class APIKeyInfo:
@@ -33,7 +37,8 @@ class APIKeyInfo:
         user_id: Optional[str],
         tier: str = 'FREE',
         scopes: Optional[list] = None,
-        name: str = ''
+        name: str = '',
+        rate_limit_per_hour: Optional[int] = None
     ):
         self.api_key_id = api_key_id
         self.tenant_id = tenant_id
@@ -41,6 +46,7 @@ class APIKeyInfo:
         self.tier = tier
         self.scopes = scopes if scopes is not None else []
         self.name = name
+        self.rate_limit_per_hour = rate_limit_per_hour
 
 
 class APIKeyManager:
@@ -118,7 +124,8 @@ class APIKeyManager:
                 user_id=str(api_key_obj.user.id) if api_key_obj.user else None,
                 tier=tier,
                 scopes=api_key_obj.scopes if api_key_obj.scopes is not None else [],
-                name=api_key_obj.name
+                name=api_key_obj.name,
+                rate_limit_per_hour=getattr(api_key_obj, 'rate_limit_per_hour', None)
             )
 
         except Exception as e:
@@ -151,10 +158,38 @@ class APIKeyManager:
                 user_id=str(api_key_obj.user.id) if api_key_obj.user else None,
                 tier=tier,
                 scopes=api_key_obj.scopes if api_key_obj.scopes is not None else [],
-                name=api_key_obj.name
+                name=api_key_obj.name,
+                rate_limit_per_hour=getattr(api_key_obj, 'rate_limit_per_hour', None)
             )
         except APIKey.DoesNotExist:
             return None
         except Exception as e:
             logger.error("api_key_info_error", api_key_id=api_key_id, error=str(e))
+            return None
+
+    def get_tenant_rate_limit(self, tenant_id: str) -> Optional[int]:
+        """
+        Get tenant-specific API gateway rate limit (requests per hour).
+
+        Reads from TenantConfig.rate_limits["api_gateway_requests_per_hour"].
+        Returns None if no config or key not set.
+
+        Args:
+            tenant_id: Tenant UUID
+
+        Returns:
+            Limit (int) or None
+        """
+        try:
+            config = TenantConfig.objects.filter(tenant_id=tenant_id).values_list(
+                'rate_limits', flat=True
+            ).first()
+            if not config or not isinstance(config, dict):
+                return None
+            value = config.get(TENANT_RATE_LIMIT_KEY)
+            if value is None:
+                return None
+            return int(value)
+        except Exception as e:
+            logger.warning("get_tenant_rate_limit_error", tenant_id=tenant_id, error=str(e))
             return None

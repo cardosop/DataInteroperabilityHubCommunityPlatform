@@ -7,48 +7,34 @@ Tests verify that:
 3. Security incident API works correctly
 4. Security incident resolution works correctly
 """
+
 import uuid
 from datetime import datetime, timedelta, timezone
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+
 from rest_framework import status
 
-from hub.apps.contracts.models import SecurityIncident, SecurityAuditLog
+from hub.apps.contracts.models import SecurityAuditLog, SecurityIncident
 from hub.apps.contracts.odps_security_logging import (
-    SecurityLogger,
     SecurityEventType,
+    SecurityIncidentDetector,
+    SecurityLogger,
     SecuritySeverity,
     SecurityViolationLog,
-    get_security_logger,
     get_incident_detector,
-    SecurityIncidentDetector,
+    get_security_logger,
 )
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
-from hub.apps.users.models import UserStatus
+from hub.apps.contracts.tests.test_base import ContractsAPITestBase, ContractsTestBase
+from hub.apps.users.models import User, UserStatus
 
 
-class SecurityIncidentDetectionTest(TestCase):
+class SecurityIncidentDetectionTest(ContractsTestBase):
     """Test security incident detection"""
 
     def setUp(self):
         """Set up test fixtures"""
+        super().setUp()
         self.security_logger = get_security_logger()
         self.incident_detector = get_incident_detector()
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED
-        )
-        User = get_user_model()
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User"
-        )
 
     def test_detect_rate_limit_abuse(self):
         """Test detection of rate limit abuse pattern"""
@@ -65,7 +51,7 @@ class SecurityIncidentDetectionTest(TestCase):
                 description=f"Rate limit exceeded {i}",
                 tenant_id=tenant_id,
                 user_id=user_id,
-                metadata={"level": "global"}
+                metadata={"level": "global"},
             )
             self.security_logger.log_security_violation(
                 event_type=SecurityEventType.RATE_LIMIT_EXCEEDED,
@@ -74,13 +60,12 @@ class SecurityIncidentDetectionTest(TestCase):
                 description=f"Rate limit exceeded {i}",
                 tenant_id=tenant_id,
                 user_id=user_id,
-                metadata={"level": "global"}
+                metadata={"level": "global"},
             )
 
         # Check that incident was created
         incidents = SecurityIncident.objects.filter(
-            event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
-            tenant=self.tenant
+            event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value, tenant=self.tenant
         )
         self.assertEqual(incidents.count(), 1)
         incident = incidents.first()
@@ -102,13 +87,12 @@ class SecurityIncidentDetectionTest(TestCase):
                 description=f"Path traversal attempt {i}",
                 attempted_path=f"../../../etc/passwd{i}",
                 tenant_id=tenant_id,
-                user_id=user_id
+                user_id=user_id,
             )
 
         # Check that incident was created
         incidents = SecurityIncident.objects.filter(
-            event_type=SecurityEventType.PATH_TRAVERSAL.value,
-            tenant=self.tenant
+            event_type=SecurityEventType.PATH_TRAVERSAL.value, tenant=self.tenant
         )
         self.assertEqual(incidents.count(), 1)
         incident = incidents.first()
@@ -130,13 +114,12 @@ class SecurityIncidentDetectionTest(TestCase):
                 description=f"URL denied {i}",
                 attempted_url=f"https://malicious.com/{i}",
                 tenant_id=tenant_id,
-                user_id=user_id
+                user_id=user_id,
             )
 
         # Check that incident was created
         incidents = SecurityIncident.objects.filter(
-            event_type=SecurityEventType.URL_DENIED.value,
-            tenant=self.tenant
+            event_type=SecurityEventType.URL_DENIED.value, tenant=self.tenant
         )
         self.assertEqual(incidents.count(), 1)
         incident = incidents.first()
@@ -156,13 +139,12 @@ class SecurityIncidentDetectionTest(TestCase):
                 violation_type="Security Violation",
                 description=f"High severity violation {i}",
                 tenant_id=tenant_id,
-                user_id=user_id
+                user_id=user_id,
             )
 
         # Check that incident was created
         incidents = SecurityIncident.objects.filter(
-            severity__in=["HIGH", "CRITICAL"],
-            tenant=self.tenant
+            severity__in=["HIGH", "CRITICAL"], tenant=self.tenant
         )
         self.assertEqual(incidents.count(), 1)
         incident = incidents.first()
@@ -183,13 +165,12 @@ class SecurityIncidentDetectionTest(TestCase):
                 description=f"Rate limit exceeded {i}",
                 tenant_id=tenant_id,
                 user_id=user_id,
-                metadata={"level": "global"}
+                metadata={"level": "global"},
             )
 
         # Get the incident (should be created after 10 violations)
         incident = SecurityIncident.objects.filter(
-            event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
-            tenant=self.tenant
+            event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value, tenant=self.tenant
         ).first()
         self.assertIsNotNone(incident, "Incident should be created after 10 violations")
         initial_count = incident.violation_count
@@ -203,38 +184,28 @@ class SecurityIncidentDetectionTest(TestCase):
                 description=f"Rate limit exceeded {i}",
                 tenant_id=tenant_id,
                 user_id=user_id,
-                metadata={"level": "global"}
+                metadata={"level": "global"},
             )
 
         # Check that incident was updated, not duplicated
         incidents = SecurityIncident.objects.filter(
-            event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
-            tenant=self.tenant
+            event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value, tenant=self.tenant
         )
         self.assertEqual(incidents.count(), 1, "Should have only one incident")
         incident.refresh_from_db()
-        self.assertGreater(incident.violation_count, initial_count, "Violation count should increase")
+        self.assertGreater(
+            incident.violation_count, initial_count, "Violation count should increase"
+        )
 
 
-class SecurityIncidentModelTest(TestCase):
+class SecurityIncidentModelTest(ContractsTestBase):
     """Test SecurityIncident model"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED
-        )
-        User = get_user_model()
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User"
-        )
+        super().setUp()
+        self.user.display_name = "Test User"
+        self.user.save()
 
     def test_create_incident(self):
         """Test creating a security incident"""
@@ -246,7 +217,7 @@ class SecurityIncidentModelTest(TestCase):
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             tenant=self.tenant,
             user=self.user,
-            violation_count=5
+            violation_count=5,
         )
 
         self.assertEqual(incident.title, "Test Incident")
@@ -263,13 +234,10 @@ class SecurityIncidentModelTest(TestCase):
             status="OPEN",
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             tenant=self.tenant,
-            violation_count=5
+            violation_count=5,
         )
 
-        incident.resolve(
-            resolved_by_user=self.user,
-            resolution_notes="Resolved by test"
-        )
+        incident.resolve(resolved_by_user=self.user, resolution_notes="Resolved by test")
 
         self.assertEqual(incident.status, "RESOLVED")
         self.assertIsNotNone(incident.resolved_at)
@@ -277,33 +245,21 @@ class SecurityIncidentModelTest(TestCase):
         self.assertEqual(incident.resolution_notes, "Resolved by test")
 
 
-class SecurityIncidentAPITest(TestCase):
+class SecurityIncidentAPITest(ContractsAPITestBase):
     """Test security incident API endpoints"""
 
     def setUp(self):
         """Set up test fixtures"""
-        self.client = APIClient()
-        self.tenant = Tenant.objects.create(
-            name="Test Tenant",
-            slug="test-tenant",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED
-        )
-        User = get_user_model()
-        self.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-            display_name="Test User"
-        )
+        super().setUp()
+        self.user.display_name = "Test User"
+        self.user.save()
         self.admin_user = User.objects.create_user(
             email="admin@example.com",
             password="adminpass123",
             tenant=None,  # Platform admins may not have tenant
             status=UserStatus.ACTIVE,
             display_name="Admin User",
-            is_platform_admin=True
+            is_platform_admin=True,
         )
 
         # Create test incidents
@@ -314,7 +270,7 @@ class SecurityIncidentAPITest(TestCase):
             status="OPEN",
             event_type=SecurityEventType.PATH_TRAVERSAL.value,
             tenant=self.tenant,
-            violation_count=5
+            violation_count=5,
         )
         self.incident2 = SecurityIncident.objects.create(
             title="Test Incident 2",
@@ -323,87 +279,86 @@ class SecurityIncidentAPITest(TestCase):
             status="OPEN",
             event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
             tenant=self.tenant,
-            violation_count=10
+            violation_count=10,
         )
 
     def test_list_incidents_authenticated(self):
         """Test listing incidents as authenticated user"""
         self.client.force_authenticate(user=self.user)
-        response = self.client.get('/api/v1/security/incidents/')
+        response = self.client.get("/api/v1/security/incidents/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.data['results']), 2)
+        self.assertGreaterEqual(len(response.data["results"]), 2)
 
     def test_list_incidents_filter_by_severity(self):
         """Test filtering incidents by severity"""
         self.client.force_authenticate(user=self.user)
-        response = self.client.get('/api/v1/security/incidents/?severity=HIGH')
+        response = self.client.get("/api/v1/security/incidents/?severity=HIGH")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        for result in response.data['results']:
-            self.assertEqual(result['severity'], 'HIGH')
+        for result in response.data["results"]:
+            self.assertEqual(result["severity"], "HIGH")
 
     def test_list_incidents_filter_by_status(self):
         """Test filtering incidents by status"""
         self.client.force_authenticate(user=self.user)
-        response = self.client.get('/api/v1/security/incidents/?status=OPEN')
+        response = self.client.get("/api/v1/security/incidents/?status=OPEN")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        for result in response.data['results']:
-            self.assertEqual(result['status'], 'OPEN')
+        for result in response.data["results"]:
+            self.assertEqual(result["status"], "OPEN")
 
     def test_list_incidents_filter_by_event_type(self):
         """Test filtering incidents by event type"""
         self.client.force_authenticate(user=self.user)
         response = self.client.get(
-            f'/api/v1/security/incidents/?event_type={SecurityEventType.PATH_TRAVERSAL.value}'
+            f"/api/v1/security/incidents/?event_type={SecurityEventType.PATH_TRAVERSAL.value}"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        for result in response.data['results']:
-            self.assertEqual(result['event_type'], SecurityEventType.PATH_TRAVERSAL.value)
+        for result in response.data["results"]:
+            self.assertEqual(result["event_type"], SecurityEventType.PATH_TRAVERSAL.value)
 
     def test_retrieve_incident(self):
         """Test retrieving a specific incident"""
         self.client.force_authenticate(user=self.user)
-        response = self.client.get(f'/api/v1/security/incidents/{self.incident1.id}/')
+        response = self.client.get(f"/api/v1/security/incidents/{self.incident1.id}/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['id'], str(self.incident1.id))
-        self.assertEqual(response.data['title'], "Test Incident 1")
+        self.assertEqual(response.data["id"], str(self.incident1.id))
+        self.assertEqual(response.data["title"], "Test Incident 1")
 
     def test_resolve_incident_admin(self):
         """Test resolving an incident as admin"""
         self.client.force_authenticate(user=self.admin_user)
         response = self.client.post(
-            f'/api/v1/security/incidents/{self.incident1.id}/resolve/',
-            {'resolution_notes': 'Resolved by admin'},
-            format='json'
+            f"/api/v1/security/incidents/{self.incident1.id}/resolve/",
+            {"resolution_notes": "Resolved by admin"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], 'RESOLVED')
-        self.assertIsNotNone(response.data['resolved_at'])
-        self.assertEqual(response.data['resolution_notes'], 'Resolved by admin')
+        self.assertEqual(response.data["status"], "RESOLVED")
+        self.assertIsNotNone(response.data["resolved_at"])
+        self.assertEqual(response.data["resolution_notes"], "Resolved by admin")
 
         # Verify in database
         self.incident1.refresh_from_db()
-        self.assertEqual(self.incident1.status, 'RESOLVED')
+        self.assertEqual(self.incident1.status, "RESOLVED")
 
     def test_resolve_incident_non_admin_forbidden(self):
         """Test that non-admin users cannot resolve incidents"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(
-            f'/api/v1/security/incidents/{self.incident1.id}/resolve/',
-            {'resolution_notes': 'Attempted resolution'},
-            format='json'
+            f"/api/v1/security/incidents/{self.incident1.id}/resolve/",
+            {"resolution_notes": "Attempted resolution"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_resolve_incident_unauthenticated(self):
         """Test that unauthenticated users cannot access incidents"""
-        response = self.client.get('/api/v1/security/incidents/')
+        response = self.client.get("/api/v1/security/incidents/")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-

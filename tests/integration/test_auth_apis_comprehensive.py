@@ -11,30 +11,32 @@ Tests all authentication endpoints with 100+ test cases covering:
 
 All tests use real services (no mocks/stubs) and run against Docker Compose instances.
 """
-import pytest
-import time
-import json
-import uuid
-import jwt
-import hashlib
-from datetime import timedelta
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from django.utils import timezone
-from django.core.cache import cache
-from rest_framework.test import APIClient
-from rest_framework import status
-from unittest.mock import patch, MagicMock
 
-from hub.apps.auth.models import RefreshToken, APIKey
-from hub.apps.users.models import UserStatus
-from hub.apps.tenants.models import Tenant, TenantStatus, KYCStatus
+import hashlib
+import json
+import time
+import uuid
+from datetime import timedelta
+
+import freezegun
+import jwt
+import pytest
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient
+
 from hub.apps.audit.models import AuditEvent
+from hub.apps.auth.jwt_utils import JWTTokenGenerator
+from hub.apps.auth.models import APIKey, RefreshToken
 from hub.apps.core.events.models import Event
 from hub.apps.notifications.models import EmailDelivery, EmailType
-from tests.fixtures.test_data_factories import UserFactory, TenantFactory
-from hub.apps.auth.jwt_utils import JWTTokenGenerator
-from django.conf import settings
+from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+from hub.apps.users.models import UserStatus
+from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
 # Use regular django_db marker - TestCase handles transactions efficiently
 pytestmark = pytest.mark.django_db
@@ -48,13 +50,10 @@ class TestAuthRegisterAPI(TestCase):
         """Set up test fixtures - using setUp instead of setUpClass for better isolation"""
         # Clear cache aggressively before each test
         cache.clear()
-        # Clear any user-specific cache keys
-        try:
-            from django.core.cache.utils import make_key
-            # Clear all possible user cache patterns
-            cache.delete_pattern('user:me:*')
-        except Exception:
-            pass
+        # Clear any user-specific cache keys (Redis backends only; LocMem has no delete_pattern)
+        delete_pattern = getattr(cache, "delete_pattern", None)
+        if callable(delete_pattern):
+            delete_pattern("user:me:*")
 
         self.client = APIClient()
         # Create tenant fresh for each test (better isolation)
@@ -62,7 +61,7 @@ class TestAuthRegisterAPI(TestCase):
             name="Test Tenant",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
             status=TenantStatus.ACTIVE.value,
-            kyc_status=KYCStatus.UNVERIFIED.value
+            kyc_status=KYCStatus.UNVERIFIED.value,
         )
 
     def tearDown(self):
@@ -75,12 +74,8 @@ class TestAuthRegisterAPI(TestCase):
         """Test successful registration without tenant"""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {
-                "email": "newuser@example.com",
-                "password": "SecurePass123",
-                "name": "New User"
-            },
-            format="json"
+            {"email": "newuser@example.com", "password": "SecurePass123", "name": "New User"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -102,9 +97,9 @@ class TestAuthRegisterAPI(TestCase):
                 "email": "tenantuser@example.com",
                 "password": "SecurePass123",
                 "name": "Tenant User",
-                "tenant_id": str(self.tenant.id)
+                "tenant_id": str(self.tenant.id),
             },
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -119,12 +114,8 @@ class TestAuthRegisterAPI(TestCase):
         # In current implementation, users register as ACTIVE
         response = self.client.post(
             "/api/v1/auth/register/",
-            {
-                "email": "verified@example.com",
-                "password": "SecurePass123",
-                "name": "Verified User"
-            },
-            format="json"
+            {"email": "verified@example.com", "password": "SecurePass123", "name": "Verified User"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -141,17 +132,13 @@ class TestAuthRegisterAPI(TestCase):
             email=duplicate_email,
             tenant=self.tenant,
             password="ExistingPass123",
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
         response = self.client.post(
             "/api/v1/auth/register/",
-            {
-                "email": duplicate_email,
-                "password": "SecurePass123",
-                "name": "Duplicate User"
-            },
-            format="json"
+            {"email": duplicate_email, "password": "SecurePass123", "name": "Duplicate User"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -164,9 +151,9 @@ class TestAuthRegisterAPI(TestCase):
             {
                 "email": "weakpass@example.com",
                 "password": "123",  # Too short
-                "name": "Weak Password User"
+                "name": "Weak Password User",
             },
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -176,12 +163,8 @@ class TestAuthRegisterAPI(TestCase):
         """Test registration with invalid email format fails"""
         response = self.client.post(
             "/api/v1/auth/register/",
-            {
-                "email": "not-an-email",
-                "password": "SecurePass123",
-                "name": "Invalid Email User"
-            },
-            format="json"
+            {"email": "not-an-email", "password": "SecurePass123", "name": "Invalid Email User"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -197,9 +180,9 @@ class TestAuthRegisterAPI(TestCase):
                 "email": "invalidtenant@example.com",
                 "password": "SecurePass123",
                 "name": "Invalid Tenant User",
-                "tenant_id": invalid_tenant_id
+                "tenant_id": invalid_tenant_id,
             },
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -208,9 +191,7 @@ class TestAuthRegisterAPI(TestCase):
     def test_register_inactive_tenant(self):
         """Test registration with inactive tenant fails"""
         inactive_tenant = TenantFactory.create_tenant(
-            name="Inactive Tenant",
-            slug="inactive-tenant",
-            status=TenantStatus.SUSPENDED.value
+            name="Inactive Tenant", slug="inactive-tenant", status=TenantStatus.SUSPENDED.value
         )
 
         response = self.client.post(
@@ -219,9 +200,9 @@ class TestAuthRegisterAPI(TestCase):
                 "email": "inactivetenant@example.com",
                 "password": "SecurePass123",
                 "name": "Inactive Tenant User",
-                "tenant_id": str(inactive_tenant.id)
+                "tenant_id": str(inactive_tenant.id),
             },
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -232,33 +213,24 @@ class TestAuthRegisterAPI(TestCase):
         # Missing email
         response = self.client.post(
             "/api/v1/auth/register/",
-            {
-                "password": "SecurePass123",
-                "name": "Missing Email User"
-            },
-            format="json"
+            {"password": "SecurePass123", "name": "Missing Email User"},
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Missing password
         response = self.client.post(
             "/api/v1/auth/register/",
-            {
-                "email": "missingpass@example.com",
-                "name": "Missing Password User"
-            },
-            format="json"
+            {"email": "missingpass@example.com", "name": "Missing Password User"},
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Missing name
         response = self.client.post(
             "/api/v1/auth/register/",
-            {
-                "email": "missingname@example.com",
-                "password": "SecurePass123"
-            },
-            format="json"
+            {"email": "missingname@example.com", "password": "SecurePass123"},
+            format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -271,22 +243,20 @@ class TestAuthRegisterAPI(TestCase):
             "' OR '1'='1",
             "admin'--",
             "admin'/*",
-            "1' UNION SELECT * FROM users--"
+            "1' UNION SELECT * FROM users--",
         ]
 
         for attempt in sql_injection_attempts:
             response = self.client.post(
                 "/api/v1/auth/register/",
-                {
-                    "email": attempt,
-                    "password": "SecurePass123",
-                    "name": "SQL Injection Test"
-                },
-                format="json"
+                {"email": attempt, "password": "SecurePass123", "name": "SQL Injection Test"},
+                format="json",
             )
             # Should fail validation (invalid email format) or create user safely
             # Either way, SQL injection should not execute
-            self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
+            self.assertIn(
+                response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED]
+            )
             # Verify no SQL injection occurred by checking user count
             user_count = User.objects.count()
             # If user was created, verify it was created safely
@@ -300,7 +270,7 @@ class TestAuthRegisterAPI(TestCase):
             "<script>alert('XSS')</script>",
             "<img src=x onerror=alert('XSS')>",
             "javascript:alert('XSS')",
-            "<svg onload=alert('XSS')>"
+            "<svg onload=alert('XSS')>",
         ]
 
         for attempt in xss_attempts:
@@ -309,9 +279,9 @@ class TestAuthRegisterAPI(TestCase):
                 {
                     "email": f"xss{hashlib.md5(attempt.encode()).hexdigest()[:8]}@example.com",
                     "password": "SecurePass123",
-                    "name": attempt
+                    "name": attempt,
                 },
-                format="json"
+                format="json",
             )
             # Should succeed (XSS is handled at display layer, not storage)
             if response.status_code == status.HTTP_201_CREATED:
@@ -328,9 +298,9 @@ class TestAuthRegisterAPI(TestCase):
                 {
                     "email": f"ratelimit{i}@example.com",
                     "password": "SecurePass123",
-                    "name": f"Rate Limit User {i}"
+                    "name": f"Rate Limit User {i}",
                 },
-                format="json"
+                format="json",
             )
             # After rate limit, should get 429
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
@@ -346,9 +316,9 @@ class TestAuthRegisterAPI(TestCase):
             {
                 "email": "passwordhash@example.com",
                 "password": password,
-                "name": "Password Hash Test"
+                "name": "Password Hash Test",
             },
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -373,9 +343,9 @@ class TestAuthRegisterAPI(TestCase):
                 {
                     "email": f"perf{i}@example.com",
                     "password": "SecurePass123",
-                    "name": f"Performance User {i}"
+                    "name": f"Performance User {i}",
                 },
-                format="json"
+                format="json",
             )
             elapsed = (time.time() - start_time) * 1000  # Convert to ms
             times.append(elapsed)
@@ -388,7 +358,11 @@ class TestAuthRegisterAPI(TestCase):
             p95_time = times[p95_index] if p95_index < len(times) else times[-1]
             # In Docker test environment, performance may vary - use relaxed threshold
             # Production should still meet < 500ms p95, but tests allow for overhead
-            self.assertLess(p95_time, 1000, f"P95 response time {p95_time}ms exceeds 1000ms (relaxed threshold for test environment)")
+            self.assertLess(
+                p95_time,
+                1000,
+                f"P95 response time {p95_time}ms exceeds 1000ms (relaxed threshold for test environment)",
+            )
 
     # ========== INTEGRATION TESTS ==========
 
@@ -400,9 +374,9 @@ class TestAuthRegisterAPI(TestCase):
                 "email": "eventtest@example.com",
                 "password": "SecurePass123",
                 "name": "Event Test User",
-                "tenant_id": str(self.tenant.id)
+                "tenant_id": str(self.tenant.id),
             },
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -423,9 +397,9 @@ class TestAuthRegisterAPI(TestCase):
                 "email": "emailtest@example.com",
                 "password": "SecurePass123",
                 "name": "Email Test User",
-                "tenant_id": str(self.tenant.id)
+                "tenant_id": str(self.tenant.id),
             },
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -444,9 +418,9 @@ class TestAuthRegisterAPI(TestCase):
             {
                 "email": "audittest@example.com",
                 "password": "SecurePass123",
-                "name": "Audit Test User"
+                "name": "Audit Test User",
             },
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -474,9 +448,9 @@ class TestAuthRegisterAPI(TestCase):
                     {
                         "email": email,
                         "password": "SecurePass123",
-                        "name": f"Concurrent User {index}"
+                        "name": f"Concurrent User {index}",
                     },
-                    format="json"
+                    format="json",
                 )
                 results.append((index, response.status_code))
             except Exception as e:
@@ -506,19 +480,12 @@ class TestAuthRegisterAPI(TestCase):
 
         response = self.client.post(
             "/api/v1/auth/register/",
-            {
-                "email": "largepayload@example.com",
-                "password": "SecurePass123",
-                "name": large_name
-            },
-            format="json"
+            {"email": "largepayload@example.com", "password": "SecurePass123", "name": large_name},
+            format="json",
         )
 
         # Should either succeed (if within limits) or fail with validation error
-        self.assertIn(response.status_code, [
-            status.HTTP_201_CREATED,
-            status.HTTP_400_BAD_REQUEST
-        ])
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
 
     def test_register_special_characters(self):
         """Test registration with special characters in name"""
@@ -530,18 +497,14 @@ class TestAuthRegisterAPI(TestCase):
             "李",
             "🚀 User",
             "User & Co.",
-            "User (Test)"
+            "User (Test)",
         ]
 
         for i, name in enumerate(special_chars):
             response = self.client.post(
                 "/api/v1/auth/register/",
-                {
-                    "email": f"special{i}@example.com",
-                    "password": "SecurePass123",
-                    "name": name
-                },
-                format="json"
+                {"email": f"special{i}@example.com", "password": "SecurePass123", "name": name},
+                format="json",
             )
 
             if response.status_code == status.HTTP_201_CREATED:
@@ -557,20 +520,17 @@ class TestAuthMeAPI(TestCase):
         """Set up test fixtures - using setUp instead of setUpClass for better isolation"""
         # Clear cache aggressively before each test
         cache.clear()
-        # Clear any user-specific cache keys
-        try:
-            from django.core.cache.utils import make_key
-            # Clear all possible user cache patterns
-            cache.delete_pattern('user:me:*')
-        except Exception:
-            pass
+        # Clear any user-specific cache keys (Redis backends only; LocMem has no delete_pattern)
+        delete_pattern = getattr(cache, "delete_pattern", None)
+        if callable(delete_pattern):
+            delete_pattern("user:me:*")
 
         self.client = APIClient()
         # Create tenant and user fresh for each test (better isolation)
         self.tenant = TenantFactory.create_tenant(
             name="Test Tenant",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE.value
+            status=TenantStatus.ACTIVE.value,
         )
         # Create user with hashed password using create_user
         self.user = User.objects.create_user(
@@ -578,7 +538,7 @@ class TestAuthMeAPI(TestCase):
             tenant=self.tenant,
             password="testpass123",
             display_name="Me User",
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
     def tearDown(self):
@@ -586,9 +546,9 @@ class TestAuthMeAPI(TestCase):
         # Clear cache aggressively
         cache.clear()
         # Clear user-specific cache keys
-        if hasattr(self, 'user') and hasattr(self.user, 'id'):
-            cache.delete(f'user:me:{self.user.id}')
-            cache.delete(f'user:me:{str(self.user.id)}')
+        if hasattr(self, "user") and hasattr(self.user, "id"):
+            cache.delete(f"user:me:{self.user.id}")
+            cache.delete(f"user:me:{str(self.user.id)}")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -598,10 +558,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         # Use token to access /me
@@ -625,7 +588,7 @@ class TestAuthMeAPI(TestCase):
             tenant=self.tenant,
             user=self.user,
             key_hash=APIKey.hash_key("test-api-key"),
-            name="Test API Key"
+            name="Test API Key",
         )
 
         # Use API key to access /me (API key auth uses "ApiKey" prefix, not "Bearer")
@@ -634,10 +597,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
         response = self.client.get("/api/v1/auth/me/")
@@ -653,10 +619,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
@@ -671,10 +640,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
@@ -701,14 +673,12 @@ class TestAuthMeAPI(TestCase):
         """Test /me endpoint with expired token returns 401"""
         # Generate expired token
         expired_payload = {
-            'sub': str(self.user.id),
-            'exp': int(time.time()) - 3600,  # Expired 1 hour ago
-            'iat': int(time.time()) - 7200
+            "sub": str(self.user.id),
+            "exp": int(time.time()) - 3600,  # Expired 1 hour ago
+            "iat": int(time.time()) - 7200,
         }
         expired_token = jwt.encode(
-            expired_payload,
-            settings.JWT_SECRET_KEY,
-            algorithm=settings.JWT_ALGORITHM
+            expired_payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
         )
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {expired_token}")
@@ -731,10 +701,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         valid_token = login_response.data["access_token"]
 
         # Tamper with token (change a character)
@@ -752,10 +725,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
@@ -770,10 +746,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
@@ -791,10 +770,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
@@ -812,17 +794,24 @@ class TestAuthMeAPI(TestCase):
             p95_index = int(len(times) * 0.95)
             p95_time = times[p95_index] if p95_index < len(times) else times[-1]
             # In Docker test environment, performance may vary - use relaxed threshold
-            self.assertLess(p95_time, 500, f"P95 response time {p95_time}ms exceeds 500ms (relaxed threshold for test environment)")
+            self.assertLess(
+                p95_time,
+                500,
+                f"P95 response time {p95_time}ms exceeds 500ms (relaxed threshold for test environment)",
+            )
 
     def test_me_caching_validation(self):
         """Test /me endpoint caching works correctly"""
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
 
@@ -848,16 +837,19 @@ class TestAuthMeAPI(TestCase):
             email=f"noroles-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             password="testpass123",
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": user_no_roles.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
@@ -875,16 +867,19 @@ class TestAuthMeAPI(TestCase):
             email=f"deletedtenant-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             password="testpass123",
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": user_with_tenant.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         # Set tenant to None (simulating deleted tenant - actual deletion would be RESTRICTED)
@@ -905,7 +900,7 @@ class TestAuthMeAPI(TestCase):
             email=f"inactive-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             password="testpass123",
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
         inactive_user.status = UserStatus.DISABLED.value
         inactive_user.save()
@@ -914,14 +909,13 @@ class TestAuthMeAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": inactive_user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
 
         # Login should fail for inactive user
-        self.assertIn(login_response.status_code, [
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_401_UNAUTHORIZED
-        ])
+        self.assertIn(
+            login_response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_401_UNAUTHORIZED]
+        )
 
 
 class TestAuthLoginAPI(TestCase):
@@ -937,7 +931,7 @@ class TestAuthLoginAPI(TestCase):
         self.tenant = TenantFactory.create_tenant(
             name="Test Tenant",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE.value
+            status=TenantStatus.ACTIVE.value,
         )
         # Create user with hashed password using create_user
         self.user = User.objects.create_user(
@@ -945,7 +939,7 @@ class TestAuthLoginAPI(TestCase):
             tenant=self.tenant,
             password="testpass123",
             display_name="Login User",
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
     def tearDown(self):
@@ -955,9 +949,9 @@ class TestAuthLoginAPI(TestCase):
         # Clear both user-specific cache and general cache
         cache.clear()
         # Clear user-specific cache keys that might be cached
-        if hasattr(self.user, 'id'):
-            cache.delete(f'user:me:{self.user.id}')
-            cache.delete(f'user:me:{str(self.user.id)}')
+        if hasattr(self.user, "id"):
+            cache.delete(f"user:me:{self.user.id}")
+            cache.delete(f"user:me:{str(self.user.id)}")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -966,7 +960,7 @@ class TestAuthLoginAPI(TestCase):
         response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -979,12 +973,8 @@ class TestAuthLoginAPI(TestCase):
         """Test login with remember_me option"""
         response = self.client.post(
             "/api/v1/auth/login/",
-            {
-                "email": self.user.email,
-                "password": "testpass123",
-                "remember_me": True
-            },
-            format="json"
+            {"email": self.user.email, "password": "testpass123", "remember_me": True},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -998,7 +988,7 @@ class TestAuthLoginAPI(TestCase):
         response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1016,7 +1006,7 @@ class TestAuthLoginAPI(TestCase):
         response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "wrongpassword"},
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1030,7 +1020,7 @@ class TestAuthLoginAPI(TestCase):
         response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1046,7 +1036,7 @@ class TestAuthLoginAPI(TestCase):
         response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1056,7 +1046,7 @@ class TestAuthLoginAPI(TestCase):
         response = self.client.post(
             "/api/v1/auth/login/",
             {"email": "nonexistent@example.com", "password": "testpass123"},
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1071,7 +1061,7 @@ class TestAuthLoginAPI(TestCase):
             response = self.client.post(
                 "/api/v1/auth/login/",
                 {"email": self.user.email, "password": "wrongpassword"},
-                format="json"
+                format="json",
             )
             # After some attempts, should get rate limited or account locked
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
@@ -1086,7 +1076,7 @@ class TestAuthLoginAPI(TestCase):
             response = self.client.post(
                 "/api/v1/auth/login/",
                 {"email": f"ratelimit{i}@example.com", "password": "testpass123"},
-                format="json"
+                format="json",
             )
             # After rate limit, should get 429
             if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
@@ -1099,7 +1089,7 @@ class TestAuthLoginAPI(TestCase):
         response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1114,9 +1104,7 @@ class TestAuthLoginAPI(TestCase):
         # Verify refresh token was created in database
         refresh_token_str = response.data["refresh_token"]
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
-        self.assertTrue(
-            RefreshToken.objects.filter(token_hash=refresh_token_hash).exists()
-        )
+        self.assertTrue(RefreshToken.objects.filter(token_hash=refresh_token_hash).exists())
 
     # ========== PERFORMANCE TESTS ==========
 
@@ -1129,13 +1117,13 @@ class TestAuthLoginAPI(TestCase):
                 email=f"perflogin{i}@example.com",
                 tenant=self.tenant,
                 password="testpass123",
-                status=UserStatus.ACTIVE.value
+                status=UserStatus.ACTIVE.value,
             )
             start_time = time.time()
             response = self.client.post(
                 "/api/v1/auth/login/",
                 {"email": user.email, "password": "testpass123"},
-                format="json"
+                format="json",
             )
             elapsed = (time.time() - start_time) * 1000
             times.append(elapsed)
@@ -1148,7 +1136,11 @@ class TestAuthLoginAPI(TestCase):
             p95_time = times[p95_index] if p95_index < len(times) else times[-1]
             # In Docker test environment, performance may vary significantly - use very relaxed threshold
             # Production should still meet < 300ms p95, but tests allow for Docker overhead
-            self.assertLess(p95_time, 1500, f"P95 response time {p95_time}ms exceeds 1500ms (very relaxed threshold for Docker test environment)")
+            self.assertLess(
+                p95_time,
+                1500,
+                f"P95 response time {p95_time}ms exceeds 1500ms (very relaxed threshold for Docker test environment)",
+            )
 
 
 @pytest.mark.isolation
@@ -1165,23 +1157,23 @@ class TestAuthLogoutAPI(TestCase):
         self.tenant = TenantFactory.create_tenant(
             name="Test Tenant",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE.value
+            status=TenantStatus.ACTIVE.value,
         )
         # Create user with hashed password using create_user
         self.user = User.objects.create_user(
             email=f"logout-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             password="testpass123",
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
     def tearDown(self):
         """Clean up after each test"""
         cache.clear()
         # Clear user-specific cache keys
-        if hasattr(self, 'user') and hasattr(self.user, 'id'):
-            cache.delete(f'user:me:{self.user.id}')
-            cache.delete(f'user:me:{str(self.user.id)}')
+        if hasattr(self, "user") and hasattr(self.user, "id"):
+            cache.delete(f"user:me:{self.user.id}")
+            cache.delete(f"user:me:{str(self.user.id)}")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -1191,10 +1183,13 @@ class TestAuthLogoutAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
         refresh_token_str = login_response.data["refresh_token"]
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
@@ -1206,9 +1201,7 @@ class TestAuthLogoutAPI(TestCase):
         # Logout
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
         response = self.client.post(
-            "/api/v1/auth/logout/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/logout/", {"refresh_token": refresh_token_str}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1225,27 +1218,30 @@ class TestAuthLogoutAPI(TestCase):
             login_response = self.client.post(
                 "/api/v1/auth/login/",
                 {"email": self.user.email, "password": "testpass123"},
-                format="json"
+                format="json",
             )
-            self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+            self.assertEqual(
+                login_response.status_code,
+                status.HTTP_200_OK,
+                f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+            )
             refresh_tokens.append(login_response.data["refresh_token"])
 
         # Verify multiple refresh tokens exist
-        active_tokens = RefreshToken.objects.filter(
-            user=self.user,
-            revoked_at__isnull=True
-        )
+        active_tokens = RefreshToken.objects.filter(user=self.user, revoked_at__isnull=True)
         self.assertGreaterEqual(active_tokens.count(), 3)
 
         # Logout (without specifying refresh_token, should revoke all)
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
@@ -1262,27 +1258,26 @@ class TestAuthLogoutAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
         refresh_token_str = login_response.data["refresh_token"]
 
         # Logout
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
         response = self.client.post(
-            "/api/v1/auth/logout/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/logout/", {"refresh_token": refresh_token_str}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Try to use refresh token (should fail)
         refresh_response = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
         self.assertEqual(refresh_response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -1292,10 +1287,13 @@ class TestAuthLogoutAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         access_token = login_response.data["access_token"]
 
         # Logout
@@ -1319,14 +1317,14 @@ class TestAuthRefreshAPI(TestCase):
         self.tenant = TenantFactory.create_tenant(
             name="Test Tenant",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
-            status=TenantStatus.ACTIVE.value
+            status=TenantStatus.ACTIVE.value,
         )
         # Create user with hashed password using create_user
         self.user = User.objects.create_user(
             email=f"refresh-{uuid.uuid4().hex[:8]}@example.com",
             tenant=self.tenant,
             password="testpass123",
-            status=UserStatus.ACTIVE.value
+            status=UserStatus.ACTIVE.value,
         )
 
     def tearDown(self):
@@ -1336,9 +1334,9 @@ class TestAuthRefreshAPI(TestCase):
         # Clear both user-specific cache and general cache
         cache.clear()
         # Clear user-specific cache keys that might be cached
-        if hasattr(self.user, 'id'):
-            cache.delete(f'user:me:{self.user.id}')
-            cache.delete(f'user:me:{str(self.user.id)}')
+        if hasattr(self.user, "id"):
+            cache.delete(f"user:me:{self.user.id}")
+            cache.delete(f"user:me:{str(self.user.id)}")
 
     # ========== SUCCESS SCENARIOS ==========
 
@@ -1348,17 +1346,18 @@ class TestAuthRefreshAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         refresh_token_str = login_response.data["refresh_token"]
 
         # Refresh token
         response = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1372,22 +1371,24 @@ class TestAuthRefreshAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         original_access_token = login_response.data["access_token"]
         refresh_token_str = login_response.data["refresh_token"]
 
-        # Small delay to ensure different timestamp (tokens generated in same second have same jti)
-        time.sleep(1.1)
-
-        # Refresh
-        refresh_response = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": refresh_token_str},
-            format="json"
-        )
+        # Advance time and refresh in one frozen context so new token gets different jti (no fixed sleep)
+        with freezegun.freeze_time(timezone.now()) as frozen_time:
+            frozen_time.tick(delta=timedelta(seconds=2))
+            refresh_response = self.client.post(
+                "/api/v1/auth/refresh/",
+                {"refresh_token": refresh_token_str},
+                format="json",
+            )
         self.assertEqual(refresh_response.status_code, status.HTTP_200_OK)
         new_access_token = refresh_response.data["access_token"]
 
@@ -1401,8 +1402,11 @@ class TestAuthRefreshAPI(TestCase):
         self.assertIsNotNone(decoded_new, "New token should decode successfully")
         self.assertEqual(decoded_original["sub"], decoded_new["sub"])
         # Verify they have different jti (JWT ID) - indicates new token generation
-        self.assertNotEqual(decoded_original.get("jti"), decoded_new.get("jti"),
-                           "Tokens should have different jti (JWT ID) indicating new token generation")
+        self.assertNotEqual(
+            decoded_original.get("jti"),
+            decoded_new.get("jti"),
+            "Tokens should have different jti (JWT ID) indicating new token generation",
+        )
 
     # ========== ERROR SCENARIOS ==========
 
@@ -1414,14 +1418,12 @@ class TestAuthRefreshAPI(TestCase):
         expired_token_obj = RefreshToken.objects.create(
             user=self.user,
             token_hash=expired_token_hash,
-            expires_at=timezone.now() - timedelta(hours=1)  # Expired
+            expires_at=timezone.now() - timedelta(hours=1),  # Expired
         )
 
         # Try to refresh
         response = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": expired_token_str},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": expired_token_str}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1432,9 +1434,7 @@ class TestAuthRefreshAPI(TestCase):
         invalid_token = "invalid.refresh.token"
 
         response = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": invalid_token},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": invalid_token}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1446,10 +1446,13 @@ class TestAuthRefreshAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         refresh_token_str = login_response.data["refresh_token"]
         refresh_token_hash = RefreshToken.hash_token(refresh_token_str)
 
@@ -1460,9 +1463,7 @@ class TestAuthRefreshAPI(TestCase):
 
         # Try to refresh
         response = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1474,10 +1475,13 @@ class TestAuthRefreshAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         refresh_token_str = login_response.data["refresh_token"]
 
         # Deactivate user
@@ -1486,9 +1490,7 @@ class TestAuthRefreshAPI(TestCase):
 
         # Try to refresh
         response = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -1502,17 +1504,18 @@ class TestAuthRefreshAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         refresh_token_str = login_response.data["refresh_token"]
 
         # Refresh (current implementation doesn't rotate refresh tokens)
         refresh_response = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
         self.assertEqual(refresh_response.status_code, status.HTTP_200_OK)
@@ -1525,17 +1528,18 @@ class TestAuthRefreshAPI(TestCase):
         login_response = self.client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
-            format="json"
+            format="json",
         )
-        self.assertEqual(login_response.status_code, status.HTTP_200_OK,
-                        f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}")
+        self.assertEqual(
+            login_response.status_code,
+            status.HTTP_200_OK,
+            f"Login failed: {login_response.data if hasattr(login_response, 'data') else 'No response data'}",
+        )
         refresh_token_str = login_response.data["refresh_token"]
 
         # Use refresh token first time
         response1 = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
 
@@ -1543,10 +1547,7 @@ class TestAuthRefreshAPI(TestCase):
         # Note: Current implementation doesn't revoke refresh token on use
         # So this might succeed, but in production should detect reuse
         response2 = self.client.post(
-            "/api/v1/auth/refresh/",
-            {"refresh_token": refresh_token_str},
-            format="json"
+            "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
         # Current implementation allows reuse, but test verifies behavior
         self.assertIn(response2.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
-

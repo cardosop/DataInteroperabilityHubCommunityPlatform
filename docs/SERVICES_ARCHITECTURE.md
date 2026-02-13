@@ -302,7 +302,7 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 - Update ingestion run status
 
 **Key Endpoints**:
-- `POST /sync` - Sync with Prefect
+- `POST /deployments/sync` - Sync scheduled ingestion to Prefect deployment
 - `GET /deployments` - List Prefect deployments
 - `GET /health` - Health check
 
@@ -311,6 +311,68 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 - PostgreSQL (scheduled ingestions)
 
 **Scaling**: Horizontal scaling
+
+**Scheduled Ingestion Execution Model**:
+- **Execution Flow**: Prefect worker → Hub API (Internal Worker API)
+- **Prefect Worker**: Executes `scheduled_ingestion_full_flow` (HTTP-only, no Django)
+- **Hub API**: Provides internal endpoints (`/api/v1/scheduled-ingestions/internal/*`) for:
+  - Creating/updating runs (`POST /internal/runs/`, `PATCH /internal/runs/{id}/`)
+  - Processing files (`POST /internal/process-file/`)
+  - Getting configuration (`GET /internal/config/{id}/`)
+- **Authentication**: Worker API key (`HUB_WORKER_API_KEY` or API key with scope `scheduled_ingestion:internal`)
+- **Rate Limiting**: No rate limit (internal worker endpoints)
+- **Tenant Isolation**: Enforced via `X-Tenant-ID` header and tenant validation
+
+### Scheduled Export Flow (Prefect Worker → Hub API)
+
+**Execution Model**: Prefect worker → Hub API (Internal Worker API)
+
+```
+User (UI/API)
+  ↓
+API Service (Public API)
+  ↓
+Create Scheduled Export → API Service
+  ↓
+Prefect Integration Service
+  ↓
+Sync to Prefect Deployment → Prefect Server
+  ↓
+Prefect Scheduler (Cron)
+  ↓
+Prefect Worker (scheduled_export_full_flow)
+  ↓
+GET /api/v1/scheduled-exports/internal/config/{id}/ → Hub API (credentials masked)
+  ↓
+POST /api/v1/scheduled-exports/internal/runs/ → Hub API (create run)
+  ↓
+For each item in source scope:
+  POST /api/v1/scheduled-exports/internal/process-export/ → Hub API
+    ↓
+    Hub API → Validates run and tenant
+    Hub API → Applies business rules (scope, access)
+    Hub API → Prepares payload or signed URL
+    Hub API → Returns upload instructions
+  ↓
+Prefect Worker → Uploads to destination (S3/GCS/Azure Blob)
+  ↓
+PATCH /api/v1/scheduled-exports/internal/runs/{id}/ → Hub API (update status)
+  ↓
+Hub API → Update ScheduledExport (next_run_at, status)
+Hub API → Cost Tracking
+Hub API → DLQ Sync
+Hub API → Notifications
+Hub API → Domain Events
+```
+
+**Key Points**:
+- **Prefect Worker**: Executes `scheduled_export_full_flow` (HTTP-only, no Django)
+- **Hub API**: Provides internal endpoints (`/api/v1/scheduled-exports/internal/*`) for worker communication
+- **Authentication**: Worker API key (`HUB_WORKER_API_KEY` or API key with scope `scheduled_export:internal`)
+- **Rate Limiting**: No rate limit (internal worker endpoints)
+- **Tenant Isolation**: Enforced via `X-Tenant-ID` header and tenant validation
+- **Destination Connectors**: S3, GCS, Azure Blob connectors implemented in Prefect worker
+- **Hub as Source of Truth**: Configuration and state stored in Hub; Prefect executes exports
 
 ---
 
@@ -585,6 +647,9 @@ The Interoperable Data Hub is built as a microservices architecture with clear s
 - API Service → Compliance Service (compliance scans)
 - API Service → Semantic Service (RDF mapping)
 - Worker Service → External services (job execution)
+- ODPSService → DataContract Service (ODCS validation)
+- ODPSService → Semantic Service (RDF mapping)
+- MarketplaceIntegrationService → Marketplace APIs (external marketplace operations)
 
 **Technology**: HTTP/REST, httpx (Python)
 
@@ -676,6 +741,121 @@ Asset Access → API Service → MinIO
 Data Consumer (UI)
 ```
 
+### Scheduled Ingestion Flow (Prefect Worker → Hub API)
+
+**Execution Model**: Prefect worker → Hub API (Internal Worker API)
+
+```
+User (UI/API)
+  ↓
+API Service (Public API)
+  ↓
+Create Scheduled Ingestion → API Service
+  ↓
+Prefect Integration Service
+  ↓
+Sync to Prefect Deployment → Prefect Server
+  ↓
+Prefect Scheduler (Cron)
+  ↓
+Prefect Worker (scheduled_ingestion_full_flow)
+  ↓
+GET /api/v1/scheduled-ingestions/internal/config/{id}/ → Hub API (credentials masked)
+  ↓
+POST /api/v1/scheduled-ingestions/internal/runs/ → Hub API (create run)
+  ↓
+Discover Files (Source Connector: S3/GCS/Azure/HTTP/etc.)
+  ↓
+Filter Files (incremental, pattern matching)
+  ↓
+For each file:
+  POST /api/v1/scheduled-ingestions/internal/process-file/ → Hub API
+    ↓
+    Hub API → Files Service (create file)
+    Hub API → Datasets Service (create dataset)
+    Hub API → DQ Service (optional DQ check)
+    Hub API → Search Service (index)
+    Hub API → Update incremental state
+  ↓
+PATCH /api/v1/scheduled-ingestions/internal/runs/{id}/ → Hub API (update status)
+  ↓
+Hub API → Update ScheduledIngestion (next_run_at, status)
+Hub API → Cost Tracking
+Hub API → DLQ Sync
+Hub API → Notifications
+Hub API → Domain Events
+```
+
+**Key Points**:
+- **Prefect Worker**: Executes `scheduled_ingestion_full_flow` (HTTP-only, no Django)
+- **Hub API**: Provides internal endpoints (`/api/v1/scheduled-ingestions/internal/*`) for worker communication
+- **Authentication**: Worker API key (`HUB_WORKER_API_KEY` or API key with scope `scheduled_ingestion:internal`)
+
+**Scheduled Export Execution Model**:
+
+- **Prefect Worker**: Executes `scheduled_export_full_flow` (HTTP-only, no Django)
+- **Hub API**: Provides internal endpoints (`/api/v1/scheduled-exports/internal/*`) for:
+  - Run lifecycle management (create/update run)
+  - Export processing (process-export for individual items)
+  - Configuration retrieval (config endpoint with masked credentials)
+- **Authentication**: Worker API key (`HUB_WORKER_API_KEY` or API key with scope `scheduled_export:internal`)
+- **Rate Limiting**: No rate limit (internal worker endpoints)
+- **Destination Connectors**: S3, GCS, Azure Blob connectors in Prefect worker
+- **Hub as Source of Truth**: Hub stores configuration and state; Prefect worker executes exports
+- **Rate Limiting**: No rate limit (internal worker endpoints)
+- **Tenant Isolation**: Enforced via `X-Tenant-ID` header and tenant validation
+
+### Scheduled Export Flow (Prefect Worker → Hub API)
+
+**Execution Model**: Prefect worker → Hub API (Internal Worker API)
+
+```
+User (UI/API)
+  ↓
+API Service (Public API)
+  ↓
+Create Scheduled Export → API Service
+  ↓
+Prefect Integration Service
+  ↓
+Sync to Prefect Deployment → Prefect Server
+  ↓
+Prefect Scheduler (Cron)
+  ↓
+Prefect Worker (scheduled_export_full_flow)
+  ↓
+GET /api/v1/scheduled-exports/internal/config/{id}/ → Hub API (credentials masked)
+  ↓
+POST /api/v1/scheduled-exports/internal/runs/ → Hub API (create run)
+  ↓
+For each item in source scope:
+  POST /api/v1/scheduled-exports/internal/process-export/ → Hub API
+    ↓
+    Hub API → Validates run and tenant
+    Hub API → Applies business rules (scope, access)
+    Hub API → Prepares payload or signed URL
+    Hub API → Returns upload instructions
+  ↓
+Prefect Worker → Uploads to destination (S3/GCS/Azure Blob)
+  ↓
+PATCH /api/v1/scheduled-exports/internal/runs/{id}/ → Hub API (update status)
+  ↓
+Hub API → Update ScheduledExport (next_run_at, status)
+Hub API → Cost Tracking
+Hub API → DLQ Sync
+Hub API → Notifications
+Hub API → Domain Events
+```
+
+**Key Points**:
+- **Prefect Worker**: Executes `scheduled_export_full_flow` (HTTP-only, no Django)
+- **Hub API**: Provides internal endpoints (`/api/v1/scheduled-exports/internal/*`) for worker communication
+- **Authentication**: Worker API key (`HUB_WORKER_API_KEY` or API key with scope `scheduled_export:internal`)
+- **Rate Limiting**: No rate limit (internal worker endpoints)
+- **Tenant Isolation**: Enforced via `X-Tenant-ID` header and tenant validation
+- **Destination Connectors**: S3, GCS, Azure Blob connectors implemented in Prefect worker
+- **Hub as Source of Truth**: Configuration and state stored in Hub; Prefect executes exports
+
 ---
 
 ## Service Layer Coordination
@@ -750,6 +930,51 @@ All business logic is coordinated through service layer classes that extend `Bas
   - Coordinate marketplace events with asset updates
 - **Integration**: Extends `BaseService`, integrates with MarketplacePublishingWorkflow
 
+#### ODPSService ✅ (Implemented - ODPS Integration)
+- **Location**: `hub/apps/contracts/services.py`
+- **Status**: ✅ Implemented
+- **Responsibilities**:
+  - ODPS contract creation and normalization
+  - ODPS linking to ODCS contracts
+  - ODPS export and generation
+  - ODPS workflow orchestration
+  - Publish ODPS events (odps.created, odps.normalized, odps.linked, etc.)
+- **Integration**:
+  - Extends `BaseService` and `ODPSEventPublisher`
+  - Integrates with ProductCreationWorkflow for multi-step operations
+  - Uses ODPSNormalizer for document normalization
+  - Uses ODPSBusinessRules for validation
+  - Uses Event Bus for asynchronous coordination
+- **Key Methods**:
+  - `create_odps()` - Create ODPS contract with normalization
+  - `link_odps_to_odcs()` - Link ODPS to existing ODCS contract
+  - `export_odps()` - Export HubContract to ODPS format
+  - `generate_odps_from_hubcontract()` - Generate ODPS from HubContract
+
+#### MarketplaceIntegrationService ✅ (Implemented - Marketplace Integration Framework)
+- **Location**: `hub/apps/integrations/services.py`
+- **Status**: ✅ Implemented
+- **Responsibilities**:
+  - Marketplace connection management (CRUD operations)
+  - Connection testing and validation
+  - Bidirectional asset synchronization (PUSH and PULL)
+  - Sync job management and tracking
+  - Asset mapping management
+  - Publish marketplace integration events (marketplace.connection.created, marketplace.sync.completed, etc.)
+- **Integration**:
+  - Extends `BaseService`, `IntegrationEventPublisher`, and `MarketplaceEventPublisher`
+  - Integrates with MarketplaceSyncWorkflow for orchestration
+  - Uses MarketplaceConnectorFactory for connector instantiation
+  - Uses MarketplaceBusinessRules for validation
+  - Uses Event Bus for asynchronous coordination
+- **Key Methods**:
+  - `create_connection()` - Create marketplace connection
+  - `test_connection()` - Test marketplace connection and credentials
+  - `sync_assets_to_marketplace()` - PUSH sync (Hub → Marketplace)
+  - `sync_assets_from_marketplace()` - PULL sync (Marketplace → Hub)
+  - `create_sync_job()` - Create scheduled sync job
+  - `get_sync_status()` - Get sync job status and progress
+
 #### AIService
 - **Location**: `hub/apps/ai/services.py`
 - **Status**: ✅ Implemented
@@ -800,6 +1025,23 @@ DataMeshService
   ├── AssetService (for ownership updates)
   ├── GovernanceService (for policy application)
   ├── WorkflowEngine (for domain orchestration)
+  └── EventBus (for event publishing)
+
+ODPSService
+  ├── ContractService (for contract operations)
+  ├── ProductCreationWorkflow (for multi-step orchestration)
+  ├── ODPSNormalizer (for document normalization)
+  ├── ODPSBusinessRules (for validation)
+  ├── WorkflowEngine (for workflow orchestration)
+  └── EventBus (for event publishing)
+
+MarketplaceIntegrationService
+  ├── AssetService (for asset operations)
+  ├── ContractService (for contract operations)
+  ├── MarketplaceSyncWorkflow (for sync orchestration)
+  ├── MarketplaceConnectorFactory (for connector instantiation)
+  ├── MarketplaceBusinessRules (for validation)
+  ├── WorkflowEngine (for workflow orchestration)
   └── EventBus (for event publishing)
 ```
 
@@ -969,6 +1211,148 @@ Events follow a standardized schema:
 - **Full Documentation**: `docs/EVENT_BUS.md`
 - **Architecture Decision**: `docs/EVENT_BUS_ARCHITECTURE_DECISION.md`
 - **Performance Analysis**: `docs/EVENT_BUS_PERFORMANCE_ANALYSIS.md`
+
+---
+
+## ODPS Workflow Orchestration ✅ (Implemented - ODPS Integration)
+
+### Overview
+
+ODPS operations are orchestrated through the ProductCreationWorkflow, which manages the complete ODPS product creation process with proper error handling, retry logic, and compensation.
+
+### ProductCreationWorkflow
+
+**Location**: `hub/apps/orchestration/workflows/product_creation.py`
+**Status**: ✅ Implemented
+**Workflow Name**: `product_creation`
+
+**Workflow Steps**:
+1. **parse_odps**: Parse ODPS document, validate schema, detect version
+2. **resolve_refs**: Resolve `$ref` references (internal, local, external)
+3. **extract_contract**: Extract ODCS from `product.contract` (required)
+4. **validate_odcs**: Validate extracted ODCS contract
+5. **normalize_odcs**: Normalize ODCS → HubContract (technical)
+6. **normalize_odps**: Normalize ODPS → HubContract (marketplace)
+7. **create_odcs_contract**: Create ODCS contract record
+8. **create_odps_contract**: Create ODPS contract record
+9. **link_contracts**: Establish bidirectional link (ODPS ↔ ODCS)
+10. **index_for_search**: Index for search (ODPS product + ODCS technical)
+11. **semantic_mapping**: Map ODPS to RDF (async job)
+
+**Compensation Logic**: Each step has compensation handlers for rollback on failure.
+
+**Integration**:
+- Uses WorkflowEngine for orchestration
+- Publishes workflow events (`odps.workflow.started`, `odps.workflow.completed`, `odps.workflow.failed`)
+- Publishes progress events (`odps.workflow.progress`, `odps.creation.progress`)
+- Integrates with ODPSService for business logic
+- Uses ODPSNormalizer for normalization
+- Uses ODPSBusinessRules for validation
+
+### ODPS Event Publishing Patterns
+
+**ODPSEventPublisher** (`hub/apps/core/events/service_publishers.py`):
+- **Lifecycle Events**: `odps.created`, `odps.updated`, `odps.deleted`
+- **Processing Events**: `odps.normalized`, `odps.ref.resolved`, `odps.ref.failed`
+- **Linking Events**: `odps.linked`, `odps.unlinked`
+- **Export Events**: `odps.export.started`, `odps.export.completed`, `odps.export.failed`
+- **Workflow Events**: `odps.workflow.started`, `odps.workflow.completed`, `odps.workflow.failed`
+- **Progress Events**: `odps.creation.progress`, `odps.normalization.progress`, `odps.ref.progress`
+
+**Event Subscribers**:
+- **SearchService**: Indexes ODPS contracts for search
+- **NotificationService**: Sends creation and completion notifications
+- **AuditService**: Logs ODPS operations for compliance
+- **WebhookService**: Delivers webhooks for ODPS events
+- **SemanticService**: Triggers RDF mapping for ODPS contracts
+
+---
+
+## Marketplace Integration Workflow Orchestration ✅ (Implemented - Marketplace Integration Framework)
+
+### Overview
+
+Marketplace integration operations are orchestrated through the MarketplaceSyncWorkflow, which manages bidirectional asset synchronization between the Hub and external marketplaces.
+
+### MarketplaceSyncWorkflow
+
+**Location**: `hub/apps/orchestration/workflows/marketplace_sync.py`
+**Status**: ✅ Implemented
+**Workflow Name**: `marketplace_sync`
+
+**PUSH Sync Steps** (Hub → Marketplace):
+1. **validate_assets**: Validate assets are ACTIVE and have valid contracts
+2. **get_connector**: Get marketplace connector from factory
+3. **transform_assets**: Transform HubContract to marketplace format (ODPS)
+4. **publish_to_marketplace**: Publish listings to marketplace via connector
+5. **create_mappings**: Create MarketplaceMapping records linking Hub assets to listings
+
+**PULL Sync Steps** (Marketplace → Hub):
+1. **get_connector**: Get marketplace connector from factory
+2. **discover_listings**: Discover marketplace listings via connector
+3. **transform_listings**: Transform marketplace format to HubContract
+4. **create_assets**: Create assets using AssetCreationWorkflow
+5. **create_mappings**: Create MarketplaceMapping records linking Hub assets to listings
+
+**Compensation Logic**: Each step has compensation handlers for rollback on failure.
+
+**Integration**:
+- Uses WorkflowEngine for orchestration
+- Publishes marketplace events (`marketplace.sync.started`, `marketplace.sync.completed`, `marketplace.sync.failed`)
+- Publishes progress events (`marketplace.sync.progress`)
+- Integrates with MarketplaceIntegrationService for business logic
+- Uses MarketplaceConnectorFactory for connector instantiation
+- Uses MarketplaceBusinessRules for validation
+
+### Marketplace Integration Event Publishing Patterns
+
+**MarketplaceEventPublisher** (`hub/apps/integrations/event_publishers.py`):
+- **Connection Events**: `marketplace.connection.created`, `marketplace.connection.updated`, `marketplace.connection.deleted`, `marketplace.connection.tested`
+- **Sync Events**: `marketplace.sync.started`, `marketplace.sync.completed`, `marketplace.sync.failed`, `marketplace.sync.progress`
+- **Mapping Events**: `marketplace.mapping.created`, `marketplace.mapping.updated`, `marketplace.mapping.deleted`
+
+**IntegrationEventPublisher** (`hub/apps/core/events/service_publishers.py`):
+- **Integration Events**: `integration.connection.created`, `integration.connection.updated`, `integration.sync.completed`
+
+**Event Subscribers**:
+- **NotificationService**: Sends sync completion and failure notifications
+- **AuditService**: Logs marketplace operations for compliance
+- **WebhookService**: Delivers webhooks for marketplace events
+- **SearchService**: Updates search index when assets are synced
+
+### Marketplace Connector Factory Pattern
+
+**MarketplaceConnectorFactory** (`hub/apps/integrations/factory.py`):
+- **Purpose**: Creates marketplace-specific connectors based on marketplace type
+- **Supported Types**: CKAN, Snowflake, AWS Data Exchange, Azure Data Share, GCP Marketplace, Databricks, etc.
+- **Connector Interface**: Standardized interface for all connectors
+- **Connection Testing**: Validates credentials and connectivity
+
+**Connector Methods**:
+- `publish_listing()` - Publish asset listing to marketplace
+- `discover_listings()` - Discover listings from marketplace
+- `update_listing()` - Update existing listing
+- `delete_listing()` - Delete listing from marketplace
+- `test_connection()` - Test marketplace connection
+
+**Integration**:
+- Used by MarketplaceIntegrationService for connector instantiation
+- Connectors implement standardized interface for consistency
+- Factory pattern enables easy addition of new marketplace types
+
+### Marketplace Job Queue Integration
+
+**Scheduled Sync Jobs**:
+- **ScheduledMarketplaceSync**: Model for scheduled sync jobs
+- **Schedule Types**: ONCE, DAILY, WEEKLY, MONTHLY
+- **Job Execution**: Jobs are executed via Worker Service
+- **Status Tracking**: Tracks sync status and progress
+
+**Integration**:
+- Uses Redis Queue (RQ) for job execution
+- Jobs trigger MarketplaceSyncWorkflow
+- Progress tracked via workflow events
+- Status stored in ScheduledMarketplaceSyncStatus model
 
 ---
 

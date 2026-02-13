@@ -32,32 +32,12 @@ CACHE_TAG_DATASET_DETAIL = "dataset:detail"  # Tag for bulk invalidation
 
 def get_tenant_id_from_request(request) -> Optional[str]:
     """
-    Extract tenant ID from request.
+    Extract tenant ID from request (Phase 16: delegates to central helper).
 
-    Args:
-        request: Django request object
-
-    Returns:
-        Tenant ID as string or None
+    See hub.apps.tenants.request_tenant.get_request_tenant_id and docs/TENANT_ISOLATION.md.
     """
-    # Try request.tenant_id first (set by authentication/middleware)
-    if hasattr(request, "tenant_id") and request.tenant_id:
-        tenant_id = request.tenant_id
-        return str(tenant_id) if tenant_id else None
-
-    # Fallback to request.tenant object
-    if hasattr(request, "tenant") and request.tenant:
-        return str(request.tenant.id)
-
-    # Fallback to user.tenant_id
-    if hasattr(request, "user") and request.user:
-        user = request.user
-        if hasattr(user, "tenant_id") and user.tenant_id:
-            return str(user.tenant_id)
-        if hasattr(user, "tenant") and user.tenant:
-            return str(user.tenant.id)
-
-    return None
+    from hub.apps.tenants.request_tenant import get_request_tenant_id
+    return get_request_tenant_id(request)
 
 
 def hash_filters(query_params: Dict[str, Any]) -> str:

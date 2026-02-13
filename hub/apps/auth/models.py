@@ -55,6 +55,11 @@ class APIKey(models.Model):
         blank=True,
         help_text="Last time this API key was used"
     )
+    rate_limit_per_hour = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Custom API gateway rate limit (requests per hour); null uses tier/tenant default"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

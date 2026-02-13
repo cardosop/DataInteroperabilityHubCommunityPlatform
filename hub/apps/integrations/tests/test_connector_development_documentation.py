@@ -12,12 +12,12 @@ Tests verify:
 All tests use real implementations (no mocks/stubs).
 """
 
+import ast
 import os
 import re
-import ast
 import sys
 from pathlib import Path
-from typing import List, Dict, Set, Optional
+from typing import Dict, List, Optional, Set
 
 import pytest
 from django.test import TestCase
@@ -29,82 +29,68 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
+def find_file_path(relative_path: str) -> Optional[Path]:
+    """
+    Helper function to find a file path across multiple possible locations.
+
+    Args:
+        relative_path: Relative path from project root (e.g., "docs/RUNBOOKS.md")
+
+    Returns:
+        Path object if found, None otherwise
+    """
+    possible_paths = [
+        PROJECT_ROOT / relative_path,
+        Path("/app") / relative_path,
+        Path("/home/ph/Desktop/DataInteroperabilityHub") / relative_path,
+    ]
+
+    for path in possible_paths:
+        if path.exists():
+            return path
+
+    return None
+
+
 class TestConnectorDevelopmentDocumentationExists(TestCase):
     """Test that connector development documentation files exist"""
 
     def test_development_guide_exists(self):
         """Test that DEVELOPMENT.md exists"""
-        # Try multiple possible paths
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/app") / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "connectors" / "DEVELOPMENT.md",
-        ]
+        dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
-        dev_guide_path = None
-        for path in possible_paths:
-            if path.exists():
-                dev_guide_path = path
-                break
-
-        self.assertIsNotNone(
-            dev_guide_path,
-            f"DEVELOPMENT.md should exist. Checked: {[str(p) for p in possible_paths]}"
-        )
+        self.assertIsNotNone(dev_guide_path, "DEVELOPMENT.md should exist")
+        assert dev_guide_path is not None  # Type narrowing for type checker
         self.assertTrue(
-            dev_guide_path.is_file(),
-            f"DEVELOPMENT.md should be a file: {dev_guide_path}"
+            dev_guide_path.is_file(), f"DEVELOPMENT.md should be a file: {dev_guide_path}"
         )
 
     def test_development_guide_not_empty(self):
         """Test that DEVELOPMENT.md is not empty"""
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/app") / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "connectors" / "DEVELOPMENT.md",
-        ]
-
-        dev_guide_path = None
-        for path in possible_paths:
-            if path.exists():
-                dev_guide_path = path
-                break
+        dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if dev_guide_path and dev_guide_path.exists():
             content = dev_guide_path.read_text()
             self.assertGreater(
                 len(content),
                 1000,
-                "DEVELOPMENT.md should have substantial content (at least 1000 characters)"
+                "DEVELOPMENT.md should have substantial content (at least 1000 characters)",
             )
         else:
             self.skipTest("DEVELOPMENT.md not found")
 
     def test_runbooks_updated(self):
         """Test that RUNBOOKS.md includes connector pattern violations section"""
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "RUNBOOKS.md",
-            Path("/app") / "docs" / "RUNBOOKS.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "RUNBOOKS.md",
-        ]
+        runbooks_path = find_file_path("docs/RUNBOOKS.md")
 
-        runbooks_path = None
-        for path in possible_paths:
-            if path.exists():
-                runbooks_path = path
-                break
+        self.assertIsNotNone(runbooks_path, "RUNBOOKS.md should exist")
 
-        self.assertIsNotNone(
-            runbooks_path,
-            f"RUNBOOKS.md should exist. Checked: {[str(p) for p in possible_paths]}"
-        )
-
-        if runbooks_path and runbooks_path.exists():
+        if runbooks_path:
             content = runbooks_path.read_text()
             self.assertIn(
                 "Marketplace Connector Pattern Violations",
                 content,
-                "RUNBOOKS.md should include 'Marketplace Connector Pattern Violations' section"
+                "RUNBOOKS.md should include 'Marketplace Connector Pattern Violations' section",
             )
 
 
@@ -113,21 +99,12 @@ class TestConnectorDevelopmentDocumentationStructure(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/app") / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "connectors" / "DEVELOPMENT.md",
-        ]
-
-        self.dev_guide_path = None
-        for path in possible_paths:
-            if path.exists():
-                self.dev_guide_path = path
-                break
+        self.dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if not self.dev_guide_path or not self.dev_guide_path.exists():
-            pytest.skip(f"DEVELOPMENT.md not found. Checked: {[str(p) for p in possible_paths]}")
+            pytest.skip("DEVELOPMENT.md not found")
 
+        assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
 
     def test_has_table_of_contents(self):
@@ -168,47 +145,41 @@ class TestCodeExamplesSyntax(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/app") / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "connectors" / "DEVELOPMENT.md",
-        ]
-
-        self.dev_guide_path = None
-        for path in possible_paths:
-            if path.exists():
-                self.dev_guide_path = path
-                break
+        self.dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if not self.dev_guide_path or not self.dev_guide_path.exists():
-            pytest.skip(f"DEVELOPMENT.md not found. Checked: {[str(p) for p in possible_paths]}")
+            pytest.skip("DEVELOPMENT.md not found")
 
+        assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
 
     def extract_python_code_blocks(self) -> List[Dict[str, str]]:
         """Extract Python code blocks from markdown"""
         code_blocks = []
-        pattern = r'```python\n(.*?)```'
+        pattern = r"```python\n(.*?)```"
 
         for match in re.finditer(pattern, self.content, re.DOTALL):
             code = match.group(1).strip()
             # Skip if it's a comment-only block or too short
-            if len(code) > 10 and not code.startswith('#'):
+            if len(code) > 10 and not code.startswith("#"):
                 # Skip blocks that are clearly placeholder examples:
                 # - Function signatures with ... (e.g., "def sync_pull(self, ...):")
                 # - Blocks that are just showing structure without implementation
                 # - Blocks ending with ellipsis
                 is_placeholder = (
-                    re.search(r'def\s+\w+\([^)]*\.\.\.[^)]*\):', code) or  # Function with ... in signature
-                    code.count('...') > 2 or  # Multiple ... placeholders
-                    (code.endswith('...') and len(code.split('\n')) < 5)  # Short block ending with ...
+                    re.search(
+                        r"def\s+\w+\([^)]*\.\.\.[^)]*\):", code
+                    )  # Function with ... in signature
+                    or code.count("...") > 2  # Multiple ... placeholders
+                    or (
+                        code.endswith("...") and len(code.split("\n")) < 5
+                    )  # Short block ending with ...
                 )
 
                 if not is_placeholder:
-                    code_blocks.append({
-                        "code": code,
-                        "line_start": self.content[:match.start()].count('\n') + 1
-                    })
+                    code_blocks.append(
+                        {"code": code, "line_start": self.content[: match.start()].count("\n") + 1}
+                    )
 
         return code_blocks
 
@@ -216,11 +187,7 @@ class TestCodeExamplesSyntax(TestCase):
         """Test that all Python code blocks are syntactically correct"""
         code_blocks = self.extract_python_code_blocks()
 
-        self.assertGreater(
-            len(code_blocks),
-            0,
-            "Documentation should contain Python code examples"
-        )
+        self.assertGreater(len(code_blocks), 0, "Documentation should contain Python code examples")
 
         syntax_errors = []
         for i, block in enumerate(code_blocks):
@@ -230,38 +197,53 @@ class TestCodeExamplesSyntax(TestCase):
                 # Some blocks might be incomplete examples - check if it's a real error
                 # Skip blocks that are clearly example snippets (have placeholder comments or incomplete)
                 code_lower = block["code"].lower()
-                is_example_snippet = any(skip_pattern in code_lower for skip_pattern in [
-                    "# ...",
-                    "# your implementation",
-                    "# placeholder",
-                    "pass  #",
-                    "def sync_pull(self, ...)",
-                    "def map_to_hub_asset(self, listing, ...)",
-                    "def download_resource(self, ...",
-                ])
+                is_example_snippet = any(
+                    skip_pattern in code_lower
+                    for skip_pattern in [
+                        "# ...",
+                        "# your implementation",
+                        "# placeholder",
+                        "pass  #",
+                        "def sync_pull(self, ...)",
+                        "def map_to_hub_asset(self, listing, ...)",
+                        "def download_resource(self, ...",
+                    ]
+                )
 
                 # Also check if it's a function signature with ... placeholder
-                has_placeholder_signature = bool(re.search(r'def\s+\w+\([^)]*\.\.\.[^)]*\):', block["code"]))
+                has_placeholder_signature = bool(
+                    re.search(r"def\s+\w+\([^)]*\.\.\.[^)]*\):", block["code"])
+                )
 
                 # Check if it has ... in function calls or return statements (common in documentation examples)
-                has_placeholder_in_calls = bool(re.search(
-                    r'(return\s+\w+\([^)]*\.\.\.[^)]*\)|\.\.\s*\)|,\s*\.\.\s*[,)])',
-                    block["code"]
-                ))
+                has_placeholder_in_calls = bool(
+                    re.search(
+                        r"(return\s+\w+\([^)]*\.\.\.[^)]*\)|\.\.\s*\)|,\s*\.\.\s*[,)])",
+                        block["code"],
+                    )
+                )
 
-                if not is_example_snippet and not has_placeholder_signature and not has_placeholder_in_calls:
-                    syntax_errors.append({
-                        "block": i + 1,
-                        "line": block["line_start"],
-                        "error": str(e),
-                        "code_preview": block["code"][:150]
-                    })
+                if (
+                    not is_example_snippet
+                    and not has_placeholder_signature
+                    and not has_placeholder_in_calls
+                ):
+                    syntax_errors.append(
+                        {
+                            "block": i + 1,
+                            "line": block["line_start"],
+                            "error": str(e),
+                            "code_preview": block["code"][:150],
+                        }
+                    )
 
         if syntax_errors:
-            error_messages = "\n".join([
-                f"Block {err['block']} (line {err['line']}): {err['error']}\n  Preview: {err['code_preview']}..."
-                for err in syntax_errors[:5]  # Show first 5 errors
-            ])
+            error_messages = "\n".join(
+                [
+                    f"Block {err['block']} (line {err['line']}): {err['error']}\n  Preview: {err['code_preview']}..."
+                    for err in syntax_errors[:5]  # Show first 5 errors
+                ]
+            )
             self.fail(
                 f"Found {len(syntax_errors)} syntax errors in Python code blocks:\n{error_messages}"
             )
@@ -272,43 +254,36 @@ class TestDiagnosticCommandsExecutable(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "RUNBOOKS.md",
-            Path("/app") / "docs" / "RUNBOOKS.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "RUNBOOKS.md",
-        ]
-
-        self.runbooks_path = None
-        for path in possible_paths:
-            if path.exists():
-                self.runbooks_path = path
-                break
+        self.runbooks_path = find_file_path("docs/RUNBOOKS.md")
 
         if not self.runbooks_path or not self.runbooks_path.exists():
-            pytest.skip(f"RUNBOOKS.md not found. Checked: {[str(p) for p in possible_paths]}")
+            pytest.skip("RUNBOOKS.md not found")
 
+        assert self.runbooks_path is not None  # Type narrowing for type checker
         self.content = self.runbooks_path.read_text()
 
     def extract_python_code_blocks(self) -> List[Dict[str, str]]:
         """Extract Python code blocks from markdown"""
         code_blocks = []
-        pattern = r'```python\n(.*?)```'
+        pattern = r"```python\n(.*?)```"
 
         for match in re.finditer(pattern, self.content, re.DOTALL):
             code = match.group(1).strip()
             # Only extract diagnostic commands (they import models/services)
-            if any(keyword in code for keyword in [
-                "from hub.apps.integrations",
-                "from hub.apps.assets",
-                "MarketplaceSyncJob",
-                "Asset.objects",
-                "connector.sync_pull",
-                "connector.map_to_hub_asset"
-            ]):
-                code_blocks.append({
-                    "code": code,
-                    "line_start": self.content[:match.start()].count('\n') + 1
-                })
+            if any(
+                keyword in code
+                for keyword in [
+                    "from hub.apps.integrations",
+                    "from hub.apps.assets",
+                    "MarketplaceSyncJob",
+                    "Asset.objects",
+                    "connector.sync_pull",
+                    "connector.map_to_hub_asset",
+                ]
+            ):
+                code_blocks.append(
+                    {"code": code, "line_start": self.content[: match.start()].count("\n") + 1}
+                )
 
         return code_blocks
 
@@ -317,9 +292,7 @@ class TestDiagnosticCommandsExecutable(TestCase):
         code_blocks = self.extract_python_code_blocks()
 
         self.assertGreater(
-            len(code_blocks),
-            0,
-            "RUNBOOKS.md should contain diagnostic Python commands"
+            len(code_blocks), 0, "RUNBOOKS.md should contain diagnostic Python commands"
         )
 
         syntax_errors = []
@@ -327,17 +300,15 @@ class TestDiagnosticCommandsExecutable(TestCase):
             try:
                 ast.parse(block["code"])
             except SyntaxError as e:
-                syntax_errors.append({
-                    "block": i + 1,
-                    "line": block["line_start"],
-                    "error": str(e)
-                })
+                syntax_errors.append({"block": i + 1, "line": block["line_start"], "error": str(e)})
 
         if syntax_errors:
-            error_messages = "\n".join([
-                f"Block {err['block']} (line {err['line']}): {err['error']}"
-                for err in syntax_errors
-            ])
+            error_messages = "\n".join(
+                [
+                    f"Block {err['block']} (line {err['line']}): {err['error']}"
+                    for err in syntax_errors
+                ]
+            )
             self.fail(
                 f"Found {len(syntax_errors)} syntax errors in diagnostic commands:\n{error_messages}"
             )
@@ -357,19 +328,18 @@ class TestDiagnosticCommandsExecutable(TestCase):
         invalid_imports = []
         for i, block in enumerate(code_blocks):
             # Check if imports are valid
-            for line in block["code"].split('\n'):
-                if line.strip().startswith('from ') or line.strip().startswith('import '):
+            for line in block["code"].split("\n"):
+                if line.strip().startswith("from ") or line.strip().startswith("import "):
                     # Check if it's a valid import pattern
-                    is_valid = any(
-                        valid_pattern in line
-                        for valid_pattern in valid_imports
-                    )
-                    if not is_valid and 'hub.apps' in line:
-                        invalid_imports.append({
-                            "block": i + 1,
-                            "line": line.strip(),
-                            "block_line": block["line_start"]
-                        })
+                    is_valid = any(valid_pattern in line for valid_pattern in valid_imports)
+                    if not is_valid and "hub.apps" in line:
+                        invalid_imports.append(
+                            {
+                                "block": i + 1,
+                                "line": line.strip(),
+                                "block_line": block["line_start"],
+                            }
+                        )
 
         # Note: We allow some imports that might not be in the list
         # This is just a basic check
@@ -385,131 +355,54 @@ class TestReferencesCorrect(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/app") / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "connectors" / "DEVELOPMENT.md",
-        ]
-
-        self.dev_guide_path = None
-        for path in possible_paths:
-            if path.exists():
-                self.dev_guide_path = path
-                break
+        self.dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if not self.dev_guide_path or not self.dev_guide_path.exists():
-            pytest.skip(f"DEVELOPMENT.md not found. Checked: {[str(p) for p in possible_paths]}")
+            pytest.skip("DEVELOPMENT.md not found")
 
+        assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
 
     def test_reference_implementations_exist(self):
         """Test that referenced connector files exist"""
-        # Try multiple possible base paths
-        base_paths = [
-            PROJECT_ROOT,
-            Path("/app"),
-            Path("/home/ph/Desktop/DataInteroperabilityHub"),
-        ]
-
         # Check CKAN connector reference
-        ckan_path = None
-        for base in base_paths:
-            path = base / "hub" / "apps" / "integrations" / "connectors" / "ckan_connector.py"
-            if path.exists():
-                ckan_path = path
-                break
-
-        self.assertIsNotNone(
-            ckan_path,
-            f"CKAN connector should exist (referenced in documentation)"
-        )
+        ckan_path = find_file_path("hub/apps/integrations/connectors/ckan_connector.py")
+        self.assertIsNotNone(ckan_path, "CKAN connector should exist (referenced in documentation)")
 
         # Check DadosGovBr connector reference
-        dados_path = None
-        for base in base_paths:
-            path = base / "hub" / "apps" / "integrations" / "connectors" / "dados_gov_br_connector.py"
-            if path.exists():
-                dados_path = path
-                break
-
+        dados_path = find_file_path("hub/apps/integrations/connectors/dados_gov_br_connector.py")
         self.assertIsNotNone(
-            dados_path,
-            f"DadosGovBr connector should exist (referenced in documentation)"
+            dados_path, "DadosGovBr connector should exist (referenced in documentation)"
         )
 
         # Check Snowflake connector reference
-        snowflake_path = None
-        for base in base_paths:
-            path = base / "hub" / "apps" / "integrations" / "connectors" / "snowflake_connector.py"
-            if path.exists():
-                snowflake_path = path
-                break
-
+        snowflake_path = find_file_path("hub/apps/integrations/connectors/snowflake_connector.py")
         self.assertIsNotNone(
-            snowflake_path,
-            f"Snowflake connector should exist (referenced in documentation)"
+            snowflake_path, "Snowflake connector should exist (referenced in documentation)"
         )
 
     def test_pattern_verification_tests_exist(self):
         """Test that referenced pattern verification tests exist"""
-        base_paths = [
-            PROJECT_ROOT,
-            Path("/app"),
-            Path("/home/ph/Desktop/DataInteroperabilityHub"),
-        ]
-
-        pattern_tests_path = None
-        for base in base_paths:
-            path = base / "hub" / "apps" / "integrations" / "tests" / "test_connector_pattern.py"
-            if path.exists():
-                pattern_tests_path = path
-                break
-
+        pattern_tests_path = find_file_path("hub/apps/integrations/tests/test_connector_pattern.py")
         self.assertIsNotNone(
             pattern_tests_path,
-            f"Pattern verification tests should exist (referenced in documentation)"
+            "Pattern verification tests should exist (referenced in documentation)",
         )
 
     def test_base_connector_class_exists(self):
         """Test that base connector class exists"""
-        base_paths = [
-            PROJECT_ROOT,
-            Path("/app"),
-            Path("/home/ph/Desktop/DataInteroperabilityHub"),
-        ]
-
-        base_path = None
-        for base in base_paths:
-            path = base / "hub" / "apps" / "integrations" / "base.py"
-            if path.exists():
-                base_path = path
-                break
-
+        base_path = find_file_path("hub/apps/integrations/base.py")
         self.assertIsNotNone(
-            base_path,
-            f"Base connector class should exist (referenced in documentation)"
+            base_path, "Base connector class should exist (referenced in documentation)"
         )
 
     def test_workflow_file_exists(self):
         """Test that workflow file exists"""
         # This might not exist, so we'll check if it's mentioned
         if "marketplace_sync.py" in self.content:
-            base_paths = [
-                PROJECT_ROOT,
-                Path("/app"),
-                Path("/home/ph/Desktop/DataInteroperabilityHub"),
-            ]
-
-            workflow_path = None
-            for base in base_paths:
-                path = base / "hub" / "apps" / "orchestration" / "workflows" / "marketplace_sync.py"
-                if path.exists():
-                    workflow_path = path
-                    break
-
+            workflow_path = find_file_path("hub/apps/orchestration/workflows/marketplace_sync.py")
             self.assertIsNotNone(
-                workflow_path,
-                f"Workflow file should exist (referenced in documentation)"
+                workflow_path, "Workflow file should exist (referenced in documentation)"
             )
 
 
@@ -518,21 +411,12 @@ class TestDocumentationCompleteness(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/app") / "docs" / "connectors" / "DEVELOPMENT.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "connectors" / "DEVELOPMENT.md",
-        ]
-
-        self.dev_guide_path = None
-        for path in possible_paths:
-            if path.exists():
-                self.dev_guide_path = path
-                break
+        self.dev_guide_path = find_file_path("docs/connectors/DEVELOPMENT.md")
 
         if not self.dev_guide_path or not self.dev_guide_path.exists():
-            pytest.skip(f"DEVELOPMENT.md not found. Checked: {[str(p) for p in possible_paths]}")
+            pytest.skip("DEVELOPMENT.md not found")
 
+        assert self.dev_guide_path is not None  # Type narrowing for type checker
         self.content = self.dev_guide_path.read_text()
 
     def test_has_sync_pull_examples(self):
@@ -585,7 +469,7 @@ class TestDocumentationCompleteness(TestCase):
         self.assertGreaterEqual(
             len(found_markers),
             4,
-            f"Documentation should include most checklist items. Found: {found_markers}, Missing: {missing_markers}"
+            f"Documentation should include most checklist items. Found: {found_markers}, Missing: {missing_markers}",
         )
 
     def test_has_test_examples(self):
@@ -599,21 +483,12 @@ class TestRunbooksDiagnosticCommands(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
-        possible_paths = [
-            PROJECT_ROOT / "docs" / "RUNBOOKS.md",
-            Path("/app") / "docs" / "RUNBOOKS.md",
-            Path("/home/ph/Desktop/DataInteroperabilityHub") / "docs" / "RUNBOOKS.md",
-        ]
-
-        self.runbooks_path = None
-        for path in possible_paths:
-            if path.exists():
-                self.runbooks_path = path
-                break
+        self.runbooks_path = find_file_path("docs/RUNBOOKS.md")
 
         if not self.runbooks_path or not self.runbooks_path.exists():
-            pytest.skip(f"RUNBOOKS.md not found. Checked: {[str(p) for p in possible_paths]}")
+            pytest.skip("RUNBOOKS.md not found")
 
+        assert self.runbooks_path is not None  # Type narrowing for type checker
         self.content = self.runbooks_path.read_text()
 
     def test_has_pattern_violations_section(self):
@@ -631,25 +506,21 @@ class TestRunbooksDiagnosticCommands(TestCase):
     def test_has_diagnostic_commands(self):
         """Test that RUNBOOKS.md has diagnostic commands"""
         # Check for Python code blocks with diagnostic commands
-        python_blocks = re.findall(r'```python\n(.*?)```', self.content, re.DOTALL)
+        python_blocks = re.findall(r"```python\n(.*?)```", self.content, re.DOTALL)
 
         diagnostic_keywords = [
             "MarketplaceSyncJob",
             "Asset.objects",
             "sync_pull",
             "map_to_hub_asset",
-            "download_resource"
+            "download_resource",
         ]
 
         has_diagnostics = any(
-            any(keyword in block for keyword in diagnostic_keywords)
-            for block in python_blocks
+            any(keyword in block for keyword in diagnostic_keywords) for block in python_blocks
         )
 
-        self.assertTrue(
-            has_diagnostics,
-            "RUNBOOKS.md should contain diagnostic Python commands"
-        )
+        self.assertTrue(has_diagnostics, "RUNBOOKS.md should contain diagnostic Python commands")
 
     def test_has_common_issues_section(self):
         """Test that RUNBOOKS.md has common issues section"""
@@ -658,4 +529,3 @@ class TestRunbooksDiagnosticCommands(TestCase):
     def test_has_resolution_steps(self):
         """Test that RUNBOOKS.md has resolution steps"""
         self.assertIn("### Resolution Steps", self.content)
-
